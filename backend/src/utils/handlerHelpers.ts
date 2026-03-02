@@ -14,7 +14,7 @@ export function getCanvasId(
 	const canvasId = canvasStore.getActiveCanvas(connectionId);
 
 	if (!canvasId) {
-		emitError(connectionId, responseEvent, 'No active canvas', requestId, undefined, 'INTERNAL_ERROR');
+		emitError(connectionId, responseEvent, '找不到使用中的 Canvas', requestId, undefined, 'INTERNAL_ERROR');
 		return undefined;
 	}
 
@@ -140,5 +140,5 @@ export async function handleResourceDelete(config: ResourceDeleteConfig): Promis
 
 	socketService.emitToAll(responseEvent, response);
 
-	logger.log(resourceName, 'Delete', `Deleted ${resourceName.toLowerCase()} ${resourceId} and ${deletedNoteIds.length} notes`);
+	logger.log(resourceName, 'Delete', `已刪除 ${resourceName.toLowerCase()}「${resourceId}」及 ${deletedNoteIds.length} 個 Note`);
 }

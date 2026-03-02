@@ -102,7 +102,7 @@ export function createNoteHandlers<TNote extends BaseNote>(
       socketService.emitToCanvas(canvasId, events.created, response);
 
       if (entityName === 'OutputStyle') {
-        logger.log('Note', 'Create', `Created note ${note.id} (${note.name})`);
+        logger.log('Note', 'Create', `已建立 Note「${note.name}」`);
       }
     }
   );
@@ -214,7 +214,7 @@ export function createNoteHandlers<TNote extends BaseNote>(
       socketService.emitToCanvas(canvasId, events.deleted, response);
 
       if (entityName === 'OutputStyle') {
-        logger.log('Note', 'Delete', `Deleted note ${noteId}`);
+        logger.log('Note', 'Delete', `已刪除 Note「${note.name}」`);
       }
     }
   );

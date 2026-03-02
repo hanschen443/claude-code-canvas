@@ -17,7 +17,7 @@ class SocketService {
 
 	initialize(): void {
 		if (this.initialized) {
-			logger.log('Startup', 'Complete', '[WebSocket] Already initialized');
+			logger.log('Startup', 'Complete', '[WebSocket] 已初始化');
 			return;
 		}
 
@@ -55,7 +55,7 @@ class SocketService {
 		try {
 			connection.webSocket.send(serialize(response));
 		} catch (error) {
-			logger.log('Connection', 'Error', `Failed to send message to ${connectionId}: ${error}`);
+			logger.log('Connection', 'Error', `訊息傳送失敗，連線 ${connectionId}: ${error}`);
 		}
 	}
 
@@ -146,7 +146,7 @@ class SocketService {
 		try {
 			connection.webSocket.send(serialize(response));
 		} catch (error) {
-			logger.log('Connection', 'Error', `Failed to send heartbeat to ${connectionId}: ${error}`);
+			logger.log('Connection', 'Error', `心跳傳送失敗，連線 ${connectionId}: ${error}`);
 			return;
 		}
 
@@ -159,10 +159,10 @@ class SocketService {
 			connectionManager.incrementMissedHeartbeats(connectionId);
 
 			const missed = conn.missedHeartbeats;
-			logger.log('Connection', 'Error', `Connection ${connectionId} missed heartbeat (${missed}/${this.MAX_MISSED_HEARTBEATS})`);
+			logger.log('Connection', 'Error', `連線 ${connectionId} 心跳逾時 (${missed}/${this.MAX_MISSED_HEARTBEATS})`);
 
 			if (missed >= this.MAX_MISSED_HEARTBEATS) {
-				logger.log('Connection', 'Delete', `Connection ${connectionId} disconnected due to heartbeat timeout`);
+				logger.log('Connection', 'Delete', `連線 ${connectionId} 因心跳逾時而斷線`);
 				this.clearHeartbeatTimeout(connectionId);
 				conn.webSocket.close(1000, 'Heartbeat timeout');
 			}
@@ -187,7 +187,7 @@ class SocketService {
 		this.heartbeatTimeouts.forEach((timeout) => clearTimeout(timeout));
 		this.heartbeatTimeouts.clear();
 
-		logger.log('Startup', 'Complete', '[Heartbeat] Stopped');
+		logger.log('Startup', 'Complete', '[Heartbeat] 已停止');
 	}
 }
 

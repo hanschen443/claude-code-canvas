@@ -17,7 +17,7 @@ async function startServer(): Promise<void> {
 	const result = await startupService.initialize();
 
 	if (!result.success) {
-		logger.error('Startup', 'Error', 'Failed to start server', result.error);
+		logger.error('Startup', 'Error', '伺服器啟動失敗', result.error);
 		process.exit(1);
 	}
 
@@ -85,7 +85,7 @@ async function startServer(): Promise<void> {
 					}
 
 					eventRouter.route(connectionId, parsedMessage).catch((error) => {
-						logger.error('WebSocket', 'Error', `Failed to route message: ${error}`, error);
+						logger.error('WebSocket', 'Error', `訊息路由失敗: ${error}`, error);
 						socketService.emitToConnection(connectionId, 'error', {
 							requestId: parsedMessage.requestId,
 							success: false,
@@ -94,7 +94,7 @@ async function startServer(): Promise<void> {
 						});
 					});
 				} catch (error) {
-					logger.error('WebSocket', 'Error', `Failed to parse message: ${error}`, error);
+					logger.error('WebSocket', 'Error', `訊息解析失敗: ${error}`, error);
 					socketService.emitToConnection(connectionId, 'error', {
 						requestId: '',
 						success: false,
@@ -124,11 +124,11 @@ async function startServer(): Promise<void> {
 startServer();
 
 const shutdown = async (signal: string): Promise<void> => {
-	logger.log('Startup', 'Complete', `${signal} received, shutting down gracefully`);
+	logger.log('Startup', 'Complete', `收到 ${signal}，正在優雅關閉`);
 
 	socketService.stopHeartbeat();
 
-	logger.log('Startup', 'Complete', 'Server closed successfully');
+	logger.log('Startup', 'Complete', '伺服器已成功關閉');
 	process.exit(0);
 };
 

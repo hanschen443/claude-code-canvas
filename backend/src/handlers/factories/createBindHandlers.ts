@@ -125,7 +125,7 @@ export function createBindHandler<TService extends {exists: (id: string) => Prom
             };
             socketService.emitToCanvas(canvasId, config.events.bound, response);
 
-            logger.log(config.resourceName as LogCategory, 'Bind', `Bound ${config.resourceName.toLowerCase()} ${resourceId} to Pod ${podId}`);
+            logger.log(config.resourceName as LogCategory, 'Bind', `已將 ${config.resourceName.toLowerCase()}「${resourceId}」綁定到 Pod「${pod.name}」`);
         }
     );
 }
@@ -189,7 +189,7 @@ export function createUnbindHandler<TService>(
             };
             socketService.emitToCanvas(canvasId, config.events.unbound!, response);
 
-            logger.log(config.resourceName as LogCategory, 'Unbind', `Unbound ${config.resourceName.toLowerCase()} from Pod ${podId}`);
+            logger.log(config.resourceName as LogCategory, 'Unbind', `已從 Pod「${pod.name}」解綁 ${config.resourceName.toLowerCase()}`);
         }
     );
 }

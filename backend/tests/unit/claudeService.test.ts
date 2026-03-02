@@ -279,7 +279,7 @@ describe('ClaudeService', () => {
             expect(logger.log).toHaveBeenCalledWith(
                 'Chat',
                 'Update',
-                expect.stringContaining('Session resume failed')
+                expect.stringContaining('Session 恢復失敗')
             );
 
             expect(podStore.setClaudeSessionId).toHaveBeenCalledWith('test-canvas', 'test-pod-id', '');
@@ -366,7 +366,7 @@ describe('ClaudeService', () => {
             expect(logger.log).toHaveBeenCalledWith(
                 'Chat',
                 'Update',
-                expect.stringContaining('Session resume failed')
+                expect.stringContaining('Session 恢復失敗')
             );
 
             const errorEvents = streamEvents.filter((e) => e.type === 'error');

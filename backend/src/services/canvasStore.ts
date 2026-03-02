@@ -22,7 +22,7 @@ class CanvasStore {
         const resolvedPath = path.resolve(canvasPath);
         const resolvedRoot = path.resolve(config.canvasRoot);
         if (!resolvedPath.startsWith(resolvedRoot + path.sep)) {
-            logger.error('Canvas', 'Error', `Attempted path traversal: ${canvasPath}`);
+            logger.error('Canvas', 'Error', `偵測到路徑遍歷攻擊: ${canvasPath}`);
             return err('無效的 Canvas 路徑');
         }
         return ok(undefined);
@@ -280,12 +280,12 @@ class CanvasStore {
         const persistedCanvas = safeJsonParse<PersistedCanvas>(readResult.data!);
 
         if (!persistedCanvas) {
-            logger.error('Canvas', 'Load', `Failed to parse canvas.json in ${dirName}`);
+            logger.error('Canvas', 'Load', `解析 ${dirName} 的 canvas.json 失敗`);
             return null;
         }
 
         if (persistedCanvas.sortIndex === undefined) {
-            logger.error('Canvas', 'Load', `Missing sortIndex in canvas.json for ${dirName}`);
+            logger.error('Canvas', 'Load', `${dirName} 的 canvas.json 缺少 sortIndex`);
             return null;
         }
 

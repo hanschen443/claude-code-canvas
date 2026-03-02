@@ -41,7 +41,7 @@ function recordError(
 ): void {
   const errorMessage = getErrorMessage(error);
   errors.push({ type, originalId, error: errorMessage });
-  logger.error('Paste', 'Error', `${context}: ${errorMessage}`);
+  logger.error('Paste', 'Error', `${context}：${errorMessage}`);
 }
 
 async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
@@ -55,7 +55,7 @@ async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
 
   await fsOperation(
     () => fs.cp(srcClaudeDir, destClaudeDir, { recursive: true }),
-    `Failed to copy .claude directory`
+    `複製 .claude 目錄失敗`
   );
 }
 
@@ -156,7 +156,7 @@ export function createPastedNotes<
 
       createdNotes.push(note);
 
-      logger.log('Paste', 'Create', `Created ${noteType} ${note.id} (${note.name})`);
+      logger.log('Paste', 'Create', `已建立${noteType}「${note.name}」`);
     } catch (error) {
       const resourceId = getResourceId(noteItem);
       recordError(errors, noteType, resourceId, error, `建立${noteType}失敗`);
@@ -192,9 +192,11 @@ export function createPastedConnections(
 
       createdConnections.push(newConnection);
 
-      logger.log('Paste', 'Create', `Created Connection ${newConnection.id} (${newSourcePodId} -> ${newTargetPodId})`);
+      const srcName = podStore.getById(canvasId, newSourcePodId)?.name ?? newSourcePodId;
+      const tgtName = podStore.getById(canvasId, newTargetPodId)?.name ?? newTargetPodId;
+      logger.log('Paste', 'Create', `已建立連線「${srcName} → ${tgtName}」`);
     } catch (error) {
-      logger.error('Paste', 'Error', `Failed to create connection: ${getErrorMessage(error)}`);
+      logger.error('Paste', 'Error', `建立連線失敗：${getErrorMessage(error)}`);
     }
   }
 

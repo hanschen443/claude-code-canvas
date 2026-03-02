@@ -146,7 +146,7 @@ function createStreamingCallback(context: StreamContext): (event: StreamEvent) =
             }
 
             case 'error': {
-                logger.error('Chat', 'Error', `Pod ${podId} streaming 過程發生錯誤`);
+                logger.error('Chat', 'Error', `Pod ${podStore.getById(canvasId, podId)?.name ?? podId} streaming 過程發生錯誤`);
                 break;
             }
         }

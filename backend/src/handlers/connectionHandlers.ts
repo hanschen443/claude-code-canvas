@@ -100,7 +100,7 @@ export const handleConnectionCreate = withCanvasId<ConnectionCreatePayload>(
       targetPodId,
       WebSocketResponseEvents.CONNECTION_CREATED,
       requestId,
-      (_sourcePod, targetPod) => {
+      (sourcePod, targetPod) => {
         const connection = connectionStore.create(canvasId, {
           sourcePodId,
           sourceAnchor,
@@ -129,11 +129,11 @@ export const handleConnectionCreate = withCanvasId<ConnectionCreatePayload>(
             };
             socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_SCHEDULE_SET, podSchedulePayload);
 
-            logger.log('Connection', 'Create', `Cleared schedule for target Pod ${targetPodId} (now downstream)`);
+            logger.log('Connection', 'Create', `已清除目標 Pod「${targetPod.name}」的排程（現為下游節點）`);
           }
         }
 
-        logger.log('Connection', 'Create', `Created connection ${connection.id} (${sourcePodId} -> ${targetPodId})`);
+        logger.log('Connection', 'Create', `已建立連線「${sourcePod.name} → ${targetPod.name}」`);
       }
     );
   }
@@ -165,7 +165,7 @@ export const handleConnectionDelete = withCanvasId<ConnectionDeletePayload>(
       connId,
       WebSocketResponseEvents.CONNECTION_DELETED,
       requestId,
-      () => {
+      (connection) => {
         workflowStateService.handleConnectionDeletion(canvasId, connId);
 
         const deleted = connectionStore.delete(canvasId, connId);
@@ -191,7 +191,9 @@ export const handleConnectionDelete = withCanvasId<ConnectionDeletePayload>(
 
         socketService.emitToCanvas(canvasId, WebSocketResponseEvents.CONNECTION_DELETED, response);
 
-        logger.log('Connection', 'Delete', `Deleted connection ${connId}`);
+        const srcName = podStore.getById(canvasId, connection.sourcePodId)?.name ?? connection.sourcePodId;
+        const tgtName = podStore.getById(canvasId, connection.targetPodId)?.name ?? connection.targetPodId;
+        logger.log('Connection', 'Delete', `已刪除連線「${srcName} → ${tgtName}」`);
       }
     );
   }

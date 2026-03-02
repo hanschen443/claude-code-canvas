@@ -124,7 +124,7 @@ export function createResourceHandlers<T extends { id: string; name: string }>(c
 
     socketService.emitToConnection(connectionId, events.created, response);
 
-    logger.log(resourceName, 'Create', `Created ${resourceName.toLowerCase()} ${resource.id}`);
+    logger.log(resourceName, 'Create', `已建立${resourceName.toLowerCase()}「${resource.name}」`);
   }
 
   async function handleUpdate(
@@ -161,7 +161,7 @@ export function createResourceHandlers<T extends { id: string; name: string }>(c
 
     socketService.emitToConnection(connectionId, events.updated, response);
 
-    logger.log(resourceName, 'Update', `Updated ${resourceName.toLowerCase()} ${resourceId}`);
+    logger.log(resourceName, 'Update', `已更新${resourceName.toLowerCase()}「${resource.name}」`);
   }
 
   async function handleRead(

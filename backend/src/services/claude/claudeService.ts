@@ -329,7 +329,7 @@ export class ClaudeService {
             logger.log(
                 'Chat',
                 'Update',
-                `[ClaudeService] Session resume failed for Pod ${podId}, clearing session ID and retrying`
+                `[ClaudeService] Pod ${pod.name} Session 恢復失敗，清除 Session ID 並重試`
             );
             podStore.setClaudeSessionId(canvasId, podId, '');
             return retryFn();
@@ -337,9 +337,9 @@ export class ClaudeService {
 
         const errorMessage = getErrorMessage(error);
         if (isRetry) {
-            logger.error('Chat', 'Error', `Pod ${podId} 重試查詢仍然失敗: ${errorMessage}`);
+            logger.error('Chat', 'Error', `Pod ${pod.name} 重試查詢仍然失敗: ${errorMessage}`);
         } else {
-            logger.error('Chat', 'Error', `Pod ${podId} 查詢失敗: ${errorMessage}`);
+            logger.error('Chat', 'Error', `Pod ${pod.name} 查詢失敗: ${errorMessage}`);
         }
 
         onStream({type: 'error', error: '與 Claude 通訊時發生錯誤，請稍後再試'});

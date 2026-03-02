@@ -23,6 +23,7 @@ vi.mock('../../src/services/messageStore.js', () => ({
 vi.mock('../../src/services/podStore.js', () => ({
     podStore: {
         setStatus: vi.fn(() => {}),
+        getById: vi.fn(() => undefined),
     },
 }));
 

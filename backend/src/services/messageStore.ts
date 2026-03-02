@@ -4,6 +4,7 @@ import {Result, ok, err} from '../types';
 import {chatPersistenceService} from './persistence/chatPersistence.js';
 import {logger} from '../utils/logger.js';
 import {canvasStore} from './canvasStore.js';
+import {podStore} from './podStore.js';
 import {getErrorMessage} from '../utils/errorHelpers.js';
 
 class MessageStore {
@@ -31,13 +32,13 @@ class MessageStore {
 
         const canvasDir = canvasStore.getCanvasDir(canvasId);
         if (!canvasDir) {
-            logger.error('Chat', 'Error', `[MessageStore] Canvas not found for Pod ${podId}`);
+            logger.error('Chat', 'Error', `[MessageStore] 找不到 Canvas，Pod ${podStore.getById(canvasId, podId)?.name ?? podId}`);
             return err(`Canvas 不存在 (${canvasId})`);
         }
 
         const result = await chatPersistenceService.saveMessage(canvasDir, podId, message);
         if (!result.success) {
-            logger.error('Chat', 'Error', `[MessageStore] Failed to persist message for Pod ${podId}: ${result.error}`);
+            logger.error('Chat', 'Error', `[MessageStore] 訊息持久化失敗，Pod ${podStore.getById(canvasId, podId)?.name ?? podId}: ${result.error}`);
             return err(`訊息已儲存至記憶體，但持久化失敗 (Pod ${podId})`);
         }
 
@@ -56,7 +57,7 @@ class MessageStore {
         }
 
         this.messagesByPodId.set(podId, chatHistory.messages);
-        logger.log('Chat', 'Load', `[MessageStore] Loaded ${chatHistory.messages.length} messages for Pod ${podId}`);
+        logger.log('Chat', 'Load', `[MessageStore] Pod ${podId} 已載入 ${chatHistory.messages.length} 則訊息`);
         return ok(chatHistory.messages);
     }
 
@@ -69,13 +70,13 @@ class MessageStore {
 
         const canvasDir = canvasStore.getCanvasDir(canvasId);
         if (!canvasDir) {
-            logger.error('Chat', 'Error', `[MessageStore] Canvas not found for Pod ${podId}`);
+            logger.error('Chat', 'Error', `[MessageStore] 找不到 Canvas，Pod ${podStore.getById(canvasId, podId)?.name ?? podId}`);
             return err(`Canvas 不存在 (${canvasId})`);
         }
 
         const result = await chatPersistenceService.clearChatHistory(canvasDir, podId);
         if (!result.success) {
-            logger.error('Chat', 'Error', `[MessageStore] Failed to clear persistence for Pod ${podId}: ${result.error}`);
+            logger.error('Chat', 'Error', `[MessageStore] 清除訊息持久化失敗，Pod ${podStore.getById(canvasId, podId)?.name ?? podId}: ${result.error}`);
             return err(`清除訊息失敗 (Pod ${podId})`);
         }
 
@@ -100,7 +101,7 @@ class MessageStore {
         this.enqueueWrite(podId, async () => {
             const canvasDir = canvasStore.getCanvasDir(canvasId);
             if (!canvasDir) {
-                logger.error('Chat', 'Error', `[MessageStore] Canvas not found for Pod ${podId} during upsert`);
+                logger.error('Chat', 'Error', `[MessageStore] Upsert 時找不到 Canvas，Pod ${podStore.getById(canvasId, podId)?.name ?? podId}`);
                 return;
             }
 

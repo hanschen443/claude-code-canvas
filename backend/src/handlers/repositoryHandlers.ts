@@ -83,7 +83,7 @@ export async function handleRepositoryCreate(
 
   socketService.emitToConnection(connectionId, WebSocketResponseEvents.REPOSITORY_CREATED, response);
 
-  logger.log('Repository', 'Create', `Created repository ${repository.id}`);
+  logger.log('Repository', 'Create', `已建立 Repository「${repository.name}」`);
 }
 
 async function cleanupOldWorkspaceResources(podWorkspacePath: string, podId: string): Promise<void> {
@@ -108,7 +108,7 @@ function logRejectedResults(
 ): void {
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
-      logger.error(category, action, `Failed to delete ${operationNames[index]} from ${context}`, result.reason);
+      logger.error(category, action, `刪除 ${context} 的 ${operationNames[index]} 失敗`, result.reason);
     }
   });
 }
@@ -166,7 +166,8 @@ export const handlePodBindRepository = withCanvasId<PodBindRepositoryPayload>(
 
     socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_REPOSITORY_BOUND, response);
 
-    logger.log('Repository', 'Bind', `Bound repository ${repositoryId} to Pod ${podId}`);
+    const podName = podStore.getById(canvasId, podId)?.name ?? podId;
+    logger.log('Repository', 'Bind', `已將 Repository「${repositoryId}」綁定至 Pod「${podName}」`);
   }
 );
 
@@ -210,7 +211,8 @@ export const handlePodUnbindRepository = withCanvasId<PodUnbindRepositoryPayload
 
     results.forEach((result) => {
       if (result.status === 'rejected') {
-        logger.error('Repository', 'Unbind', `Failed to copy resource to Pod ${podId}`, result.reason);
+        const podName = podStore.getById(canvasId, podId)?.name ?? podId;
+        logger.error('Repository', 'Unbind', `複製資源至 Pod「${podName}」失敗`, result.reason);
       }
     });
 
@@ -227,7 +229,8 @@ export const handlePodUnbindRepository = withCanvasId<PodUnbindRepositoryPayload
 
     socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_REPOSITORY_UNBOUND, response);
 
-    logger.log('Repository', 'Unbind', `Unbound repository from Pod ${podId}`);
+    const podNameForUnbind = podStore.getById(canvasId, podId)?.name ?? podId;
+    logger.log('Repository', 'Unbind', `已解除 Pod「${podNameForUnbind}」的 Repository 綁定`);
   }
 );
 

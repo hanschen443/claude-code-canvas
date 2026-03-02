@@ -251,7 +251,7 @@ export async function handleRepositoryGitClone(
 
   emitSuccess(connectionId, WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT, response);
 
-  logger.log('Repository', 'Create', `Successfully cloned repository: ${repoName}${branch ? ` (branch: ${branch})` : ''}`);
+  logger.log('Repository', 'Create', `成功 clone Repository「${repoName}」${branch ? `（分支：${branch}）` : ''}`);
 }
 
 export async function handleRepositoryCheckGit(
@@ -295,7 +295,7 @@ export async function handleRepositoryCheckGit(
     isGit: result.data,
   };
 
-  logger.log('Repository', 'Check', `${repositoryId} isGit: ${result.data}`);
+  logger.log('Repository', 'Check', `Repository「${repositoryId}」是否為 Git Repo：${result.data}`);
 
   emitSuccess(connectionId, WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT, response);
 }
@@ -391,7 +391,7 @@ export async function handleRepositoryWorktreeCreate(
 
   socketService.emitToCanvas(payload.canvasId, responseEvent, response);
 
-  logger.log('Repository', 'Create', `Created worktree ${newRepositoryId} from ${repositoryId}`);
+  logger.log('Repository', 'Create', `已從「${repositoryId}」建立 Worktree「${newRepositoryId}」`);
 }
 
 export const handleRepositoryGetLocalBranches = withValidatedGitRepository<RepositoryGetLocalBranchesPayload>(
@@ -421,7 +421,7 @@ export const handleRepositoryGetLocalBranches = withValidatedGitRepository<Repos
     };
 
     emitSuccess(connectionId, WebSocketResponseEvents.REPOSITORY_LOCAL_BRANCHES_RESULT, response);
-    logger.log('Repository', 'List', `Got local branches for ${repositoryId}`);
+    logger.log('Repository', 'List', `已取得「${repositoryId}」的本地分支清單`);
   }
 );
 
@@ -450,7 +450,7 @@ export const handleRepositoryCheckDirty = withValidatedGitRepository<RepositoryC
     };
 
     emitSuccess(connectionId, WebSocketResponseEvents.REPOSITORY_DIRTY_CHECK_RESULT, response);
-    logger.log('Repository', 'Check', `Checked dirty status for ${repositoryId}: ${dirtyResult.data}`);
+    logger.log('Repository', 'Check', `已檢查「${repositoryId}」的未提交狀態：${dirtyResult.data}`);
   }
 );
 
@@ -531,7 +531,7 @@ export const handleRepositoryCheckoutBranch = withValidatedGitRepository<Reposit
     };
     socketService.emitToAllExcept(connectionId, WebSocketResponseEvents.REPOSITORY_BRANCH_CHANGED, broadcastPayload);
 
-    logger.log('Repository', 'Update', `Checked out branch ${branchName} for ${repositoryId} (${action})`);
+    logger.log('Repository', 'Update', `已切換「${repositoryId}」的分支至「${branchName}」（${action}）`);
   }
 );
 
@@ -561,7 +561,7 @@ export const handleRepositoryDeleteBranch = withValidatedGitRepository<Repositor
 
     emitSuccess(connectionId, WebSocketResponseEvents.REPOSITORY_BRANCH_DELETED, response);
 
-    logger.log('Repository', 'Update', `Deleted branch ${branchName} from ${repositoryId}`);
+    logger.log('Repository', 'Update', `已從「${repositoryId}」刪除分支「${branchName}」`);
   }
 );
 
@@ -633,7 +633,7 @@ export const handleRepositoryPullLatest = withValidatedGitRepository<RepositoryP
 
       emitSuccess(connectionId, WebSocketResponseEvents.REPOSITORY_PULL_LATEST_RESULT, response);
 
-      logger.log('Repository', 'Update', `Pulled latest for ${repositoryId}`);
+      logger.log('Repository', 'Update', `已 Pull「${repositoryId}」的最新版本`);
     } finally {
       pullingRepositories.delete(repositoryId);
     }

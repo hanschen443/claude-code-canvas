@@ -38,7 +38,7 @@ export function handleWebSocketError(context: WebSocketErrorContext): void {
 		errorMessage = error.message;
 		errorCode = 'INTERNAL_ERROR';
 	} else {
-		errorMessage = 'An unknown error occurred';
+		errorMessage = '發生未知錯誤';
 		errorCode = 'UNKNOWN_ERROR';
 	}
 
@@ -52,5 +52,5 @@ export function handleWebSocketError(context: WebSocketErrorContext): void {
 
 	socketService.emitToConnection(connectionId, responseEvent, errorPayload);
 
-	logger.error('WebSocket', 'Error', `Event: ${responseEvent}, Code: ${errorCode}, Message: ${errorMessage}`);
+	logger.error('WebSocket', 'Error', `事件: ${responseEvent}, 錯誤碼: ${errorCode}, 訊息: ${errorMessage}`);
 }

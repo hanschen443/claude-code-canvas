@@ -218,7 +218,7 @@ class GitService {
             return ok(undefined);
         } catch (error) {
             const errorMessage = parseCloneErrorMessage(error, source);
-            logger.error('Git', 'Error', `[Git] Failed to clone repository`, error);
+            logger.error('Git', 'Error', `[Git] Clone Repository 失敗`, error);
             return err(errorMessage);
         }
     }
@@ -305,7 +305,7 @@ class GitService {
             const errorMessage = parseGitErrorMessage(error);
             const errorText = getBranchDeletionError(errorMessage, branchName);
             if (errorText === '刪除分支失敗') {
-                logger.error('Git', 'Error', `[Git] Failed to delete branch`, error);
+                logger.error('Git', 'Error', `[Git] 刪除分支失敗`, error);
             }
             return err(errorText);
         }
@@ -333,7 +333,7 @@ class GitService {
             const errorMessage = parseGitErrorMessage(error);
             const errorText = getCheckoutError(errorMessage, branchName);
             if (errorText === '切換分支失敗') {
-                logger.error('Git', 'Error', `[Git] Failed to checkout branch`, error);
+                logger.error('Git', 'Error', `[Git] 切換分支失敗`, error);
             }
             return err(errorText);
         }
@@ -462,7 +462,7 @@ class GitService {
         } catch (error) {
             const errorMessage = parseGitErrorMessage(error);
             const errorText = getPullLatestError(errorMessage);
-            logger.error('Git', 'Error', `[Git] Failed to pull latest`, error);
+            logger.error('Git', 'Error', `[Git] Pull 最新版本失敗`, error);
             return err(errorText);
         }
     }
