@@ -10,6 +10,8 @@ import { Result, ok, err } from '../types';
 import { config } from '../config';
 import { persistenceService } from './persistence';
 import { logger } from '../utils/logger.js';
+import { slackAppStore } from './slack/slackAppStore.js';
+import { slackConnectionManager } from './slack/slackConnectionManager.js';
 
 class StartupService {
   async initialize(): Promise<Result<void>> {
@@ -81,8 +83,37 @@ class StartupService {
 
     scheduleService.start();
 
+    // 背景恢復 Slack 連線，不阻塞 WS server 啟動，以確保廣播時已有 client 可接收
+    this.restoreSlackConnections().catch((error) => {
+      logger.error('Slack', 'Error', '[StartupService] Slack 連線恢復時發生非預期錯誤', error);
+    });
+
     logger.log('Startup', 'Complete', '伺服器初始化完成');
     return ok(undefined);
+  }
+  private async restoreSlackConnections(): Promise<void> {
+    await slackAppStore.loadFromDisk(config.appDataRoot);
+
+    const apps = slackAppStore.list();
+    if (apps.length === 0) {
+      return;
+    }
+
+    logger.log('Slack', 'Load', `[StartupService] 開始恢復 ${apps.length} 個 Slack App 連線`);
+
+    const results = await Promise.allSettled(
+      apps.map((app) => slackConnectionManager.connect(app))
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status === 'rejected') {
+        const reason = (results[i] as PromiseRejectedResult).reason;
+        logger.error('Slack', 'Error', `[StartupService] Slack App「${apps[i].name}」連線恢復失敗`, reason);
+      }
+    }
+
+    slackConnectionManager.startHealthCheck();
+    logger.log('Slack', 'Complete', '[StartupService] Slack App 連線恢復完成');
   }
 }
 

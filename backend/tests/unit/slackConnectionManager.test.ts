@@ -175,7 +175,10 @@ describe('SlackConnectionManager', () => {
 
             expect(socketService.emitToAll).toHaveBeenCalledWith(
                 'slack:connection:status:changed',
-                expect.objectContaining({slackAppId: slackApp.id}),
+                expect.objectContaining({
+                    slackAppId: slackApp.id,
+                    channels: expect.any(Array),
+                }),
             );
         });
 

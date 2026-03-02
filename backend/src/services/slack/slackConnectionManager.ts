@@ -4,6 +4,7 @@ import {Result, ok, err} from '../../types/index.js';
 import {logger} from '../../utils/logger.js';
 import {getErrorMessage} from '../../utils/errorHelpers.js';
 import {slackAppStore} from './slackAppStore.js';
+import {slackEventService} from './slackEventService.js';
 import {socketService} from '../socketService.js';
 import {WebSocketResponseEvents} from '../../schemas/events.js';
 
@@ -18,7 +19,7 @@ class SlackConnectionManager {
 
     async connect(slackApp: SlackApp): Promise<void> {
         if (this.boltApps.has(slackApp.id)) {
-            logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackApp.id} 已連線，略過重複連線`);
+            logger.log('Slack', 'Complete', `Slack App ${slackApp.id} 已連線，略過重複連線`);
             return;
         }
 
@@ -44,9 +45,9 @@ class SlackConnectionManager {
             this.boltApps.set(slackApp.id, app);
             this.reconnectAttempts.set(slackApp.id, 0);
 
-            logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackApp.id} 連線成功`);
+            logger.log('Slack', 'Complete', `Slack App ${slackApp.id} 連線成功`);
         } catch (error) {
-            logger.error('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackApp.id} 連線失敗`, error);
+            logger.error('Slack', 'Error', `Slack App ${slackApp.id} 連線失敗`, error);
             slackAppStore.updateStatus(slackApp.id, 'error');
             this.broadcastConnectionStatus(slackApp.id);
             return;
@@ -57,7 +58,12 @@ class SlackConnectionManager {
         await this.fetchChannels(slackApp, connectedApp);
 
         connectedApp.event('app_mention', async ({event}) => {
-            logger.log('Slack', 'Complete', `[SlackConnectionManager] 收到 app_mention 事件：${JSON.stringify(event)}`);
+            logger.log('Slack', 'Complete', `收到 app_mention 事件：channel=${event.channel}, event_ts=${event.event_ts}`);
+            try {
+                await slackEventService.handleAppMention(slackApp.id, event);
+            } catch (error) {
+                logger.error('Slack', 'Error', `處理 app_mention 事件失敗：channel=${event.channel}, event_ts=${event.event_ts}`, error);
+            }
         });
 
         this.broadcastConnectionStatus(slackApp.id);
@@ -72,7 +78,7 @@ class SlackConnectionManager {
         try {
             await app.stop();
         } catch (error) {
-            logger.error('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackAppId} 停止時發生錯誤`, error);
+            logger.error('Slack', 'Error', `Slack App ${slackAppId} 停止時發生錯誤`, error);
         }
 
         this.boltApps.delete(slackAppId);
@@ -81,7 +87,7 @@ class SlackConnectionManager {
         slackAppStore.updateStatus(slackAppId, 'disconnected');
         this.broadcastConnectionStatus(slackAppId);
 
-        logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackAppId} 已斷線`);
+        logger.log('Slack', 'Complete', `Slack App ${slackAppId} 已斷線`);
     }
 
     private async fetchChannels(slackApp: SlackApp, app: App): Promise<SlackChannel[]> {
@@ -105,9 +111,9 @@ class SlackConnectionManager {
             } while (cursor);
 
             slackAppStore.updateChannels(slackApp.id, channels);
-            logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackApp.id} 取得 ${channels.length} 個頻道`);
+            logger.log('Slack', 'Complete', `Slack App ${slackApp.id} 取得 ${channels.length} 個頻道`);
         } catch (error) {
-            logger.error('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackApp.id} 取得頻道失敗`, error);
+            logger.error('Slack', 'Error', `Slack App ${slackApp.id} 取得頻道失敗`, error);
         }
 
         return channels;
@@ -143,7 +149,7 @@ class SlackConnectionManager {
 
             return ok(undefined);
         } catch (error) {
-            logger.error('Slack', 'Error', `[SlackConnectionManager] 發送訊息至頻道 ${channelId} 失敗`, error);
+            logger.error('Slack', 'Error', `發送訊息至頻道 ${channelId} 失敗`, error);
             return err(`發送訊息失敗：${getErrorMessage(error)}`);
         }
     }
@@ -164,14 +170,14 @@ class SlackConnectionManager {
             for (let i = 0; i < results.length; i++) {
                 if (results[i].status === 'rejected') {
                     const slackAppId = entries[i][0];
-                    logger.warn('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackAppId} 健康檢查失敗，觸發重連`);
+                    logger.warn('Slack', 'Error', `Slack App ${slackAppId} 健康檢查失敗，觸發重連`);
                     this.boltApps.delete(slackAppId);
                     this.handleReconnect(slackAppId);
                 }
             }
         }, HEALTH_CHECK_INTERVAL_MS);
 
-        logger.log('Slack', 'Complete', '[SlackConnectionManager] 健康檢查已啟動');
+        logger.log('Slack', 'Complete', '健康檢查已啟動');
     }
 
     stopHealthCheck(): void {
@@ -187,7 +193,7 @@ class SlackConnectionManager {
         const attempts = this.reconnectAttempts.get(slackAppId) ?? 0;
 
         if (attempts >= MAX_RECONNECT_ATTEMPTS) {
-            logger.error('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackAppId} 重連失敗超過 ${MAX_RECONNECT_ATTEMPTS} 次，停止重連`);
+            logger.error('Slack', 'Error', `Slack App ${slackAppId} 重連失敗超過 ${MAX_RECONNECT_ATTEMPTS} 次，停止重連`);
             slackAppStore.updateStatus(slackAppId, 'error');
             this.broadcastConnectionStatus(slackAppId);
             return;
@@ -195,7 +201,7 @@ class SlackConnectionManager {
 
         const delayMs = Math.min(1000 * Math.pow(2, attempts), 30000);
 
-        logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackAppId} 將在 ${delayMs}ms 後進行第 ${attempts + 1} 次重連`);
+        logger.log('Slack', 'Complete', `Slack App ${slackAppId} 將在 ${delayMs}ms 後進行第 ${attempts + 1} 次重連`);
 
         slackAppStore.updateStatus(slackAppId, 'connecting');
         this.broadcastConnectionStatus(slackAppId);
@@ -205,16 +211,16 @@ class SlackConnectionManager {
 
             const slackApp = slackAppStore.getById(slackAppId);
             if (!slackApp) {
-                logger.warn('Slack', 'Error', `[SlackConnectionManager] 重連時找不到 Slack App ${slackAppId}`);
+                logger.warn('Slack', 'Error', `重連時找不到 Slack App ${slackAppId}`);
                 return;
             }
 
             try {
                 await this.connect(slackApp);
                 this.reconnectAttempts.set(slackAppId, 0);
-                logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackAppId} 重連成功`);
+                logger.log('Slack', 'Complete', `Slack App ${slackAppId} 重連成功`);
             } catch (error) {
-                logger.error('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackAppId} 重連失敗`, error);
+                logger.error('Slack', 'Error', `Slack App ${slackAppId} 重連失敗`, error);
                 const currentAttempts = this.reconnectAttempts.get(slackAppId) ?? 0;
                 this.reconnectAttempts.set(slackAppId, currentAttempts + 1);
                 this.handleReconnect(slackAppId);
@@ -235,9 +241,9 @@ class SlackConnectionManager {
         const disconnectPromises = Array.from(this.boltApps.entries()).map(async ([slackAppId, app]) => {
             try {
                 await app.stop();
-                logger.log('Slack', 'Complete', `[SlackConnectionManager] Slack App ${slackAppId} 已停止`);
+                logger.log('Slack', 'Complete', `Slack App ${slackAppId} 已停止`);
             } catch (error) {
-                logger.error('Slack', 'Error', `[SlackConnectionManager] Slack App ${slackAppId} 停止時發生錯誤`, error);
+                logger.error('Slack', 'Error', `Slack App ${slackAppId} 停止時發生錯誤`, error);
             }
         });
 
@@ -258,7 +264,8 @@ class SlackConnectionManager {
 
         socketService.emitToAll(WebSocketResponseEvents.SLACK_CONNECTION_STATUS_CHANGED, {
             slackAppId,
-            status: slackApp.connectionStatus,
+            connectionStatus: slackApp.connectionStatus,
+            channels: slackApp.channels,
         });
     }
 

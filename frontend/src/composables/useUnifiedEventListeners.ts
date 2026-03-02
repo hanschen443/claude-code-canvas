@@ -10,10 +10,12 @@ import { useCommandStore } from '@/stores/note/commandStore'
 import { useMcpServerStore } from '@/stores/note/mcpServerStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
+import { useSlackStore } from '@/stores/slackStore'
 import { useToast } from '@/composables/useToast'
 import { truncateContent } from '@/stores/chat/chatUtils'
 import { CONTENT_PREVIEW_LENGTH } from '@/lib/constants'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
+import type { SlackApp, SlackAppConnectionStatus, SlackChannel } from '@/types/slack'
 
 let registered = false
 
@@ -516,6 +518,55 @@ const handleWorkflowClearResult = createUnifiedHandler<BasePayload & { canvasId:
   { toastMessage: '已清空訊息' }
 )
 
+const handleSlackAppCreated = createUnifiedHandler<BasePayload & { slackApp?: SlackApp }>(
+  (payload) => {
+    if (payload.slackApp) {
+      useSlackStore().addSlackAppFromEvent(payload.slackApp)
+    }
+  },
+  { skipCanvasCheck: true }
+)
+
+const handleSlackAppDeleted = createUnifiedHandler<BasePayload & { slackAppId?: string }>(
+  (payload) => {
+    if (payload.slackAppId) {
+      useSlackStore().removeSlackAppFromEvent(payload.slackAppId)
+    }
+  },
+  { skipCanvasCheck: true }
+)
+
+const handlePodSlackBound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
+  (payload) => {
+    if (payload.pod) {
+      usePodStore().updatePod(payload.pod)
+    }
+  }
+)
+
+const handlePodSlackUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
+  (payload) => {
+    if (payload.pod) {
+      usePodStore().updatePod(payload.pod)
+    }
+  }
+)
+
+const handleSlackConnectionStatusChanged = (payload: { slackAppId: string; connectionStatus: SlackAppConnectionStatus; channels?: SlackChannel[] }): void => {
+  useSlackStore().updateSlackAppStatus(payload.slackAppId, payload.connectionStatus, payload.channels)
+}
+
+const handleSlackMessageReceived = (payload: { podId: string; userName: string; text: string }): void => {
+  const { toast } = useToast()
+  const truncatedText = truncateContent(payload.text, CONTENT_PREVIEW_LENGTH)
+  toast({ title: `Slack 訊息`, description: `來自 ${payload.userName}：${truncatedText}` })
+}
+
+const handleSlackMessageQueued = (payload: { queueSize: number }): void => {
+  const { toast } = useToast()
+  toast({ title: `Slack 訊息已排隊`, description: `目前佇列大小：${payload.queueSize}` })
+}
+
 const handlePodChatUserMessage = (payload: { podId: string; messageId: string; content: string; timestamp: string }): void => {
   const chatStore = useChatStore()
   const podStore = usePodStore()
@@ -540,7 +591,7 @@ const handlePodChatUserMessage = (payload: { podId: string; messageId: string; c
   }
 }
 
-const listeners = [
+export const listeners = [
   { event: WebSocketResponseEvents.POD_CREATED, handler: handlePodCreated },
   { event: WebSocketResponseEvents.POD_MOVED, handler: handlePodMoved },
   { event: WebSocketResponseEvents.POD_RENAMED, handler: handlePodRenamed },
@@ -595,6 +646,10 @@ const listeners = [
   { event: WebSocketResponseEvents.CANVAS_REORDERED, handler: handleCanvasReordered },
   { event: WebSocketResponseEvents.CANVAS_PASTE_RESULT, handler: handleCanvasPasted },
   { event: WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT, handler: handleWorkflowClearResult },
+  { event: WebSocketResponseEvents.SLACK_APP_CREATED, handler: handleSlackAppCreated },
+  { event: WebSocketResponseEvents.SLACK_APP_DELETED, handler: handleSlackAppDeleted },
+  { event: WebSocketResponseEvents.POD_SLACK_BOUND, handler: handlePodSlackBound },
+  { event: WebSocketResponseEvents.POD_SLACK_UNBOUND, handler: handlePodSlackUnbound },
 ] as const
 
 export function registerUnifiedListeners(): void {
@@ -606,6 +661,9 @@ export function registerUnifiedListeners(): void {
   }
 
   websocketClient.on('pod:chat:user-message', handlePodChatUserMessage as (payload: unknown) => void)
+  websocketClient.on(WebSocketResponseEvents.SLACK_CONNECTION_STATUS_CHANGED, handleSlackConnectionStatusChanged as (payload: unknown) => void)
+  websocketClient.on(WebSocketResponseEvents.SLACK_MESSAGE_RECEIVED, handleSlackMessageReceived as (payload: unknown) => void)
+  websocketClient.on(WebSocketResponseEvents.SLACK_MESSAGE_QUEUED, handleSlackMessageQueued as (payload: unknown) => void)
 }
 
 export function unregisterUnifiedListeners(): void {
@@ -617,6 +675,9 @@ export function unregisterUnifiedListeners(): void {
   }
 
   websocketClient.off('pod:chat:user-message', handlePodChatUserMessage as (payload: unknown) => void)
+  websocketClient.off(WebSocketResponseEvents.SLACK_CONNECTION_STATUS_CHANGED, handleSlackConnectionStatusChanged as (payload: unknown) => void)
+  websocketClient.off(WebSocketResponseEvents.SLACK_MESSAGE_RECEIVED, handleSlackMessageReceived as (payload: unknown) => void)
+  websocketClient.off(WebSocketResponseEvents.SLACK_MESSAGE_QUEUED, handleSlackMessageQueued as (payload: unknown) => void)
 }
 
 export const useUnifiedEventListeners = (): {

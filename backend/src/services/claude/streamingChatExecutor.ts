@@ -231,10 +231,17 @@ export async function executeStreamingChat(
         const hasAssistantContent = accumulatedContentRef.value || subMessageState.subMessages.length > 0;
         if (hasAssistantContent) {
             persistStreamingMessage();
-            await messageStore.flushWrites(podId);
         }
 
         podStore.setStatus(canvasId, podId, 'idle');
+
+        // 先設定 idle 讓前端即時收到狀態，磁碟寫入在背景完成
+        if (hasAssistantContent) {
+            messageStore.flushWrites(podId).catch((error) => {
+                const pod = podStore.getById(canvasId, podId);
+                logger.error('Chat', 'Error', `[StreamingChatExecutor] Pod「${pod?.name ?? podId}」訊息寫入失敗`, error);
+            });
+        }
 
         if (callbacks?.onComplete) {
             await callbacks.onComplete(canvasId, podId);

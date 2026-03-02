@@ -31,7 +31,8 @@ const {
   commandStore,
   mcpServerStore,
   connectionStore,
-  canvasStore
+  canvasStore,
+  slackStore
 } = useCanvasContext()
 
 const cursorStore = useCursorStore()
@@ -78,6 +79,7 @@ const loadCanvasData = async (): Promise<void> => {
       await mcpServerStore.loadNotesFromBackend()
     })(),
     connectionStore.loadConnectionsFromBackend(),
+    slackStore.loadSlackApps(),
   ])
 
   connectionStore.setupWorkflowListeners()

@@ -12,6 +12,7 @@ import { logger } from './utils/logger.js';
 import { WebSocketResponseEvents } from './schemas/index.js';
 import { isStaticFilesAvailable, serveStaticFile } from './utils/staticFileServer.js';
 import { handleApiRequest } from './api/apiRouter.js';
+import { slackConnectionManager } from './services/slack/slackConnectionManager.js';
 
 async function startServer(): Promise<void> {
 	const result = await startupService.initialize();
@@ -127,6 +128,9 @@ const shutdown = async (signal: string): Promise<void> => {
 	logger.log('Startup', 'Complete', `收到 ${signal}，正在優雅關閉`);
 
 	socketService.stopHeartbeat();
+
+	slackConnectionManager.stopHealthCheck();
+	await slackConnectionManager.destroyAll();
 
 	logger.log('Startup', 'Complete', '伺服器已成功關閉');
 	process.exit(0);

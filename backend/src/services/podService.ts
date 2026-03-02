@@ -14,6 +14,7 @@ import type { CreatePodRequest } from '../types/api.js';
 import type { Result } from '../types/index.js';
 import type { Pod } from '../types/pod.js';
 import { logger } from '../utils/logger.js';
+import { slackMessageQueue } from './slack/slackMessageQueue.js';
 
 interface CreatePodResult {
     pod: Pod;
@@ -56,6 +57,10 @@ export async function deletePodWithCleanup(canvasId: string, podId: string, requ
 
     const deletedNoteIdsPayload = deleteAllPodNotes(canvasId, podId);
     connectionStore.deleteByPodId(canvasId, podId);
+
+    if (pod.slackBinding) {
+        slackMessageQueue.clear(podId);
+    }
 
     const repositoryId = pod.repositoryId;
 

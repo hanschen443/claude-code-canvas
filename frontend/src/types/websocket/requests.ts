@@ -363,7 +363,7 @@ export interface SlackAppCreatePayload {
   requestId: string
   name: string
   botToken: string
-  appLevelToken: string
+  appToken: string
 }
 
 export interface SlackAppDeletePayload {

@@ -39,6 +39,10 @@ class PodPersistenceService {
       };
     }
 
+    if (pod.slackBinding) {
+      persisted.slackBinding = pod.slackBinding;
+    }
+
     return persisted;
   }
 

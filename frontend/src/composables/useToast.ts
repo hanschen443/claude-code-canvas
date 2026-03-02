@@ -21,6 +21,7 @@ export type ToastCategory =
   | 'Paste'
   | 'WebSocket'
   | 'McpServer'
+  | 'Slack'
 
 interface ToastOptions {
   title: string

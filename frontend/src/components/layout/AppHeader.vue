@@ -19,6 +19,15 @@
         <!-- Connection Status -->
         <ConnectionStatus />
 
+        <!-- 整合服務管理按鈕 -->
+        <button
+          class="flex items-center justify-center rounded-md p-2 hover:bg-accent"
+          title="整合服務管理"
+          @click="showIntegrationModal = true"
+        >
+          <KeyRound class="h-4 w-4" />
+        </button>
+
         <!-- Canvas Selector -->
         <button
           v-if="canvasStore.activeCanvas"
@@ -32,12 +41,29 @@
       </div>
     </div>
   </header>
+
+  <IntegrationSelectModal
+    v-model:open="showIntegrationModal"
+    @select="handleIntegrationSelect"
+  />
+  <SlackAppsModal v-model:open="showSlackAppsModal" />
 </template>
 
 <script setup lang="ts">
-import { Sparkles, LayoutDashboard } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { Sparkles, LayoutDashboard, KeyRound } from 'lucide-vue-next'
 import ConnectionStatus from '@/components/ui/ConnectionStatus.vue'
+import SlackAppsModal from '@/components/slack/SlackAppsModal.vue'
+import IntegrationSelectModal from '@/components/integration/IntegrationSelectModal.vue'
 import { useCanvasStore } from '@/stores/canvasStore'
 
 const canvasStore = useCanvasStore()
+const showIntegrationModal = ref<boolean>(false)
+const showSlackAppsModal = ref<boolean>(false)
+
+const handleIntegrationSelect = (category: string): void => {
+  if (category === 'slack') {
+    showSlackAppsModal.value = true
+  }
+}
 </script>

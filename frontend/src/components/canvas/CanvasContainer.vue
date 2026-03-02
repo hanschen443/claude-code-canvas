@@ -24,12 +24,14 @@ import CloneRepositoryModal from './CloneRepositoryModal.vue'
 import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
 import CreateEditModal from './CreateEditModal.vue'
 import McpServerModal from './McpServerModal.vue'
+import SlackConnectModal from '@/components/slack/SlackConnectModal.vue'
 import type {Pod, PodTypeConfig, Position, Group, TriggerMode, McpServerConfig} from '@/types'
 import {
   POD_MENU_X_OFFSET,
   POD_MENU_Y_OFFSET,
   DEFAULT_POD_ROTATION_RANGE,
 } from '@/lib/constants'
+import { useSlackStore } from '@/stores/slackStore'
 
 type ItemType = 'outputStyle' | 'skill' | 'repository' | 'subAgent' | 'command' | 'mcpServer'
 type ResourceType = 'outputStyle' | 'subAgent' | 'command'
@@ -149,6 +151,11 @@ const mcpServerModal = ref<McpServerModalState>({
   mcpServerId: '',
   initialName: '',
   initialConfig: undefined
+})
+
+const slackConnectModal = ref<{ visible: boolean; podId: string }>({
+  visible: false,
+  podId: ''
 })
 
 const isDeleteTargetInUse = computed(() => {
@@ -409,6 +416,14 @@ const handlePodContextMenu = (data: { podId: string; event: MouseEvent }): void 
 
 const handlePodContextMenuClose = (): void => {
   podContextMenu.value.visible = false
+}
+
+const handleConnectSlack = (podId: string): void => {
+  slackConnectModal.value = { visible: true, podId }
+}
+
+const handleDisconnectSlack = async (podId: string): Promise<void> => {
+  await useSlackStore().unbindSlackFromPod(podId)
 }
 
 const handleCloneStarted = (payload: { requestId: string; repoName: string }): void => {
@@ -850,6 +865,8 @@ onUnmounted(() => {
     :position="podContextMenu.position"
     :pod-id="podContextMenu.podId"
     @close="handlePodContextMenuClose"
+    @connect-slack="handleConnectSlack"
+    @disconnect-slack="handleDisconnectSlack"
   />
 
   <!-- Repository Context Menu -->
@@ -911,5 +928,10 @@ onUnmounted(() => {
     :initial-name="mcpServerModal.initialName"
     :initial-config="mcpServerModal.initialConfig"
     @submit="handleMcpServerModalSubmit"
+  />
+
+  <SlackConnectModal
+    v-model:open="slackConnectModal.visible"
+    :pod-id="slackConnectModal.podId"
   />
 </template>

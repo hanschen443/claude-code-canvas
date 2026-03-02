@@ -3,7 +3,7 @@ import { setActivePinia } from 'pinia'
 import { setupTestPinia } from '../helpers/mockStoreFactory'
 import { mockWebSocketModule, mockWebSocketClient, resetMockWebSocket, simulateEvent } from '../helpers/mockWebSocket'
 import { createMockPod, createMockConnection, createMockNote, createMockCanvas } from '../helpers/factories'
-import { useUnifiedEventListeners } from '@/composables/useUnifiedEventListeners'
+import { useUnifiedEventListeners, listeners } from '@/composables/useUnifiedEventListeners'
 import { usePodStore } from '@/stores/pod/podStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useOutputStyleStore } from '@/stores/note/outputStyleStore'
@@ -14,7 +14,9 @@ import { useCommandStore } from '@/stores/note/commandStore'
 import { useMcpServerStore } from '@/stores/note/mcpServerStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
+import { useSlackStore } from '@/stores/slackStore'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
+import type { SlackApp } from '@/types/slack'
 
 vi.mock('@/services/websocket', async () => {
   const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
@@ -73,15 +75,15 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.on).toHaveBeenCalled()
       const callCount = mockWebSocketClient.on.mock.calls.length
-      // listeners 陣列有 54 個事件，加上單獨註冊的 pod:chat:user-message，共 55 個
-      expect(callCount).toBe(55)
+      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、slack:message:queued 共 4 個
+      const expectedCount = listeners.length + 4
+      expect(callCount).toBe(expectedCount)
     })
 
     it('重複註冊應被防止', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
 
       registerUnifiedListeners()
-      const firstCallCount = mockWebSocketClient.on.mock.calls.length
 
       mockWebSocketClient.on.mockClear()
       registerUnifiedListeners()
@@ -97,8 +99,9 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.off).toHaveBeenCalled()
       const callCount = mockWebSocketClient.off.mock.calls.length
-      // listeners 陣列有 54 個事件，加上單獨取消的 pod:chat:user-message，共 55 個
-      expect(callCount).toBe(55)
+      // listeners 陣列長度加上單獨取消的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、slack:message:queued 共 4 個
+      const expectedCount = listeners.length + 4
+      expect(callCount).toBe(expectedCount)
     })
 
     it('未註冊時取消註冊應被防止', () => {
@@ -1285,6 +1288,171 @@ describe('useUnifiedEventListeners', () => {
 
       const updatedPod = podStore.getPodById('pod-1')
       expect(updatedPod?.mcpServerIds).toEqual([])
+    })
+  })
+
+  describe('Slack 事件處理', () => {
+    const createMockSlackApp = (overrides?: Partial<SlackApp>): SlackApp => ({
+      id: 'slack-app-1',
+      name: 'Test Slack App',
+      connectionStatus: 'disconnected',
+      channels: [],
+      ...overrides,
+    })
+
+    it('slack:app:created 應新增 Slack App', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const slackStore = useSlackStore()
+      slackStore.slackApps = []
+
+      registerUnifiedListeners()
+
+      const slackApp = createMockSlackApp()
+      simulateEvent('slack:app:created', { slackApp })
+
+      expect(slackStore.slackApps.some(a => a.id === 'slack-app-1')).toBe(true)
+    })
+
+    it('slack:app:created 無 slackApp 時不應新增', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const slackStore = useSlackStore()
+      slackStore.slackApps = []
+
+      registerUnifiedListeners()
+
+      simulateEvent('slack:app:created', {})
+
+      expect(slackStore.slackApps.length).toBe(0)
+    })
+
+    it('slack:app:created 應忽略 Canvas 檢查', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const canvasStore = useCanvasStore()
+      const slackStore = useSlackStore()
+      canvasStore.activeCanvasId = 'canvas-1'
+      slackStore.slackApps = []
+
+      registerUnifiedListeners()
+
+      const slackApp = createMockSlackApp()
+      simulateEvent('slack:app:created', { slackApp, canvasId: 'canvas-other' })
+
+      expect(slackStore.slackApps.some(a => a.id === 'slack-app-1')).toBe(true)
+    })
+
+    it('slack:app:deleted 應移除 Slack App', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const slackStore = useSlackStore()
+      slackStore.slackApps = [createMockSlackApp()]
+
+      registerUnifiedListeners()
+
+      simulateEvent('slack:app:deleted', { slackAppId: 'slack-app-1' })
+
+      expect(slackStore.slackApps.some(a => a.id === 'slack-app-1')).toBe(false)
+    })
+
+    it('slack:app:deleted 無 slackAppId 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const slackStore = useSlackStore()
+      slackStore.slackApps = [createMockSlackApp()]
+
+      registerUnifiedListeners()
+
+      simulateEvent('slack:app:deleted', {})
+
+      expect(slackStore.slackApps.length).toBe(1)
+    })
+
+    it('slack:connection:status:changed 應更新 Slack App 狀態', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const slackStore = useSlackStore()
+      slackStore.slackApps = [createMockSlackApp({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      simulateEvent('slack:connection:status:changed', {
+        slackAppId: 'slack-app-1',
+        connectionStatus: 'connected',
+        channels: [{ id: 'ch-1', name: 'general' }],
+      })
+
+      const app = slackStore.slackApps.find(a => a.id === 'slack-app-1')
+      expect(app?.connectionStatus).toBe('connected')
+      expect(app?.channels).toEqual([{ id: 'ch-1', name: 'general' }])
+    })
+
+    it('slack:message:received 應顯示 toast 通知', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+
+      registerUnifiedListeners()
+
+      simulateEvent('slack:message:received', {
+        podId: 'pod-1',
+        slackAppId: 'slack-app-1',
+        channelId: 'ch-1',
+        canvasId: 'canvas-1',
+        userName: 'testUser',
+        text: '這是一條測試訊息',
+      })
+
+      expect(sharedMockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Slack 訊息' })
+      )
+    })
+
+    it('slack:message:queued 應顯示 toast 通知含佇列大小', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+
+      registerUnifiedListeners()
+
+      simulateEvent('slack:message:queued', {
+        podId: 'pod-1',
+        canvasId: 'canvas-1',
+        queueSize: 3,
+        userName: 'testUser',
+        text: '排隊中的訊息',
+      })
+
+      expect(sharedMockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Slack 訊息已排隊' })
+      )
+    })
+
+    it('pod:slack:bound 應更新 Pod', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const podStore = usePodStore()
+      const pod = createMockPod({ id: 'pod-1' })
+      podStore.pods = [pod]
+
+      registerUnifiedListeners()
+
+      const slackBinding = { slackAppId: 'slack-app-1', slackChannelId: 'ch-1' }
+      simulateEvent('pod:slack:bound', {
+        canvasId: 'canvas-1',
+        pod: { ...pod, slackBinding },
+      })
+
+      const updatedPod = podStore.getPodById('pod-1')
+      expect(updatedPod?.slackBinding).toEqual(slackBinding)
+    })
+
+    it('pod:slack:unbound 應更新 Pod', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const podStore = usePodStore()
+      const slackBinding = { slackAppId: 'slack-app-1', slackChannelId: 'ch-1' }
+      const pod = createMockPod({ id: 'pod-1', slackBinding })
+      podStore.pods = [pod]
+
+      registerUnifiedListeners()
+
+      simulateEvent('pod:slack:unbound', {
+        canvasId: 'canvas-1',
+        pod: { ...pod, slackBinding: undefined },
+      })
+
+      const updatedPod = podStore.getPodById('pod-1')
+      expect(updatedPod?.slackBinding).toBeUndefined()
     })
   })
 })
