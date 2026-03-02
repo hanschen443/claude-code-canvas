@@ -119,7 +119,7 @@ class SkillService {
 
         this.validateZipStructure(entries);
 
-        const skillId = fileName.slice(0, -4); // 移除 .zip 副檔名
+        const skillId = fileName.slice(0, -4);
 
         if (!validateSkillId(skillId)) {
             throw new Error('檔名格式不正確');

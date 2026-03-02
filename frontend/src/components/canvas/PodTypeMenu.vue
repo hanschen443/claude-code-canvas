@@ -229,7 +229,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
     :style="menuStyle"
     @contextmenu.prevent
   >
-    <!-- Pod 按鈕 -->
     <button
       v-if="podTypes[0]"
       class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-secondary transition-colors text-left mb-1"
@@ -248,7 +247,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
       <span class="font-mono text-sm text-foreground">Pod</span>
     </button>
 
-    <!-- Output Styles 按鈕 -->
     <div
       class="relative"
       @mouseenter="openMenuType = 'outputStyle'"
@@ -302,7 +300,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
       </PodTypeMenuSubmenu>
     </div>
 
-    <!-- Command 按鈕 -->
     <div
       class="relative"
       @mouseenter="openMenuType = 'command'"
@@ -353,7 +350,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
       </PodTypeMenuSubmenu>
     </div>
 
-    <!-- Skills 按鈕 -->
     <div
       class="relative"
       @mouseenter="openMenuType = 'skill'"
@@ -396,7 +392,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
       </PodTypeMenuSubmenu>
     </div>
 
-    <!-- SubAgents 按鈕 -->
     <div
       class="relative"
       @mouseenter="openMenuType = 'subAgent'"
@@ -450,7 +445,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
       </PodTypeMenuSubmenu>
     </div>
 
-    <!-- MCPs 按鈕 -->
     <div
       class="relative"
       @mouseenter="openMenuType = 'mcpServer'"
@@ -492,7 +486,6 @@ const { menuStyle } = useMenuPosition({ position: computed(() => props.position)
       </PodTypeMenuSubmenu>
     </div>
 
-    <!-- Repository 按鈕 -->
     <div
       class="relative"
       @mouseenter="openMenuType = 'repository'"

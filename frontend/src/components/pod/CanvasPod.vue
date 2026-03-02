@@ -535,20 +535,17 @@ const handleContextMenu = (e: MouseEvent): void => {
     }"
     @mousedown="handleMouseDown"
   >
-    <!-- Pod 主卡片和標籤（都在旋轉容器內） -->
     <div
       class="relative pod-with-notch pod-with-skill-notch pod-with-subagent-notch pod-with-model-notch pod-with-repository-notch pod-with-mcp-server-notch"
       :class="{ dragging: isDragging || isBatchDragging }"
       :style="{ '--pod-rotation': `${pod.rotation}deg` }"
     >
-      <!-- Model Selector -->
       <PodModelSelector
         :pod-id="pod.id"
         :current-model="currentModel"
         @update:model="handleModelChange"
       />
 
-      <!-- Slots -->
       <PodSlots
         :pod-id="pod.id"
         :pod-rotation="pod.rotation"
@@ -569,25 +566,18 @@ const handleContextMenu = (e: MouseEvent): void => {
         @mcp-server-dropped="(noteId) => handleNoteDrop('mcpServer', noteId)"
       />
 
-      <!-- Pod 主卡片 (增加凹槽偽元素) -->
       <div
         class="pod-doodle w-56 overflow-visible relative"
         :class="[podStatusClass, { selected: isSelected, dragging: isDragging || isBatchDragging }]"
         @dblclick="handleDblClick"
         @contextmenu="handleContextMenu"
       >
-        <!-- Model 凹槽 -->
         <div class="model-notch" />
-        <!-- SubAgent 凹槽 -->
         <div class="subagent-notch" />
-        <!-- MCP Server 凹槽 -->
         <div class="mcp-server-notch" />
-        <!-- Repository 凹槽（右側） -->
         <div class="repository-notch" />
-        <!-- Command 凹槽（右側） -->
         <div class="command-notch" />
 
-        <!-- Anchors -->
         <PodAnchors
           :pod-id="pod.id"
           @drag-start="handleAnchorDragStart"
@@ -595,11 +585,9 @@ const handleContextMenu = (e: MouseEvent): void => {
           @drag-end="handleAnchorDragEnd"
         />
 
-        <!-- Slack 狀態圖示 -->
         <SlackStatusIcon :slack-binding="pod.slackBinding" />
 
         <div class="p-3">
-          <!-- 標題 -->
           <PodHeader
             :name="pod.name"
             :is-editing="isEditing"
@@ -608,14 +596,12 @@ const handleContextMenu = (e: MouseEvent): void => {
             @rename="handleRename"
           />
 
-          <!-- 迷你螢幕 -->
           <PodMiniScreen
             :output="pod.output"
           />
         </div>
       </div>
 
-      <!-- Actions -->
       <PodActions
         :pod-id="pod.id"
         :pod-name="pod.name"
@@ -646,7 +632,6 @@ const handleContextMenu = (e: MouseEvent): void => {
         @clear-schedule-fired-animation="handleClearScheduleFiredAnimation"
       />
 
-      <!-- Schedule Modal -->
       <ScheduleModal
         v-model:open="showScheduleModal"
         :pod-id="pod.id"

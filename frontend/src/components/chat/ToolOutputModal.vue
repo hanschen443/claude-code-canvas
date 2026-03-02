@@ -29,7 +29,7 @@ const formattedInput = computed(() => JSON.stringify(props.input, null, 2))
 const hasOutput = computed(() => {
   if (!props.output) return false
   if (typeof props.output === 'string') return props.output.trim().length > 0
-  return true // 物件或陣列都視為有輸出
+  return true
 })
 
 const renderedOutput = computed(() => {

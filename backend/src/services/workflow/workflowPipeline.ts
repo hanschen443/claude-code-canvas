@@ -20,15 +20,6 @@ interface PipelineDeps {
 
 class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
 
-  /**
-   * 執行統一的觸發 Pipeline
-   *
-   * 流程：
-   * 1. generateSummary 階段：生成摘要
-   * 2. collectSources 階段：收集來源（多輸入處理）
-   * 3. checkQueue 階段：檢查目標 Pod 是否忙碌
-   * 4. trigger 階段：觸發工作流程
-   */
   async execute(context: PipelineContext, strategy: TriggerStrategy): Promise<void> {
     this.ensureInitialized();
 

@@ -3,7 +3,6 @@
     class="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md"
   >
     <div class="container mx-auto flex h-16 items-center justify-between px-4">
-      <!-- Logo -->
       <div class="flex items-center gap-3">
         <Sparkles class="h-6 w-6 text-primary" />
         <h1
@@ -14,12 +13,9 @@
         </h1>
       </div>
 
-      <!-- Right Section -->
       <div class="flex items-center gap-4">
-        <!-- Connection Status -->
         <ConnectionStatus />
 
-        <!-- 整合服務管理按鈕 -->
         <button
           class="flex items-center justify-center rounded-md p-2 hover:bg-accent"
           title="整合服務管理"
@@ -28,7 +24,6 @@
           <KeyRound class="h-4 w-4" />
         </button>
 
-        <!-- Canvas Selector -->
         <button
           v-if="canvasStore.activeCanvas"
           data-canvas-toggle

@@ -63,12 +63,10 @@ const filteredItems = computed(() => {
 const sortedGroups = computed(() => {
   const sorted = [...props.groups].sort((a, b) => a.name.localeCompare(b.name))
 
-  // 如果沒有搜尋，顯示所有 groups
   if (searchQuery.value === '') {
     return sorted
   }
 
-  // 有搜尋時，只顯示包含符合項目的 groups
   return sorted.filter(group => {
     const groupItems = props.items.filter(item => item.groupId === group.id)
     return groupItems.some(item =>
@@ -177,7 +175,6 @@ const onGroupDrop = (groupId: string, event: DragEvent): void => {
       type="text"
     >
     <div class="pod-menu-submenu-scrollable">
-      <!-- 根目錄拖放區域 -->
       <div
         v-if="enableGrouping && draggedItemId"
         class="pod-menu-submenu-root-dropzone"
@@ -187,7 +184,6 @@ const onGroupDrop = (groupId: string, event: DragEvent): void => {
         @drop="handleRootDrop"
       />
 
-      <!-- 群組列表 -->
       <template v-if="enableGrouping">
         <div
           v-for="group in sortedGroups"
@@ -205,7 +201,6 @@ const onGroupDrop = (groupId: string, event: DragEvent): void => {
             @drop="onGroupDrop(group.id, $event)"
           />
 
-          <!-- 群組內的項目 -->
           <template v-if="isGroupExpanded(group.id)">
             <SubmenuFileItem
               v-for="item in getItemsByGroupId(group.id)"
@@ -225,7 +220,6 @@ const onGroupDrop = (groupId: string, event: DragEvent): void => {
         </div>
       </template>
 
-      <!-- 根目錄項目 -->
       <SubmenuFileItem
         v-for="item in getRootItems"
         :key="item.id"

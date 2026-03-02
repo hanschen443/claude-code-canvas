@@ -2,7 +2,6 @@ import { ref } from 'vue'
 import { useCanvasContext } from './useCanvasContext'
 import { useDragHandler } from '@/composables/useDragHandler'
 
-// 最小拖曳距離閾值（像素）
 const MIN_PAN_DISTANCE = 3
 
 interface CanvasPanOptions {

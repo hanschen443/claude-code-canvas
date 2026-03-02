@@ -100,7 +100,6 @@ export enum WebSocketRequestEvents {
   POD_BIND_MCP_SERVER = 'pod:bind-mcp-server',
   POD_UNBIND_MCP_SERVER = 'pod:unbind-mcp-server',
   POD_OPEN_DIRECTORY = 'pod:open-directory',
-  // Slack
   SLACK_APP_CREATE = 'slack:app:create',
   SLACK_APP_DELETE = 'slack:app:delete',
   SLACK_APP_LIST = 'slack:app:list',
@@ -246,7 +245,6 @@ export enum WebSocketResponseEvents {
   POD_MCP_SERVER_BOUND = 'pod:mcp-server:bound',
   POD_MCP_SERVER_UNBOUND = 'pod:mcp-server:unbound',
   POD_DIRECTORY_OPENED = 'pod:directory:opened',
-  // Slack
   SLACK_APP_CREATED = 'slack:app:created',
   SLACK_APP_DELETED = 'slack:app:deleted',
   SLACK_APP_LIST_RESULT = 'slack:app:list:result',

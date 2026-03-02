@@ -349,7 +349,6 @@ const handleAbort = (): void => {
   if (isAborting.value) return
   isAborting.value = true
   emit('abort')
-  // isAborting 由 watch(isTyping) 在 abort 完成後重設，不再使用 setTimeout
 }
 
 const handleSend = (): void => {

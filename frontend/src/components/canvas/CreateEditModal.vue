@@ -52,11 +52,9 @@ watch(
 )
 
 const handleSubmit = (): void => {
-  // 驗證 name 長度（僅在 create 模式下檢查）
   if (props.nameEditable && (!name.value.trim() || name.value.length > MAX_NAME_LENGTH)) {
     return
   }
-  // 驗證 content 長度（僅在顯示 content 時檢查）
   if (props.showContent && content.value.length > MAX_CONTENT_LENGTH) {
     return
   }
@@ -68,7 +66,6 @@ const handleClose = (): void => {
 }
 
 const handleKeyDown = (e: KeyboardEvent): void => {
-  // 偵測 Ctrl+Enter 時提交表單
   if (e.key === 'Enter' && e.ctrlKey) {
     e.preventDefault()
     handleSubmit()

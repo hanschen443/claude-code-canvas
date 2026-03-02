@@ -52,7 +52,6 @@ const getToolIcon = (status: ToolUseStatus): typeof Loader2 | typeof AlertCircle
   return Check
 }
 
-// 工具標籤狀態對應的樣式
 const toolStatusClassMap: Record<string, string> = {
   running: 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 text-blue-600',
   error: 'bg-red-50 dark:bg-red-950/30 border-red-500 text-red-600',
@@ -127,7 +126,6 @@ const closeToolModal = (): void => {
     </div>
   </div>
 
-  <!-- Tool Output Modal -->
   <ToolOutputModal
     v-for="tool in uniqueToolUse"
     :key="`modal-${tool.toolUseId}`"

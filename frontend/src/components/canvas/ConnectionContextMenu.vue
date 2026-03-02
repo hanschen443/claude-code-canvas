@@ -68,7 +68,6 @@ const handleBackgroundClick = (): void => {
       }"
       @click.stop
     >
-      <!-- Auto 模式按鈕 -->
       <button
         :class="[
           'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
@@ -90,7 +89,6 @@ const handleBackgroundClick = (): void => {
         </span>
       </button>
 
-      <!-- Direct 模式按鈕 -->
       <button
         :class="[
           'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
@@ -112,7 +110,6 @@ const handleBackgroundClick = (): void => {
         </span>
       </button>
 
-      <!-- AI Decide 模式按鈕 -->
       <button
         :class="[
           'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',

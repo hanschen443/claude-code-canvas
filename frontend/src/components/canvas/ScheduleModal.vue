@@ -130,15 +130,12 @@ const handleConfirm = (): void => {
   resetState()
 }
 
-// 啟用/停用按鈕的處理邏輯
 const handleToggle = (): void => {
-  // 如果當前是已啟用狀態，則清除 schedule（設為 null）
   if (isEditMode.value && props.existingSchedule?.enabled) {
     emit('delete')
     emit('update:open', false)
     resetState()
   } else {
-    // 否則啟用（儲存 schedule）
     handleConfirm()
   }
 }

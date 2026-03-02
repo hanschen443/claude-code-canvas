@@ -80,8 +80,6 @@ export function processToolResultEvent(
 }
 
 /**
- * 從 streaming 累積狀態建構 PersistedMessage 快照
- *
  * 使用 structuredClone 深拷貝 subMessages，因為 enqueueWrite 的 fire-and-forget 設計
  * 導致佇列中的寫入可能在後續 event 到達時才執行，必須保留呼叫當下的狀態快照
  */
@@ -90,10 +88,8 @@ export function buildPersistedMessage(
     accumulatedContent: string,
     state: SubMessageState
 ): PersistedMessage {
-    // 深拷貝已 flush 的 subMessages，避免影響原始 state
     const subMessages: PersistedSubMessage[] = structuredClone(state.subMessages);
 
-    // 合併當前尚未 flush 的內容
     if (state.currentSubContent || state.currentSubToolUse.length > 0) {
         subMessages.push({
             id: `${messageId}-sub-${state.subMessageCounter}`,

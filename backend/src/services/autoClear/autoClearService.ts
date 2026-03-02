@@ -17,13 +17,9 @@ function isTerminalPod(podId: string, sourcePodId: string, hasAutoTriggerTargets
     return podId !== sourcePodId && !hasAutoTriggerTargets;
 }
 
-// BFS visitor 介面：接收當前節點 id、是否為 terminal、以及 auto trigger 目標列表
 type BfsVisitor = (podId: string, isTerminal: boolean, autoTriggerTargets: string[]) => void;
 
 class AutoClearService {
-    // BFS 遍歷找出所有 terminal PODs，並計算每個 terminal POD 預期被觸發的次數
-    // propagatedCount 用來追蹤每個節點沿著 auto 路徑會被觸發幾次
-    // direct incoming 連線視為一個整體（Direct 組），每個節點若有 direct 連入則 propagatedCount +1
     findTerminalPods(canvasId: string, sourcePodId: string): Map<string, number> {
         const visitedPodIds = new Set<string>();
         const pendingPodIds: string[] = [sourcePodId];
@@ -126,7 +122,6 @@ class AutoClearService {
     }
 
     async executeAutoClear(canvasId: string, sourcePodId: string): Promise<void> {
-
         const result = await workflowClearService.clearWorkflow(canvasId, sourcePodId);
 
         if (!result.success) {
@@ -150,8 +145,6 @@ class AutoClearService {
         logger.log('AutoClear', 'Complete', `成功清除 ${result.clearedPodIds.length} 個 Pod：${result.clearedPodNames.join(', ')}`);
     }
 
-    // 通用 BFS 工具：沿著 auto connection 遍歷圖，對每個節點呼叫 visitor
-    // findTerminalPods 與 findAffectedTerminalPods 共用此 BFS 骨架
     private bfsAutoTriggerGraph(canvasId: string, startPodId: string, visitor: BfsVisitor): void {
         const visitedPodIds = new Set<string>();
         const pendingPodIds = [startPodId];
@@ -175,7 +168,6 @@ class AutoClearService {
         }
     }
 
-    // 處理 direct incoming connection 的 count 累加
     private accumulateDirectBonus(
         canvasId: string,
         podId: string,
@@ -194,7 +186,6 @@ class AutoClearService {
         }
     }
 
-    // 將 auto trigger targets 加入 BFS queue，並更新 propagatedCounts
     private enqueueAutoTriggerTargets(
         targets: string[],
         visitedPodIds: Set<string>,
@@ -211,12 +202,9 @@ class AutoClearService {
         }
     }
 
-    // forward BFS：從 targetPodId 沿著 auto connection 找到所有下游 terminal PODs
     private findAffectedTerminalPods(canvasId: string, targetPodId: string): string[] {
         const affectedPodIds: string[] = [];
 
-        // isTerminalPod 在 podId === startPodId 時回傳 false，
-        // 因此 targetPodId 本身若無 auto 出邊，需在 visitor 中特別判斷
         this.bfsAutoTriggerGraph(canvasId, targetPodId, (podId, isTerminal, autoTriggerTargets) => {
             if (isTerminal || (podId === targetPodId && autoTriggerTargets.length === 0)) {
                 affectedPodIds.push(podId);

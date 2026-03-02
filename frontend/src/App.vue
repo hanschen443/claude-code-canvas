@@ -326,31 +326,25 @@ onUnmounted(() => {
 
 <template>
   <div class="h-screen bg-background overflow-hidden flex flex-col">
-    <!-- Header -->
     <AppHeader />
 
-    <!-- Canvas Sidebar -->
     <CanvasSidebar
       :open="canvasStore.isSidebarOpen"
       @update:open="canvasStore.setSidebarOpen"
     />
 
-    <!-- Canvas -->
     <main class="flex-1 relative">
       <CanvasContainer />
     </main>
 
-    <!-- Chat Modal -->
     <ChatModal
       v-if="selectedPod"
       :pod="selectedPod"
       @close="handleCloseChat"
     />
 
-    <!-- Toast -->
     <Toast />
 
-    <!-- Disconnect Overlay -->
     <DisconnectOverlay />
   </div>
 </template>

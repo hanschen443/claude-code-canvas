@@ -26,11 +26,7 @@ import { podStore } from '../podStore.js';
 import { pendingTargetStore } from '../pendingTargetStore.js';
 import { autoClearService } from '../autoClear/autoClearService.js';
 
-/**
- * 初始化 Workflow 相關服務（解決循環依賴）
- */
 export function initWorkflowServices(): void {
-  // 1. Pipeline
   workflowPipeline.init({
     executionService: workflowExecutionService,
     stateService: workflowStateService,
@@ -38,10 +34,8 @@ export function initWorkflowServices(): void {
     queueService: workflowQueueService,
   });
 
-  // 2. Auto Strategy
   workflowAutoTriggerService.init({ pipeline: workflowPipeline });
 
-  // 3. AI-Decide Strategy
   workflowAiDecideTriggerService.init({
     aiDecideService,
     eventEmitter: workflowEventEmitter,
@@ -54,7 +48,6 @@ export function initWorkflowServices(): void {
     autoClearService,
   });
 
-  // 4. MultiInput
   workflowMultiInputService.init({
     executionService: workflowExecutionService,
     strategies: {
@@ -64,7 +57,6 @@ export function initWorkflowServices(): void {
     },
   });
 
-  // 5. Queue
   workflowQueueService.init({
     executionService: workflowExecutionService,
     strategies: {
@@ -74,7 +66,6 @@ export function initWorkflowServices(): void {
     },
   });
 
-  // 6. ExecutionService（最後初始化，因為它依賴上面的 services）
   workflowExecutionService.init({
     pipeline: workflowPipeline,
     aiDecideTriggerService: workflowAiDecideTriggerService,

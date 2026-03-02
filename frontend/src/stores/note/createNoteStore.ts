@@ -32,7 +32,6 @@ interface NoteItem extends BaseNote {
     [key: string]: unknown
 }
 
-// crudConfig 設定：讓工廠自動產生 createXxx、updateXxx、readXxx、deleteXxx、loadXxxs 等 actions
 export interface NoteCRUDConfig<TItem extends { id: string; name: string }, TReadResult extends { id: string; name: string } = { id: string; name: string; content: string }> {
     resourceType: string
     methodPrefix: string
@@ -74,7 +73,6 @@ export interface NoteStoreConfig<TItem, TCustomActions extends object = object> 
     createNotePayload: (item: TItem, x: number, y: number) => object
     getItemId: (item: TItem) => string
     getItemName: (item: TItem) => string
-    // 提供後工廠自動產生 createXxx、updateXxx、readXxx、deleteXxx、loadXxxs actions
     crudConfig?: NoteCRUDConfig<{ id: string; name: string }>
     customActions?: TCustomActions
 }
@@ -151,7 +149,6 @@ interface BaseNoteState {
     expandedGroupIds: Set<string>
 }
 
-// 提供給 customActions 方法的基礎 store context，讓 this 可以存取 state 與 built-in actions。
 export interface NoteStoreContext<TItem = unknown> extends BaseNoteState {
     availableItems: TItem[]
     loadItems(): Promise<void>
@@ -476,7 +473,6 @@ export function createNoteStore<TItem, TNote extends BaseNote, TCustomActions ex
     })
 }
 
-// 將首字母大寫，例如 'command' → 'Command'
 function capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1)
 }
@@ -487,7 +483,6 @@ type CRUDStoreContext = {
     loadItems: () => Promise<void>
 }
 
-// 根據 crudConfig 自動產生 createXxx、updateXxx、readXxx、deleteXxx、loadXxxs actions
 function buildCRUDActions<TItem>(config: NoteStoreConfig<TItem>): Record<string, unknown> {
     if (!config.crudConfig) return {}
 

@@ -16,9 +16,6 @@ try {
 	vfsData = null;
 }
 
-/**
- * 檢查靜態檔案是否可用
- */
 export async function isStaticFilesAvailable(): Promise<boolean> {
 	if (vfsData !== null) {
 		return vfsData['/index.html'] !== undefined;
@@ -28,11 +25,6 @@ export async function isStaticFilesAvailable(): Promise<boolean> {
 	return indexFile.exists();
 }
 
-/**
- * 處理靜態檔案請求
- * @param request HTTP 請求
- * @returns Response 回應
- */
 export async function serveStaticFile(request: Request): Promise<Response> {
 	if (vfsData !== null) {
 		return serveFromVFS(request, vfsData);
@@ -63,7 +55,6 @@ export function serveFromVFS(
 		return new Response(Buffer.from(entry.content, 'base64'), { headers });
 	}
 
-	// SPA fallback：找不到的路徑回傳 index.html
 	const indexEntry = vfs['/index.html'];
 
 	if (indexEntry) {
@@ -112,7 +103,6 @@ async function serveFromFilesystem(request: Request): Promise<Response> {
 		return new Response(file, { headers });
 	}
 
-	// SPA fallback：對於不存在的路徑，回傳 index.html
 	const indexFile = Bun.file(path.join(FRONTEND_DIST_PATH, 'index.html'));
 	const indexExists = await indexFile.exists();
 

@@ -22,7 +22,6 @@ const allOptions = [
   { label: 'Haiku', value: 'haiku' as ModelType }
 ]
 
-// 排序後的選項：active 的在最前面
 const sortedOptions = computed(() => {
   const active = allOptions.find(o => o.value === props.currentModel)
   const others = allOptions.filter(o => o.value !== props.currentModel)
@@ -81,7 +80,6 @@ const selectModel = (model: ModelType): void => {
     class="pod-model-slot"
     @mouseleave="handleMouseLeave"
   >
-    <!-- 卡片容器 -->
     <TransitionGroup
       name="card-swap"
       tag="div"
@@ -164,7 +162,6 @@ const selectModel = (model: ModelType): void => {
   pointer-events: auto;
 }
 
-/* 收起時的淡出效果 */
 .model-cards-container.collapsing .model-card:not(.active) {
   opacity: 0;
   transition: opacity 0.3s ease;

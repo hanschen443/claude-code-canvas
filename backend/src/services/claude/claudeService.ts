@@ -309,7 +309,6 @@ export class ClaudeService {
                 this.handleResultMessage(sdkMessage as SDKResultMessage, state, onStream);
                 break;
             default:
-                // 其他 type（如 'system' 的非 init subtype）靜默忽略
                 break;
         }
     }

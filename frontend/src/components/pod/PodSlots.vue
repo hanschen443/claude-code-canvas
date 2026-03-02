@@ -45,7 +45,6 @@ const commandStore = useCommandStore()
 </script>
 
 <template>
-  <!-- Output Style 凹槽 -->
   <div class="pod-notch-area-base pod-notch-area">
     <PodSingleBindSlot
       :pod-id="podId"
@@ -59,7 +58,6 @@ const commandStore = useCommandStore()
     />
   </div>
 
-  <!-- Skill 凹槽 -->
   <div class="pod-notch-area-base pod-skill-notch-area">
     <PodMultiBindSlot
       :pod-id="podId"
@@ -75,7 +73,6 @@ const commandStore = useCommandStore()
     />
   </div>
 
-  <!-- SubAgent 凹槽 -->
   <div class="pod-notch-area-base pod-subagent-notch-area">
     <PodMultiBindSlot
       :pod-id="podId"
@@ -91,7 +88,6 @@ const commandStore = useCommandStore()
     />
   </div>
 
-  <!-- Repository 凹槽（右側） -->
   <div class="pod-notch-area-base pod-repository-notch-area">
     <PodSingleBindSlot
       :pod-id="podId"
@@ -105,7 +101,6 @@ const commandStore = useCommandStore()
     />
   </div>
 
-  <!-- Command 插槽（右側） -->
   <div class="pod-notch-area-base pod-command-notch-area">
     <PodSingleBindSlot
       :pod-id="podId"
@@ -119,7 +114,6 @@ const commandStore = useCommandStore()
     />
   </div>
 
-  <!-- MCP Server 凹槽 -->
   <div class="pod-notch-area-base pod-mcp-server-notch-area">
     <PodMultiBindSlot
       :pod-id="podId"

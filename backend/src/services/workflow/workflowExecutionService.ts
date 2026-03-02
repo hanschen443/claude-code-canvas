@@ -104,11 +104,6 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     ]);
   }
 
-  /**
-   * 此方法為唯一負責設定 connection active 狀態的入口點。
-   * 所有觸發模式（auto、ai-decide、direct）皆透過此方法統一設定 active，
-   * 確保 summary 產生後才顯示 active，避免過早顯示。
-   */
   async triggerWorkflowWithSummary(
     canvasId: string,
     connectionId: string,

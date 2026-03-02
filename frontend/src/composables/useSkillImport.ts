@@ -3,7 +3,7 @@ import { useSkillStore } from '@/stores/note/skillStore'
 import { useToast } from '@/composables/useToast'
 import { sanitizeErrorForUser } from '@/utils/errorSanitizer'
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ALLOWED_EXTENSIONS = ['.zip']
 
 const ERROR_INVALID_FORMAT = '檔案格式錯誤，僅支援 ZIP 檔案'

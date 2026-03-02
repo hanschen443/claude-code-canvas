@@ -4,7 +4,6 @@ import { connectionManager } from '../services/connectionManager.js';
 import { cursorColorManager } from '../services/cursorColorManager.js';
 import { socketService } from '../services/socketService.js';
 
-// 記錄每個 connectionId 最後一次處理 cursor:move 的時間戳（ms）
 const lastMoveTimestamp = new Map<string, number>();
 const RATE_LIMIT_MS = 50;
 

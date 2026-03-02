@@ -497,7 +497,6 @@ export interface PodDirectoryOpenedPayload extends ResultPayload {
     path?: string
 }
 
-// Slack
 export interface SlackAppCreatedPayload extends ResultPayload {
     slackApp?: SlackApp
 }

@@ -19,9 +19,6 @@ import {updateSubMessageContent} from './subMessageHelpers'
 import {createToolTrackingActions} from './toolTrackingActions'
 import {createMessageCompletionActions} from './messageCompletionActions'
 
-// ===== Helper Functions =====
-
-/** 從 persisted subMessages 收集所有 toolUse */
 function collectToolUseFromSubMessages(subMessages: PersistedMessage['subMessages']): ToolUseInfo[] {
     if (!subMessages) return []
     return subMessages.flatMap(sub =>
@@ -35,7 +32,6 @@ function collectToolUseFromSubMessages(subMessages: PersistedMessage['subMessage
     )
 }
 
-/** 防禦性更新 pod mini screen output（避免重複追加） */
 async function appendUserOutputToPod(podId: string, content: string): Promise<void> {
     const podStore = usePodStore()
     const pod = podStore.pods.find(p => p.id === podId)

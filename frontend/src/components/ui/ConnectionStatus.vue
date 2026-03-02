@@ -64,7 +64,6 @@ const isConnecting = computed(() => connectionStatus.value === 'connecting')
     class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm"
     :title="tooltipText"
   >
-    <!-- Status Indicator Dot -->
     <div class="relative">
       <div
         :class="[
@@ -72,7 +71,6 @@ const isConnecting = computed(() => connectionStatus.value === 'connecting')
           statusConfig.color
         ]"
       />
-      <!-- Pulse animation for connecting state -->
       <div
         v-if="isConnecting"
         :class="[
@@ -83,7 +81,6 @@ const isConnecting = computed(() => connectionStatus.value === 'connecting')
       />
     </div>
 
-    <!-- Status Text (optional, can be hidden on small screens) -->
     <span
       :class="[
         'text-xs font-medium transition-colors duration-300',

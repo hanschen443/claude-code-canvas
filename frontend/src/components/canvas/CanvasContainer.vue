@@ -245,7 +245,7 @@ const screenToCanvasPosition = (screenPos: Position): Position => {
 }
 
 const handleContextMenu = (e: MouseEvent): void => {
-  e.preventDefault() // 防止瀏覽器預設右鍵選單
+  e.preventDefault()
   const target = e.target as HTMLElement
 
   if (
@@ -728,13 +728,10 @@ onUnmounted(() => {
     @contextmenu="handleContextMenu"
     @click="handleCanvasClick"
   >
-    <!-- Connection Layer -->
     <ConnectionLayer @connection-context-menu="handleConnectionContextMenu" />
 
-    <!-- Selection Box -->
     <SelectionBox />
 
-    <!-- Pod 列表 -->
     <CanvasPod
       v-for="pod in podStore.pods"
       :key="pod.id"
@@ -747,7 +744,6 @@ onUnmounted(() => {
       @contextmenu="handlePodContextMenu"
     />
 
-    <!-- Output Style Notes -->
     <GenericNote
       v-for="note in outputStyleStore.getUnboundNotes"
       :key="note.id"
@@ -759,7 +755,6 @@ onUnmounted(() => {
       @dblclick="handleNoteDoubleClick"
     />
 
-    <!-- Skill Notes -->
     <GenericNote
       v-for="note in skillStore.getUnboundNotes"
       :key="note.id"
@@ -770,7 +765,6 @@ onUnmounted(() => {
       @drag-complete="skillHandlers.handleDragComplete"
     />
 
-    <!-- SubAgent Notes -->
     <GenericNote
       v-for="note in subAgentStore.getUnboundNotes"
       :key="note.id"
@@ -782,7 +776,6 @@ onUnmounted(() => {
       @dblclick="handleNoteDoubleClick"
     />
 
-    <!-- Repository Notes -->
     <GenericNote
       v-for="note in repositoryStore.getUnboundNotes"
       :key="note.id"
@@ -795,7 +788,6 @@ onUnmounted(() => {
       @contextmenu="handleRepositoryContextMenu"
     />
 
-    <!-- Command Notes -->
     <GenericNote
       v-for="note in commandStore.getUnboundNotes"
       :key="note.id"
@@ -807,7 +799,6 @@ onUnmounted(() => {
       @dblclick="handleNoteDoubleClick"
     />
 
-    <!-- MCP Server Notes -->
     <GenericNote
       v-for="note in mcpServerStore.getUnboundNotes"
       :key="note.id"
@@ -819,17 +810,13 @@ onUnmounted(() => {
       @dblclick="handleNoteDoubleClick"
     />
 
-    <!-- 空狀態 - 在畫布座標中央 -->
     <EmptyState v-if="isCanvasEmpty" />
   </CanvasViewport>
 
-  <!-- Remote Cursor Layer - Fixed overlay, pointer-events: none -->
   <RemoteCursorLayer />
 
-  <!-- Progress Panel - Fixed at bottom-right corner -->
   <ProgressNote :tasks="allProgressTasks" />
 
-  <!-- Pod 類型選單 - 放在 transform 容器外面 -->
   <PodTypeMenu
     v-if="podStore.typeMenu.visible && podStore.typeMenu.position"
     :position="podStore.typeMenu.position"
@@ -852,14 +839,12 @@ onUnmounted(() => {
     @close="podStore.hideTypeMenu"
   />
 
-  <!-- Trash Zone -->
   <TrashZone
     ref="trashZoneRef"
     :visible="showTrashZone"
     :is-highlighted="isTrashHighlighted"
   />
 
-  <!-- Pod Context Menu -->
   <PodContextMenu
     v-if="podContextMenu.visible"
     :position="podContextMenu.position"
@@ -869,7 +854,6 @@ onUnmounted(() => {
     @disconnect-slack="handleDisconnectSlack"
   />
 
-  <!-- Repository Context Menu -->
   <RepositoryContextMenu
     v-if="repositoryContextMenu.visible"
     :position="repositoryContextMenu.position"
@@ -882,7 +866,6 @@ onUnmounted(() => {
     @pull-started="handlePullStarted"
   />
 
-  <!-- Connection Context Menu -->
   <ConnectionContextMenu
     v-if="connectionContextMenu.visible"
     :position="connectionContextMenu.position"
@@ -892,7 +875,6 @@ onUnmounted(() => {
     @trigger-mode-changed="handleConnectionContextMenuClose"
   />
 
-  <!-- Modals -->
   <CreateRepositoryModal
     v-model:open="showCreateRepositoryModal"
     @created="handleRepositoryCreated"

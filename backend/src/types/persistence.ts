@@ -17,28 +17,19 @@ export interface PersistedSubMessage {
   toolUse?: PersistedToolUseInfo[];
 }
 
-/**
- * Message stored in chat history
- */
 export interface PersistedMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  timestamp: string; // ISO 8601 format
+  timestamp: string;
   subMessages?: PersistedSubMessage[];
 }
 
-/**
- * Chat history for a Pod
- */
 export interface ChatHistory {
   messages: PersistedMessage[];
   lastUpdated: string;
 }
 
-/**
- * Pod data stored on disk
- */
 export interface PersistedPod {
   id: string;
   name: string;
@@ -59,9 +50,6 @@ export interface PersistedPod {
   slackBinding?: PodSlackBinding;
 }
 
-/**
- * Connection data stored on disk
- */
 export interface PersistedConnection {
   id: string;
   sourcePodId: string;

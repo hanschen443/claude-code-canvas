@@ -200,7 +200,6 @@ const handleBackgroundClick = (): void => {
 </script>
 
 <template>
-  <!-- 背景遮罩：只在選單可見時顯示 -->
   <div
     v-if="uiState.menuVisible"
     class="fixed inset-0 z-40"

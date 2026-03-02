@@ -16,7 +16,6 @@ import { workflowEventEmitter } from './workflowEventEmitter.js';
 import { forEachMultiInputGroupConnection } from './workflowHelpers.js';
 import { logger } from '../../utils/logger.js';
 
-// 定義 Pipeline 介面（避免循環依賴）
 interface Pipeline {
   execute(context: PipelineContext, strategy: TriggerStrategy): Promise<void>;
 }
@@ -25,16 +24,10 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
   readonly mode = 'auto' as const;
   private pipeline?: Pipeline;
 
-  /**
-   * 初始化依賴
-   */
   init(deps: { pipeline: Pipeline }): void {
     this.pipeline = deps.pipeline;
   }
 
-  /**
-   * 決策階段：Auto 模式永遠批准所有連線
-   */
   async decide(context: TriggerDecideContext): Promise<TriggerDecideResult[]> {
     return context.connections.map((conn) => ({
       connectionId: conn.id,
@@ -44,9 +37,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     }));
   }
 
-  /**
-   * 取得最後一則 Assistant 訊息（用於備用內容）
-   */
   getLastAssistantMessage(sourcePodId: string): string | null {
     const messages = messageStore.getMessages(sourcePodId);
     const assistantMessages = messages.filter((message) => message.role === 'assistant');
@@ -59,9 +49,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     return assistantMessages[assistantMessages.length - 1].content;
   }
 
-  /**
-   * 處理自動觸發連線（已重構為使用 Pipeline）
-   */
   async processAutoTriggerConnection(
     canvasId: string,
     sourcePodId: string,
@@ -71,14 +58,12 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
       throw new Error('AutoTriggerService 尚未初始化，請先呼叫 init()');
     }
 
-    // 安全檢查：確認目標 Pod 存在
     const targetPod = podStore.getById(canvasId, connection.targetPodId);
     if (!targetPod) {
       logger.log('Workflow', 'Error', `目標 Pod ${connection.targetPodId} 不存在，跳過自動觸發`);
       return;
     }
 
-    // 建立 Pipeline 上下文
     const pipelineContext: PipelineContext = {
       canvasId,
       sourcePodId,
@@ -92,7 +77,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
       },
     };
 
-    // 交由 Pipeline 統一處理（多輸入/佇列/觸發）
     try {
       await this.pipeline.execute(pipelineContext, this);
     } catch (error) {
@@ -100,9 +84,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     }
   }
 
-  /**
-   * 觸發時：發送 WORKFLOW_AUTO_TRIGGERED 事件
-   */
   onTrigger(context: TriggerLifecycleContext): void {
     const payload: WorkflowAutoTriggeredPayload = {
       connectionId: context.connectionId,
@@ -114,9 +95,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     workflowEventEmitter.emitWorkflowAutoTriggered(context.canvasId, context.sourcePodId, context.targetPodId, payload);
   }
 
-  /**
-   * 完成時：發送 WORKFLOW_COMPLETE 事件並更新同群所有 connection 狀態為 idle
-   */
   onComplete(context: CompletionContext, success: boolean, error?: string): void {
     forEachMultiInputGroupConnection(context.canvasId, context.targetPodId, (conn) => {
       workflowEventEmitter.emitWorkflowComplete(
@@ -132,9 +110,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     });
   }
 
-  /**
-   * 錯誤時：發送 WORKFLOW_COMPLETE 事件（失敗）並更新同群所有 connection 狀態為 idle
-   */
   onError(context: CompletionContext, errorMessage: string): void {
     forEachMultiInputGroupConnection(context.canvasId, context.targetPodId, (conn) => {
       workflowEventEmitter.emitWorkflowComplete(
@@ -150,9 +125,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     });
   }
 
-  /**
-   * 進入佇列時：更新 connection 狀態為 queued 並發送 WORKFLOW_QUEUED 事件
-   */
   onQueued(context: QueuedContext): void {
     forEachMultiInputGroupConnection(context.canvasId, context.targetPodId, (conn) => {
       connectionStore.updateConnectionStatus(context.canvasId, conn.id, 'queued');
@@ -168,10 +140,6 @@ class WorkflowAutoTriggerService implements TriggerStrategy {
     });
   }
 
-  /**
-   * 僅發送 WORKFLOW_QUEUE_PROCESSED 事件，不設定 connection 為 active。
-   * active 狀態由 triggerWorkflowWithSummary 統一設定。
-   */
   onQueueProcessed(context: QueueProcessedContext): void {
     workflowEventEmitter.emitWorkflowQueueProcessed(context.canvasId, {
       canvasId: context.canvasId,

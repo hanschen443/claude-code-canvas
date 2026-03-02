@@ -23,7 +23,6 @@ class PodStore {
         return pods;
     }
 
-    /** 等待指定 Pod 所有排隊中的磁碟寫入完成 */
     flushWrites(podId: string): Promise<void> {
         return this.writeQueue.flush(podId);
     }

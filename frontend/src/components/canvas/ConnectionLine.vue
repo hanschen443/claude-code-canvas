@@ -193,7 +193,6 @@ const calculateXMarkerPositions = (): void => {
     const distance = (totalLength / (count + 1)) * (i + 1)
     const point = path.getPointAtLength(distance)
 
-    // 計算切線角度（用於旋轉 X）
     const delta = 2
     const point1 = path.getPointAtLength(Math.max(0, distance - delta))
     const point2 = path.getPointAtLength(Math.min(totalLength, distance + delta))
@@ -206,7 +205,6 @@ const calculateXMarkerPositions = (): void => {
 }
 
 watch([pathData, useXMarker], () => {
-  // 使用 nextTick 確保 DOM 已更新
   setTimeout(() => {
     calculateXMarkerPositions()
   }, 0)
@@ -255,7 +253,6 @@ const handleContextMenu = (e: MouseEvent): void => {
     @dblclick="handleDoubleClick"
     @contextmenu="handleContextMenu"
   >
-    <!-- 透明的點擊區域（寬線） -->
     <path
       class="click-area"
       :d="pathData.path"
@@ -264,7 +261,6 @@ const handleContextMenu = (e: MouseEvent): void => {
       fill="none"
     />
 
-    <!-- 實際可見的連線 -->
     <path
       ref="pathRef"
       :class="['line', { 'queued-pulse': status === 'queued', 'waiting-pulse': status === 'waiting' }]"
@@ -274,8 +270,6 @@ const handleContextMenu = (e: MouseEvent): void => {
       fill="none"
     />
 
-    <!-- 靜態箭頭（idle、queued、waiting、ai-approved 狀態，包括 AI Decide 閒置時） -->
-    <!-- 在 rejected 狀態時不顯示（useXMarker 此時為 true） -->
     <polygon
       v-for="(arrow, index) in arrowPositions"
       v-show="(status === 'idle' || status === 'queued' || status === 'waiting' || status === 'ai-approved') && !useXMarker"
@@ -286,7 +280,6 @@ const handleContextMenu = (e: MouseEvent): void => {
       :transform="`translate(${arrow.x}, ${arrow.y}) rotate(${arrow.angle})`"
     />
 
-    <!-- 動畫箭頭（active 或 ai-deciding 狀態） -->
     <template v-if="(status === 'active' || status === 'ai-deciding') && !useXMarker">
       <polygon
         v-for="i in 3"
@@ -313,14 +306,12 @@ const handleContextMenu = (e: MouseEvent): void => {
       </polygon>
     </template>
 
-    <!-- X markers（rejected 狀態） -->
     <g
       v-for="(marker, index) in xMarkerPositions"
       v-show="useXMarker"
       :key="`x-marker-${index}`"
       :transform="`translate(${marker.x}, ${marker.y}) rotate(${marker.angle})`"
     >
-      <!-- X 的第一條斜線 -->
       <line
         x1="-4"
         y1="-4"
@@ -330,7 +321,6 @@ const handleContextMenu = (e: MouseEvent): void => {
         stroke-width="2"
         stroke-linecap="round"
       />
-      <!-- X 的第二條斜線 -->
       <line
         x1="4"
         y1="-4"
@@ -342,7 +332,6 @@ const handleContextMenu = (e: MouseEvent): void => {
       />
     </g>
 
-    <!-- 中間標籤 (AI Decide) -->
     <foreignObject
       v-if="midLabel"
       :x="pathData.midPoint.x - 16"

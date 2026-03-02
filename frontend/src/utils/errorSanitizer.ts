@@ -1,27 +1,15 @@
-/**
- * 錯誤訊息過濾器
- * 將後端錯誤轉換為用戶友善的訊息，並移除敏感資訊
- */
-
 const MAX_ERROR_LENGTH = 200
 
-// 敏感資訊的正則表達式模式
 const SENSITIVE_PATTERNS = [
-  // 檔案路徑 (Windows & Unix)
   /[A-Za-z]:\\[\w\\.-]+/g,
   // eslint-disable-next-line no-useless-escape
   /\/[\w\/.-]+/g,
-  // Email
   /[\w.-]+@[\w.-]+\.\w+/g,
-  // IP 地址
   /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
-  // Token 或 API Key (常見格式)
   /[a-zA-Z0-9_-]{20,}/g,
-  // 堆疊追蹤關鍵字
   /at\s+[\w.]+\s+\([^)]+\)/g,
 ]
 
-// 常見錯誤映射表
 const ERROR_MAPPING: Record<string, string> = {
   'ECONNREFUSED': '無法連線到伺服器',
   'ENOTFOUND': '找不到伺服器',
@@ -35,9 +23,6 @@ const ERROR_MAPPING: Record<string, string> = {
   'INTERNAL_ERROR': '伺服器內部錯誤',
 }
 
-/**
- * 移除錯誤訊息中的敏感資訊
- */
 function removeSensitiveInfo(message: string): string {
   let sanitized = message
 
@@ -48,9 +33,6 @@ function removeSensitiveInfo(message: string): string {
   return sanitized
 }
 
-/**
- * 將錯誤代碼映射為用戶友善訊息
- */
 function mapErrorCode(message: string): string {
   for (const [code, friendlyMessage] of Object.entries(ERROR_MAPPING)) {
     if (message.includes(code)) {
@@ -61,9 +43,6 @@ function mapErrorCode(message: string): string {
   return message
 }
 
-/**
- * 限制錯誤訊息長度
- */
 function limitLength(message: string, maxLength: number = MAX_ERROR_LENGTH): string {
   if (message.length <= maxLength) {
     return message
@@ -72,12 +51,6 @@ function limitLength(message: string, maxLength: number = MAX_ERROR_LENGTH): str
   return message.substring(0, maxLength) + '...'
 }
 
-/**
- * 將未知錯誤轉換為用戶友善訊息
- *
- * @param error - 任何類型的錯誤
- * @returns 過濾後的錯誤訊息
- */
 export function sanitizeErrorForUser(error: unknown): string {
   let message: string
 

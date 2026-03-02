@@ -183,13 +183,10 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
 </script>
 
 <template>
-  <!-- 右下角按鈕區域 -->
-  <!-- Source Pod: 顯示按鈕群組 (碼表 + 刪除 + 橡皮擦) -->
   <div
     v-if="isSourcePod"
     class="pod-action-buttons-group"
   >
-    <!-- 碼表按鈕（最左） -->
     <button
       v-if="showScheduleButton"
       class="pod-action-button-base schedule-button"
@@ -199,14 +196,12 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
     >
       <Timer :size="16" />
     </button>
-    <!-- 刪除按鈕（中） -->
     <button
       class="pod-action-button-base pod-delete-button"
       @click.stop="handleDelete"
     >
       <Trash2 :size="16" />
     </button>
-    <!-- 橡皮擦按鈕（右） -->
     <button
       class="pod-action-button-base workflow-clear-button-in-group"
       :class="{
@@ -226,12 +221,10 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
     </button>
   </div>
 
-  <!-- 非 Source Pod: 顯示碼表 + 刪除按鈕 -->
   <div
     v-else
     class="pod-action-buttons-group"
   >
-    <!-- 碼表按鈕（左） -->
     <button
       v-if="showScheduleButton"
       class="pod-action-button-base schedule-button"
@@ -241,7 +234,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
     >
       <Timer :size="16" />
     </button>
-    <!-- 刪除按鈕（右） -->
     <button
       class="pod-action-button-base pod-delete-button"
       @click.stop="handleDelete"
@@ -250,7 +242,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
     </button>
   </div>
 
-  <!-- Clear Workflow Dialog -->
   <Dialog
     :open="showClearDialog"
     @update:open="(val) => emit('update:show-clear-dialog', val)"
@@ -294,7 +285,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
     </DialogContent>
   </Dialog>
 
-  <!-- Delete Pod Dialog -->
   <Dialog
     :open="showDeleteDialog"
     @update:open="(val) => emit('update:show-delete-dialog', val)"
@@ -324,7 +314,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
     </DialogContent>
   </Dialog>
 
-  <!-- Long Press Progress Indicator -->
   <Teleport to="body">
     <div
       v-if="isLongPressing"
@@ -340,7 +329,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
         height="52"
         viewBox="0 0 52 52"
       >
-        <!-- 白色甜甜圈底（帶黑色邊框） -->
         <circle
           cx="26"
           cy="26"
@@ -349,7 +337,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
           stroke="var(--card)"
           stroke-width="8"
         />
-        <!-- 外邊框 -->
         <circle
           cx="26"
           cy="26"
@@ -358,7 +345,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
           stroke="var(--doodle-ink)"
           stroke-width="2"
         />
-        <!-- 內邊框 -->
         <circle
           cx="26"
           cy="26"
@@ -367,7 +353,6 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
           stroke="var(--doodle-ink)"
           stroke-width="2"
         />
-        <!-- 進度圓 -->
         <circle
           cx="26"
           cy="26"

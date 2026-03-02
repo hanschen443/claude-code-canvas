@@ -358,7 +358,6 @@ export interface PodOpenDirectoryPayload {
   podId: string
 }
 
-// Slack
 export interface SlackAppCreatePayload {
   requestId: string
   name: string

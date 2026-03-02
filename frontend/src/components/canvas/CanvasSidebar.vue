@@ -11,7 +11,6 @@
       style="top: 64px"
       @dragleave="handleSidebarDragLeave"
     >
-      <!-- Header -->
       <div class="flex items-center justify-between border-b border-border px-4 py-3">
         <h2 class="text-lg font-semibold">
           Canvas
@@ -24,7 +23,6 @@
         </button>
       </div>
 
-      <!-- New Canvas Button -->
       <div class="border-b border-border p-4">
         <div
           v-if="isCreating"
@@ -51,7 +49,6 @@
         </button>
       </div>
 
-      <!-- Canvas List -->
       <div class="flex-1 overflow-y-auto p-2">
         <div
           v-if="canvasStore.canvases.length === 0"
@@ -123,7 +120,6 @@
     </div>
   </Transition>
 
-  <!-- Delete Confirmation Dialog -->
   <Dialog
     :open="showDeleteDialog"
     @update:open="showDeleteDialog = false"

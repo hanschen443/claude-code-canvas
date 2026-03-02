@@ -23,7 +23,6 @@ import { getErrorMessage } from '../../utils/errorHelpers.js';
 import { LazyInitializable } from './lazyInitializable.js';
 import { autoClearService } from '../autoClear/autoClearService.js';
 
-// 使用 typeof 取得實例的型別
 type AiDecideService = typeof aiDecideService;
 type WorkflowEventEmitter = typeof workflowEventEmitter;
 type ConnectionStore = typeof connectionStore;
@@ -46,22 +45,9 @@ interface AiDecideTriggerDependencies {
   autoClearService: AutoClearService;
 }
 
-/**
- * AI-Decide 觸發策略
- *
- * 職責：
- * 1. 呼叫 aiDecideService 執行批次判斷
- * 2. 處理 approved connections（呼叫 Pipeline）
- * 3. 處理 rejected connections（記錄到多輸入狀態）
- * 4. 處理 error connections（發送錯誤事件）
- */
 class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDependencies> implements TriggerStrategy {
   readonly mode = 'ai-decide' as const;
 
-  /**
-   * 觸發生命週期 - onTrigger
-   * 發送 WORKFLOW_AI_DECIDE_TRIGGERED 事件，通知前端更新同群連線為 active 狀態。
-   */
   onTrigger(context: TriggerLifecycleContext): void {
     this.ensureInitialized();
     this.deps.eventEmitter.emitWorkflowAiDecideTriggered(
@@ -72,10 +58,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     );
   }
 
-  /**
-   * 觸發生命週期 - onComplete
-   * Workflow 完成時的處理，更新同群所有 connection 狀態
-   */
   onComplete(context: CompletionContext, success: boolean, error?: string): void {
     this.ensureInitialized();
     forEachMultiInputGroupConnection(context.canvasId, context.targetPodId, (conn) => {
@@ -87,10 +69,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
   }
 
-  /**
-   * 觸發生命週期 - onError
-   * Workflow 錯誤時的處理，更新同群所有 connection 狀態
-   */
   onError(context: CompletionContext, errorMessage: string): void {
     this.ensureInitialized();
     forEachMultiInputGroupConnection(context.canvasId, context.targetPodId, (conn) => {
@@ -102,10 +80,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
   }
 
-  /**
-   * 佇列生命週期 - onQueued
-   * Workflow 進入佇列時的處理
-   */
   onQueued(context: QueuedContext): void {
     this.ensureInitialized();
     forEachMultiInputGroupConnection(context.canvasId, context.targetPodId, (conn) => {
@@ -122,11 +96,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
   }
 
-  /**
-   * 佇列生命週期 - onQueueProcessed
-   * 僅發送 WORKFLOW_QUEUE_PROCESSED 事件，不設定 connection 為 active。
-   * active 狀態由 triggerWorkflowWithSummary 統一設定，確保 summary 產生後才顯示 active。
-   */
   onQueueProcessed(context: QueueProcessedContext): void {
     this.ensureInitialized();
     this.deps.eventEmitter.emitWorkflowQueueProcessed(context.canvasId, {
@@ -139,10 +108,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
   }
 
-  /**
-   * 實作 TriggerStrategy.decide
-   * 呼叫 aiDecideService 進行批次判斷
-   */
   async decide(context: TriggerDecideContext): Promise<TriggerDecideResult[]> {
     this.ensureInitialized();
 
@@ -189,12 +154,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     }
   }
 
-  /**
-   * 處理 AI Decide connections 的批次判斷和觸發
-   *
-   * 此方法從 workflowExecutionService.processAiDecideConnections 搬移而來
-   * 主要變更：approved 的 connection 改為呼叫 pipeline.execute()
-   */
   async processAiDecideConnections(
     canvasId: string,
     sourcePodId: string,
@@ -318,13 +277,11 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
       return;
     }
 
-    // 單一 ai-decide connection 被拒絕時，檢查是否整個 Auto/AI 組都無法觸發
     if (this.isLastRejectionTriggersGroupCancel(canvasId, conn.targetPodId)) {
       await this.deps.autoClearService.onGroupNotTriggered(canvasId, conn.targetPodId);
     }
   }
 
-  // 檢查是否只有單一 auto/ai-decide 連線，此次拒絕即導致整個群組取消
   private isLastRejectionTriggersGroupCancel(canvasId: string, targetPodId: string): boolean {
     this.ensureInitialized();
     const incomingConnections = this.deps.connectionStore.findByTargetPodId(canvasId, targetPodId);
@@ -334,7 +291,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     return autoAiIncoming.length === 1;
   }
 
-  // 處理多輸入場景的拒絕邏輯，並在所有來源都已回應且有拒絕時通知 autoClearService
   private async handleRejectedMultiInput(
     canvasId: string,
     sourcePodId: string,

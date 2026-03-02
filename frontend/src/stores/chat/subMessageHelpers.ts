@@ -4,7 +4,6 @@ function markToolCompleted(tool: ToolUseInfo): ToolUseInfo {
     return {...tool, status: 'completed'}
 }
 
-/** 在最後一個 subMessage 中追加 toolUse */
 export function appendToolUseToLastSub(subMessages: SubMessage[], toolUseInfo: ToolUseInfo): SubMessage[] {
     const updated = [...subMessages]
     const lastIndex = updated.length - 1
@@ -22,10 +21,6 @@ export function appendToolUseToLastSub(subMessages: SubMessage[], toolUseInfo: T
     return updated
 }
 
-/**
- * 更新 SubMessage 內容
- * 處理 expectingNewBlock 邏輯與 last subMessage 的 content 計算
- */
 export function updateSubMessageContent(
     subMessages: SubMessage[],
     existingMessage: Message,
@@ -84,10 +79,6 @@ function updateSingleSubToolUse(sub: SubMessage, toolUseId: string, output: stri
     }
 }
 
-/**
- * 更新 SubMessages 中的 ToolUse Result
- * 處理 toolUse status 更新與 allToolsCompleted 計算
- */
 export function updateSubMessagesToolUseResult(
     subMessages: SubMessage[],
     toolUseId: string,
@@ -96,9 +87,6 @@ export function updateSubMessagesToolUseResult(
     return subMessages.map(sub => updateSingleSubToolUse(sub, toolUseId, output))
 }
 
-/**
- * 將 running 狀態的 toolUse 標記為 completed
- */
 export function finalizeToolUse(toolUse: ToolUseInfo[] | undefined): ToolUseInfo[] | undefined {
     if (!toolUse || toolUse.length === 0) {
         return undefined
@@ -121,10 +109,6 @@ function finalizeToolUseInSub(sub: SubMessage): SubMessage {
     return {...sub, isPartial: false, toolUse: updatedSubToolUse}
 }
 
-/**
- * 將所有 subMessages 設為 isPartial: false
- * 並 finalize 每個 subMessage 中的 toolUse
- */
 export function finalizeSubMessages(subMessages: SubMessage[] | undefined): SubMessage[] | undefined {
     if (!subMessages || subMessages.length === 0) {
         return undefined
@@ -133,9 +117,6 @@ export function finalizeSubMessages(subMessages: SubMessage[] | undefined): SubM
     return subMessages.map(sub => finalizeToolUseInSub(sub))
 }
 
-/**
- * 建立最終更新的 message 物件
- */
 export function updateMainMessageState(
     message: Message,
     fullContent: string,
