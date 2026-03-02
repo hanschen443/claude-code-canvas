@@ -2,8 +2,6 @@
 import { WebSocketResponseEvents } from '../schemas';
 import type {
   RepositoryCreatedPayload,
-  PodRepositoryBoundPayload,
-  PodRepositoryUnboundPayload,
 } from '../types';
 import type {
   RepositoryCreatePayload,
@@ -26,7 +24,7 @@ import { clearPodMessages } from './repository/repositoryBindHelpers.js';
 import { logger, type LogCategory, type LogAction } from '../utils/logger.js';
 import { createNoteHandlers } from './factories/createNoteHandlers.js';
 import { createListHandler } from './factories/createResourceHandlers.js';
-import { validatePod, handleResourceDelete, withCanvasId } from '../utils/handlerHelpers.js';
+import { validatePod, handleResourceDelete, withCanvasId, emitPodUpdated } from '../utils/handlerHelpers.js';
 import { validateRepositoryExists } from '../utils/validators.js';
 
 const repositoryNoteHandlers = createNoteHandlers({
@@ -155,16 +153,7 @@ export const handlePodBindRepository = withCanvasId<PodBindRepositoryPayload>(
 
     await clearPodMessages(connectionId, podId);
 
-    const updatedPod = podStore.getById(canvasId, podId);
-
-    const response: PodRepositoryBoundPayload = {
-      requestId,
-      canvasId,
-      success: true,
-      pod: updatedPod,
-    };
-
-    socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_REPOSITORY_BOUND, response);
+    emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_REPOSITORY_BOUND);
 
     const podName = podStore.getById(canvasId, podId)?.name ?? podId;
     logger.log('Repository', 'Bind', `已將 Repository「${repositoryId}」綁定至 Pod「${podName}」`);
@@ -218,16 +207,7 @@ export const handlePodUnbindRepository = withCanvasId<PodUnbindRepositoryPayload
 
     await clearPodMessages(connectionId, podId);
 
-    const updatedPod = podStore.getById(canvasId, podId);
-
-    const response: PodRepositoryUnboundPayload = {
-      requestId,
-      canvasId,
-      success: true,
-      pod: updatedPod,
-    };
-
-    socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_REPOSITORY_UNBOUND, response);
+    emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_REPOSITORY_UNBOUND);
 
     const podNameForUnbind = podStore.getById(canvasId, podId)?.name ?? podId;
     logger.log('Repository', 'Unbind', `已解除 Pod「${podNameForUnbind}」的 Repository 綁定`);

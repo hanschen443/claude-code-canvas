@@ -3,8 +3,6 @@ import type {
     McpServerCreatePayload,
     McpServerUpdatePayload,
     McpServerReadPayload,
-    McpServerDeletePayload,
-    PodBindMcpServerPayload,
     PodUnbindMcpServerPayload,
 } from '../schemas';
 import {mcpServerStore} from '../services/mcpServerStore.js';
@@ -15,7 +13,8 @@ import {socketService} from '../services/socketService.js';
 import {emitError} from '../utils/websocketResponse.js';
 import {createNoteHandlers} from './factories/createNoteHandlers.js';
 import {createBindHandler} from './factories/createBindHandlers.js';
-import {withCanvasId, validatePod, handleResourceDelete} from '../utils/handlerHelpers.js';
+import {createDeleteHandler} from './factories/createResourceHandlers.js';
+import {withCanvasId, validatePod, emitPodUpdated} from '../utils/handlerHelpers.js';
 import {logger} from '../utils/logger.js';
 
 const mcpServerNoteHandlers = createNoteHandlers({
@@ -109,26 +108,20 @@ export async function handleMcpServerRead(
     });
 }
 
-export async function handleMcpServerDelete(
-    connectionId: string,
-    payload: McpServerDeletePayload,
-    requestId: string
-): Promise<void> {
-    const {mcpServerId} = payload;
-
-    await handleResourceDelete({
-        connectionId,
-        requestId,
-        resourceId: mcpServerId,
-        resourceName: 'McpServer',
-        responseEvent: WebSocketResponseEvents.MCP_SERVER_DELETED,
-        existsCheck: () => mcpServerStore.exists(mcpServerId),
-        findPodsUsing: (canvasId: string) => podStore.findByMcpServerId(canvasId, mcpServerId),
-        deleteNotes: (canvasId: string) => mcpServerNoteStore.deleteByForeignKey(canvasId, mcpServerId),
-        deleteResource: () => { mcpServerStore.delete(mcpServerId); return Promise.resolve(); },
+export const handleMcpServerDelete = createDeleteHandler({
+    service: {
+        exists: (id) => mcpServerStore.exists(id),
+        delete: (id) => { mcpServerStore.delete(id); return Promise.resolve(); },
+    },
+    resourceName: 'McpServer',
+    idField: 'mcpServerId',
+    deleteConfig: {
+        deleted: WebSocketResponseEvents.MCP_SERVER_DELETED,
+        findPodsUsing: (canvasId, mcpServerId) => podStore.findByMcpServerId(canvasId, mcpServerId),
+        deleteNotes: (canvasId, mcpServerId) => mcpServerNoteStore.deleteByForeignKey(canvasId, mcpServerId),
         idFieldName: 'mcpServerId',
-    });
-}
+    },
+});
 
 const mcpServerBindHandler = createBindHandler({
     resourceName: 'McpServer',
@@ -145,13 +138,7 @@ const mcpServerBindHandler = createBindHandler({
     },
 });
 
-export async function handlePodBindMcpServer(
-    connectionId: string,
-    payload: PodBindMcpServerPayload,
-    requestId: string
-): Promise<void> {
-    return mcpServerBindHandler(connectionId, payload, requestId);
-}
+export const handlePodBindMcpServer = mcpServerBindHandler;
 
 export const handlePodUnbindMcpServer = withCanvasId<PodUnbindMcpServerPayload>(
     WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND,
@@ -164,27 +151,14 @@ export const handlePodUnbindMcpServer = withCanvasId<PodUnbindMcpServerPayload>(
         }
 
         if (!pod.mcpServerIds.includes(mcpServerId)) {
-            const updatedPod = podStore.getById(canvasId, podId);
-            socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND, {
-                requestId,
-                canvasId,
-                success: true,
-                pod: updatedPod,
-            });
+            emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND);
             return;
         }
 
         podStore.removeMcpServerId(canvasId, podId, mcpServerId);
 
-        const updatedPod = podStore.getById(canvasId, podId);
-
         logger.log('McpServer', 'Unbind', `從 Pod ${podId} 解綁 MCP Server ${mcpServerId}`);
 
-        socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND, {
-            requestId,
-            canvasId,
-            success: true,
-            pod: updatedPod,
-        });
+        emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND);
     }
 );

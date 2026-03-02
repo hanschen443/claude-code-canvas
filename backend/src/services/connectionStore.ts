@@ -6,8 +6,8 @@ import type {PersistedConnection} from '../types';
 import {Result, ok, err} from '../types';
 import {logger} from '../utils/logger.js';
 import {canvasStore} from './canvasStore.js';
-import {WriteQueue} from '../utils/writeQueue.js';
 import {persistenceService} from './persistence/index.js';
+import {createPersistentWriter} from '../utils/persistentWriteHelper.js';
 import {readJsonFileOrDefault} from './shared/fileResourceHelpers.js';
 
 interface CreateConnectionData {
@@ -20,7 +20,7 @@ interface CreateConnectionData {
 
 class ConnectionStore {
     private connectionsByCanvas: Map<string, Map<string, Connection>> = new Map();
-    private writeQueue = new WriteQueue('Connection', 'ConnectionStore');
+    private writer = createPersistentWriter('Connection', 'ConnectionStore');
 
     private getOrCreateCanvasMap(canvasId: string): Map<string, Connection> {
         let connectionsMap = this.connectionsByCanvas.get(canvasId);
@@ -243,11 +243,11 @@ class ConnectionStore {
 
     /** 等待指定 Canvas 所有排隊中的磁碟寫入完成 */
     flushWrites(canvasId: string): Promise<void> {
-        return this.writeQueue.flush(canvasId);
+        return this.writer.flush(canvasId);
     }
 
     private saveToDiskAsync(canvasId: string): void {
-        this.writeQueue.enqueue(canvasId, () => this.saveToDisk(canvasId).then(() => undefined));
+        this.writer.enqueueWrite(canvasId, () => this.saveToDisk(canvasId));
     }
 
     updateDecideStatus(canvasId: string, connectionId: string, status: DecideStatus, reason: string | null): Connection | undefined {

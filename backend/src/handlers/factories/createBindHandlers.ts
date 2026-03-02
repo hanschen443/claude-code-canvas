@@ -1,11 +1,9 @@
 import type {WebSocketResponseEvents} from '../../schemas';
 import type {Pod} from '../../types/pod.js';
-import {podStore} from '../../services/podStore.js';
-import {socketService} from '../../services/socketService.js';
 import {repositorySyncService} from '../../services/repositorySyncService.js';
 import {emitSuccess, emitError} from '../../utils/websocketResponse.js';
 import {logger, type LogCategory} from '../../utils/logger.js';
-import {validatePod, withCanvasId} from '../../utils/handlerHelpers.js';
+import {validatePod, withCanvasId, emitPodUpdated} from '../../utils/handlerHelpers.js';
 
 /**
  * 資源綁定處理器的配置介面
@@ -115,15 +113,7 @@ export function createBindHandler<TService extends {exists: (id: string) => Prom
                 await repositorySyncService.syncRepositoryResources(pod.repositoryId);
             }
 
-            const updatedPod = podStore.getById(canvasId, podId);
-
-            const response = {
-                requestId,
-                canvasId,
-                success: true,
-                pod: updatedPod,
-            };
-            socketService.emitToCanvas(canvasId, config.events.bound, response);
+            emitPodUpdated(canvasId, podId, requestId, config.events.bound);
 
             logger.log(config.resourceName as LogCategory, 'Bind', `已將 ${config.resourceName.toLowerCase()}「${resourceId}」綁定到 Pod「${pod.name}」`);
         }
@@ -179,15 +169,7 @@ export function createUnbindHandler<TService>(
                 await repositorySyncService.syncRepositoryResources(pod.repositoryId);
             }
 
-            const updatedPod = podStore.getById(canvasId, podId);
-
-            const response = {
-                requestId,
-                canvasId,
-                success: true,
-                pod: updatedPod,
-            };
-            socketService.emitToCanvas(canvasId, config.events.unbound!, response);
+            emitPodUpdated(canvasId, podId, requestId, config.events.unbound!);
 
             logger.log(config.resourceName as LogCategory, 'Unbind', `已從 Pod「${pod.name}」解綁 ${config.resourceName.toLowerCase()}`);
         }

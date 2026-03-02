@@ -79,6 +79,31 @@ export function createListHandler<T>(config: {
   };
 }
 
+export function createDeleteHandler(config: {
+  service: { exists(id: string): Promise<boolean>; delete(id: string): Promise<void> };
+  resourceName: LogCategory;
+  idField: string;
+  deleteConfig: DeleteHandlerConfig;
+}): (connectionId: string, payload: DeleteResourcePayload, requestId: string) => Promise<void> {
+  return async function (connectionId: string, payload: DeleteResourcePayload, requestId: string): Promise<void> {
+    const resourceId = payload[config.idField] as string;
+    const deleteConfig = config.deleteConfig;
+
+    await handleResourceDelete({
+      connectionId,
+      requestId,
+      resourceId,
+      resourceName: config.resourceName,
+      responseEvent: deleteConfig.deleted,
+      existsCheck: () => config.service.exists(resourceId),
+      findPodsUsing: (canvasId: string) => deleteConfig.findPodsUsing(canvasId, resourceId),
+      deleteNotes: (canvasId: string) => deleteConfig.deleteNotes(canvasId, resourceId),
+      deleteResource: () => config.service.delete(resourceId),
+      idFieldName: deleteConfig.idFieldName,
+    });
+  };
+}
+
 export function createResourceHandlers<T extends { id: string; name: string }>(config: ResourceHandlerConfig<T>): {
   handleList: (connectionId: string, payload: unknown, requestId: string) => Promise<void>;
   handleCreate: (connectionId: string, payload: CreateResourcePayload, requestId: string) => Promise<void>;
@@ -206,21 +231,14 @@ export function createResourceHandlers<T extends { id: string; name: string }>(c
       return;
     }
 
-    const resourceId = payload[idField] as string;
-    const deleteConfig = events.deleted;
-
-    await handleResourceDelete({
-      connectionId,
-      requestId,
-      resourceId,
+    const handler = createDeleteHandler({
+      service,
       resourceName,
-      responseEvent: deleteConfig.deleted,
-      existsCheck: () => service.exists(resourceId),
-      findPodsUsing: (canvasId: string) => deleteConfig.findPodsUsing(canvasId, resourceId),
-      deleteNotes: (canvasId: string) => deleteConfig.deleteNotes(canvasId, resourceId),
-      deleteResource: () => service.delete(resourceId),
-      idFieldName: deleteConfig.idFieldName,
+      idField,
+      deleteConfig: events.deleted,
     });
+
+    await handler(connectionId, payload, requestId);
   }
 
   return {

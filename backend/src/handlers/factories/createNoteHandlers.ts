@@ -15,6 +15,7 @@ interface NoteHandlerConfig<TNote extends BaseNote> {
   };
   foreignKeyField: string;
   entityName: string;
+  logOperations?: boolean;
   validateBeforeCreate?: (foreignKeyValue: string) => Promise<boolean>;
 }
 
@@ -101,7 +102,7 @@ export function createNoteHandlers<TNote extends BaseNote>(
 
       socketService.emitToCanvas(canvasId, events.created, response);
 
-      if (entityName === 'OutputStyle') {
+      if (config.logOperations) {
         logger.log('Note', 'Create', `已建立 Note「${note.name}」`);
       }
     }
@@ -153,7 +154,7 @@ export function createNoteHandlers<TNote extends BaseNote>(
         emitError(
           connectionId,
           events.updated,
-          `Failed to update note: ${noteId}`,
+          `更新 Note 失敗：${noteId}`,
           requestId,
           undefined,
           'INTERNAL_ERROR'
@@ -196,7 +197,7 @@ export function createNoteHandlers<TNote extends BaseNote>(
         emitError(
           connectionId,
           events.deleted,
-          `Failed to delete note from store: ${noteId}`,
+          `從 Store 刪除 Note 失敗：${noteId}`,
           requestId,
           undefined,
           'INTERNAL_ERROR'
@@ -213,7 +214,7 @@ export function createNoteHandlers<TNote extends BaseNote>(
 
       socketService.emitToCanvas(canvasId, events.deleted, response);
 
-      if (entityName === 'OutputStyle') {
+      if (config.logOperations) {
         logger.log('Note', 'Delete', `已刪除 Note「${note.name}」`);
       }
     }

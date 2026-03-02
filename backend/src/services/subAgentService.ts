@@ -1,9 +1,7 @@
-import fs from 'fs/promises';
-import path from 'path';
 import {config} from '../config';
 import type {SubAgent} from '../types';
-import {validateSubAgentId, validatePodId, isPathWithinDirectory} from '../utils/pathValidator.js';
-import {parseFrontmatterDescription, copyResourceFile} from './shared/fileResourceHelpers.js';
+import {validateSubAgentId, validatePodId} from '../utils/pathValidator.js';
+import {parseFrontmatterDescription, copyResourceFile, deleteResourceDirFromPath} from './shared/fileResourceHelpers.js';
 import {createMarkdownResourceService} from './shared/createMarkdownResourceService.js';
 
 const baseService = createMarkdownResourceService<SubAgent>({
@@ -89,12 +87,7 @@ class SubAgentService {
     }
 
     async deleteSubAgentsFromPath(basePath: string): Promise<void> {
-        if (!isPathWithinDirectory(basePath, config.canvasRoot) && !isPathWithinDirectory(basePath, config.repositoriesRoot)) {
-            throw new Error('無效的路徑');
-        }
-
-        const agentsDir = path.join(basePath, '.claude', 'agents');
-        await fs.rm(agentsDir, {recursive: true, force: true});
+        await deleteResourceDirFromPath(basePath, 'agents');
     }
 }
 

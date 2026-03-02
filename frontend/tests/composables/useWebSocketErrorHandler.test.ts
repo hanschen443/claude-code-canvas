@@ -8,9 +8,11 @@ const { mockToast, mockSanitizeErrorForUser } = vi.hoisted(() => ({
 }))
 
 // Mock useToast
+const mockShowErrorToast = vi.fn()
 vi.mock('@/composables/useToast', () => ({
   useToast: () => ({
     toast: mockToast,
+    showErrorToast: mockShowErrorToast,
   }),
 }))
 
@@ -28,6 +30,9 @@ describe('useWebSocketErrorHandler', () => {
       return '未知錯誤'
     })
   })
+
+  // Mock 型別協助
+  type ToastCategory = 'Pod' | 'Canvas' | 'Slack' | 'Skill'
 
   describe('handleWebSocketError', () => {
     it('應呼叫 toast 顯示錯誤訊息（variant: destructive）', () => {
@@ -123,66 +128,10 @@ describe('useWebSocketErrorHandler', () => {
       const error = new Error('Request failed')
       const promise = Promise.reject(error)
 
-      await wrapWebSocketRequest(promise)
-
-      expect(mockToast).not.toHaveBeenCalled()
-    })
-
-    it('失敗時應回傳 null', async () => {
-      const { wrapWebSocketRequest } = useWebSocketErrorHandler()
-      const error = new Error('Request failed')
-      const promise = Promise.reject(error)
-
       const result = await wrapWebSocketRequest(promise)
 
       expect(result).toBeNull()
-    })
-
-    it('失敗時不顯示 toast（不論有無傳入參數）', async () => {
-      const { wrapWebSocketRequest } = useWebSocketErrorHandler()
-      const error = new Error('Request failed')
-      const promise = Promise.reject(error)
-
-      await wrapWebSocketRequest(promise)
-
       expect(mockToast).not.toHaveBeenCalled()
-    })
-
-    it('應支援泛型回傳型別（字串）', async () => {
-      const { wrapWebSocketRequest } = useWebSocketErrorHandler()
-      const promise = Promise.resolve('string result')
-
-      const result = await wrapWebSocketRequest<string>(promise)
-
-      expect(result).toBe('string result')
-    })
-
-    it('應支援泛型回傳型別（數字）', async () => {
-      const { wrapWebSocketRequest } = useWebSocketErrorHandler()
-      const promise = Promise.resolve(42)
-
-      const result = await wrapWebSocketRequest<number>(promise)
-
-      expect(result).toBe(42)
-    })
-
-    it('應支援泛型回傳型別（複雜物件）', async () => {
-      const { wrapWebSocketRequest } = useWebSocketErrorHandler()
-      interface TestData {
-        id: string
-        count: number
-        nested: { value: boolean }
-      }
-      const testData: TestData = {
-        id: 'test-123',
-        count: 10,
-        nested: { value: true },
-      }
-      const promise = Promise.resolve(testData)
-
-      const result = await wrapWebSocketRequest<TestData>(promise)
-
-      expect(result).toEqual(testData)
     })
 
     it('失敗後不應 throw error（應回傳 null）', async () => {
@@ -215,6 +164,57 @@ describe('useWebSocketErrorHandler', () => {
 
       expect(result).toBeNull()
       expect(mockToast).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('withErrorToast', () => {
+    it('成功時應回傳 promise 結果', async () => {
+      const { withErrorToast } = useWebSocketErrorHandler()
+      const successData = { id: '123', name: 'Test' }
+
+      const result = await withErrorToast(Promise.resolve(successData), 'Canvas' as ToastCategory, '建立失敗')
+
+      expect(result).toEqual(successData)
+      expect(mockShowErrorToast).not.toHaveBeenCalled()
+    })
+
+    it('失敗時應顯示 error toast 並回傳 null', async () => {
+      const { withErrorToast } = useWebSocketErrorHandler()
+      const error = new Error('操作失敗')
+
+      const result = await withErrorToast(Promise.reject(error), 'Canvas' as ToastCategory, '建立失敗')
+
+      expect(result).toBeNull()
+      expect(mockShowErrorToast).toHaveBeenCalledOnce()
+    })
+
+    it('失敗時 toast 包含正確的 category 和 action', async () => {
+      const { withErrorToast } = useWebSocketErrorHandler()
+      const error = new Error('網路錯誤')
+
+      await withErrorToast(Promise.reject(error), 'Pod' as ToastCategory, '刪除失敗')
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith('Pod', '刪除失敗', '網路錯誤')
+    })
+
+    it('rethrow: true 時失敗後顯示 toast 並重新拋出錯誤', async () => {
+      const { withErrorToast } = useWebSocketErrorHandler()
+      const error = new Error('嚴重錯誤')
+
+      await expect(
+        withErrorToast(Promise.reject(error), 'Pod' as ToastCategory, '建立失敗', { rethrow: true })
+      ).rejects.toThrow('嚴重錯誤')
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith('Pod', '建立失敗', '嚴重錯誤')
+    })
+
+    it('rethrow 未設定（預設）時失敗後不拋出錯誤', async () => {
+      const { withErrorToast } = useWebSocketErrorHandler()
+      const error = new Error('錯誤')
+
+      await expect(
+        withErrorToast(Promise.reject(error), 'Slack' as ToastCategory, '綁定失敗')
+      ).resolves.toBeNull()
     })
   })
 })

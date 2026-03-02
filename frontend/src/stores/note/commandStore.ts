@@ -109,12 +109,7 @@ const store = createNoteStore<Command, CommandNote>({
         update: (response) => (response as CommandUpdatedPayload).command,
         read: (response) => (response as CommandReadResultPayload).command,
       },
-      updateItemsList: (items, commandId, newItem) => {
-        const index = items.findIndex(item => item.id === commandId)
-        if (index !== -1) {
-          items[index] = newItem as Command
-        }
-      },
+
     },
   },
   customActions: {

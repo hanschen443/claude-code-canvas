@@ -11,9 +11,7 @@ import type {
     SlackAppDeletePayload,
     SlackAppListPayload,
     PodBindSlackPayload,
-    PodUnbindSlackPayload
-} from '@/types/websocket'
-import type {
+    PodUnbindSlackPayload,
     SlackAppCreatedPayload,
     SlackAppDeletedPayload,
     SlackAppListResultPayload,
@@ -21,7 +19,7 @@ import type {
     PodSlackUnboundPayload
 } from '@/types/websocket'
 import { useToast } from '@/composables/useToast'
-import { sanitizeErrorForUser } from '@/utils/errorSanitizer'
+import { useWebSocketErrorHandler } from '@/composables/useWebSocketErrorHandler'
 import { useCanvasStore } from '@/stores/canvasStore'
 
 interface SlackStoreState {
@@ -62,10 +60,11 @@ export const useSlackStore = defineStore('slack', {
         },
 
         async createSlackApp(name: string, botToken: string, appToken: string): Promise<SlackApp | null> {
-            const { showSuccessToast, showErrorToast } = useToast()
+            const { showSuccessToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
 
-            try {
-                const response = await createWebSocketRequest<SlackAppCreatePayload, SlackAppCreatedPayload>({
+            const response = await withErrorToast(
+                createWebSocketRequest<SlackAppCreatePayload, SlackAppCreatedPayload>({
                     requestEvent: WebSocketRequestEvents.SLACK_APP_CREATE,
                     responseEvent: WebSocketResponseEvents.SLACK_APP_CREATED,
                     payload: {
@@ -73,40 +72,41 @@ export const useSlackStore = defineStore('slack', {
                         botToken,
                         appToken
                     }
-                })
+                }),
+                'Slack',
+                '建立失敗'
+            )
 
-                if (!response.slackApp) return null
+            if (!response?.slackApp) return null
 
-                showSuccessToast('Slack', '建立成功', name)
-                return response.slackApp
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Slack', '建立失敗', message)
-                return null
-            }
+            showSuccessToast('Slack', '建立成功', name)
+            return response.slackApp
         },
 
         async deleteSlackApp(slackAppId: string): Promise<void> {
-            const { showSuccessToast, showErrorToast } = useToast()
+            const { showSuccessToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
 
-            try {
-                await createWebSocketRequest<SlackAppDeletePayload, SlackAppDeletedPayload>({
+            const response = await withErrorToast(
+                createWebSocketRequest<SlackAppDeletePayload, SlackAppDeletedPayload>({
                     requestEvent: WebSocketRequestEvents.SLACK_APP_DELETE,
                     responseEvent: WebSocketResponseEvents.SLACK_APP_DELETED,
                     payload: {
                         slackAppId
                     }
-                })
+                }),
+                'Slack',
+                '刪除失敗'
+            )
 
-                showSuccessToast('Slack', '刪除成功')
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Slack', '刪除失敗', message)
-            }
+            if (!response) return
+
+            showSuccessToast('Slack', '刪除成功')
         },
 
         async bindSlackToPod(podId: string, slackAppId: string, channelId: string): Promise<void> {
             const { showErrorToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
             const canvasStore = useCanvasStore()
             const canvasId = canvasStore.activeCanvasId
 
@@ -115,8 +115,8 @@ export const useSlackStore = defineStore('slack', {
                 return
             }
 
-            try {
-                await createWebSocketRequest<PodBindSlackPayload, PodSlackBoundPayload>({
+            await withErrorToast(
+                createWebSocketRequest<PodBindSlackPayload, PodSlackBoundPayload>({
                     requestEvent: WebSocketRequestEvents.POD_BIND_SLACK,
                     responseEvent: WebSocketResponseEvents.POD_SLACK_BOUND,
                     payload: {
@@ -125,15 +125,15 @@ export const useSlackStore = defineStore('slack', {
                         slackAppId,
                         slackChannelId: channelId
                     }
-                })
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Slack', '綁定失敗', message)
-            }
+                }),
+                'Slack',
+                '綁定失敗'
+            )
         },
 
         async unbindSlackFromPod(podId: string): Promise<void> {
             const { showErrorToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
             const canvasStore = useCanvasStore()
             const canvasId = canvasStore.activeCanvasId
 
@@ -142,19 +142,18 @@ export const useSlackStore = defineStore('slack', {
                 return
             }
 
-            try {
-                await createWebSocketRequest<PodUnbindSlackPayload, PodSlackUnboundPayload>({
+            await withErrorToast(
+                createWebSocketRequest<PodUnbindSlackPayload, PodSlackUnboundPayload>({
                     requestEvent: WebSocketRequestEvents.POD_UNBIND_SLACK,
                     responseEvent: WebSocketResponseEvents.POD_SLACK_UNBOUND,
                     payload: {
                         canvasId,
                         podId
                     }
-                })
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Slack', '解除綁定失敗', message)
-            }
+                }),
+                'Slack',
+                '解除綁定失敗'
+            )
         },
 
         addSlackAppFromEvent(slackApp: SlackApp): void {

@@ -25,7 +25,7 @@ import type {
 } from '@/types/websocket'
 import {useConnectionStore} from '@/stores/connectionStore'
 import {useToast} from '@/composables/useToast'
-import {sanitizeErrorForUser} from '@/utils/errorSanitizer'
+import {useWebSocketErrorHandler} from '@/composables/useWebSocketErrorHandler'
 import {isValidPod as isValidPodFn, enrichPod as enrichPodFn} from '@/lib/podValidation'
 import {requireActiveCanvas, getActiveCanvasIdOrWarn} from '@/utils/canvasGuard'
 
@@ -119,9 +119,10 @@ export const usePodStore = defineStore('pod', {
         async createPodWithBackend(pod: Omit<Pod, 'id'>): Promise<Pod | null> {
             const canvasId = requireActiveCanvas()
             const { showSuccessToast, showErrorToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
 
-            try {
-                const response = await createWebSocketRequest<PodCreatePayload, PodCreatedPayload>({
+            const response = await withErrorToast(
+                createWebSocketRequest<PodCreatePayload, PodCreatedPayload>({
                     requestEvent: WebSocketRequestEvents.POD_CREATE,
                     responseEvent: WebSocketResponseEvents.POD_CREATED,
                     payload: {
@@ -131,51 +132,54 @@ export const usePodStore = defineStore('pod', {
                         y: pod.y,
                         rotation: pod.rotation
                     }
-                })
+                }),
+                'Pod',
+                '建立失敗',
+                { rethrow: true }
+            )
 
-                if (!response.pod) {
-                    throw new Error('Pod 建立失敗：後端未回傳 Pod 資料')
-                }
+            if (!response?.pod) {
+                const errorMessage = 'Pod 建立失敗：後端未回傳 Pod 資料'
+                showErrorToast('Pod', '建立失敗', errorMessage)
+                throw new Error(errorMessage)
+            }
 
-                showSuccessToast('Pod', '建立成功', pod.name)
+            showSuccessToast('Pod', '建立成功', pod.name)
 
-                return {
-                    ...response.pod,
-                    x: pod.x,
-                    y: pod.y,
-                    rotation: pod.rotation,
-                    output: pod.output || [],
-                }
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Pod', '建立失敗', message)
-                throw error
+            return {
+                ...response.pod,
+                x: pod.x,
+                y: pod.y,
+                rotation: pod.rotation,
+                output: pod.output || [],
             }
         },
 
         async deletePodWithBackend(id: string): Promise<void> {
             const canvasId = requireActiveCanvas()
-            const { showSuccessToast, showErrorToast } = useToast()
+            const { showSuccessToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
 
             const pod = this.findPodById(id)
             const podName = pod?.name || 'Pod'
 
-            try {
-                await createWebSocketRequest<PodDeletePayload, PodDeletedPayload>({
+            const response = await withErrorToast(
+                createWebSocketRequest<PodDeletePayload, PodDeletedPayload>({
                     requestEvent: WebSocketRequestEvents.POD_DELETE,
                     responseEvent: WebSocketResponseEvents.POD_DELETED,
                     payload: {
                         canvasId,
                         podId: id
                     }
-                })
+                }),
+                'Pod',
+                '刪除失敗',
+                { rethrow: true }
+            )
 
-                showSuccessToast('Pod', '刪除成功', podName)
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Pod', '刪除失敗', message)
-                throw error
-            }
+            if (!response) return
+
+            showSuccessToast('Pod', '刪除成功', podName)
         },
 
         syncPodsFromBackend(pods: Pod[]): void {
@@ -243,10 +247,11 @@ export const usePodStore = defineStore('pod', {
 
         async renamePodWithBackend(podId: string, name: string): Promise<void> {
             const canvasId = requireActiveCanvas()
-            const { showSuccessToast, showErrorToast } = useToast()
+            const { showSuccessToast } = useToast()
+            const { withErrorToast } = useWebSocketErrorHandler()
 
-            try {
-                await createWebSocketRequest<PodRenamePayload, PodRenamedPayload>({
+            const response = await withErrorToast(
+                createWebSocketRequest<PodRenamePayload, PodRenamedPayload>({
                     requestEvent: WebSocketRequestEvents.POD_RENAME,
                     responseEvent: WebSocketResponseEvents.POD_RENAMED,
                     payload: {
@@ -254,14 +259,15 @@ export const usePodStore = defineStore('pod', {
                         podId,
                         name
                     }
-                })
+                }),
+                'Pod',
+                '重新命名失敗',
+                { rethrow: true }
+            )
 
-                showSuccessToast('Pod', '重新命名成功', name)
-            } catch (error) {
-                const message = sanitizeErrorForUser(error)
-                showErrorToast('Pod', '重新命名失敗', message)
-                throw error
-            }
+            if (!response) return
+
+            showSuccessToast('Pod', '重新命名成功', name)
         },
 
         async setScheduleWithBackend(podId: string, schedule: Schedule | null): Promise<Pod | null> {

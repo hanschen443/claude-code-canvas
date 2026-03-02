@@ -1,9 +1,7 @@
-import fs from 'fs/promises';
-import path from 'path';
 import {config} from '../config';
 import type {Command} from '../types';
-import {isPathWithinDirectory, validatePodId, validateCommandId} from '../utils/pathValidator.js';
-import {copyResourceFile} from './shared/fileResourceHelpers.js';
+import {validatePodId, validateCommandId} from '../utils/pathValidator.js';
+import {copyResourceFile, deleteResourceDirFromPath} from './shared/fileResourceHelpers.js';
 import {createMarkdownResourceService} from './shared/createMarkdownResourceService.js';
 
 const baseService = createMarkdownResourceService<Command>({
@@ -79,12 +77,7 @@ class CommandService {
     }
 
     async deleteCommandFromPath(basePath: string): Promise<void> {
-        if (!isPathWithinDirectory(basePath, config.canvasRoot) && !isPathWithinDirectory(basePath, config.repositoriesRoot)) {
-            throw new Error('無效的路徑');
-        }
-
-        const commandsDir = path.join(basePath, '.claude', 'commands');
-        await fs.rm(commandsDir, {recursive: true, force: true});
+        await deleteResourceDirFromPath(basePath, 'commands');
     }
 }
 

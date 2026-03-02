@@ -5,7 +5,7 @@ import {
   WebSocketResponseEvents
 } from '@/services/websocket'
 import {useToast} from '@/composables/useToast'
-import {sanitizeErrorForUser} from '@/utils/errorSanitizer'
+import {useWebSocketErrorHandler} from '@/composables/useWebSocketErrorHandler'
 import type {
   Canvas,
   CanvasCreatePayload,
@@ -89,53 +89,53 @@ export const useCanvasStore = defineStore('canvas', {
     },
 
     async createCanvas(name: string): Promise<Canvas | null> {
-      const {showSuccessToast, showErrorToast} = useToast()
+      const {showSuccessToast} = useToast()
+      const {withErrorToast} = useWebSocketErrorHandler()
 
-      try {
-        const response = await createWebSocketRequest<CanvasCreatePayload, CanvasCreatedPayload>({
+      const response = await withErrorToast(
+        createWebSocketRequest<CanvasCreatePayload, CanvasCreatedPayload>({
           requestEvent: WebSocketRequestEvents.CANVAS_CREATE,
           responseEvent: WebSocketResponseEvents.CANVAS_CREATED,
           payload: {
             name,
           }
-        })
+        }),
+        'Canvas',
+        '建立失敗'
+      )
 
-        if (response.canvas) {
-          await createWebSocketRequest<CanvasSwitchPayload, CanvasSwitchedPayload>({
-            requestEvent: WebSocketRequestEvents.CANVAS_SWITCH,
-            responseEvent: WebSocketResponseEvents.CANVAS_SWITCHED,
-            payload: { canvasId: response.canvas.id }
-          })
-          this.activeCanvasId = response.canvas.id
-          showSuccessToast('Canvas', '建立成功', name)
-          return response.canvas
-        }
+      if (!response?.canvas) return null
 
-        return null
-      } catch (error) {
-        const message = sanitizeErrorForUser(error)
-        showErrorToast('Canvas', '建立失敗', message)
-        return null
-      }
+      await createWebSocketRequest<CanvasSwitchPayload, CanvasSwitchedPayload>({
+        requestEvent: WebSocketRequestEvents.CANVAS_SWITCH,
+        responseEvent: WebSocketResponseEvents.CANVAS_SWITCHED,
+        payload: { canvasId: response.canvas.id }
+      })
+      this.activeCanvasId = response.canvas.id
+      showSuccessToast('Canvas', '建立成功', name)
+      return response.canvas
     },
 
     async renameCanvas(canvasId: string, newName: string): Promise<void> {
-      const {showSuccessToast, showErrorToast} = useToast()
+      const {showSuccessToast} = useToast()
+      const {withErrorToast} = useWebSocketErrorHandler()
 
-      try {
-        await createWebSocketRequest<CanvasRenamePayload, CanvasRenamedPayload>({
+      const response = await withErrorToast(
+        createWebSocketRequest<CanvasRenamePayload, CanvasRenamedPayload>({
           requestEvent: WebSocketRequestEvents.CANVAS_RENAME,
           responseEvent: WebSocketResponseEvents.CANVAS_RENAMED,
           payload: {
             canvasId,
             newName,
           }
-        })
-        showSuccessToast('Canvas', '重新命名成功', newName)
-      } catch (error) {
-        const message = sanitizeErrorForUser(error)
-        showErrorToast('Canvas', '重新命名失敗', message)
-      }
+        }),
+        'Canvas',
+        '重新命名失敗'
+      )
+
+      if (!response) return
+
+      showSuccessToast('Canvas', '重新命名成功', newName)
     },
 
     async deleteCanvas(canvasId: string): Promise<void> {

@@ -17,6 +17,7 @@ import { socketService } from '../services/socketService.js';
 import { emitError } from '../utils/websocketResponse.js';
 import { logger } from '../utils/logger.js';
 import { fireAndForget } from '../utils/operationHelpers.js';
+import { emitPodUpdated } from '../utils/handlerHelpers.js';
 
 interface SanitizedSlackApp {
     id: string;
@@ -82,11 +83,8 @@ export async function handleSlackAppDelete(
 ): Promise<void> {
     const {slackAppId} = payload;
 
-    const app = slackAppStore.getById(slackAppId);
-    if (!app) {
-        emitError(connectionId, WebSocketResponseEvents.SLACK_APP_DELETED, `找不到 Slack App：${slackAppId}`, requestId, undefined, 'NOT_FOUND');
-        return;
-    }
+    const app = getSlackAppOrEmitError(connectionId, slackAppId, WebSocketResponseEvents.SLACK_APP_DELETED, requestId);
+    if (!app) return;
 
     await slackConnectionManager.disconnect(slackAppId);
 
@@ -220,13 +218,7 @@ export async function handlePodBindSlack(
 
     logger.log('Slack', 'Create', `Pod「${pod.name}」已綁定 Slack App「${app.name}」頻道「${channel.name}」`);
 
-    const updatedPod = podStore.getById(canvasId, podId);
-    socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_SLACK_BOUND, {
-        requestId,
-        success: true,
-        canvasId,
-        pod: updatedPod,
-    });
+    emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_SLACK_BOUND);
 }
 
 export async function handlePodUnbindSlack(
@@ -252,11 +244,5 @@ export async function handlePodUnbindSlack(
 
     logger.log('Slack', 'Delete', `Pod「${pod.name}」已解除 Slack 綁定`);
 
-    const updatedPod = podStore.getById(canvasId, podId);
-    socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_SLACK_UNBOUND, {
-        requestId,
-        success: true,
-        canvasId,
-        pod: updatedPod,
-    });
+    emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_SLACK_UNBOUND);
 }

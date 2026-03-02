@@ -103,12 +103,7 @@ const store = createNoteStore<SubAgent, SubAgentNote>({
         update: (response) => (response as SubAgentUpdatedPayload).subAgent,
         read: (response) => (response as SubAgentReadResultPayload).subAgent,
       },
-      updateItemsList: (items, subAgentId, newItem) => {
-        const index = items.findIndex(item => item.id === subAgentId)
-        if (index !== -1) {
-          items[index] = newItem as SubAgent
-        }
-      },
+
     },
   },
   customActions: {

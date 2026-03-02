@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia } from 'pinia'
 import { setupTestPinia } from '../../helpers/mockStoreFactory'
 import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
-import { createResourceCRUDActions } from '@/stores/note/createResourceCRUDActions'
+import { createResourceCRUDActions, defaultReplaceItemInList, defaultMergeItemInList } from '@/stores/note/createResourceCRUDActions'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { WebSocketRequestEvents, WebSocketResponseEvents } from '@/types/websocket'
 import type { ToastCategory } from '@/composables/useToast'
@@ -71,6 +71,68 @@ interface TestItem {
   content?: string
 }
 
+describe('defaultReplaceItemInList', () => {
+  interface TestItem {
+    id: string
+    name: string
+    extra?: string
+  }
+
+  it('找到匹配項目時正確替換整個 item', () => {
+    const items: TestItem[] = [
+      { id: 'item-1', name: 'Old Name', extra: 'old' },
+      { id: 'item-2', name: 'Other' },
+    ]
+    const newItem = { id: 'item-1', name: 'New Name' }
+
+    defaultReplaceItemInList(items, 'item-1', newItem)
+
+    expect(items[0]).toEqual(newItem)
+    expect(items[0]).not.toHaveProperty('extra')
+  })
+
+  it('找不到匹配項目時不做任何修改', () => {
+    const items: TestItem[] = [
+      { id: 'item-1', name: 'Old Name' },
+    ]
+    const original = [...items]
+
+    defaultReplaceItemInList(items, 'non-existent', { id: 'non-existent', name: 'New' })
+
+    expect(items).toEqual(original)
+  })
+})
+
+describe('defaultMergeItemInList', () => {
+  interface TestItem {
+    id: string
+    name: string
+    extra?: string
+  }
+
+  it('找到匹配項目時正確 spread 合併', () => {
+    const items: TestItem[] = [
+      { id: 'item-1', name: 'Old Name', extra: 'preserved' },
+    ]
+    const newItem = { id: 'item-1', name: 'New Name' }
+
+    defaultMergeItemInList(items, 'item-1', newItem)
+
+    expect(items[0]).toEqual({ id: 'item-1', name: 'New Name', extra: 'preserved' })
+  })
+
+  it('找不到匹配項目時不做任何修改', () => {
+    const items: TestItem[] = [
+      { id: 'item-1', name: 'Old Name' },
+    ]
+    const original = [...items]
+
+    defaultMergeItemInList(items, 'non-existent', { id: 'non-existent', name: 'New' })
+
+    expect(items).toEqual(original)
+  })
+})
+
 describe('createResourceCRUDActions', () => {
   let eventsConfig: CRUDEventsConfig
   let payloadConfig: CRUDPayloadConfig<TestItem>
@@ -131,6 +193,42 @@ describe('createResourceCRUDActions', () => {
         }
       },
     }
+  })
+
+  describe('activeCanvasId 為 null 時', () => {
+    it('create 應拋出錯誤（沒有啟用的畫布）', async () => {
+      const canvasStore = useCanvasStore()
+      canvasStore.activeCanvasId = null
+
+      const items: TestItem[] = []
+      const actions = createResourceCRUDActions('測試資源', eventsConfig, payloadConfig, 'TestCategory' as ToastCategory)
+
+      await expect(actions.create(items, 'Test Item', 'Test Content')).rejects.toThrow('沒有啟用的畫布')
+      expect(items).toHaveLength(0)
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled()
+    })
+
+    it('update 應拋出錯誤（沒有啟用的畫布）', async () => {
+      const canvasStore = useCanvasStore()
+      canvasStore.activeCanvasId = null
+
+      const items: TestItem[] = [{ id: 'item-1', name: 'Old Name' }]
+      const actions = createResourceCRUDActions('測試資源', eventsConfig, payloadConfig, 'TestCategory' as ToastCategory)
+
+      await expect(actions.update(items, 'item-1', 'New Content')).rejects.toThrow('沒有啟用的畫布')
+      expect(items[0]?.name).toBe('Old Name')
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled()
+    })
+
+    it('read 應拋出錯誤（沒有啟用的畫布）', async () => {
+      const canvasStore = useCanvasStore()
+      canvasStore.activeCanvasId = null
+
+      const actions = createResourceCRUDActions('測試資源', eventsConfig, payloadConfig)
+
+      await expect(actions.read('item-1')).rejects.toThrow('沒有啟用的畫布')
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled()
+    })
   })
 
   describe('create', () => {
@@ -356,6 +454,56 @@ describe('createResourceCRUDActions', () => {
         success: false,
         error: '權限不足',
       })
+    })
+
+    it('未提供 updateItemsList 時使用預設 defaultReplaceItemInList', async () => {
+      const items: TestItem[] = [
+        { id: 'item-1', name: 'Old Name', content: 'Old Content' },
+      ]
+      const configWithoutUpdateFn = {
+        ...payloadConfig,
+        updateItemsList: undefined,
+      }
+      const actions = createResourceCRUDActions('測試資源', eventsConfig, configWithoutUpdateFn as unknown as Parameters<typeof createResourceCRUDActions>[2])
+
+      const updatedItem = { id: 'item-1', name: 'New Name' }
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        item: updatedItem,
+      })
+
+      await actions.update(items, 'item-1', 'New Content')
+
+      expect(items[0]).toEqual(updatedItem)
+      expect(items[0]).not.toHaveProperty('content')
+    })
+
+    it('提供自訂 updateItemsList 時使用自訂邏輯', async () => {
+      const items: TestItem[] = [
+        { id: 'item-1', name: 'Old Name', content: 'Preserved Content' },
+      ]
+      const customUpdateFn = vi.fn((arr: TestItem[], id: string, newItem: { id: string; name: string }) => {
+        const index = arr.findIndex(item => item.id === id)
+        if (index !== -1) {
+          arr[index] = { ...arr[index], ...newItem }
+        }
+      })
+      const configWithCustomFn = {
+        ...payloadConfig,
+        updateItemsList: customUpdateFn,
+      }
+      const actions = createResourceCRUDActions('測試資源', eventsConfig, configWithCustomFn)
+
+      const updatedItem = { id: 'item-1', name: 'New Name' }
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        item: updatedItem,
+      })
+
+      await actions.update(items, 'item-1', 'New Content')
+
+      expect(customUpdateFn).toHaveBeenCalledWith(items, 'item-1', updatedItem)
+      expect(items[0]?.content).toBe('Preserved Content')
     })
   })
 

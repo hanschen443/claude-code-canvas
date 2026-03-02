@@ -4,8 +4,8 @@ import path from 'path';
 import { Result, ok, err } from '../types';
 import { logger } from '../utils/logger.js';
 import { canvasStore } from './canvasStore.js';
-import { WriteQueue } from '../utils/writeQueue.js';
 import { persistenceService } from './persistence/index.js';
+import { createPersistentWriter } from '../utils/persistentWriteHelper.js';
 import { readJsonFileOrDefault } from './shared/fileResourceHelpers.js';
 
 export interface BaseNote {
@@ -26,11 +26,11 @@ interface GenericNoteStoreConfig<T, K extends keyof T> {
 export class GenericNoteStore<T extends BaseNote, K extends keyof T> {
   protected notesByCanvas: Map<string, Map<string, T>> = new Map();
   protected readonly config: GenericNoteStoreConfig<T, K>;
-  private writeQueue!: WriteQueue;
+  private writer: ReturnType<typeof createPersistentWriter>;
 
   constructor(storeConfig: GenericNoteStoreConfig<T, K>) {
     this.config = storeConfig;
-    this.writeQueue = new WriteQueue('Note', this.config.storeName);
+    this.writer = createPersistentWriter('Note', this.config.storeName);
   }
 
   private getOrCreateCanvasMap(canvasId: string): Map<string, T> {
@@ -185,12 +185,12 @@ export class GenericNoteStore<T extends BaseNote, K extends keyof T> {
   }
 
   saveToDiskAsync(canvasId: string): void {
-    this.writeQueue.enqueue(canvasId, () => this.saveToDisk(canvasId).then(() => undefined));
+    this.writer.enqueueWrite(canvasId, () => this.saveToDisk(canvasId));
   }
 
   /** 等待指定 Canvas 所有排隊中的磁碟寫入完成 */
   flushWrites(canvasId: string): Promise<void> {
-    return this.writeQueue.flush(canvasId);
+    return this.writer.flush(canvasId);
   }
 }
 

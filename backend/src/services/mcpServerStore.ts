@@ -3,15 +3,15 @@ import {v4 as uuidv4} from 'uuid';
 import type {McpServer, McpServerConfig} from '../types/mcpServer.js';
 import type {Result} from '../types/result.js';
 import {ok, err} from '../types/result.js';
-import {WriteQueue} from '../utils/writeQueue.js';
 import {persistenceService} from './persistence/index.js';
 import {logger} from '../utils/logger.js';
+import {createPersistentWriter} from '../utils/persistentWriteHelper.js';
 
 const MCP_SERVERS_FILE = 'mcp-servers.json';
 
 export class McpServerStore {
     private servers: Map<string, McpServer> = new Map();
-    private writeQueue = new WriteQueue('McpServer', 'McpServerStore');
+    private writer = createPersistentWriter('McpServer', 'McpServerStore');
     private dataDir: string | null = null;
 
     create(name: string, config: McpServerConfig): McpServer {
@@ -119,12 +119,7 @@ export class McpServerStore {
         }
 
         const dataDir = this.dataDir;
-        this.writeQueue.enqueue('global', async () => {
-            const result = await this.saveToDisk(dataDir);
-            if (!result.success) {
-                logger.error('McpServer', 'Save', `[McpServerStore] 儲存 MCP Server 資料失敗: ${result.error}`);
-            }
-        });
+        this.writer.enqueueWrite('global', () => this.saveToDisk(dataDir));
     }
 }
 

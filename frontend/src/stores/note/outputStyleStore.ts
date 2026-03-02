@@ -109,12 +109,7 @@ const store = createNoteStore<OutputStyleListItem, OutputStyleNote>({
         update: (response) => (response as OutputStyleUpdatedPayload).outputStyle,
         read: (response) => (response as OutputStyleReadResultPayload).outputStyle,
       },
-      updateItemsList: (items, outputStyleId, newItem) => {
-        const index = items.findIndex(item => item.id === outputStyleId)
-        if (index !== -1) {
-          items[index] = newItem as OutputStyleListItem
-        }
-      },
+
     },
   },
   customActions: {

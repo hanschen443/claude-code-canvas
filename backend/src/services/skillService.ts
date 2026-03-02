@@ -4,7 +4,7 @@ import {unzipSync} from 'fflate';
 import {config} from '../config';
 import type {Skill} from '../types';
 import {isPathWithinDirectory, validatePodId, validateSkillId} from '../utils/pathValidator.js';
-import {fileExists, directoryExists, parseFrontmatterDescription} from './shared/fileResourceHelpers.js';
+import {fileExists, directoryExists, parseFrontmatterDescription, deleteResourceDirFromPath} from './shared/fileResourceHelpers.js';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_TOTAL_UNZIPPED_SIZE = 10 * 1024 * 1024;
@@ -48,32 +48,23 @@ class SkillService {
     }
 
     async copySkillToPod(skillId: string, podId: string, podWorkspacePath: string): Promise<void> {
-        if (!validateSkillId(skillId)) {
-            throw new Error('無效的技能 ID 格式');
-        }
         if (!validatePodId(podId)) {
             throw new Error('無效的 Pod ID 格式');
         }
-
-        const srcDir = this.getSkillDirectoryPath(skillId);
-        const destDir = path.join(podWorkspacePath, '.claude', 'skills', skillId);
-
-        const exists = await directoryExists(srcDir);
-        if (!exists) {
-            throw new Error(`找不到技能目錄: ${skillId}`);
-        }
-
-        await fs.rm(destDir, {recursive: true, force: true});
-        await this.copyDirectoryRecursive(srcDir, destDir);
+        await this.copySkillToDestination(skillId, podWorkspacePath);
     }
 
     async copySkillToRepository(skillId: string, repositoryPath: string): Promise<void> {
+        await this.copySkillToDestination(skillId, repositoryPath);
+    }
+
+    private async copySkillToDestination(skillId: string, destBasePath: string): Promise<void> {
         if (!validateSkillId(skillId)) {
             throw new Error('無效的技能 ID 格式');
         }
 
         const srcDir = this.getSkillDirectoryPath(skillId);
-        const destDir = path.join(repositoryPath, '.claude', 'skills', skillId);
+        const destDir = path.join(destBasePath, '.claude', 'skills', skillId);
 
         const exists = await directoryExists(srcDir);
         if (!exists) {
@@ -85,8 +76,7 @@ class SkillService {
     }
 
     async deleteSkillsFromPath(basePath: string): Promise<void> {
-        const skillsDir = path.join(basePath, '.claude', 'skills');
-        await fs.rm(skillsDir, {recursive: true, force: true});
+        await deleteResourceDirFromPath(basePath, 'skills');
     }
 
     async delete(skillId: string): Promise<void> {

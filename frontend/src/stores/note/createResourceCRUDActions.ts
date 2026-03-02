@@ -5,6 +5,28 @@ import { useToast } from '@/composables/useToast'
 import type { WebSocketRequestEvents, WebSocketResponseEvents } from '@/types/websocket'
 import type { ToastCategory } from '@/composables/useToast'
 
+export function defaultReplaceItemInList<TItem extends { id: string }>(
+  items: TItem[],
+  itemId: string,
+  newItem: { id: string; name: string }
+): void {
+  const index = items.findIndex(item => item.id === itemId)
+  if (index !== -1) {
+    items[index] = newItem as unknown as TItem
+  }
+}
+
+export function defaultMergeItemInList<TItem extends { id: string }>(
+  items: TItem[],
+  itemId: string,
+  newItem: { id: string; name: string }
+): void {
+  const index = items.findIndex(item => item.id === itemId)
+  if (index !== -1) {
+    items[index] = { ...items[index], ...newItem } as unknown as TItem
+  }
+}
+
 export interface CRUDEventsConfig {
   create: {
     request: WebSocketRequestEvents
@@ -35,7 +57,7 @@ export interface CRUDPayloadConfig<
     update: (response: unknown) => { id: string; name: string } | undefined
     read: (response: unknown) => TReadResult | undefined
   }
-  updateItemsList: (items: TItem[], itemId: string, newItem: { id: string; name: string }) => void
+  updateItemsList?: (items: TItem[], itemId: string, newItem: { id: string; name: string }) => void
 }
 
 export interface ResourceCRUDActions<
@@ -157,7 +179,8 @@ export function createResourceCRUDActions<
         }
       }
 
-      config.updateItemsList(items, itemId, item)
+      const updateFn = config.updateItemsList ?? defaultReplaceItemInList
+      updateFn(items, itemId, item)
       if (toastCategory) {
         showSuccessToast(toastCategory, '更新成功', item.name)
       }

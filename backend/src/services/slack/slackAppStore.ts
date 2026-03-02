@@ -3,14 +3,14 @@ import {v4 as uuidv4} from 'uuid';
 import type {SlackApp, SlackAppConnectionStatus, SlackChannel, PersistedSlackApp} from '../../types/index.js';
 import {Result, ok, err} from '../../types/index.js';
 import {logger} from '../../utils/logger.js';
-import {WriteQueue} from '../../utils/writeQueue.js';
 import {persistenceService} from '../persistence/index.js';
+import {createPersistentWriter} from '../../utils/persistentWriteHelper.js';
 
 const SLACK_APPS_FILE = 'slack-apps.json';
 
 class SlackAppStore {
     private apps: Map<string, SlackApp> = new Map();
-    private writeQueue = new WriteQueue('Slack', 'SlackAppStore');
+    private writer = createPersistentWriter('Slack', 'SlackAppStore');
     private dataDir: string | null = null;
 
     create(name: string, botToken: string, appToken: string): Result<SlackApp> {
@@ -119,31 +119,29 @@ class SlackAppStore {
         return ok(undefined);
     }
 
+    private saveToDisk(dataDir: string): Promise<import('../../types/result.js').Result<void>> {
+        const filePath = path.join(dataDir, SLACK_APPS_FILE);
+        const persistedApps: PersistedSlackApp[] = Array.from(this.apps.values()).map((app) => ({
+            id: app.id,
+            name: app.name,
+            botToken: app.botToken,
+            appToken: app.appToken,
+            botUserId: app.botUserId,
+        }));
+        return persistenceService.writeJson(filePath, persistedApps);
+    }
+
     saveToDiskAsync(): void {
         if (!this.dataDir) {
             return;
         }
 
         const dataDir = this.dataDir;
-        this.writeQueue.enqueue('slack-apps', async () => {
-            const filePath = path.join(dataDir, SLACK_APPS_FILE);
-            const persistedApps: PersistedSlackApp[] = Array.from(this.apps.values()).map((app) => ({
-                id: app.id,
-                name: app.name,
-                botToken: app.botToken,
-                appToken: app.appToken,
-                botUserId: app.botUserId,
-            }));
-
-            const result = await persistenceService.writeJson(filePath, persistedApps);
-            if (!result.success) {
-                logger.error('Slack', 'Error', `[SlackAppStore] 儲存 Slack App 資料失敗: ${result.error}`);
-            }
-        });
+        this.writer.enqueueWrite('slack-apps', () => this.saveToDisk(dataDir));
     }
 
     flushWrites(): Promise<void> {
-        return this.writeQueue.flush('slack-apps');
+        return this.writer.flush('slack-apps');
     }
 }
 

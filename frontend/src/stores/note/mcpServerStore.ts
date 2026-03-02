@@ -2,7 +2,7 @@ import type { McpServer, McpServerNote, McpServerConfig } from '@/types'
 import { createNoteStore } from './createNoteStore'
 import type { NoteStoreContext } from './createNoteStore'
 import { WebSocketRequestEvents, WebSocketResponseEvents } from '@/services/websocket'
-import { createResourceCRUDActions } from './createResourceCRUDActions'
+import { createResourceCRUDActions, defaultMergeItemInList } from './createResourceCRUDActions'
 import type {
   McpServerCreatedPayload,
   McpServerUpdatedPayload,
@@ -52,12 +52,7 @@ const mcpServerCRUD = createResourceCRUDActions<
       update: (response) => (response as McpServerUpdatedPayload).mcpServer,
       read: (response) => (response as McpServerReadResultPayload).mcpServer,
     },
-    updateItemsList: (items, mcpServerId, newItem) => {
-      const index = items.findIndex(item => item.id === mcpServerId)
-      if (index !== -1) {
-        items[index] = { ...items[index], ...newItem } as McpServer
-      }
-    },
+    updateItemsList: defaultMergeItemInList,
   },
   'McpServer'
 )

@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
+import { config } from '../../config/index.js';
+import { isPathWithinDirectory } from '../../utils/pathValidator.js';
 
 export async function readFileOrNull(filePath: string): Promise<string | null> {
     if (!await fileExists(filePath)) {
@@ -54,16 +56,29 @@ export async function copyResourceFile(srcPath: string, destBasePath: string, su
     await fs.copyFile(srcPath, destPath);
 }
 
+export async function deleteResourceDirFromPath(basePath: string, subDir: string): Promise<void> {
+    if (!isPathWithinDirectory(basePath, config.canvasRoot) && !isPathWithinDirectory(basePath, config.repositoriesRoot)) {
+        throw new Error('無效的路徑');
+    }
+
+    if (subDir.includes('/') || subDir.includes('\\') || subDir.includes('..')) {
+        throw new Error('無效的子目錄名稱');
+    }
+
+    const dir = path.join(basePath, '.claude', subDir);
+    await fs.rm(dir, {recursive: true, force: true});
+}
+
 export function parseFrontmatterDescription(content: string): string {
     const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---/;
     const match = content.match(frontmatterRegex);
 
     if (!match) {
-        return 'No description available';
+        return '（無說明）';
     }
 
     const frontmatterContent = match[1];
     const descriptionMatch = frontmatterContent.match(/^description:\s*(.+)$/m);
 
-    return descriptionMatch ? descriptionMatch[1].trim() : 'No description available';
+    return descriptionMatch ? descriptionMatch[1].trim() : '（無說明）';
 }

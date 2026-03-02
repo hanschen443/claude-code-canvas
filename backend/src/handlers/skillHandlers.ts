@@ -1,8 +1,6 @@
 import {WebSocketResponseEvents} from '../schemas';
 import type {SkillImportedPayload} from '../types';
 import type {
-    PodBindSkillPayload,
-    SkillDeletePayload,
     SkillImportPayload,
 } from '../schemas';
 import {skillService} from '../services/skillService.js';
@@ -11,8 +9,7 @@ import {podStore} from '../services/podStore.js';
 import {emitSuccess} from '../utils/websocketResponse.js';
 import {createNoteHandlers} from './factories/createNoteHandlers.js';
 import {createBindHandler} from './factories/createBindHandlers.js';
-import {createListHandler} from './factories/createResourceHandlers.js';
-import {handleResourceDelete} from '../utils/handlerHelpers.js';
+import {createListHandler, createDeleteHandler} from './factories/createResourceHandlers.js';
 import {logger} from '../utils/logger.js';
 
 const skillNoteHandlers = createNoteHandlers({
@@ -53,33 +50,18 @@ const skillBindHandler = createBindHandler({
     },
 });
 
-export async function handlePodBindSkill(
-    connectionId: string,
-    payload: PodBindSkillPayload,
-    requestId: string
-): Promise<void> {
-    return skillBindHandler(connectionId, payload, requestId);
-}
+export const handlePodBindSkill = skillBindHandler;
 
-export async function handleSkillDelete(
-    connectionId: string,
-    payload: SkillDeletePayload,
-    requestId: string
-): Promise<void> {
-    const {skillId} = payload;
-
-    await handleResourceDelete({
-        connectionId,
-        requestId,
-        resourceId: skillId,
-        resourceName: 'Skill',
-        responseEvent: WebSocketResponseEvents.SKILL_DELETED,
-        existsCheck: () => skillService.exists(skillId),
-        findPodsUsing: (canvasId: string) => podStore.findBySkillId(canvasId, skillId),
-        deleteNotes: (canvasId: string) => skillNoteStore.deleteByForeignKey(canvasId, skillId),
-        deleteResource: () => skillService.delete(skillId),
-    });
-}
+export const handleSkillDelete = createDeleteHandler({
+    service: skillService,
+    resourceName: 'Skill',
+    idField: 'skillId',
+    deleteConfig: {
+        deleted: WebSocketResponseEvents.SKILL_DELETED,
+        findPodsUsing: (canvasId, skillId) => podStore.findBySkillId(canvasId, skillId),
+        deleteNotes: (canvasId, skillId) => skillNoteStore.deleteByForeignKey(canvasId, skillId),
+    },
+});
 
 export async function handleSkillImport(
     connectionId: string,

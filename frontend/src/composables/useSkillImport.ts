@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue'
 import { useSkillStore } from '@/stores/note/skillStore'
 import { useToast } from '@/composables/useToast'
-import { sanitizeErrorForUser } from '@/utils/errorSanitizer'
+import { useWebSocketErrorHandler } from '@/composables/useWebSocketErrorHandler'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ALLOWED_EXTENSIONS = ['.zip']
@@ -85,6 +85,7 @@ interface UseSkillImportReturn {
 export function useSkillImport(): UseSkillImportReturn {
   const skillStore = useSkillStore()
   const { showSuccessToast, showErrorToast } = useToast()
+  const { withErrorToast } = useWebSocketErrorHandler()
   const isImporting = ref(false)
 
   const importSkill = async (): Promise<void> => {
@@ -101,23 +102,22 @@ export function useSkillImport(): UseSkillImportReturn {
 
     isImporting.value = true
 
-    try {
+    const runImport = async (): Promise<void> => {
       const fileData = await convertToBase64(file)
       const result = await skillStore.importSkill(file.name, fileData, file.size)
 
-      if (result.success) {
-        const skillName = result.skill?.name || file.name
-        const toastMsg = result.isOverwrite ? '匯入成功（已覆蓋）' : '匯入成功'
-        showSuccessToast('Skill', toastMsg, skillName)
-      } else {
-        showErrorToast('Skill', '匯入失敗', result.error || '未知錯誤')
+      if (!result.success) {
+        throw new Error(result.error || '未知錯誤')
       }
-    } catch (error) {
-      const message = sanitizeErrorForUser(error)
-      showErrorToast('Skill', '匯入失敗', message)
-    } finally {
-      isImporting.value = false
+
+      const skillName = result.skill?.name || file.name
+      const toastMsg = result.isOverwrite ? '匯入成功（已覆蓋）' : '匯入成功'
+      showSuccessToast('Skill', toastMsg, skillName)
     }
+
+    await withErrorToast(runImport(), 'Skill', '匯入失敗')
+
+    isImporting.value = false
   }
 
   return {

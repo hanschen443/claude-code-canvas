@@ -13,6 +13,7 @@ const noteHandlersImpl = createNoteHandlers({
   },
   foreignKeyField: 'outputStyleId',
   entityName: 'OutputStyle',
+  logOperations: true,
   validateBeforeCreate: (outputStyleId) => outputStyleService.exists(outputStyleId),
 });
 

@@ -82,6 +82,16 @@ interface ResourceDeleteConfig {
 	idFieldName?: string;
 }
 
+export function emitPodUpdated(canvasId: string, podId: string, requestId: string, event: WebSocketResponseEvents): void {
+	const updatedPod = podStore.getById(canvasId, podId);
+	socketService.emitToCanvas(canvasId, event, {
+		requestId,
+		canvasId,
+		success: true,
+		pod: updatedPod,
+	});
+}
+
 export async function handleResourceDelete(config: ResourceDeleteConfig): Promise<void> {
 	const {
 		connectionId,
