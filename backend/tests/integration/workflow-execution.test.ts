@@ -442,14 +442,14 @@ describe('WorkflowExecution 服務', () => {
 
             // 執行：直接呼叫 triggerWorkflowWithSummary
             const {workflowExecutionService} = await import('../../src/services/workflow/workflowExecutionService.js');
-            await workflowExecutionService.triggerWorkflowWithSummary(
+            await workflowExecutionService.triggerWorkflowWithSummary({
                 canvasId,
-                connection.id,
-                preGeneratedSummary,
-                true,
-                undefined,
-                workflowAutoTriggerService
-            );
+                connectionId: connection.id,
+                summary: preGeneratedSummary,
+                isSummarized: true,
+                participatingConnectionIds: undefined,
+                strategy: workflowAutoTriggerService,
+            });
 
             // 驗證：收到 auto-triggered 事件，並且 summary 正確傳遞
             const autoTriggeredEvent = await autoTriggeredPromise;
@@ -517,14 +517,14 @@ Content from Source B`;
 
             // 執行：使用 pre-generated merged summary
             const {workflowExecutionService} = await import('../../src/services/workflow/workflowExecutionService.js');
-            await workflowExecutionService.triggerWorkflowWithSummary(
+            await workflowExecutionService.triggerWorkflowWithSummary({
                 canvasId,
-                connA.id,
-                mergedSummary,
-                true,
-                undefined,
-                workflowAutoTriggerService
-            );
+                connectionId: connA.id,
+                summary: mergedSummary,
+                isSummarized: true,
+                participatingConnectionIds: undefined,
+                strategy: workflowAutoTriggerService,
+            });
 
             // 等待 target pod 完成
             await targetCompletePromise;

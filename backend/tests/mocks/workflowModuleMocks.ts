@@ -51,7 +51,6 @@ export function createPendingTargetStoreMock() {
       recordSourceCompletion: vi.fn(),
       recordSourceRejection: vi.fn(),
       getCompletedSummaries: vi.fn(),
-      clearRejections: vi.fn(),
     },
   };
 }

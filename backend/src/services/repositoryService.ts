@@ -1,47 +1,27 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { z } from 'zod';
 import { config } from '../config';
 import { isPathWithinDirectory } from '../utils/pathValidator.js';
 import {fileExists, directoryExists} from './shared/fileResourceHelpers.js';
 
-interface RepositoryMetadata {
-  parentRepoId?: string;
-  branchName?: string;
-  currentBranch?: string;
-}
-
 const VALID_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
+const RepositoryMetadataEntrySchema = z.object({
+  parentRepoId: z.string().regex(VALID_ID_PATTERN).optional(),
+  branchName: z.string().optional(),
+  currentBranch: z.string().optional(),
+});
+
+const RepositoryMetadataSchema = z.record(
+  z.string().regex(VALID_ID_PATTERN),
+  RepositoryMetadataEntrySchema
+);
+
+type RepositoryMetadata = z.infer<typeof RepositoryMetadataEntrySchema>;
+
 function isValidRepositoryMetadata(value: unknown): value is Record<string, RepositoryMetadata> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  for (const [key, metadata] of Object.entries(value as Record<string, unknown>)) {
-    if (!VALID_ID_PATTERN.test(key)) {
-      return false;
-    }
-
-    if (typeof metadata !== 'object' || metadata === null) {
-      return false;
-    }
-
-    const metadataRecord = metadata as Record<string, unknown>;
-
-    if (metadataRecord.parentRepoId !== undefined && (typeof metadataRecord.parentRepoId !== 'string' || !VALID_ID_PATTERN.test(metadataRecord.parentRepoId))) {
-      return false;
-    }
-
-    if (metadataRecord.branchName !== undefined && typeof metadataRecord.branchName !== 'string') {
-      return false;
-    }
-
-    if (metadataRecord.currentBranch !== undefined && typeof metadataRecord.currentBranch !== 'string') {
-      return false;
-    }
-  }
-
-  return true;
+  return RepositoryMetadataSchema.safeParse(value).success;
 }
 
 class RepositoryService {

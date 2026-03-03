@@ -7,6 +7,7 @@ import type {
   AiDecideMethods,
   AutoTriggerMethods,
   TriggerStrategy,
+  TriggerWorkflowWithSummaryParams,
 } from './types.js';
 import {connectionStore} from '../connectionStore.js';
 import {podStore} from '../podStore.js';
@@ -104,14 +105,9 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     ]);
   }
 
-  async triggerWorkflowWithSummary(
-    canvasId: string,
-    connectionId: string,
-    summary: string,
-    isSummarized: boolean,
-    participatingConnectionIds: string[] | undefined,
-    strategy: TriggerStrategy
-  ): Promise<void> {
+  async triggerWorkflowWithSummary(params: TriggerWorkflowWithSummaryParams): Promise<void> {
+    const {canvasId, connectionId, summary, isSummarized, participatingConnectionIds, strategy} = params;
+
     const connection = connectionStore.getById(canvasId, connectionId);
     if (!connection) {
       logger.warn('Workflow', 'Warn', `triggerWorkflowWithSummary: Connection ${connectionId} 已不存在，跳過觸發`);

@@ -5,6 +5,8 @@ import type {
     PodGetResultPayload,
     PodScheduleSetPayload,
     PodDirectoryOpenedPayload,
+    Pod,
+    ScheduleConfig,
 } from '../types';
 import type {
     PodCreatePayload,
@@ -17,15 +19,13 @@ import type {
     PodDeletePayload,
     PodOpenDirectoryPayload,
 } from '../schemas';
-import type {Pod} from '../types';
-import type {ScheduleConfig} from '../types';
 import {podStore} from '../services/podStore.js';
 import {createPodWithWorkspace, deletePodWithCleanup} from '../services/podService.js';
 import {socketService} from '../services/socketService.js';
 import {repositoryService} from '../services/repositoryService.js';
 import {emitSuccess, emitError} from '../utils/websocketResponse.js';
 import {logger} from '../utils/logger.js';
-import {validatePod, withCanvasId} from '../utils/handlerHelpers.js';
+import {validatePod, withCanvasId, handleResultError} from '../utils/handlerHelpers.js';
 
 export const handlePodCreate = withCanvasId<PodCreatePayload>(
     WebSocketResponseEvents.POD_CREATED,
@@ -34,17 +34,7 @@ export const handlePodCreate = withCanvasId<PodCreatePayload>(
 
         const result = await createPodWithWorkspace(canvasId, {name, x, y, rotation}, requestId);
 
-        if (!result.success) {
-            emitError(
-                connectionId,
-                WebSocketResponseEvents.POD_CREATED,
-                result.error ?? '建立 Pod 失敗',
-                requestId,
-                '',
-                'INTERNAL_ERROR'
-            );
-            return;
-        }
+        if (handleResultError(result, connectionId, WebSocketResponseEvents.POD_CREATED, requestId, '建立 Pod 失敗')) return;
 
         logger.log('Pod', 'Create', `已建立 Pod「${result.data.pod.name}」`);
     }
@@ -94,16 +84,7 @@ export const handlePodDelete = withCanvasId<PodDeletePayload>(
         const {podId} = payload;
 
         const result = await deletePodWithCleanup(canvasId, podId, requestId);
-        if (!result.success) {
-            emitError(
-                connectionId,
-                WebSocketResponseEvents.POD_DELETED,
-                result.error ?? '刪除 Pod 失敗',
-                requestId,
-                podId,
-                'INTERNAL_ERROR'
-            );
-        }
+        handleResultError(result, connectionId, WebSocketResponseEvents.POD_DELETED, requestId, '刪除 Pod 失敗');
     }
 );
 

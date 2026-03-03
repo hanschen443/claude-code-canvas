@@ -110,16 +110,19 @@ export async function createPastedPods(
   const createdPods: Pod[] = [];
 
   for (const podItem of pods) {
+    let result: { pod: Pod; originalId: string };
+
     try {
-      const { pod, originalId } = await createSinglePod(canvasId, podItem);
-
-      createdPods.push(pod);
-      podIdMapping[originalId] = pod.id;
-
-      logger.log('Paste', 'Create', `已建立 Pod「${pod.name}」`);
+      result = await createSinglePod(canvasId, podItem);
     } catch (error) {
       recordError(errors, 'pod', podItem.originalId, error, '建立 Pod 失敗');
+      continue;
     }
+
+    const { pod, originalId } = result;
+    createdPods.push(pod);
+    podIdMapping[originalId] = pod.id;
+    logger.log('Paste', 'Create', `已建立 Pod「${pod.name}」`);
   }
 
   return createdPods;
@@ -133,7 +136,7 @@ type NoteStoreType<T> = {
 
 type NoteCreateParams<T extends { id: string; name: string; x: number; y: number; boundToPodId: string | null; originalPosition: { x: number; y: number } | null }> = Omit<T, 'id'>;
 
-export function createPastedNotes<
+function createPastedNotes<
   TNoteItem extends { boundToOriginalPodId: string | null },
   TNote extends { id: string; name: string; x: number; y: number; boundToPodId: string | null; originalPosition: { x: number; y: number } | null }
 >(
@@ -149,18 +152,21 @@ export function createPastedNotes<
   const errors: PasteError[] = [];
 
   for (const noteItem of noteItems) {
+    const boundToPodId = resolveBoundPodId(noteItem.boundToOriginalPodId, podIdMapping);
+    const params = createParams(noteItem, boundToPodId) as Parameters<typeof noteStore.create>[1];
+
+    let note: TNote;
+
     try {
-      const boundToPodId = resolveBoundPodId(noteItem.boundToOriginalPodId, podIdMapping);
-      const params = createParams(noteItem, boundToPodId) as Parameters<typeof noteStore.create>[1];
-      const note = noteStore.create(canvasId, params);
-
-      createdNotes.push(note);
-
-      logger.log('Paste', 'Create', `已建立${noteType}「${note.name}」`);
+      note = noteStore.create(canvasId, params);
     } catch (error) {
       const resourceId = getResourceId(noteItem);
       recordError(errors, noteType, resourceId, error, `建立${noteType}失敗`);
+      continue;
     }
+
+    createdNotes.push(note);
+    logger.log('Paste', 'Create', `已建立${noteType}「${note.name}」`);
   }
 
   return { notes: createdNotes, errors };
@@ -174,30 +180,33 @@ export function createPastedConnections(
   const createdConnections: Connection[] = [];
 
   for (const connItem of connections ?? []) {
+    const newSourcePodId = podIdMapping[connItem.originalSourcePodId];
+    const newTargetPodId = podIdMapping[connItem.originalTargetPodId];
+
+    if (!newSourcePodId || !newTargetPodId) {
+      continue;
+    }
+
+    let newConnection: Connection;
+
     try {
-      const newSourcePodId = podIdMapping[connItem.originalSourcePodId];
-      const newTargetPodId = podIdMapping[connItem.originalTargetPodId];
-
-      if (!newSourcePodId || !newTargetPodId) {
-        continue;
-      }
-
-      const newConnection = connectionStore.create(canvasId, {
+      newConnection = connectionStore.create(canvasId, {
         sourcePodId: newSourcePodId,
         sourceAnchor: connItem.sourceAnchor,
         targetPodId: newTargetPodId,
         targetAnchor: connItem.targetAnchor,
         triggerMode: connItem.triggerMode ?? 'auto',
       });
-
-      createdConnections.push(newConnection);
-
-      const srcName = podStore.getById(canvasId, newSourcePodId)?.name ?? newSourcePodId;
-      const tgtName = podStore.getById(canvasId, newTargetPodId)?.name ?? newTargetPodId;
-      logger.log('Paste', 'Create', `已建立連線「${srcName} → ${tgtName}」`);
     } catch (error) {
       logger.error('Paste', 'Error', `建立連線失敗：${getErrorMessage(error)}`);
+      continue;
     }
+
+    createdConnections.push(newConnection);
+
+    const srcName = podStore.getById(canvasId, newSourcePodId)?.name ?? newSourcePodId;
+    const tgtName = podStore.getById(canvasId, newTargetPodId)?.name ?? newTargetPodId;
+    logger.log('Paste', 'Create', `已建立連線「${srcName} → ${tgtName}」`);
   }
 
   return createdConnections;

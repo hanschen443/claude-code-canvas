@@ -57,13 +57,16 @@ ${content}
 ---`;
 }
 
-export function formatConnLog(
-    connId: string,
-    sourceName: string | undefined,
-    sourcePodId: string,
-    targetName: string | undefined,
-    targetPodId: string
-): string {
+export interface ConnectionLogInfo {
+    connId: string;
+    sourceName: string | undefined;
+    sourcePodId: string;
+    targetName: string | undefined;
+    targetPodId: string;
+}
+
+export function formatConnLog(info: ConnectionLogInfo): string {
+    const {connId, sourceName, sourcePodId, targetName, targetPodId} = info;
     return `連線 ${connId}（「${sourceName ?? sourcePodId}」→「${targetName ?? targetPodId}」）`;
 }
 

@@ -108,14 +108,14 @@ class WorkflowQueueService extends LazyInitializable<QueueServiceDeps> {
       participatingConnectionIds: item.participatingConnectionIds ?? [item.connectionId],
     });
 
-    await this.deps.executionService.triggerWorkflowWithSummary(
+    await this.deps.executionService.triggerWorkflowWithSummary({
       canvasId,
-      item.connectionId,
-      item.summary,
-      item.isSummarized,
-      item.participatingConnectionIds,
-      strategy
-    );
+      connectionId: item.connectionId,
+      summary: item.summary,
+      isSummarized: item.isSummarized,
+      participatingConnectionIds: item.participatingConnectionIds,
+      strategy,
+    });
   }
 }
 

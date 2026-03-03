@@ -1,3 +1,5 @@
+import type { TriggerMode } from '../connection.js';
+
 export interface WorkflowAutoTriggeredPayload {
   connectionId: string;
   sourcePodId: string;
@@ -98,7 +100,7 @@ export interface WorkflowQueuedPayload {
   sourcePodId: string;
   position: number;
   queueSize: number;
-  triggerMode: 'auto' | 'ai-decide' | 'direct';
+  triggerMode: TriggerMode;
 }
 
 export interface WorkflowQueueProcessedPayload {
@@ -107,7 +109,7 @@ export interface WorkflowQueueProcessedPayload {
   connectionId: string;
   sourcePodId: string;
   remainingQueueSize: number;
-  triggerMode: 'auto' | 'ai-decide' | 'direct';
+  triggerMode: TriggerMode;
 }
 
 export interface WorkflowDirectMergedPayload {

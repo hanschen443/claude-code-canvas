@@ -4,14 +4,13 @@ import type {SlackApp, SlackAppConnectionStatus, SlackChannel, PersistedSlackApp
 import {Result, ok, err} from '../../types/index.js';
 import {logger} from '../../utils/logger.js';
 import {persistenceService} from '../persistence/index.js';
-import {createPersistentWriter} from '../../utils/persistentWriteHelper.js';
+import {PersistenceHelper} from '../shared/PersistenceHelper.js';
 
 const SLACK_APPS_FILE = 'slack-apps.json';
 
 class SlackAppStore {
     private apps: Map<string, SlackApp> = new Map();
-    private writer = createPersistentWriter('Slack', 'SlackAppStore');
-    private dataDir: string | null = null;
+    private readonly persistence = new PersistenceHelper('Slack', 'SlackAppStore', 'slack-apps');
 
     create(name: string, botToken: string, appToken: string): Result<SlackApp> {
         for (const app of this.apps.values()) {
@@ -85,7 +84,7 @@ class SlackAppStore {
     }
 
     async loadFromDisk(dataDir: string): Promise<Result<void>> {
-        this.dataDir = dataDir;
+        this.persistence.initDataDir(dataDir);
         const filePath = path.join(dataDir, SLACK_APPS_FILE);
 
         this.apps.clear();
@@ -103,6 +102,16 @@ class SlackAppStore {
         }
 
         for (const persisted of persistedApps) {
+            if (!persisted.botToken.startsWith('xoxb-')) {
+                logger.warn('Slack', 'Load', `[SlackAppStore] Slack App ${persisted.id} 的 botToken 格式不正確，略過載入`);
+                continue;
+            }
+
+            if (!persisted.appToken.startsWith('xapp-')) {
+                logger.warn('Slack', 'Load', `[SlackAppStore] Slack App ${persisted.id} 的 appToken 格式不正確，略過載入`);
+                continue;
+            }
+
             const app: SlackApp = {
                 id: persisted.id,
                 name: persisted.name,
@@ -132,16 +141,13 @@ class SlackAppStore {
     }
 
     saveToDiskAsync(): void {
-        if (!this.dataDir) {
-            return;
-        }
-
-        const dataDir = this.dataDir;
-        this.writer.enqueueWrite('slack-apps', () => this.saveToDisk(dataDir));
+        const dataDir = this.persistence.currentDataDir;
+        if (!dataDir) return;
+        this.persistence.scheduleSave(() => this.saveToDisk(dataDir));
     }
 
     flushWrites(): Promise<void> {
-        return this.writer.flush('slack-apps');
+        return this.persistence.flush();
     }
 }
 

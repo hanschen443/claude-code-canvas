@@ -15,7 +15,7 @@ export async function gitOperation<T>(
   }
 }
 
-export async function gitOp<T>(
+export async function gitOperationWithPath<T>(
   workspacePath: string,
   operation: (git: ReturnType<typeof simpleGit>) => Promise<T>,
   errorContext: string
@@ -43,10 +43,21 @@ export async function fsOperation<T>(
   }
 }
 
+export function getGitStageMessage(stage: string): string {
+  const stageMessages: Record<string, string> = {
+    counting: '計算物件數量...',
+    compressing: '壓縮物件...',
+    receiving: '接收物件...',
+    resolving: '解析差異...',
+    writing: '寫入物件...',
+  };
+
+  return stageMessages[stage] ?? '處理中...';
+}
+
 export function fireAndForget(promise: Promise<unknown>, category: LogCategory, errorContext: string): void {
   promise.catch((error) => {
     logger.error(category, 'Error', errorContext, error);
   });
 }
 
-export type { Result };

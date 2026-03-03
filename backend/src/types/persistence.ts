@@ -1,5 +1,5 @@
 import type { PodStatus, ModelType } from './pod.js';
-import type { AnchorPosition, ConnectionStatus } from './connection.js';
+import type { AnchorPosition, ConnectionStatus, TriggerMode } from './connection.js';
 import type { PersistedScheduleConfig } from './schedule.js';
 import type { PodSlackBinding } from './slack.js';
 
@@ -56,7 +56,7 @@ export interface PersistedConnection {
   sourceAnchor: AnchorPosition;
   targetPodId: string;
   targetAnchor: AnchorPosition;
-  triggerMode: 'auto' | 'ai-decide' | 'direct';
+  triggerMode: TriggerMode;
   decideStatus?: 'none' | 'pending' | 'approved' | 'rejected' | 'error';
   decideReason?: string | null;
   connectionStatus?: ConnectionStatus;

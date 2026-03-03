@@ -29,6 +29,8 @@ import { logger } from '../utils/logger.js';
 import type { Result } from '../types';
 import { ok } from '../types';
 import { validateRepositoryExists, getValidatedGitRepository } from '../utils/validators.js';
+import { handleResultError } from '../utils/handlerHelpers.js';
+import { getGitStageMessage } from '../utils/operationHelpers.js';
 import { throttle } from '../utils/throttle.js';
 import { directoryExists } from '../services/shared/fileResourceHelpers.js';
 import { isPathWithinDirectory } from '../utils/pathValidator.js';
@@ -82,18 +84,6 @@ function validateRepoUrl(repoUrl: string): Result<void> {
   return ok();
 }
 
-
-function getStageMessage(stage: string): string {
-  const stageMessages: Record<string, string> = {
-    counting: '計算物件數量...',
-    compressing: '壓縮物件...',
-    receiving: '接收物件...',
-    resolving: '解析差異...',
-    writing: '寫入物件...',
-  };
-
-  return stageMessages[stage] ?? '處理中...';
-}
 
 function createProgressEmitter(
   connectionId: string,
@@ -154,7 +144,7 @@ async function executeAndValidateClone(
     branch,
     onProgress: (progressData) => {
       const mappedProgress = Math.floor(10 + (progressData.progress * 0.8));
-      const stageMessage = getStageMessage(progressData.stage);
+      const stageMessage = getGitStageMessage(progressData.stage);
       throttledEmit(mappedProgress, stageMessage);
     },
   });
@@ -187,17 +177,7 @@ export async function handleRepositoryGitClone(
   const { repoUrl, branch } = payload;
 
   const validation = validateRepoUrl(repoUrl);
-  if (!validation.success) {
-    emitError(
-      connectionId,
-      WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT,
-      validation.error,
-      requestId,
-      undefined,
-      'INVALID_INPUT'
-    );
-    return;
-  }
+  if (handleResultError(validation, connectionId, WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT, requestId, 'Repository URL 驗證失敗', 'INVALID_INPUT')) return;
 
   const repoName = parseRepoName(repoUrl);
 
@@ -227,14 +207,7 @@ export async function handleRepositoryGitClone(
 
   const cloneResult = await executeAndValidateClone(repoUrl, repoName, branch, emitCloneProgress);
   if (!cloneResult.success) {
-    emitError(
-      connectionId,
-      WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT,
-      cloneResult.error,
-      requestId,
-      undefined,
-      'INTERNAL_ERROR'
-    );
+    emitError(connectionId, WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT, cloneResult.error, requestId, undefined, 'INTERNAL_ERROR');
     return;
   }
 
@@ -261,32 +234,12 @@ export async function handleRepositoryCheckGit(
   const { repositoryId } = payload;
 
   const validateResult = await validateRepositoryExists(repositoryId);
-  if (!validateResult.success) {
-    emitError(
-      connectionId,
-      WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT,
-      validateResult.error,
-      requestId,
-      undefined,
-      'NOT_FOUND'
-    );
-    return;
-  }
+  if (handleResultError(validateResult, connectionId, WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT, requestId, '找不到 Repository', 'NOT_FOUND')) return;
 
   const repositoryPath = validateResult.data;
   const result = await gitService.isGitRepository(repositoryPath);
 
-  if (!result.success) {
-    emitError(
-      connectionId,
-      WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT,
-      result.error,
-      requestId,
-      undefined,
-      'INTERNAL_ERROR'
-    );
-    return;
-  }
+  if (handleResultError(result, connectionId, WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT, requestId, '檢查 Git Repository 失敗')) return;
 
   const response: RepositoryCheckGitResultPayload = {
     requestId,
@@ -399,17 +352,7 @@ export const handleRepositoryGetLocalBranches = withValidatedGitRepository<Repos
     const { repositoryId } = payload;
 
     const branchesResult = await gitService.getLocalBranches(repositoryPath);
-    if (!branchesResult.success) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.REPOSITORY_LOCAL_BRANCHES_RESULT,
-        branchesResult.error,
-        requestId,
-        undefined,
-        'INTERNAL_ERROR'
-      );
-      return;
-    }
+    if (handleResultError(branchesResult, connectionId, WebSocketResponseEvents.REPOSITORY_LOCAL_BRANCHES_RESULT, requestId, '取得本地分支失敗')) return;
 
     const response: RepositoryLocalBranchesResultPayload = {
       requestId,
@@ -430,17 +373,7 @@ export const handleRepositoryCheckDirty = withValidatedGitRepository<RepositoryC
     const { repositoryId } = payload;
 
     const dirtyResult = await gitService.hasUncommittedChanges(repositoryPath);
-    if (!dirtyResult.success) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.REPOSITORY_DIRTY_CHECK_RESULT,
-        dirtyResult.error,
-        requestId,
-        undefined,
-        'INTERNAL_ERROR'
-      );
-      return;
-    }
+    if (handleResultError(dirtyResult, connectionId, WebSocketResponseEvents.REPOSITORY_DIRTY_CHECK_RESULT, requestId, '檢查未提交變更失敗')) return;
 
     const response: RepositoryDirtyCheckResultPayload = {
       requestId,
@@ -492,15 +425,7 @@ export const handleRepositoryCheckoutBranch = withValidatedGitRepository<Reposit
 
     if (!checkoutResult.success) {
       throttledEmit.cancel();
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.REPOSITORY_BRANCH_CHECKED_OUT,
-        checkoutResult.error,
-        requestId,
-        undefined,
-        'INTERNAL_ERROR'
-      );
-      return;
+      if (handleResultError(checkoutResult, connectionId, WebSocketResponseEvents.REPOSITORY_BRANCH_CHECKED_OUT, requestId, '切換分支失敗')) return;
     }
 
     throttledEmit.flush();
@@ -540,17 +465,7 @@ export const handleRepositoryDeleteBranch = withValidatedGitRepository<Repositor
     const { repositoryId, branchName, force } = payload;
 
     const deleteResult = await gitService.deleteBranch(repositoryPath, branchName, force);
-    if (!deleteResult.success) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.REPOSITORY_BRANCH_DELETED,
-        deleteResult.error,
-        requestId,
-        undefined,
-        'INTERNAL_ERROR'
-      );
-      return;
-    }
+    if (handleResultError(deleteResult, connectionId, WebSocketResponseEvents.REPOSITORY_BRANCH_DELETED, requestId, '刪除分支失敗')) return;
 
     const response: RepositoryBranchDeletedPayload = {
       requestId,
@@ -610,14 +525,7 @@ export const handleRepositoryPullLatest = withValidatedGitRepository<RepositoryP
       const pullResult = await gitService.pullLatest(repositoryPath, (progress, message) => throttledEmit(progress, message));
       if (!pullResult.success) {
         throttledEmit.cancel();
-        emitError(
-          connectionId,
-          WebSocketResponseEvents.REPOSITORY_PULL_LATEST_RESULT,
-          pullResult.error,
-          requestId,
-          undefined,
-          'INTERNAL_ERROR'
-        );
+        handleResultError(pullResult, connectionId, WebSocketResponseEvents.REPOSITORY_PULL_LATEST_RESULT, requestId, 'Pull 失敗');
         return;
       }
 

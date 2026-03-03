@@ -60,32 +60,50 @@ export const useCanvasStore = defineStore('canvas', {
     async loadCanvases(): Promise<void> {
       this.isLoading = true
 
+      let response: CanvasListResultPayload;
+
       try {
-        const response = await createWebSocketRequest<CanvasListPayload, CanvasListResultPayload>({
+        response = await createWebSocketRequest<CanvasListPayload, CanvasListResultPayload>({
           requestEvent: WebSocketRequestEvents.CANVAS_LIST,
           responseEvent: WebSocketResponseEvents.CANVAS_LIST_RESULT,
           payload: {}
         })
-
-        if (response.canvases) {
-          this.canvases = response.canvases.sort((a, b) => a.sortIndex - b.sortIndex)
-          if (this.canvases.length > 0 && !this.activeCanvasId) {
-            const firstCanvas = this.canvases[0]
-            if (!firstCanvas) return
-
-            await createWebSocketRequest<CanvasSwitchPayload, CanvasSwitchedPayload>({
-              requestEvent: WebSocketRequestEvents.CANVAS_SWITCH,
-              responseEvent: WebSocketResponseEvents.CANVAS_SWITCHED,
-              payload: { canvasId: firstCanvas.id }
-            })
-            this.activeCanvasId = firstCanvas.id
-          }
-        } else {
-          console.warn('[CanvasStore] 後端未回傳任何 Canvas')
-        }
-      } finally {
+      } catch (error) {
         this.isLoading = false
+        throw error
       }
+
+      if (!response.canvases) {
+        console.warn('[CanvasStore] 後端未回傳任何 Canvas')
+        this.isLoading = false
+        return
+      }
+
+      this.canvases = response.canvases.sort((a, b) => a.sortIndex - b.sortIndex)
+
+      if (this.canvases.length > 0 && !this.activeCanvasId) {
+        await this.switchToFirstCanvas()
+      }
+
+      this.isLoading = false
+    },
+
+    async switchToFirstCanvas(): Promise<void> {
+      const firstCanvas = this.canvases[0]
+      if (!firstCanvas) return
+
+      try {
+        await createWebSocketRequest<CanvasSwitchPayload, CanvasSwitchedPayload>({
+          requestEvent: WebSocketRequestEvents.CANVAS_SWITCH,
+          responseEvent: WebSocketResponseEvents.CANVAS_SWITCHED,
+          payload: { canvasId: firstCanvas.id }
+        })
+      } catch (error) {
+        console.error('[CanvasStore] 切換 Canvas 失敗', error)
+        return
+      }
+
+      this.activeCanvasId = firstCanvas.id
     },
 
     async createCanvas(name: string): Promise<Canvas | null> {
@@ -222,17 +240,21 @@ export const useCanvasStore = defineStore('canvas', {
       this.canvases = this.canvases.filter(canvas => canvas.id !== canvasId)
 
       if (this.activeCanvasId === canvasId) {
-        if (this.canvases.length > 0) {
-          const firstCanvas = this.canvases[0]
-          if (!firstCanvas) return
+        await this.handleActiveCanvasDeletion()
+      }
+    },
 
-          await this.switchCanvas(firstCanvas.id)
-        } else {
-          const defaultCanvas = await this.createCanvas('Default')
-          if (defaultCanvas) {
-            await this.switchCanvas(defaultCanvas.id)
-          }
-        }
+    async handleActiveCanvasDeletion(): Promise<void> {
+      if (this.canvases.length > 0) {
+        const firstCanvas = this.canvases[0]
+        if (!firstCanvas) return
+        await this.switchCanvas(firstCanvas.id)
+        return
+      }
+
+      const defaultCanvas = await this.createCanvas('Default')
+      if (defaultCanvas) {
+        await this.switchCanvas(defaultCanvas.id)
       }
     },
 

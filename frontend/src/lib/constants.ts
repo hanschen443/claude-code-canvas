@@ -30,3 +30,10 @@ export const PASTE_TIMEOUT_MS = 10000
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 export const SUPPORTED_IMAGE_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const
 export const MAX_IMAGES_PER_DROP = 1
+
+export const RADIANS_TO_DEGREES = 180 / Math.PI
+export const DEGREES_TO_RADIANS = Math.PI / 180
+
+export const MS_PER_SECOND = 1000
+export const MS_PER_MINUTE = 60_000
+export const MS_PER_HOUR = 3_600_000

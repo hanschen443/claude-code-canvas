@@ -2,8 +2,9 @@ import {WebSocketResponseEvents} from '../../schemas/index.js';
 import type {
   WorkflowSourcesMergedPayload,
   Connection,
+  AutoTriggerMode,
 } from '../../types/index.js';
-import type { ExecutionServiceMethods, TriggerStrategy } from './types.js';
+import type { ExecutionServiceMethods, TriggerStrategy, HandleMultiInputForConnectionParams } from './types.js';
 import {podStore} from '../podStore.js';
 import {socketService} from '../socketService.js';
 import {pendingTargetStore} from '../pendingTargetStore.js';
@@ -30,7 +31,7 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
     connection: Connection,
     completedSummaries: Map<string, string>,
     mergedContent: string,
-    triggerMode: 'auto' | 'ai-decide'
+    triggerMode: AutoTriggerMode
   ): void {
     const targetPod = podStore.getById(canvasId, connection.targetPodId);
     logger.log('Workflow', 'Update', `目標 Pod "${targetPod?.name ?? connection.targetPodId}" 忙碌中，將合併的 workflow 加入佇列`);
@@ -85,14 +86,9 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
     return { completedSummaries, mergedContent };
   }
 
-  async handleMultiInputForConnection(
-    canvasId: string,
-    sourcePodId: string,
-    connection: Connection,
-    requiredSourcePodIds: string[],
-    summary: string,
-    triggerMode: 'auto' | 'ai-decide'
-  ): Promise<void> {
+  async handleMultiInputForConnection(params: HandleMultiInputForConnectionParams): Promise<void> {
+    const {canvasId, sourcePodId, connection, requiredSourcePodIds, summary, triggerMode} = params;
+
     const { ready, hasRejection } = this.recordAndCheckAllSourcesReady(
       connection.targetPodId,
       sourcePodId,
@@ -128,7 +124,7 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
   triggerMergedWorkflow(
     canvasId: string,
     connection: Connection,
-    triggerMode: 'auto' | 'ai-decide'
+    triggerMode: AutoTriggerMode
   ): void {
     this.ensureInitialized();
 
@@ -161,7 +157,14 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
     );
 
     const strategy = this.deps.strategies[triggerMode];
-    this.deps.executionService.triggerWorkflowWithSummary(canvasId, connection.id, mergedContent, true, undefined, strategy).catch((error) => {
+    this.deps.executionService.triggerWorkflowWithSummary({
+      canvasId,
+      connectionId: connection.id,
+      summary: mergedContent,
+      isSummarized: true,
+      participatingConnectionIds: undefined,
+      strategy,
+    }).catch((error) => {
       logger.error('Workflow', 'Error', `觸發合併工作流程失敗 ${connection.id}`, error);
       podStore.setStatus(canvasId, connection.targetPodId, 'idle');
     });

@@ -1,18 +1,33 @@
 import path from 'path';
 import {v4 as uuidv4} from 'uuid';
+import {z} from 'zod';
 import type {McpServer, McpServerConfig} from '../types/mcpServer.js';
 import type {Result} from '../types/result.js';
 import {ok, err} from '../types/result.js';
 import {persistenceService} from './persistence/index.js';
 import {logger} from '../utils/logger.js';
-import {createPersistentWriter} from '../utils/persistentWriteHelper.js';
+import {PersistenceHelper} from './shared/PersistenceHelper.js';
 
 const MCP_SERVERS_FILE = 'mcp-servers.json';
 
+const NetworkConfigSchema = z.object({
+    type: z.enum(['http', 'sse']),
+    url: z.string().min(1),
+});
+
+const CommandConfigSchema = z.object({
+    command: z.string().min(1),
+});
+
+const McpServerSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+    config: z.union([NetworkConfigSchema, CommandConfigSchema]),
+});
+
 export class McpServerStore {
     private servers: Map<string, McpServer> = new Map();
-    private writer = createPersistentWriter('McpServer', 'McpServerStore');
-    private dataDir: string | null = null;
+    private readonly persistence = new PersistenceHelper('McpServer', 'McpServerStore', 'global');
 
     create(name: string, config: McpServerConfig): McpServer {
         const id = uuidv4();
@@ -62,29 +77,11 @@ export class McpServerStore {
     }
 
     private validateServerData(server: unknown): server is McpServer {
-        if (!server || typeof server !== 'object') return false;
-
-        const serverRecord = server as Record<string, unknown>;
-
-        if (typeof serverRecord.id !== 'string' || serverRecord.id.trim() === '') return false;
-        if (typeof serverRecord.name !== 'string' || serverRecord.name.trim() === '') return false;
-        if (!/^[a-zA-Z0-9_-]+$/.test(serverRecord.name)) return false;
-        if (!serverRecord.config || typeof serverRecord.config !== 'object') return false;
-
-        const config = serverRecord.config as Record<string, unknown>;
-
-        if ('type' in config) {
-            if (config.type !== 'http' && config.type !== 'sse') return false;
-            if (typeof config.url !== 'string' || config.url.trim() === '') return false;
-        } else {
-            if (typeof config.command !== 'string' || config.command.trim() === '') return false;
-        }
-
-        return true;
+        return McpServerSchema.safeParse(server).success;
     }
 
     async loadFromDisk(dataDir: string): Promise<Result<void>> {
-        this.dataDir = dataDir;
+        this.persistence.initDataDir(dataDir);
         const filePath = path.join(dataDir, MCP_SERVERS_FILE);
         const result = await persistenceService.readJson<McpServer[]>(filePath);
 
@@ -114,12 +111,9 @@ export class McpServerStore {
     }
 
     saveToDiskAsync(): void {
-        if (!this.dataDir) {
-            return;
-        }
-
-        const dataDir = this.dataDir;
-        this.writer.enqueueWrite('global', () => this.saveToDisk(dataDir));
+        const dataDir = this.persistence.currentDataDir;
+        if (!dataDir) return;
+        this.persistence.scheduleSave(() => this.saveToDisk(dataDir));
     }
 }
 

@@ -62,14 +62,14 @@ function createPipelineExecuteImpl(mockAutoStrategy: TriggerStrategy, mockAiDeci
     );
 
     if (isMultiInput) {
-      await workflowMultiInputService.handleMultiInputForConnection(
-        context.canvasId,
-        context.sourcePodId,
-        context.connection,
+      await workflowMultiInputService.handleMultiInputForConnection({
+        canvasId: context.canvasId,
+        sourcePodId: context.sourcePodId,
+        connection: context.connection,
         requiredSourcePodIds,
-        summaryResult.summary || 'test summary',
-        context.triggerMode
-      );
+        summary: summaryResult.summary || 'test summary',
+        triggerMode: context.triggerMode,
+      });
       return;
     }
 
@@ -87,14 +87,14 @@ function createPipelineExecuteImpl(mockAutoStrategy: TriggerStrategy, mockAiDeci
       return;
     }
 
-    await workflowExecutionService.triggerWorkflowWithSummary(
-      context.canvasId,
-      context.connection.id,
-      summaryResult.summary || 'test summary',
-      summaryResult.success || false,
-      undefined,
-      strategy
-    );
+    await workflowExecutionService.triggerWorkflowWithSummary({
+      canvasId: context.canvasId,
+      connectionId: context.connection.id,
+      summary: summaryResult.summary || 'test summary',
+      isSummarized: summaryResult.success || false,
+      participatingConnectionIds: undefined,
+      strategy,
+    });
   };
 }
 
@@ -411,14 +411,14 @@ describe('WorkflowExecutionService', () => {
       (connectionStore.getById as any).mockReturnValue(autoConn1);
       (connectionStore.findByTargetPodId as any).mockReturnValue([autoConn1, autoConn2]);
 
-      await workflowExecutionService.triggerWorkflowWithSummary(
+      await workflowExecutionService.triggerWorkflowWithSummary({
         canvasId,
-        autoConn1.id,
-        'Test summary',
-        true,
-        undefined,
-        mockAutoStrategy
-      );
+        connectionId: autoConn1.id,
+        summary: 'Test summary',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockAutoStrategy,
+      });
 
       expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(canvasId, 'conn-auto-1', 'active');
       expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(canvasId, 'conn-auto-2', 'active');
@@ -435,14 +435,14 @@ describe('WorkflowExecutionService', () => {
       (connectionStore.getById as any).mockReturnValue(aiConn1);
       (connectionStore.findByTargetPodId as any).mockReturnValue([aiConn1, aiConn2]);
 
-      await workflowExecutionService.triggerWorkflowWithSummary(
+      await workflowExecutionService.triggerWorkflowWithSummary({
         canvasId,
-        aiConn1.id,
-        'Test summary',
-        true,
-        undefined,
-        mockAiDecideStrategy
-      );
+        connectionId: aiConn1.id,
+        summary: 'Test summary',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockAiDecideStrategy,
+      });
 
       expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(canvasId, 'conn-ai-1', 'active');
       expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(canvasId, 'conn-ai-2', 'active');
@@ -458,14 +458,14 @@ describe('WorkflowExecutionService', () => {
       (connectionStore.getById as any).mockReturnValue(directConn);
       (connectionStore.findByTargetPodId as any).mockReturnValue([directConn]);
 
-      await workflowExecutionService.triggerWorkflowWithSummary(
+      await workflowExecutionService.triggerWorkflowWithSummary({
         canvasId,
-        directConn.id,
-        'Test summary',
-        true,
-        [directConn.id],
-        mockDirectStrategy
-      );
+        connectionId: directConn.id,
+        summary: 'Test summary',
+        isSummarized: true,
+        participatingConnectionIds: [directConn.id],
+        strategy: mockDirectStrategy,
+      });
 
       const activeCalls = (connectionStore.updateConnectionStatus as any).mock.calls.filter(
         (call: any[]) => call[2] === 'active'
@@ -493,14 +493,14 @@ describe('WorkflowExecutionService', () => {
         callOrder.push('onTrigger');
       });
 
-      await workflowExecutionService.triggerWorkflowWithSummary(
+      await workflowExecutionService.triggerWorkflowWithSummary({
         canvasId,
-        mockAutoConnection.id,
-        'Test summary',
-        true,
-        undefined,
-        mockAutoStrategy
-      );
+        connectionId: mockAutoConnection.id,
+        summary: 'Test summary',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockAutoStrategy,
+      });
 
       const activeIndex = callOrder.indexOf('updateConnectionStatus:active');
       const onTriggerIndex = callOrder.indexOf('onTrigger');
@@ -662,19 +662,19 @@ describe('WorkflowExecutionService', () => {
       );
 
       (workflowMultiInputService.handleMultiInputForConnection as any).mockImplementation(
-        async (canvasId: string, sourcePodId: string, connection: Connection, requiredSourcePodIds: string[], summary: string, triggerMode: 'auto' | 'ai-decide') => {
-          const targetPod = podStore.getById(canvasId, connection.targetPodId);
+        async (params: { canvasId: string; sourcePodId: string; connection: Connection; requiredSourcePodIds: string[]; summary: string; triggerMode: 'auto' | 'ai-decide' }) => {
+          const targetPod = podStore.getById(params.canvasId, params.connection.targetPodId);
           if (targetPod && targetPod.status === 'chatting') {
             workflowQueueService.enqueue({
-              canvasId,
-              connectionId: connection.id,
-              sourcePodId,
-              targetPodId: connection.targetPodId,
+              canvasId: params.canvasId,
+              connectionId: params.connection.id,
+              sourcePodId: params.sourcePodId,
+              targetPodId: params.connection.targetPodId,
               summary: 'merged summary',
               isSummarized: true,
-              triggerMode,
+              triggerMode: params.triggerMode,
             });
-            pendingTargetStore.clearPendingTarget(connection.targetPodId);
+            pendingTargetStore.clearPendingTarget(params.connection.targetPodId);
           }
         }
       );
@@ -752,19 +752,19 @@ describe('WorkflowExecutionService', () => {
       );
 
       (workflowMultiInputService.handleMultiInputForConnection as any).mockImplementation(
-        async (canvasId: string, sourcePodId: string, connection: Connection, requiredSourcePodIds: string[], summary: string, triggerMode: 'auto' | 'ai-decide') => {
-          const targetPod = podStore.getById(canvasId, connection.targetPodId);
+        async (params: { canvasId: string; sourcePodId: string; connection: Connection; requiredSourcePodIds: string[]; summary: string; triggerMode: 'auto' | 'ai-decide' }) => {
+          const targetPod = podStore.getById(params.canvasId, params.connection.targetPodId);
           if (targetPod && targetPod.status === 'chatting') {
             workflowQueueService.enqueue({
-              canvasId,
-              connectionId: connection.id,
-              sourcePodId,
-              targetPodId: connection.targetPodId,
+              canvasId: params.canvasId,
+              connectionId: params.connection.id,
+              sourcePodId: params.sourcePodId,
+              targetPodId: params.connection.targetPodId,
               summary: 'merged summary',
               isSummarized: true,
-              triggerMode,
+              triggerMode: params.triggerMode,
             });
-            pendingTargetStore.clearPendingTarget(connection.targetPodId);
+            pendingTargetStore.clearPendingTarget(params.connection.targetPodId);
           }
         }
       );

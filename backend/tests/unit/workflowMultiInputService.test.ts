@@ -81,14 +81,14 @@ describe('WorkflowMultiInputService', () => {
         createMockPod({ id: podId, name: `Pod ${podId}`, status: 'chatting' })
       );
 
-      await workflowMultiInputService.handleMultiInputForConnection(
+      await workflowMultiInputService.handleMultiInputForConnection({
         canvasId,
         sourcePodId,
-        mockConnection,
-        [sourcePodId],
-        'Some summary',
-        'auto'
-      );
+        connection: mockConnection,
+        requiredSourcePodIds: [sourcePodId],
+        summary: 'Some summary',
+        triggerMode: 'auto',
+      });
 
       expect(workflowQueueService.enqueue).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -106,14 +106,14 @@ describe('WorkflowMultiInputService', () => {
         createMockPod({ id: podId, name: `Pod ${podId}`, status: 'idle' })
       );
 
-      await workflowMultiInputService.handleMultiInputForConnection(
+      await workflowMultiInputService.handleMultiInputForConnection({
         canvasId,
         sourcePodId,
-        mockConnection,
-        [sourcePodId],
-        'Some summary',
-        'auto'
-      );
+        connection: mockConnection,
+        requiredSourcePodIds: [sourcePodId],
+        summary: 'Some summary',
+        triggerMode: 'auto',
+      });
 
       expect(workflowQueueService.enqueue).not.toHaveBeenCalled();
     });
@@ -126,14 +126,14 @@ describe('WorkflowMultiInputService', () => {
         hasRejection: true,
       });
 
-      await workflowMultiInputService.handleMultiInputForConnection(
+      await workflowMultiInputService.handleMultiInputForConnection({
         canvasId,
         sourcePodId,
-        mockConnection,
-        [sourcePodId],
-        'Some summary',
-        'auto'
-      );
+        connection: mockConnection,
+        requiredSourcePodIds: [sourcePodId],
+        summary: 'Some summary',
+        triggerMode: 'auto',
+      });
 
       expect(autoClearService.onGroupNotTriggered).toHaveBeenCalledWith(canvasId, targetPodId);
       expect(mockExecutionService.triggerWorkflowWithSummary).not.toHaveBeenCalled();
@@ -164,14 +164,14 @@ describe('WorkflowMultiInputService', () => {
 
       workflowMultiInputService.triggerMergedWorkflow(canvasId, mockConnection, 'auto');
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
-        mockConnection.id,
-        expect.stringContaining('First source summary'),
-        true,
-        undefined,
-        mockAutoStrategy
-      );
+        connectionId: mockConnection.id,
+        summary: expect.stringContaining('First source summary'),
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockAutoStrategy,
+      });
 
       expect(podStore.setStatus).toHaveBeenCalledWith(canvasId, targetPodId, 'chatting');
       expect(pendingTargetStore.clearPendingTarget).toHaveBeenCalledWith(targetPodId);

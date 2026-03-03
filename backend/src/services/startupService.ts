@@ -15,23 +15,16 @@ import { slackConnectionManager } from './slack/slackConnectionManager.js';
 
 class StartupService {
   async initialize(): Promise<Result<void>> {
-    const appDataResult = await persistenceService.ensureDirectory(config.appDataRoot);
-    if (!appDataResult.success) {
-      return err(`伺服器初始化失敗: ${appDataResult.error}`);
-    }
-
-    const canvasRootResult = await persistenceService.ensureDirectory(config.canvasRoot);
-    if (!canvasRootResult.success) {
-      return err(`伺服器初始化失敗: ${canvasRootResult.error}`);
-    }
-
-    const repoResult = await persistenceService.ensureDirectory(config.repositoriesRoot);
-    if (!repoResult.success) {
-      return err(`伺服器初始化失敗: ${repoResult.error}`);
+    const dirResult = await this.ensureDirectories([
+      config.appDataRoot,
+      config.canvasRoot,
+      config.repositoriesRoot,
+    ]);
+    if (!dirResult.success) {
+      return dirResult;
     }
 
     await repositoryService.initialize();
-
     await mcpServerStore.loadFromDisk(config.appDataRoot);
 
     const canvasLoadResult = await canvasStore.loadFromDisk();
@@ -50,40 +43,11 @@ class StartupService {
     }
 
     for (const canvas of canvases) {
-      const canvasDir = canvasStore.getCanvasDir(canvas.id);
-      const canvasDataDir = canvasStore.getCanvasDataDir(canvas.id);
-
-      if (!canvasDir || !canvasDataDir) {
-        logger.error('Startup', 'Error', `無法取得畫布目錄：${canvas.name}`);
-        continue;
-      }
-
-      const podLoadResult = await podStore.loadFromDisk(canvas.id, canvasDir);
-      if (!podLoadResult.success) {
-        logger.error('Startup', 'Error', `載入畫布 Pod 失敗：${canvas.name}：${podLoadResult.error}`);
-        continue;
-      }
-
-      const pods = podStore.getAll(canvas.id);
-      const messageLoadPromises = pods.map((pod) =>
-        messageStore.loadMessagesFromDisk(canvasDir, pod.id)
-      );
-      await Promise.all(messageLoadPromises);
-
-      await noteStore.loadFromDisk(canvas.id, canvasDataDir);
-      await skillNoteStore.loadFromDisk(canvas.id, canvasDataDir);
-      await commandNoteStore.loadFromDisk(canvas.id, canvasDataDir);
-      await subAgentNoteStore.loadFromDisk(canvas.id, canvasDataDir);
-      await repositoryNoteStore.loadFromDisk(canvas.id, canvasDataDir);
-      await mcpServerNoteStore.loadFromDisk(canvas.id, canvasDataDir);
-      await connectionStore.loadFromDisk(canvas.id, canvasDataDir);
-
-      logger.log('Startup', 'Complete', `已載入畫布：${canvas.name}`);
+      await this.loadCanvas(canvas);
     }
 
     scheduleService.start();
 
-    // 背景恢復 Slack 連線，不阻塞 WS server 啟動，以確保廣播時已有 client 可接收
     this.restoreSlackConnections().catch((error) => {
       logger.error('Slack', 'Error', '[StartupService] Slack 連線恢復時發生非預期錯誤', error);
     });
@@ -91,6 +55,46 @@ class StartupService {
     logger.log('Startup', 'Complete', '伺服器初始化完成');
     return ok(undefined);
   }
+
+  private async ensureDirectories(paths: string[]): Promise<Result<void>> {
+    for (const dirPath of paths) {
+      const result = await persistenceService.ensureDirectory(dirPath);
+      if (!result.success) {
+        return err(`伺服器初始化失敗: ${result.error}`);
+      }
+    }
+    return ok(undefined);
+  }
+
+  private async loadCanvas(canvas: { id: string; name: string }): Promise<void> {
+    const canvasDir = canvasStore.getCanvasDir(canvas.id);
+    const canvasDataDir = canvasStore.getCanvasDataDir(canvas.id);
+
+    if (!canvasDir || !canvasDataDir) {
+      logger.error('Startup', 'Error', `無法取得畫布目錄：${canvas.name}`);
+      return;
+    }
+
+    const podLoadResult = await podStore.loadFromDisk(canvas.id, canvasDir);
+    if (!podLoadResult.success) {
+      logger.error('Startup', 'Error', `載入畫布 Pod 失敗：${canvas.name}：${podLoadResult.error}`);
+      return;
+    }
+
+    const pods = podStore.getAll(canvas.id);
+    await Promise.all(pods.map((pod) => messageStore.loadMessagesFromDisk(canvasDir, pod.id)));
+
+    await noteStore.loadFromDisk(canvas.id, canvasDataDir);
+    await skillNoteStore.loadFromDisk(canvas.id, canvasDataDir);
+    await commandNoteStore.loadFromDisk(canvas.id, canvasDataDir);
+    await subAgentNoteStore.loadFromDisk(canvas.id, canvasDataDir);
+    await repositoryNoteStore.loadFromDisk(canvas.id, canvasDataDir);
+    await mcpServerNoteStore.loadFromDisk(canvas.id, canvasDataDir);
+    await connectionStore.loadFromDisk(canvas.id, canvasDataDir);
+
+    logger.log('Startup', 'Complete', `已載入畫布：${canvas.name}`);
+  }
+
   private async restoreSlackConnections(): Promise<void> {
     await slackAppStore.loadFromDisk(config.appDataRoot);
 

@@ -23,11 +23,7 @@ class RepositorySyncService {
   async syncRepositoryResources(repositoryId: string): Promise<void> {
     const existingLock = this.locks.get(repositoryId);
     if (existingLock) {
-      await existingLock;
-      const newLock = this.locks.get(repositoryId);
-      if (newLock && newLock !== existingLock) {
-        await newLock;
-      }
+      await this.waitForExistingLock(repositoryId, existingLock);
       return;
     }
 
@@ -40,6 +36,14 @@ class RepositorySyncService {
       if (this.locks.get(repositoryId) === syncPromise) {
         this.locks.delete(repositoryId);
       }
+    }
+  }
+
+  private async waitForExistingLock(repositoryId: string, existingLock: Promise<void>): Promise<void> {
+    await existingLock;
+    const newLock = this.locks.get(repositoryId);
+    if (newLock && newLock !== existingLock) {
+      await newLock;
     }
   }
 
@@ -64,32 +68,36 @@ class RepositorySyncService {
 
   private async writePodManifests(podResourcesMap: Map<string, PodResources>, repositoryPath: string, repositoryId: string): Promise<void> {
     for (const [podId, resources] of podResourcesMap) {
-      await podManifestService.deleteManagedFiles(repositoryPath, podId);
-
-      for (const commandId of resources.commandIds) {
-        await fsOperation(
-          () => commandService.copyCommandToRepository(commandId, repositoryPath),
-          `複製 command ${commandId} 到 repository ${repositoryId} 失敗`
-        );
-      }
-
-      for (const skillId of resources.skillIds) {
-        await fsOperation(
-          () => skillService.copySkillToRepository(skillId, repositoryPath),
-          `複製 skill ${skillId} 到 repository ${repositoryId} 失敗`
-        );
-      }
-
-      for (const subAgentId of resources.subAgentIds) {
-        await fsOperation(
-          () => subAgentService.copySubAgentToRepository(subAgentId, repositoryPath),
-          `複製 subagent ${subAgentId} 到 repository ${repositoryId} 失敗`
-        );
-      }
-
-      const managedFiles = await this.collectPodManagedFiles(resources);
-      await podManifestService.writeManifest(repositoryPath, podId, managedFiles);
+      await this.writeSinglePodManifest(podId, resources, repositoryPath, repositoryId);
     }
+  }
+
+  private async writeSinglePodManifest(podId: string, resources: PodResources, repositoryPath: string, repositoryId: string): Promise<void> {
+    await podManifestService.deleteManagedFiles(repositoryPath, podId);
+
+    for (const commandId of resources.commandIds) {
+      await fsOperation(
+        () => commandService.copyCommandToRepository(commandId, repositoryPath),
+        `複製 command ${commandId} 到 repository ${repositoryId} 失敗`
+      );
+    }
+
+    for (const skillId of resources.skillIds) {
+      await fsOperation(
+        () => skillService.copySkillToRepository(skillId, repositoryPath),
+        `複製 skill ${skillId} 到 repository ${repositoryId} 失敗`
+      );
+    }
+
+    for (const subAgentId of resources.subAgentIds) {
+      await fsOperation(
+        () => subAgentService.copySubAgentToRepository(subAgentId, repositoryPath),
+        `複製 subagent ${subAgentId} 到 repository ${repositoryId} 失敗`
+      );
+    }
+
+    const managedFiles = await this.collectPodManagedFiles(resources);
+    await podManifestService.writeManifest(repositoryPath, podId, managedFiles);
   }
 
   private async performSync(repositoryId: string): Promise<void> {

@@ -107,14 +107,14 @@ describe('WorkflowPipeline', () => {
         summary: '摘要',
       });
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
         connectionId,
-        '摘要',
-        true,
-        undefined,
-        mockStrategy
-      );
+        summary: '摘要',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
     });
   });
 
@@ -143,14 +143,14 @@ describe('WorkflowPipeline', () => {
         targetPodId
       );
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
         connectionId,
-        '摘要',
-        true,
-        undefined,
-        mockStrategy
-      );
+        summary: '摘要',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
     });
 
     it('多輸入情境正確委派', async () => {
@@ -163,14 +163,14 @@ describe('WorkflowPipeline', () => {
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
-      expect(mockMultiInputService.handleMultiInputForConnection).toHaveBeenCalledWith(
+      expect(mockMultiInputService.handleMultiInputForConnection).toHaveBeenCalledWith({
         canvasId,
         sourcePodId,
-        mockConnection,
-        ['pod-a', 'pod-b'],
-        '摘要',
-        'auto'
-      );
+        connection: mockConnection,
+        requiredSourcePodIds: ['pod-a', 'pod-b'],
+        summary: '摘要',
+        triggerMode: 'auto',
+      });
 
       expect(mockExecutionService.triggerWorkflowWithSummary).not.toHaveBeenCalled();
     });
@@ -186,18 +186,18 @@ describe('WorkflowPipeline', () => {
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
         connectionId,
-        '合併內容',
-        true,
-        undefined,
-        mockStrategy
-      );
+        summary: '合併內容',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
 
-      const call = (mockExecutionService.triggerWorkflowWithSummary as any).mock.calls[0];
-      expect(call[2]).toBe('合併內容');
-      expect(call[3]).toBe(true);
+      const call = (mockExecutionService.triggerWorkflowWithSummary as any).mock.calls[0][0];
+      expect(call.summary).toBe('合併內容');
+      expect(call.isSummarized).toBe(true);
     });
   });
 
@@ -271,14 +271,14 @@ describe('WorkflowPipeline', () => {
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
         connectionId,
-        '合併內容但未指定 isSummarized',
-        true,
-        undefined,
-        mockStrategy
-      );
+        summary: '合併內容但未指定 isSummarized',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
     });
   });
 
@@ -303,14 +303,14 @@ describe('WorkflowPipeline', () => {
 
       await workflowPipeline.execute(aiDecideContext, mockStrategy);
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
         connectionId,
-        '合併內容',
-        true,
-        undefined,
-        mockStrategy
-      );
+        summary: '合併內容',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
     });
 
     it('direct mode 時傳遞 strategy 給 triggerWorkflowWithSummary', async () => {
@@ -333,14 +333,14 @@ describe('WorkflowPipeline', () => {
 
       await workflowPipeline.execute(directContext, mockStrategy);
 
-      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith(
+      expect(mockExecutionService.triggerWorkflowWithSummary).toHaveBeenCalledWith({
         canvasId,
         connectionId,
-        '合併內容',
-        true,
-        undefined,
-        mockStrategy
-      );
+        summary: '合併內容',
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
     });
   });
 

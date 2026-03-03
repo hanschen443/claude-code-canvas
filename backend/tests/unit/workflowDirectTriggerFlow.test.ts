@@ -67,13 +67,13 @@ describe('Direct Trigger Flow', () => {
             await workflowExecutionService.checkAndTriggerWorkflows(canvasId, sourcePodId);
 
             expect(triggerSpy).toHaveBeenCalled();
-            const call = triggerSpy.mock.calls[0];
-            expect(call[0]).toBe(canvasId);
-            expect(call[1]).toBe(mockDirectConnection.id);
-            expect(call[2]).toBe(testSummary);
-            expect(call[3]).toBe(true);
-            expect(call[4]).toEqual([mockDirectConnection.id]);
-            expect(call[5]).toHaveProperty('mode', 'direct');
+            const params = triggerSpy.mock.calls[0][0];
+            expect(params.canvasId).toBe(canvasId);
+            expect(params.connectionId).toBe(mockDirectConnection.id);
+            expect(params.summary).toBe(testSummary);
+            expect(params.isSummarized).toBe(true);
+            expect(params.participatingConnectionIds).toEqual([mockDirectConnection.id]);
+            expect(params.strategy).toHaveProperty('mode', 'direct');
         });
     });
 

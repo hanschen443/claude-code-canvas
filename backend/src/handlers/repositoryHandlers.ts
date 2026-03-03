@@ -24,7 +24,7 @@ import { clearPodMessages } from './repository/repositoryBindHelpers.js';
 import { logger, type LogCategory, type LogAction } from '../utils/logger.js';
 import { createNoteHandlers } from './factories/createNoteHandlers.js';
 import { createListHandler } from './factories/createResourceHandlers.js';
-import { validatePod, handleResourceDelete, withCanvasId, emitPodUpdated } from '../utils/handlerHelpers.js';
+import { validatePod, handleResourceDelete, withCanvasId, emitPodUpdated, handleResultError } from '../utils/handlerHelpers.js';
 import { validateRepositoryExists } from '../utils/validators.js';
 
 const repositoryNoteHandlers = createNoteHandlers({
@@ -122,17 +122,7 @@ export const handlePodBindRepository = withCanvasId<PodBindRepositoryPayload>(
     }
 
     const validateResult = await validateRepositoryExists(repositoryId);
-    if (!validateResult.success) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        validateResult.error,
-        requestId,
-        undefined,
-        'NOT_FOUND'
-      );
-      return;
-    }
+    if (handleResultError(validateResult, connectionId, WebSocketResponseEvents.POD_REPOSITORY_BOUND, requestId, '找不到 Repository', 'NOT_FOUND')) return;
 
     const oldRepositoryId = pod.repositoryId;
 

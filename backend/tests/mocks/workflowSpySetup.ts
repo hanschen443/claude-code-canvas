@@ -138,8 +138,6 @@ export function setupPendingTargetStoreSpy() {
         recordSourceRejection: vi.spyOn(pendingTargetStore, 'recordSourceRejection').mockImplementation(() => {
         }),
         getCompletedSummaries: vi.spyOn(pendingTargetStore, 'getCompletedSummaries').mockReturnValue(undefined),
-        clearRejections: vi.spyOn(pendingTargetStore, 'clearRejections').mockImplementation(() => {
-        }),
     };
     return spies;
 }

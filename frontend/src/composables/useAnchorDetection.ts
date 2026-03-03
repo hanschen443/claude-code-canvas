@@ -1,9 +1,8 @@
 import type { Pod } from '@/types/pod'
 import type { AnchorPoint, AnchorPosition } from '@/types/connection'
+import { POD_WIDTH, POD_HEIGHT } from '@/lib/constants'
 
 const DETECTION_RADIUS = 20
-const POD_WIDTH = 224
-const POD_HEIGHT = 168
 
 const anchorOffsets: Record<AnchorPosition, { localX: number; localY: number }> = {
   top: { localX: POD_WIDTH / 2, localY: 0 },

@@ -144,6 +144,49 @@ describe('SlackAppStore', () => {
         });
     });
 
+    describe('loadFromDisk token 格式驗證', () => {
+        it('botToken 非 xoxb- 開頭時略過該筆資料', async () => {
+            const created = slackAppStore.create('App', 'xoxb-valid', 'xapp-valid');
+            const id = created.data!.id;
+
+            await slackAppStore.flushWrites();
+
+            // 手動寫入一筆 botToken 格式不正確的資料
+            const {persistenceService} = await import('../../src/services/persistence/index.js');
+            const {join} = await import('path');
+            const filePath = join(tempDir, 'slack-apps.json');
+            const readResult = await persistenceService.readJson<any[]>(filePath);
+            const apps = readResult.data ?? [];
+            apps.push({id: 'bad-bot-id', name: 'Bad Bot', botToken: 'invalid-token', appToken: 'xapp-ok', botUserId: ''});
+            await persistenceService.writeJson(filePath, apps);
+
+            await slackAppStore.loadFromDisk(tempDir);
+
+            expect(slackAppStore.getById(id)).toBeDefined();
+            expect(slackAppStore.getById('bad-bot-id')).toBeUndefined();
+        });
+
+        it('appToken 非 xapp- 開頭時略過該筆資料', async () => {
+            const created = slackAppStore.create('App', 'xoxb-valid', 'xapp-valid');
+            const id = created.data!.id;
+
+            await slackAppStore.flushWrites();
+
+            const {persistenceService} = await import('../../src/services/persistence/index.js');
+            const {join} = await import('path');
+            const filePath = join(tempDir, 'slack-apps.json');
+            const readResult = await persistenceService.readJson<any[]>(filePath);
+            const apps = readResult.data ?? [];
+            apps.push({id: 'bad-app-id', name: 'Bad App', botToken: 'xoxb-ok', appToken: 'invalid-app-token', botUserId: ''});
+            await persistenceService.writeJson(filePath, apps);
+
+            await slackAppStore.loadFromDisk(tempDir);
+
+            expect(slackAppStore.getById(id)).toBeDefined();
+            expect(slackAppStore.getById('bad-app-id')).toBeUndefined();
+        });
+    });
+
     describe('loadFromDisk / saveToDiskAsync', () => {
         it('持久化後重新載入可還原資料', async () => {
             const created = slackAppStore.create('持久化 App', 'xoxb-persist', 'xapp-persist');

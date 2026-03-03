@@ -1,4 +1,5 @@
 import type {FrequencyType, Schedule} from '@/types/pod'
+import {MS_PER_SECOND, MS_PER_MINUTE, MS_PER_HOUR} from '@/lib/constants'
 
 /**
  * 格式化 Schedule 頻率為可讀文字
@@ -31,18 +32,18 @@ export function formatScheduleFrequency(schedule: Schedule): string {
 type TriggerTimeCalculator = (schedule: Schedule, now: Date, last: Date) => Date
 
 function calculateEverySecond(_schedule: Schedule, now: Date, last: Date): Date {
-    const next = new Date(last.getTime() + 1000)
-    return next > now ? next : new Date(now.getTime() + 1000)
+    const next = new Date(last.getTime() + MS_PER_SECOND)
+    return next > now ? next : new Date(now.getTime() + MS_PER_SECOND)
 }
 
 function calculateEveryXMinute(schedule: Schedule, now: Date, last: Date): Date {
-    const next = new Date(last.getTime() + schedule.intervalMinute * 60 * 1000)
-    return next > now ? next : new Date(now.getTime() + schedule.intervalMinute * 60 * 1000)
+    const next = new Date(last.getTime() + schedule.intervalMinute * MS_PER_MINUTE)
+    return next > now ? next : new Date(now.getTime() + schedule.intervalMinute * MS_PER_MINUTE)
 }
 
 function calculateEveryXHour(schedule: Schedule, now: Date, last: Date): Date {
-    const next = new Date(last.getTime() + schedule.intervalHour * 60 * 60 * 1000)
-    return next > now ? next : new Date(now.getTime() + schedule.intervalHour * 60 * 60 * 1000)
+    const next = new Date(last.getTime() + schedule.intervalHour * MS_PER_HOUR)
+    return next > now ? next : new Date(now.getTime() + schedule.intervalHour * MS_PER_HOUR)
 }
 
 function calculateEveryDay(schedule: Schedule, now: Date): Date {
@@ -60,7 +61,7 @@ function calculateEveryWeek(schedule: Schedule, now: Date): Date {
     const sortedWeekdays = schedule.weekdays.slice().sort((a, b) => a - b)
 
     if (sortedWeekdays.length === 0) {
-        return new Date(now.getTime() + 60 * 1000)
+        return new Date(now.getTime() + MS_PER_MINUTE)
     }
 
     const currentDay = now.getDay()

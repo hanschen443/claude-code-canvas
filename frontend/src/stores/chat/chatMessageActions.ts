@@ -1,6 +1,7 @@
 import {generateRequestId} from '@/services/utils'
 import {usePodStore} from '../pod/podStore'
-import type {Message, SubMessage, ToolUseInfo, ToolUseStatus} from '@/types/chat'
+import type {Message, SubMessage, ToolUseInfo} from '@/types/chat'
+import {isValidToolUseStatus} from '@/types/chat'
 import type {
     PersistedMessage,
     PodChatAbortedPayload,
@@ -27,7 +28,7 @@ function collectToolUseFromSubMessages(subMessages: PersistedMessage['subMessage
             toolName: tool.toolName,
             input: tool.input,
             output: tool.output,
-            status: (tool.status as ToolUseStatus) || 'completed',
+            status: isValidToolUseStatus(tool.status) ? tool.status : 'completed',
         }))
     )
 }
@@ -57,10 +58,6 @@ export function createAssistantMessageShape(messageId: string, content: string, 
         subMessages: [firstSubMessage],
         expectingNewBlock: true
     }
-}
-
-export function createUserMessageShape(): Partial<Message> {
-    return {}
 }
 
 export interface ChatMessageActions {
@@ -139,7 +136,7 @@ export function createMessageActions(store: ChatStoreInstance): ChatMessageActio
 
         const shape = effectiveRole === 'assistant'
             ? createAssistantMessageShape(messageId, content, isPartial, delta)
-            : createUserMessageShape()
+            : {}
 
         const newMessage: Message = { ...baseMessage, ...shape }
 

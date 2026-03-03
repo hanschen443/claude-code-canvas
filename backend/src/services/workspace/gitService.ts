@@ -3,7 +3,7 @@ import {Result, ok, err} from '../../types';
 import {config} from '../../config';
 import {logger} from '../../utils/logger.js';
 import {isPathWithinDirectory} from '../../utils/pathValidator.js';
-import {gitOperation, gitOp, resultOrDefault} from '../../utils/operationHelpers.js';
+import {gitOperation, gitOperationWithPath, resultOrDefault, getGitStageMessage} from '../../utils/operationHelpers.js';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -44,17 +44,6 @@ function isValidBranchName(branchName: string): boolean {
 
 function parseGitErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
-}
-
-function getFetchStageMessage(stage: string): string {
-    const stageMessages: Record<string, string> = {
-        counting: '計算物件數量...',
-        compressing: '壓縮物件...',
-        receiving: '接收物件...',
-        resolving: '解析差異...',
-        writing: '寫入物件...',
-    };
-    return stageMessages[stage] ?? '處理中...';
 }
 
 function getPullLatestError(errorMessage: string): string {
@@ -223,7 +212,7 @@ class GitService {
     }
 
     async getCurrentBranch(workspacePath: string): Promise<Result<string>> {
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             const status = await git.status();
             return status.current || 'unknown';
         }, '取得目前分支失敗');
@@ -237,7 +226,7 @@ class GitService {
     }
 
     async hasCommits(workspacePath: string): Promise<Result<boolean>> {
-        const result = await gitOp(workspacePath, async (git) => {
+        const result = await gitOperationWithPath(workspacePath, async (git) => {
             await git.revparse(['HEAD']);
             return true;
         }, '檢查 commits 失敗');
@@ -246,7 +235,7 @@ class GitService {
     }
 
     async branchExists(workspacePath: string, branchName: string): Promise<Result<boolean>> {
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             const branches = await git.branch();
             return branches.all.includes(branchName);
         }, '檢查分支失敗');
@@ -261,7 +250,7 @@ class GitService {
             return err('無效的分支名稱格式');
         }
 
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             await git.raw(['worktree', 'add', '-b', branchName, worktreePath]);
         }, '建立 Worktree 失敗');
     }
@@ -271,7 +260,7 @@ class GitService {
             return err('無效的 worktree 路徑');
         }
 
-        return gitOp(parentRepoPath, async (git) => {
+        return gitOperationWithPath(parentRepoPath, async (git) => {
             await git.raw(['worktree', 'remove', worktreePath]);
         }, '移除 Worktree 失敗');
     }
@@ -303,7 +292,7 @@ class GitService {
     }
 
     async hasUncommittedChanges(workspacePath: string): Promise<Result<boolean>> {
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             const status = await git.status();
             return !status.isClean();
         }, '檢查未 commit 修改失敗');
@@ -330,7 +319,7 @@ class GitService {
     }
 
     async getWorktreeBranches(workspacePath: string): Promise<Result<string[]>> {
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             const worktreeList = await git.raw(['worktree', 'list']);
 
             const lines = worktreeList.trim().split('\n');
@@ -349,7 +338,7 @@ class GitService {
         current: string,
         worktreeBranches: string[]
     }>> {
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             const branchSummary = await git.branch();
 
             const localBranches = branchSummary.all.filter(branch => !branch.startsWith('remotes/'));
@@ -366,7 +355,7 @@ class GitService {
     }
 
     async checkRemoteBranchExists(workspacePath: string, branchName: string): Promise<Result<boolean>> {
-        const result = await gitOp(workspacePath, async (git) => {
+        const result = await gitOperationWithPath(workspacePath, async (git) => {
             const remotes = await git.getRemotes();
 
             if (remotes.length === 0 || !remotes.some(r => r.name === 'origin')) {
@@ -403,7 +392,7 @@ class GitService {
             return err('無效的分支名稱格式');
         }
 
-        return gitOp(workspacePath, async (git) => {
+        return gitOperationWithPath(workspacePath, async (git) => {
             await git.checkout(['-b', branchName]);
         }, '建立並切換分支失敗');
     }
@@ -433,7 +422,7 @@ class GitService {
                 progress: onProgress
                     ? (event: SimpleGitProgressEvent): void => {
                         const mappedProgress = Math.floor(10 + event.progress * 0.7);
-                        const stageMessage = getFetchStageMessage(event.stage);
+                        const stageMessage = getGitStageMessage(event.stage);
                         onProgress(mappedProgress, stageMessage);
                     }
                     : undefined,
@@ -487,7 +476,7 @@ class GitService {
     ): Promise<Result<'fetched'>> {
         const fetchResult = await this.fetchRemoteBranch(workspacePath, branchName, (progressData) => {
             const mappedProgress = Math.floor(20 + progressData.progress * 0.6);
-            const stageMessage = getFetchStageMessage(progressData.stage);
+            const stageMessage = getGitStageMessage(progressData.stage);
             onProgress?.(mappedProgress, stageMessage);
         });
         if (!fetchResult.success) {

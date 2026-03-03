@@ -1,10 +1,14 @@
-import type { Component } from 'vue'
-
 export type MessageRole = 'user' | 'assistant'
 
 export type HistoryLoadingStatus = 'idle' | 'loading' | 'loaded' | 'error'
 
 export type ToolUseStatus = 'pending' | 'running' | 'completed' | 'error'
+
+const VALID_TOOL_USE_STATUSES: ToolUseStatus[] = ['pending', 'running', 'completed', 'error']
+
+export function isValidToolUseStatus(value: unknown): value is ToolUseStatus {
+  return typeof value === 'string' && (VALID_TOOL_USE_STATUSES as string[]).includes(value)
+}
 
 export interface ToolUseInfo {
   toolUseId: string
@@ -34,8 +38,3 @@ export interface Message {
   expectingNewBlock?: boolean
 }
 
-export interface Tool {
-  icon: Component
-  label: string
-  color: string
-}

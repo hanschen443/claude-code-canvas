@@ -126,14 +126,14 @@ describe('WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復', () =>
                 await new Promise(resolve => setTimeout(resolve, 100));
             });
 
-            const triggerPromise = workflowExecutionService.triggerWorkflowWithSummary(
+            const triggerPromise = workflowExecutionService.triggerWorkflowWithSummary({
                 canvasId,
-                mockAutoConnection.id,
-                'Test summary',
-                true,
-                undefined,
-                mockAutoStrategy
-            );
+                connectionId: mockAutoConnection.id,
+                summary: 'Test summary',
+                isSummarized: true,
+                participatingConnectionIds: undefined,
+                strategy: mockAutoStrategy,
+            });
 
             // fire-and-forget 不應阻塞呼叫端
             await triggerPromise;
@@ -164,14 +164,14 @@ describe('WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復', () =>
                 return {...mockSourcePod, id: podId};
             }) as any);
 
-            await workflowExecutionService.triggerWorkflowWithSummary(
+            await workflowExecutionService.triggerWorkflowWithSummary({
                 canvasId,
-                directConn.id,
-                'Direct summary',
-                true,
-                undefined,
-                mockDirectStrategy
-            );
+                connectionId: directConn.id,
+                summary: 'Direct summary',
+                isSummarized: true,
+                participatingConnectionIds: undefined,
+                strategy: mockDirectStrategy,
+            });
 
             expect(mockDirectStrategy.onTrigger).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -200,14 +200,14 @@ describe('WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復', () =>
                 return {...mockSourcePod, id: podId};
             }) as any);
 
-            await workflowExecutionService.triggerWorkflowWithSummary(
+            await workflowExecutionService.triggerWorkflowWithSummary({
                 canvasId,
-                autoConn.id,
-                'Auto summary',
-                true,
-                undefined,
-                mockAutoStrategy
-            );
+                connectionId: autoConn.id,
+                summary: 'Auto summary',
+                isSummarized: true,
+                participatingConnectionIds: undefined,
+                strategy: mockAutoStrategy,
+            });
 
             expect(mockAutoStrategy.onTrigger).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -315,14 +315,14 @@ describe('WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復', () =>
                 processNextInQueueCalled = true;
             });
 
-            await workflowExecutionService.triggerWorkflowWithSummary(
+            await workflowExecutionService.triggerWorkflowWithSummary({
                 canvasId,
-                conn.id,
-                'Test summary',
-                true,
-                undefined,
-                mockAutoStrategy
-            );
+                connectionId: conn.id,
+                summary: 'Test summary',
+                isSummarized: true,
+                participatingConnectionIds: undefined,
+                strategy: mockAutoStrategy,
+            });
 
             // 等待 fire-and-forget 的錯誤處理完成
             await new Promise(resolve => setTimeout(resolve, 100));

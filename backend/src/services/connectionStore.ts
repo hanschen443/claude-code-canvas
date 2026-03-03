@@ -1,14 +1,27 @@
 import {promises as fs} from 'fs';
 import path from 'path';
 import {v4 as uuidv4} from 'uuid';
-import type {Connection, AnchorPosition, TriggerMode, DecideStatus, ConnectionStatus} from '../types';
-import type {PersistedConnection} from '../types';
+import {z} from 'zod';
+import type {Connection, AnchorPosition, TriggerMode, DecideStatus, ConnectionStatus, PersistedConnection} from '../types';
 import {Result, ok, err} from '../types';
 import {logger} from '../utils/logger.js';
 import {canvasStore} from './canvasStore.js';
 import {persistenceService} from './persistence/index.js';
-import {createPersistentWriter} from '../utils/persistentWriteHelper.js';
 import {readJsonFileOrDefault} from './shared/fileResourceHelpers.js';
+import {CanvasMapStore} from './shared/CanvasMapStore.js';
+import {CanvasWriterHelper} from './shared/PersistenceHelper.js';
+
+const PersistedConnectionSchema = z.object({
+    id: z.string(),
+    sourcePodId: z.string(),
+    targetPodId: z.string(),
+    sourceAnchor: z.string(),
+    targetAnchor: z.string(),
+    triggerMode: z.enum(['auto', 'ai-decide', 'direct']).default('auto'),
+    decideStatus: z.string().default('none'),
+    decideReason: z.string().nullable().optional().default(null),
+    connectionStatus: z.string().default('idle'),
+});
 
 interface CreateConnectionData {
     sourcePodId: string;
@@ -18,27 +31,15 @@ interface CreateConnectionData {
     triggerMode?: TriggerMode;
 }
 
-class ConnectionStore {
-    private connectionsByCanvas: Map<string, Map<string, Connection>> = new Map();
-    private writer = createPersistentWriter('Connection', 'ConnectionStore');
-
-    private getOrCreateCanvasMap(canvasId: string): Map<string, Connection> {
-        let connectionsMap = this.connectionsByCanvas.get(canvasId);
-        if (!connectionsMap) {
-            connectionsMap = new Map();
-            this.connectionsByCanvas.set(canvasId, connectionsMap);
-        }
-        return connectionsMap;
-    }
+class ConnectionStore extends CanvasMapStore<Connection> {
+    private readonly canvasWriter = new CanvasWriterHelper('Connection', 'ConnectionStore');
 
     private findByField(canvasId: string, field: 'sourcePodId' | 'targetPodId', value: string): Connection[] {
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
-        if (!connectionsMap) return [];
-        return Array.from(connectionsMap.values()).filter(conn => conn[field] === value);
+        return this.findByPredicate(canvasId, (conn) => conn[field] === value);
     }
 
     private patchConnection(canvasId: string, connectionId: string, patchFn: (connection: Connection) => void): Connection | undefined {
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
+        const connectionsMap = this.dataByCanvas.get(canvasId);
         if (!connectionsMap) return undefined;
 
         const connection = connectionsMap.get(connectionId);
@@ -51,31 +52,24 @@ class ConnectionStore {
         return connection;
     }
 
-    private parseStringField(obj: Record<string, unknown>, field: string, defaultValue: string): string {
-        return (field in obj && typeof obj[field] === 'string') ? obj[field] as string : defaultValue;
-    }
-
     private parsePersistedConnection(persisted: unknown): Connection | null {
-        if (!persisted || typeof persisted !== 'object') return null;
-        const obj = persisted as Record<string, unknown>;
-
-        if (typeof obj.id !== 'string' || typeof obj.sourcePodId !== 'string' ||
-            typeof obj.targetPodId !== 'string' || typeof obj.sourceAnchor !== 'string' ||
-            typeof obj.targetAnchor !== 'string') {
+        const result = PersistedConnectionSchema.safeParse(persisted);
+        if (!result.success) {
             logger.warn('Connection', 'Load', '跳過無效的 connection 資料：缺少必要欄位');
             return null;
         }
 
+        const data = result.data;
         return {
-            id: obj.id,
-            sourcePodId: obj.sourcePodId,
-            sourceAnchor: obj.sourceAnchor as AnchorPosition,
-            targetPodId: obj.targetPodId,
-            targetAnchor: obj.targetAnchor as AnchorPosition,
-            triggerMode: this.parseStringField(obj, 'triggerMode', 'auto') as TriggerMode,
-            decideStatus: this.parseStringField(obj, 'decideStatus', 'none') as DecideStatus,
-            decideReason: ('decideReason' in obj && obj.decideReason !== undefined) ? obj.decideReason as string | null : null,
-            connectionStatus: this.parseStringField(obj, 'connectionStatus', 'idle') as ConnectionStatus,
+            id: data.id,
+            sourcePodId: data.sourcePodId,
+            sourceAnchor: data.sourceAnchor as AnchorPosition,
+            targetPodId: data.targetPodId,
+            targetAnchor: data.targetAnchor as AnchorPosition,
+            triggerMode: data.triggerMode as TriggerMode,
+            decideStatus: data.decideStatus as DecideStatus,
+            decideReason: data.decideReason ?? null,
+            connectionStatus: data.connectionStatus as ConnectionStatus,
         };
     }
 
@@ -101,18 +95,8 @@ class ConnectionStore {
         return connection;
     }
 
-    getById(canvasId: string, id: string): Connection | undefined {
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
-        return connectionsMap?.get(id);
-    }
-
-    list(canvasId: string): Connection[] {
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
-        return connectionsMap ? Array.from(connectionsMap.values()) : [];
-    }
-
     delete(canvasId: string, id: string): boolean {
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
+        const connectionsMap = this.dataByCanvas.get(canvasId);
         if (!connectionsMap) {
             return false;
         }
@@ -125,13 +109,8 @@ class ConnectionStore {
     }
 
     findByPodId(canvasId: string, podId: string): Connection[] {
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
-        if (!connectionsMap) {
-            return [];
-        }
-
-        return Array.from(connectionsMap.values()).filter(
-            (connection) => connection.sourcePodId === podId || connection.targetPodId === podId
+        return this.findByPredicate(canvasId, (connection) =>
+            connection.sourcePodId === podId || connection.targetPodId === podId
         );
     }
 
@@ -175,7 +154,7 @@ class ConnectionStore {
     deleteByPodId(canvasId: string, podId: string): number {
         const connectionsToDelete = this.findByPodId(canvasId, podId);
 
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
+        const connectionsMap = this.dataByCanvas.get(canvasId);
         if (!connectionsMap) {
             return 0;
         }
@@ -198,7 +177,7 @@ class ConnectionStore {
 
         const persistedConnections = await readJsonFileOrDefault<unknown>(connectionsFilePath);
         if (persistedConnections === null) {
-            this.connectionsByCanvas.set(canvasId, new Map());
+            this.dataByCanvas.set(canvasId, new Map());
             return ok(undefined);
         }
 
@@ -209,7 +188,7 @@ class ConnectionStore {
             connectionsMap.set(connection.id, connection);
         }
 
-        this.connectionsByCanvas.set(canvasId, connectionsMap);
+        this.dataByCanvas.set(canvasId, connectionsMap);
 
         const canvasName = canvasStore.getNameById(canvasId);
         logger.log('Connection', 'Load', `[ConnectionStore] 已載入 ${connectionsMap.size} 個連線，畫布 ${canvasName}`);
@@ -224,7 +203,7 @@ class ConnectionStore {
 
         const connectionsFilePath = path.join(canvasDataDir, 'connections.json');
 
-        const connectionsMap = this.connectionsByCanvas.get(canvasId);
+        const connectionsMap = this.dataByCanvas.get(canvasId);
         const connectionsArray = connectionsMap ? Array.from(connectionsMap.values()) : [];
         const persistedConnections: PersistedConnection[] = connectionsArray.map((connection) => ({
             id: connection.id,
@@ -243,11 +222,11 @@ class ConnectionStore {
 
     /** 等待指定 Canvas 所有排隊中的磁碟寫入完成 */
     flushWrites(canvasId: string): Promise<void> {
-        return this.writer.flush(canvasId);
+        return this.canvasWriter.flush(canvasId);
     }
 
     private saveToDiskAsync(canvasId: string): void {
-        this.writer.enqueueWrite(canvasId, () => this.saveToDisk(canvasId));
+        this.canvasWriter.scheduleSave(canvasId, () => this.saveToDisk(canvasId));
     }
 
     updateDecideStatus(canvasId: string, connectionId: string, status: DecideStatus, reason: string | null): Connection | undefined {

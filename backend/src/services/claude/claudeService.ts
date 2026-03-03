@@ -362,7 +362,7 @@ export class ClaudeService {
         return createUserMessageStream(contentArray, sessionId);
     }
 
-    private buildSlackToolOptions(pod: Pod, queryOptions: Options): void {
+    private applySlackToolOptions(pod: Pod, queryOptions: Options): void {
         if (!pod.slackBinding) return;
 
         const {slackAppId, slackChannelId} = pod.slackBinding;
@@ -439,7 +439,7 @@ export class ClaudeService {
 
         await this.applyOutputStyle(pod, queryOptions);
         this.applyMcpServers(pod, queryOptions);
-        this.buildSlackToolOptions(pod, queryOptions);
+        this.applySlackToolOptions(pod, queryOptions);
 
         if (pod.claudeSessionId) {
             queryOptions.resume = pod.claudeSessionId;
@@ -470,6 +470,31 @@ export class ClaudeService {
         onStream: StreamCallback
     ): Promise<Message> {
         return this.sendMessageInternal(podId, message, onStream, false);
+    }
+
+    private async runQueryStream(
+        queryStream: Query,
+        abortController: AbortController,
+        state: QueryState,
+        onStream: StreamCallback
+    ): Promise<void> {
+        for await (const sdkMessage of queryStream) {
+            this.processSDKMessage(sdkMessage, state, onStream);
+        }
+
+        // 防禦性檢查：若 abort signal 已觸發但未拋出 AbortError，手動拋出
+        // 這是為了處理 for await 迴圈靜默結束的邊緣情況
+        if (abortController.signal.aborted) {
+            const abortError = new Error('查詢已被中斷');
+            abortError.name = 'AbortError';
+            throw abortError;
+        }
+    }
+
+    private finalizeSession(canvasId: string, podId: string, state: QueryState, pod: Pod): void {
+        if (state.sessionId && state.sessionId !== pod.claudeSessionId) {
+            podStore.setClaudeSessionId(canvasId, podId, state.sessionId);
+        }
     }
 
     private async sendMessageInternal(
@@ -503,21 +528,9 @@ export class ClaudeService {
 
             this.activeQueries.set(podId, {queryStream, abortController});
 
-            for await (const sdkMessage of queryStream) {
-                this.processSDKMessage(sdkMessage, state, onStream);
-            }
+            await this.runQueryStream(queryStream, abortController, state, onStream);
 
-            // 防禦性檢查：若 abort signal 已觸發但未拋出 AbortError，手動拋出
-            // 這是為了處理 for await 迴圈靜默結束的邊緣情況
-            if (abortController.signal.aborted) {
-                const abortError = new Error('查詢已被中斷');
-                abortError.name = 'AbortError';
-                throw abortError;
-            }
-
-            if (state.sessionId && state.sessionId !== pod.claudeSessionId) {
-                podStore.setClaudeSessionId(canvasId, podId, state.sessionId);
-            }
+            this.finalizeSession(canvasId, podId, state, pod);
 
             return {
                 id: messageId,
@@ -581,18 +594,19 @@ export class ClaudeService {
     }
 
     private resolveCwd(pod: Pod): string {
-        const rawCwd = pod.repositoryId
-            ? path.join(config.repositoriesRoot, pod.repositoryId)
-            : pod.workspacePath;
-
         if (pod.repositoryId) {
-            const resolvedCwd = path.resolve(rawCwd);
+            const resolvedCwd = path.resolve(path.join(config.repositoriesRoot, pod.repositoryId));
             if (!isPathWithinDirectory(resolvedCwd, path.resolve(config.repositoriesRoot))) {
                 throw new Error(`非法的工作目錄路徑：${pod.repositoryId}`);
             }
+            return resolvedCwd;
         }
 
-        return path.resolve(rawCwd);
+        const resolvedCwd = path.resolve(pod.workspacePath);
+        if (!isPathWithinDirectory(resolvedCwd, path.resolve(config.canvasRoot))) {
+            throw new Error(`非法的工作目錄路徑：${pod.workspacePath}`);
+        }
+        return resolvedCwd;
     }
 
     public async executeDisposableChat(options: DisposableChatOptions): Promise<DisposableChatResult> {

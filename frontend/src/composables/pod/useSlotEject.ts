@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import { ref } from 'vue'
+import { DEGREES_TO_RADIANS } from '@/lib/constants'
 
 interface Position {
   x: number
@@ -24,6 +25,9 @@ interface UseSlotEjectReturn {
   isEjecting: Ref<boolean>
   handleSlotClick: (e: MouseEvent, boundNoteId: string, podId: string, onRemoved: () => void) => Promise<void>
 }
+
+const EJECT_X_OFFSET_PX = 30
+const EJECT_ANIMATION_DURATION_MS = 300
 
 export function useSlotEject(options: UseSlotEjectOptions): UseSlotEjectReturn {
   const {
@@ -67,14 +71,13 @@ export function useSlotEject(options: UseSlotEjectOptions): UseSlotEjectReturn {
     const podCenterX = (podRect.right - viewportOffset.x) / zoom
     const podCenterY = (slotRect.top - viewportOffset.y) / zoom
 
-    const baseX = 30
     const baseY = 0
 
     const rotation = podRotation()
-    const radians = rotation * Math.PI / 180
+    const radians = rotation * DEGREES_TO_RADIANS
 
-    const rotatedX = baseX * Math.cos(radians) - baseY * Math.sin(radians)
-    const rotatedY = baseX * Math.sin(radians) + baseY * Math.cos(radians)
+    const rotatedX = EJECT_X_OFFSET_PX * Math.cos(radians) - baseY * Math.sin(radians)
+    const rotatedY = EJECT_X_OFFSET_PX * Math.sin(radians) + baseY * Math.cos(radians)
 
     const ejectX = podCenterX + rotatedX
     const ejectY = podCenterY + rotatedY
@@ -89,7 +92,7 @@ export function useSlotEject(options: UseSlotEjectOptions): UseSlotEjectReturn {
     setTimeout(() => {
       isEjecting.value = false
       setNoteAnimating(boundNoteId, false)
-    }, 300)
+    }, EJECT_ANIMATION_DURATION_MS)
   }
 
   return {

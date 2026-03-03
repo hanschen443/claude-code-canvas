@@ -1,10 +1,25 @@
 import type { WebSocketResponseEvents } from '../schemas/index.js';
-import type { Pod } from '../types/index.js';
+import type { Pod, Result } from '../types/index.js';
 import { podStore } from '../services/podStore.js';
 import { canvasStore } from '../services/canvasStore.js';
 import { socketService } from '../services/socketService.js';
 import { emitError } from './websocketResponse.js';
 import { logger, type LogCategory } from './logger.js';
+
+export function handleResultError<T>(
+	result: Result<T>,
+	connectionId: string,
+	event: WebSocketResponseEvents,
+	requestId: string,
+	fallbackError: string,
+	errorCode?: string
+): result is { success: false; error: string } {
+	if (!result.success) {
+		emitError(connectionId, event, result.error ?? fallbackError, requestId, undefined, errorCode ?? 'INTERNAL_ERROR');
+		return true;
+	}
+	return false;
+}
 
 export function getCanvasId(
 	connectionId: string,

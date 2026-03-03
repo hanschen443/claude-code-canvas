@@ -2,10 +2,8 @@ interface PendingTarget {
   targetPodId: string;
   requiredSourcePodIds: string[];
   completedSources: Map<string, string>;
-  rejectedSources: Map<string, string>; // key: sourcePodId, value: rejection reason
+  rejectedSources: Map<string, string>; // key: 來源 Pod ID，value: 拒絕原因
   createdAt: Date;
-  mergedContent?: string;
-  isReadyToTrigger: boolean;
 }
 
 class PendingTargetStore {
@@ -18,7 +16,6 @@ class PendingTargetStore {
       completedSources: new Map(),
       rejectedSources: new Map(),
       createdAt: new Date(),
-      isReadyToTrigger: false,
     });
   }
 
@@ -54,19 +51,6 @@ class PendingTargetStore {
   getRejectedSources(targetPodId: string): Map<string, string> | undefined {
     const pending = this.pendingTargets.get(targetPodId);
     return pending?.rejectedSources;
-  }
-
-  clearRejections(targetPodId: string): void {
-    const pending = this.pendingTargets.get(targetPodId);
-    if (pending) {
-      pending.rejectedSources.clear();
-    }
-  }
-
-  clearAllRejectionsForConnections(targetPodIds: string[]): void {
-    for (const targetPodId of targetPodIds) {
-      this.clearRejections(targetPodId);
-    }
   }
 
   getCompletedSummaries(targetPodId: string): Map<string, string> | undefined {

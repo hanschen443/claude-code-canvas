@@ -5,7 +5,7 @@ import { mockWebSocketModule, resetMockWebSocket } from '../../helpers/mockWebSo
 import { createMockPod, createMockMessage } from '../../helpers/factories'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { usePodStore } from '@/stores/pod/podStore'
-import { createAssistantMessageShape, createUserMessageShape } from '@/stores/chat/chatMessageActions'
+import { createAssistantMessageShape } from '@/stores/chat/chatMessageActions'
 import type {
   PodChatMessagePayload,
   PodChatToolUsePayload,
@@ -1642,15 +1642,6 @@ describe('chatMessageActions', () => {
     })
   })
 
-  describe('createUserMessageShape', () => {
-    it('應回傳不含 subMessages 和 expectingNewBlock 的 Message', () => {
-      const shape = createUserMessageShape()
-
-      expect(shape.subMessages).toBeUndefined()
-      expect(shape.expectingNewBlock).toBeUndefined()
-    })
-  })
-
   describe('addNewChatMessage - 角色分支', () => {
     it('assistant 訊息應使用 createAssistantMessageShape 建構', async () => {
       const chatStore = useChatStore()
@@ -1663,7 +1654,7 @@ describe('chatMessageActions', () => {
       expect(messages![0]!.expectingNewBlock).toBe(true)
     })
 
-    it('user 訊息應使用 createUserMessageShape 建構', async () => {
+    it('user 訊息應不含 subMessages 和 expectingNewBlock', async () => {
       const chatStore = useChatStore()
       const podStore = usePodStore()
       podStore.pods = [createMockPod({ id: 'pod-1', output: [] })]

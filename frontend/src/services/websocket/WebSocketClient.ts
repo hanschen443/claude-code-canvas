@@ -8,10 +8,11 @@ type EventCallbackWithAck<T> = (payload: T, ack: AckCallback) => void
 
 const RECONNECT_INTERVAL_MS = 3000
 
-type EventHandler = EventCallback<unknown> | EventCallbackWithAck<unknown>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type EventHandler = (payload: any, ack?: AckCallback) => void
 
 function castToEventHandler<T>(callback: EventCallback<T> | EventCallbackWithAck<T>): EventHandler {
-    return callback as unknown as EventHandler
+    return callback as EventHandler
 }
 
 class WebSocketClient {

@@ -16,7 +16,7 @@ import { socketService } from '../services/socketService.js';
 import { emitError } from '../utils/websocketResponse.js';
 import { logger } from '../utils/logger.js';
 import { fireAndForget } from '../utils/operationHelpers.js';
-import { emitPodUpdated } from '../utils/handlerHelpers.js';
+import { emitPodUpdated, handleResultError } from '../utils/handlerHelpers.js';
 
 interface SanitizedSlackApp {
     id: string;
@@ -53,10 +53,7 @@ export async function handleSlackAppCreate(
     }
 
     const result = slackAppStore.create(name, botToken, appToken);
-    if (!result.success) {
-        emitError(connectionId, WebSocketResponseEvents.SLACK_APP_CREATED, result.error, requestId, undefined, 'INTERNAL_ERROR');
-        return;
-    }
+    if (handleResultError(result, connectionId, WebSocketResponseEvents.SLACK_APP_CREATED, requestId, '建立 Slack App 失敗')) return;
 
     const app = result.data;
 
@@ -167,10 +164,7 @@ export async function handleSlackAppChannelsRefresh(
     if (!app) return;
 
     const result = await slackConnectionManager.refreshChannels(slackAppId);
-    if (!result.success) {
-        emitError(connectionId, WebSocketResponseEvents.SLACK_APP_CHANNELS_REFRESHED, result.error ?? '重新取得頻道失敗', requestId, undefined, 'INTERNAL_ERROR');
-        return;
-    }
+    if (handleResultError(result, connectionId, WebSocketResponseEvents.SLACK_APP_CHANNELS_REFRESHED, requestId, '重新取得頻道失敗')) return;
 
     logger.log('Slack', 'Complete', `Slack App「${app.name}」頻道已重新整理`);
 

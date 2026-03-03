@@ -1,27 +1,36 @@
 import {v4 as uuidv4} from 'uuid';
+import {z} from 'zod';
 import {WebSocketResponseEvents} from '../schemas';
 import {Pod, PodStatus, CreatePodRequest, Result, ok, err, ScheduleConfig} from '../types';
 import type {PersistedPod, PodSlackBinding} from '../types';
-
-type PodUpdates = Partial<Omit<Pod, 'schedule'>> & { schedule?: ScheduleConfig | null };
 import {podPersistenceService} from './persistence/podPersistence.js';
 import {socketService} from './socketService.js';
 import {logger} from '../utils/logger.js';
 import {canvasStore} from './canvasStore.js';
 import {WriteQueue} from '../utils/writeQueue.js';
+import {CanvasMapStore} from './shared/CanvasMapStore.js';
 
-class PodStore {
-    private podsByCanvas: Map<string, Map<string, Pod>> = new Map();
+type PodUpdates = Partial<Omit<Pod, 'schedule'>> & { schedule?: ScheduleConfig | null };
+
+const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const VALID_STATUSES = ['idle', 'chatting', 'summarizing', 'error'] as const;
+
+const PersistedPodSchema = z.object({
+    id: z.string().regex(ID_PATTERN),
+    name: z.string().min(1),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    rotation: z.number().finite(),
+    status: z.enum(VALID_STATUSES),
+    skillIds: z.array(z.string().regex(ID_PATTERN)).optional().default([]),
+    subAgentIds: z.array(z.string().regex(ID_PATTERN)).optional().default([]),
+    mcpServerIds: z.array(z.string().regex(ID_PATTERN)).optional().default([]),
+    repositoryId: z.string().regex(ID_PATTERN).nullable().optional(),
+    commandId: z.string().regex(ID_PATTERN).nullable().optional(),
+});
+
+class PodStore extends CanvasMapStore<Pod> {
     private writeQueue = new WriteQueue('Pod', 'PodStore');
-
-    private getCanvasPods(canvasId: string): Map<string, Pod> {
-        let pods = this.podsByCanvas.get(canvasId);
-        if (!pods) {
-            pods = new Map();
-            this.podsByCanvas.set(canvasId, pods);
-        }
-        return pods;
-    }
 
     flushWrites(podId: string): Promise<void> {
         return this.writeQueue.flush(podId);
@@ -43,7 +52,7 @@ class PodStore {
     }
 
     private modifyPod(canvasId: string, podId: string, updates: Partial<Pod>, persist = true, claudeSessionId?: string): Pod | undefined {
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         const pod = pods.get(podId);
         if (!pod) {
             return undefined;
@@ -57,11 +66,6 @@ class PodStore {
         }
 
         return updatedPod;
-    }
-
-    private findByPredicate(canvasId: string, predicate: (pod: Pod) => boolean): Pod[] {
-        const pods = this.getCanvasPods(canvasId);
-        return Array.from(pods.values()).filter(predicate);
     }
 
     create(canvasId: string, data: CreatePodRequest): Pod {
@@ -91,20 +95,15 @@ class PodStore {
             autoClear: false,
         };
 
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         pods.set(id, pod);
         this.persistPodAsync(canvasId, pod);
 
         return pod;
     }
 
-    getById(canvasId: string, id: string): Pod | undefined {
-        const pods = this.getCanvasPods(canvasId);
-        return pods.get(id);
-    }
-
     getByName(canvasId: string, name: string): Pod | undefined {
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         for (const pod of pods.values()) {
             if (pod.name === name) {
                 return pod;
@@ -114,7 +113,7 @@ class PodStore {
     }
 
     hasName(canvasId: string, name: string, excludePodId?: string): boolean {
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         for (const [id, pod] of pods.entries()) {
             if (pod.name === name && id !== excludePodId) {
                 return true;
@@ -124,7 +123,7 @@ class PodStore {
     }
 
     getByIdGlobal(podId: string): { canvasId: string; pod: Pod } | undefined {
-        for (const [canvasId, pods] of this.podsByCanvas.entries()) {
+        for (const [canvasId, pods] of this.dataByCanvas.entries()) {
             const pod = pods.get(podId);
             if (pod) {
                 return {canvasId, pod};
@@ -134,12 +133,11 @@ class PodStore {
     }
 
     getAll(canvasId: string): Pod[] {
-        const pods = this.getCanvasPods(canvasId);
-        return Array.from(pods.values());
+        return this.list(canvasId);
     }
 
     update(canvasId: string, id: string, updates: PodUpdates): Pod | undefined {
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         const pod = pods.get(id);
         if (!pod) {
             return undefined;
@@ -183,7 +181,7 @@ class PodStore {
     }
 
     delete(canvasId: string, id: string): boolean {
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         if (!pods.delete(id)) {
             return false;
         }
@@ -206,7 +204,7 @@ class PodStore {
     }
 
     setStatus(canvasId: string, id: string, status: PodStatus): void {
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
         const pod = pods.get(id);
         if (!pod) {
             return;
@@ -322,7 +320,7 @@ class PodStore {
         if (binding === null) {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const {slackBinding: _, ...rest} = pod;
-            const pods = this.getCanvasPods(canvasId);
+            const pods = this.getOrCreateCanvasMap(canvasId);
             pods.set(podId, rest as Pod);
             this.persistPodAsync(canvasId, rest as Pod);
             return;
@@ -334,7 +332,7 @@ class PodStore {
     findBySlackApp(slackAppId: string): Array<{canvasId: string; pod: Pod}> {
         const result: Array<{canvasId: string; pod: Pod}> = [];
 
-        for (const [canvasId, pods] of this.podsByCanvas.entries()) {
+        for (const [canvasId, pods] of this.dataByCanvas.entries()) {
             for (const pod of pods.values()) {
                 if (pod.slackBinding?.slackAppId === slackAppId) {
                     result.push({canvasId, pod});
@@ -359,7 +357,7 @@ class PodStore {
     getAllWithSchedule(): Array<{ canvasId: string; pod: Pod }> {
         const result: Array<{ canvasId: string; pod: Pod }> = [];
 
-        for (const [canvasId, pods] of this.podsByCanvas.entries()) {
+        for (const [canvasId, pods] of this.dataByCanvas.entries()) {
             for (const pod of pods.values()) {
                 if (pod.schedule && pod.schedule.enabled) {
                     result.push({canvasId, pod});
@@ -371,41 +369,12 @@ class PodStore {
     }
 
     private validatePodData(persistedPod: PersistedPod): Result<void> {
-        // 防禦性驗證：驗證必要欄位的型別和範圍，避免磁碟檔案被竄改時注入惡意值
-        const validStatuses: PodStatus[] = ['idle', 'chatting', 'summarizing', 'error'];
-        const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-        const skillIds = persistedPod.skillIds ?? [];
-        const subAgentIds = persistedPod.subAgentIds ?? [];
-        const mcpServerIds = persistedPod.mcpServerIds ?? [];
-
-        const hasInvalidSkillIds = skillIds.some((id) => !ID_PATTERN.test(id));
-        const hasInvalidSubAgentIds = subAgentIds.some((id) => !ID_PATTERN.test(id));
-        const hasInvalidMcpServerIds = mcpServerIds.some((id) => !ID_PATTERN.test(id));
-        const hasInvalidRepositoryId = persistedPod.repositoryId !== null && !ID_PATTERN.test(persistedPod.repositoryId ?? '');
-        const hasInvalidCommandId = persistedPod.commandId != null && !ID_PATTERN.test(persistedPod.commandId);
-
-        const rules: Array<{ check: boolean; errorMsg: string }> = [
-            {check: persistedPod.id.trim() === '', errorMsg: '無效的 Pod ID'},
-            {check: persistedPod.name.trim() === '', errorMsg: '無效的 Pod 名稱'},
-            {check: !Number.isFinite(persistedPod.x), errorMsg: '無效的 Pod X 座標'},
-            {check: !Number.isFinite(persistedPod.y), errorMsg: '無效的 Pod Y 座標'},
-            {check: !Number.isFinite(persistedPod.rotation), errorMsg: '無效的 Pod 旋轉角度'},
-            {check: !validStatuses.includes(persistedPod.status), errorMsg: '無效的 Pod 狀態'},
-            {check: hasInvalidSkillIds, errorMsg: '無效的 Skill ID 格式'},
-            {check: hasInvalidSubAgentIds, errorMsg: '無效的子代理 ID 格式'},
-            {check: hasInvalidMcpServerIds, errorMsg: '無效的 MCP Server ID 格式'},
-            {check: hasInvalidRepositoryId, errorMsg: '無效的 Repository ID 格式'},
-            {check: hasInvalidCommandId, errorMsg: '無效的 Command ID 格式'},
-        ];
-
-        for (const {check, errorMsg} of rules) {
-            if (check) {
-                logger.log('Pod', 'Load', `[PodStore] ${errorMsg}: ${persistedPod.id}`);
-                return err(errorMsg);
-            }
+        const result = PersistedPodSchema.safeParse(persistedPod);
+        if (!result.success) {
+            const errorMsg = result.error.issues[0]?.message ?? '無效的 Pod 資料';
+            logger.log('Pod', 'Load', `[PodStore] 驗證失敗: ${persistedPod.id}`);
+            return err(errorMsg);
         }
-
         return ok(undefined);
     }
 
@@ -474,7 +443,7 @@ class PodStore {
         }
 
         const podIds = result.data;
-        const pods = this.getCanvasPods(canvasId);
+        const pods = this.getOrCreateCanvasMap(canvasId);
 
         for (const podId of podIds) {
             await this.loadSinglePod(podId, canvasDir, pods);

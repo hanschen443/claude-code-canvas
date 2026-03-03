@@ -106,27 +106,6 @@ describe('PendingTargetStore', () => {
         });
     });
 
-    describe('clearRejections 清除所有 rejected 記錄', () => {
-        it('清除後 hasAnyRejectedSource 回傳 false', () => {
-            pendingTargetStore.initializePendingTarget(targetPodId, [sourcePodId1, sourcePodId2]);
-            pendingTargetStore.recordSourceRejection(targetPodId, sourcePodId1, 'Rejected');
-
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId)).toBe(true);
-
-            pendingTargetStore.clearRejections(targetPodId);
-
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId)).toBe(false);
-            const rejections = pendingTargetStore.getRejectedSources(targetPodId);
-            expect(rejections?.size).toBe(0);
-        });
-
-        it('pending target 不存在時不會拋出錯誤', () => {
-            expect(() => {
-                pendingTargetStore.clearRejections('nonexistent');
-            }).not.toThrow();
-        });
-    });
-
     describe('多輸入場景中部分 rejected 時，isReadyToTrigger 永遠為 false', () => {
         it('有 rejection 時，即使所有 sources 都回應，hasRejection 為 true', () => {
             pendingTargetStore.initializePendingTarget(targetPodId, [sourcePodId1, sourcePodId2, sourcePodId3]);
@@ -164,28 +143,4 @@ describe('PendingTargetStore', () => {
         });
     });
 
-    describe('clearAllRejectionsForConnections 批次清除', () => {
-        it('清除多個 target 的 rejections', () => {
-            const targetPodId2 = 'target-pod-2';
-            const targetPodId3 = 'target-pod-3';
-
-            pendingTargetStore.initializePendingTarget(targetPodId, [sourcePodId1]);
-            pendingTargetStore.initializePendingTarget(targetPodId2, [sourcePodId1]);
-            pendingTargetStore.initializePendingTarget(targetPodId3, [sourcePodId1]);
-
-            pendingTargetStore.recordSourceRejection(targetPodId, sourcePodId1, 'Rejected 1');
-            pendingTargetStore.recordSourceRejection(targetPodId2, sourcePodId1, 'Rejected 2');
-            pendingTargetStore.recordSourceRejection(targetPodId3, sourcePodId1, 'Rejected 3');
-
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId)).toBe(true);
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId2)).toBe(true);
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId3)).toBe(true);
-
-            pendingTargetStore.clearAllRejectionsForConnections([targetPodId, targetPodId2, targetPodId3]);
-
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId)).toBe(false);
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId2)).toBe(false);
-            expect(pendingTargetStore.hasAnyRejectedSource(targetPodId3)).toBe(false);
-        });
-    });
 });

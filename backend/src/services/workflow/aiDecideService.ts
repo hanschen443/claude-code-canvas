@@ -95,9 +95,7 @@ class AiDecideService {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _sdkMessage of queryStream) {
-      // 只需等待 tool 被呼叫
-    }
+    for await (const _sdkMessage of queryStream) { /* 消化 stream，等待 tool 被 SDK 呼叫 */ }
 
     return decisionResults;
   }
@@ -110,9 +108,7 @@ class AiDecideService {
     const errors: Array<{ connectionId: string; error: string }> = [];
 
     for (const conn of connections) {
-      const decision = decisionResults.decisions.find(
-        (d: { connectionId: string; shouldTrigger: boolean; reason: string }) => d.connectionId === conn.id
-      );
+      const decision = decisionResults.decisions.find(d => d.connectionId === conn.id);
       if (decision) {
         results.push({
           connectionId: conn.id,

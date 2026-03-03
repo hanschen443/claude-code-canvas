@@ -1,4 +1,5 @@
 import type { AnchorPosition } from '@/types/connection'
+import { RADIANS_TO_DEGREES } from '@/lib/constants'
 
 export interface PathData {
   path: string
@@ -115,7 +116,7 @@ export function useConnectionPath(): {
     const afterX = calculateBezierPoint(CURVE_MIDPOINT + TANGENT_STEP, start.x, cp1x, cp2x, end.x)
     const afterY = calculateBezierPoint(CURVE_MIDPOINT + TANGENT_STEP, start.y, cp1y, cp2y, end.y)
 
-    const angle = Math.atan2(afterY - beforeY, afterX - beforeX) * (180 / Math.PI)
+    const angle = Math.atan2(afterY - beforeY, afterX - beforeX) * RADIANS_TO_DEGREES
 
     return {
       path,
@@ -147,7 +148,7 @@ export function useConnectionPath(): {
 
       const tangentX = calculateBezierTangent(curveParameter, start.x, cp1x, cp2x, end.x)
       const tangentY = calculateBezierTangent(curveParameter, start.y, cp1y, cp2y, end.y)
-      const angle = Math.atan2(tangentY, tangentX) * (180 / Math.PI)
+      const angle = Math.atan2(tangentY, tangentX) * RADIANS_TO_DEGREES
 
       arrows.push({ x, y, angle })
     }

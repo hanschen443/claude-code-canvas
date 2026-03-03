@@ -74,14 +74,14 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       return;
     }
 
-    await this.deps.executionService.triggerWorkflowWithSummary(
+    await this.deps.executionService.triggerWorkflowWithSummary({
       canvasId,
       connectionId,
-      finalSummary,
-      finalIsSummarized,
+      summary: finalSummary,
+      isSummarized: finalIsSummarized,
       participatingConnectionIds,
-      strategy
-    );
+      strategy,
+    });
   }
 
   private async runCollectSourcesStage(
@@ -121,14 +121,14 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
     );
 
     if (isMultiInput) {
-      await this.deps.multiInputService.handleMultiInputForConnection(
+      await this.deps.multiInputService.handleMultiInputForConnection({
         canvasId,
         sourcePodId,
         connection,
         requiredSourcePodIds,
-        summaryContent,
-        triggerMode as 'auto' | 'ai-decide'
-      );
+        summary: summaryContent,
+        triggerMode: triggerMode as 'auto' | 'ai-decide',
+      });
       return null;
     }
 

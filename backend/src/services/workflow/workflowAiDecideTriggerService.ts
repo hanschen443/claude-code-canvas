@@ -203,7 +203,7 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
     const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
     const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    logger.error('Workflow', 'Error', `AI Decide 發生錯誤，${formatConnLog(connection.id, sourcePod?.name, sourcePodId, targetPod?.name, connection.targetPodId)}：${errorMessage}`);
+    logger.error('Workflow', 'Error', `AI Decide 發生錯誤，${formatConnLog({connId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId})}：${errorMessage}`);
   }
 
   private handleApprovedConnection(
@@ -225,7 +225,7 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
     const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
     const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    logger.log('Workflow', 'Create', `AI Decide 核准${formatConnLog(connection.id, sourcePod?.name, sourcePodId, targetPod?.name, connection.targetPodId)}：${decideResult.reason}`);
+    logger.log('Workflow', 'Create', `AI Decide 核准${formatConnLog({connId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId})}：${decideResult.reason}`);
 
     const pipelineContext: PipelineContext = {
       canvasId,
@@ -266,7 +266,7 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     });
     const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
     const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    logger.log('Workflow', 'Update', `AI Decide 拒絕${formatConnLog(connection.id, sourcePod?.name, sourcePodId, targetPod?.name, connection.targetPodId)}：${reason}`);
+    logger.log('Workflow', 'Update', `AI Decide 拒絕${formatConnLog({connId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId})}：${reason}`);
   }
 
   private async handleRejectedConnection(

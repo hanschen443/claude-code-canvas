@@ -28,7 +28,9 @@ class WorkflowClearService {
     visited.add(sourcePodId);
 
     while (queue.length > 0) {
-      const currentPodId = queue.shift()!;
+      const currentId = queue.shift();
+      if (!currentId) break;
+      const currentPodId = currentId;
 
       const connections = connectionStore.findBySourcePodId(canvasId, currentPodId);
 
@@ -74,37 +76,33 @@ class WorkflowClearService {
       };
     }
 
-    try {
-      const podIds = this.getDownstreamPodIds(canvasId, sourcePodId);
-      const clearedPodNames: string[] = [];
-      const clearedConnectionIds: string[] = [];
+    const podIds = this.getDownstreamPodIds(canvasId, sourcePodId);
+    const clearedPodNames: string[] = [];
+    const clearedConnectionIds: string[] = [];
 
-      for (const podId of podIds) {
-        const result = await this.clearSinglePod(canvasId, podId, canvasDir);
-        if (result) {
-          clearedPodNames.push(result.podName);
-          clearedConnectionIds.push(...result.clearedConnectionIds);
-        }
+    for (const podId of podIds) {
+      let result: ClearSinglePodResult | null;
+
+      try {
+        result = await this.clearSinglePod(canvasId, podId, canvasDir);
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        logger.error('AutoClear', 'Error', `[WorkflowClear] 清除 Pod ${podId} 失敗：${errorMessage}`);
+        continue;
       }
 
-      return {
-        success: true,
-        clearedPodIds: podIds,
-        clearedPodNames,
-        clearedConnectionIds,
-      };
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      logger.error('AutoClear', 'Error', `[WorkflowClear] 清除 Workflow 失敗：${errorMessage}`);
-
-      return {
-        success: false,
-        clearedPodIds: [],
-        clearedPodNames: [],
-        clearedConnectionIds: [],
-        error: errorMessage,
-      };
+      if (result) {
+        clearedPodNames.push(result.podName);
+        clearedConnectionIds.push(...result.clearedConnectionIds);
+      }
     }
+
+    return {
+      success: true,
+      clearedPodIds: podIds,
+      clearedPodNames,
+      clearedConnectionIds,
+    };
   }
 
   private async clearSinglePod(

@@ -65,14 +65,7 @@ export const handleWorkflowClear = withCanvasId<WorkflowClearPayload>(
     const result = await workflowClearService.clearWorkflow(canvasId, sourcePodId);
 
     if (!result.success) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT,
-        result.error || 'Unknown error occurred during workflow clear',
-        requestId,
-        undefined,
-        'INTERNAL_ERROR'
-      );
+      emitError(connectionId, WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT, result.error ?? 'Workflow 清除失敗', requestId, undefined, 'INTERNAL_ERROR');
       return;
     }
 

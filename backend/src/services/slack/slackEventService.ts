@@ -24,9 +24,7 @@ const BUSY_STATUSES = new Set(['chatting', 'summarizing'] as const);
 const MAX_WORKFLOW_CHAIN_SIZE = 50;
 
 class SlackEventService {
-    // 忙碌回覆冷卻時間（毫秒）
     private static readonly BUSY_REPLY_COOLDOWN_MS = 30_000;
-    // 記錄每個頻道最後一次忙碌回覆的時間
     private busyReplyCooldowns = new Map<string, number>();
 
     async handleAppMention(slackAppId: string, event: AppMentionEvent): Promise<void> {
@@ -65,16 +63,18 @@ class SlackEventService {
         }
 
         for (const {canvasId, pod} of boundPods) {
-            if (BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing')) {
-                continue;
-            }
-
-            if (pod.status === 'error') {
-                podStore.setStatus(canvasId, pod.id, 'idle');
-            }
-
-            await this.injectSlackMessage(canvasId, pod.id, message);
+            await this.processBoundPod(canvasId, pod, message);
         }
+    }
+
+    private async processBoundPod(canvasId: string, pod: Pod, message: SlackMessage): Promise<void> {
+        if (BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing')) return;
+
+        if (pod.status === 'error') {
+            podStore.setStatus(canvasId, pod.id, 'idle');
+        }
+
+        await this.injectSlackMessage(canvasId, pod.id, message);
     }
 
     isSlackChannelBusy(slackAppId: string, channelId: string): boolean {
@@ -105,6 +105,24 @@ class SlackEventService {
         return [...downstream, ...upstream];
     }
 
+    private processQueueItem(
+        canvasId: string,
+        currentId: string,
+        visited: Set<string>,
+        queue: string[],
+        predicate: (podId: string) => boolean
+    ): boolean {
+        if (predicate(currentId)) return true;
+
+        for (const adjacentId of this.getAdjacentPodIds(canvasId, currentId)) {
+            if (!visited.has(adjacentId)) {
+                visited.add(adjacentId);
+                queue.push(adjacentId);
+            }
+        }
+        return false;
+    }
+
     // BFS 雙向遍歷 Workflow 鏈，對每個非起始節點執行 predicate
     private traverseWorkflowChain(canvasId: string, startPodId: string, predicate: (podId: string) => boolean): boolean {
         const visited = new Set<string>([startPodId]);
@@ -117,15 +135,10 @@ class SlackEventService {
                 return false;
             }
 
-            const currentId = queue.shift()!;
-            if (predicate(currentId)) return true;
+            const currentId = queue.shift();
+            if (!currentId) break;
 
-            for (const adjacentId of this.getAdjacentPodIds(canvasId, currentId)) {
-                if (!visited.has(adjacentId)) {
-                    visited.add(adjacentId);
-                    queue.push(adjacentId);
-                }
-            }
+            if (this.processQueueItem(canvasId, currentId, visited, queue, predicate)) return true;
         }
         return false;
     }
@@ -147,7 +160,9 @@ class SlackEventService {
 
         const podName = currentPod?.name ?? podId;
 
-        const formattedText = `[Slack: @${message.userName}] ${message.text}`;
+        const escapedUserName = message.userName.replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+        const escapedText = message.text.replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+        const formattedText = `[Slack: @${escapedUserName}] ${escapedText}`;
 
         podStore.setStatus(canvasId, podId, 'chatting');
 

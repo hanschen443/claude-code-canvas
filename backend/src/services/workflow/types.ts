@@ -1,4 +1,4 @@
-import type { Connection, TriggerMode } from '../../types/index.js';
+import type { Connection, TriggerMode, AutoTriggerMode } from '../../types/index.js';
 
 export interface TriggerDecideContext {
   canvasId: string;
@@ -90,6 +90,15 @@ export interface PipelineContext {
   decideResult: TriggerDecideResult;
 }
 
+export interface TriggerWorkflowWithSummaryParams {
+  canvasId: string;
+  connectionId: string;
+  summary: string;
+  isSummarized: boolean;
+  participatingConnectionIds: string[] | undefined;
+  strategy: TriggerStrategy;
+}
+
 export interface ExecutionServiceMethods {
   generateSummaryWithFallback(
     canvasId: string,
@@ -97,14 +106,7 @@ export interface ExecutionServiceMethods {
     targetPodId: string
   ): Promise<{ content: string; isSummarized: boolean } | null>;
 
-  triggerWorkflowWithSummary(
-    canvasId: string,
-    connectionId: string,
-    summary: string,
-    isSummarized: boolean,
-    participatingConnectionIds: string[] | undefined,
-    strategy: TriggerStrategy
-  ): Promise<void>;
+  triggerWorkflowWithSummary(params: TriggerWorkflowWithSummaryParams): Promise<void>;
 }
 
 export interface StateServiceMethods {
@@ -114,15 +116,17 @@ export interface StateServiceMethods {
   };
 }
 
+export interface HandleMultiInputForConnectionParams {
+  canvasId: string;
+  sourcePodId: string;
+  connection: Connection;
+  requiredSourcePodIds: string[];
+  summary: string;
+  triggerMode: AutoTriggerMode;
+}
+
 export interface MultiInputServiceMethods {
-  handleMultiInputForConnection(
-    canvasId: string,
-    sourcePodId: string,
-    connection: Connection,
-    requiredSourcePodIds: string[],
-    summary: string,
-    triggerMode: 'auto' | 'ai-decide'
-  ): Promise<void>;
+  handleMultiInputForConnection(params: HandleMultiInputForConnectionParams): Promise<void>;
 }
 
 export interface QueueServiceMethods {

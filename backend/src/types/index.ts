@@ -28,7 +28,7 @@ export type { SubAgentNote } from './subAgentNote.js';
 export type { Group, GroupType } from './group.js';
 export { GROUP_TYPES } from './group.js';
 
-export type { Connection, AnchorPosition, TriggerMode, DecideStatus, ConnectionStatus } from './connection.js';
+export type { Connection, AnchorPosition, TriggerMode, AutoTriggerMode, DecideStatus, ConnectionStatus } from './connection.js';
 
 export type { ScheduleConfig, ScheduleConfigInput, ScheduleFrequency, PersistedScheduleConfig } from './schedule.js';
 

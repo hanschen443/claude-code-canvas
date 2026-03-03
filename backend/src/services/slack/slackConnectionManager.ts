@@ -27,26 +27,16 @@ class SlackConnectionManager {
         slackAppStore.updateStatus(slackApp.id, 'connecting');
         this.broadcastConnectionStatus(slackApp.id);
 
+        let app: App;
+
         try {
-            const app = new App({
+            app = new App({
                 token: slackApp.botToken,
                 socketMode: true,
                 appToken: slackApp.appToken,
             });
 
             await app.start();
-
-            slackAppStore.updateStatus(slackApp.id, 'connected');
-
-            const authResult = await app.client.auth.test();
-            if (authResult.user_id) {
-                slackAppStore.updateBotUserId(slackApp.id, authResult.user_id as string);
-            }
-
-            this.boltApps.set(slackApp.id, app);
-            this.reconnectAttempts.set(slackApp.id, 0);
-
-            logger.log('Slack', 'Complete', `Slack App ${slackApp.id} 連線成功`);
         } catch (error) {
             logger.error('Slack', 'Error', `Slack App ${slackApp.id} 連線失敗`, error);
             slackAppStore.updateStatus(slackApp.id, 'error');
@@ -54,11 +44,31 @@ class SlackConnectionManager {
             return;
         }
 
-        // 非關鍵操作：失敗不影響連線狀態
-        const connectedApp = this.boltApps.get(slackApp.id)!;
-        await this.fetchChannels(slackApp, connectedApp);
+        slackAppStore.updateStatus(slackApp.id, 'connected');
 
-        connectedApp.event('app_mention', async ({event}) => {
+        try {
+            const authResult = await app.client.auth.test();
+            if (authResult.user_id) {
+                slackAppStore.updateBotUserId(slackApp.id, authResult.user_id as string);
+            }
+        } catch (error) {
+            logger.error('Slack', 'Error', `Slack App ${slackApp.id} 取得 bot user id 失敗`, error);
+        }
+
+        this.boltApps.set(slackApp.id, app);
+        this.reconnectAttempts.set(slackApp.id, 0);
+
+        logger.log('Slack', 'Complete', `Slack App ${slackApp.id} 連線成功`);
+
+        // 非關鍵操作：失敗不影響連線狀態
+        await this.fetchChannels(slackApp, app);
+        this.setupEventHandlers(app, slackApp);
+
+        this.broadcastConnectionStatus(slackApp.id);
+    }
+
+    private setupEventHandlers(app: App, slackApp: SlackApp): void {
+        app.event('app_mention', async ({event}) => {
             logger.log('Slack', 'Complete', `收到 app_mention 事件：channel=${event.channel}, event_ts=${event.event_ts}`);
             try {
                 await slackEventService.handleAppMention(slackApp.id, event);
@@ -66,8 +76,6 @@ class SlackConnectionManager {
                 logger.error('Slack', 'Error', `處理 app_mention 事件失敗：channel=${event.channel}, event_ts=${event.event_ts}`, error);
             }
         });
-
-        this.broadcastConnectionStatus(slackApp.id);
     }
 
     async disconnect(slackAppId: string): Promise<void> {

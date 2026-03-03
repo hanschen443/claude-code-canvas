@@ -33,12 +33,16 @@ describe('ClaudeService', () => {
     let streamEvents: StreamEvent[];
     let originalRepositoriesRoot: string;
 
+    let originalCanvasRoot: string;
+
     beforeEach(() => {
         streamEvents = [];
         mockQueryGenerator = null;
 
         originalRepositoriesRoot = config.repositoriesRoot;
+        originalCanvasRoot = config.canvasRoot;
         (config as any).repositoriesRoot = '/test/repos';
+        (config as any).canvasRoot = '/test/canvas';
 
         vi.spyOn(podStore, 'getByIdGlobal').mockReturnValue(null as any);
         vi.spyOn(podStore, 'setClaudeSessionId').mockImplementation(() => {});
@@ -50,6 +54,7 @@ describe('ClaudeService', () => {
 
     afterEach(() => {
         (config as any).repositoriesRoot = originalRepositoriesRoot;
+        (config as any).canvasRoot = originalCanvasRoot;
         vi.restoreAllMocks();
     });
 
@@ -59,7 +64,7 @@ describe('ClaudeService', () => {
         model: 'claude-sonnet-4-5-20250929' as const,
         claudeSessionId: null,
         repositoryId: null,
-        workspacePath: '/test/workspace',
+        workspacePath: '/test/canvas/workspace',
         commandId: null,
         outputStyleId: null,
         status: 'idle' as const,
@@ -422,7 +427,7 @@ describe('ClaudeService', () => {
                 expect.objectContaining({
                     prompt: expect.any(Object),
                     options: expect.objectContaining({
-                        cwd: '/test/workspace',
+                        cwd: '/test/canvas/workspace',
                     }),
                 })
             );
@@ -868,6 +873,23 @@ describe('ClaudeService', () => {
             const { podStore } = await import('../../src/services/podStore.js');
             const maliciousPod = createMockPod({
                 repositoryId: '../../etc',
+            });
+
+            (podStore.getByIdGlobal as any).mockReturnValue({
+                canvasId: 'test-canvas',
+                pod: maliciousPod,
+            });
+
+            await expect(
+                claudeService.sendMessage('test-pod-id', 'hello', onStreamCallback)
+            ).rejects.toThrow('非法的工作目錄路徑');
+        });
+
+        it('workspacePath 超出 canvasRoot 時應拋出錯誤', async () => {
+            const { podStore } = await import('../../src/services/podStore.js');
+            const maliciousPod = createMockPod({
+                repositoryId: null,
+                workspacePath: '/etc/passwd',
             });
 
             (podStore.getByIdGlobal as any).mockReturnValue({
