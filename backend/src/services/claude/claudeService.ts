@@ -1,7 +1,7 @@
 import path from 'path';
 import {v4 as uuidv4} from 'uuid';
 import {type Options, type Query, query, tool, createSdkMcpServer} from '@anthropic-ai/claude-agent-sdk';
-import type {SDKMessage, SDKSystemMessage, SDKAssistantMessage, SDKResultMessage, SDKUserMessage as SDKUserMessageType} from '@anthropic-ai/claude-agent-sdk';
+import type {SDKMessage, SDKSystemMessage, SDKAssistantMessage, SDKResultMessage, SDKUserMessage as SDKUserMessageType, SDKToolProgressMessage} from '@anthropic-ai/claude-agent-sdk';
 import {podStore} from '../podStore.js';
 import {mcpServerStore} from '../mcpServerStore.js';
 import {isAbortError, getErrorMessage} from '../../utils/errorHelpers.js';
@@ -22,12 +22,10 @@ import {slackConnectionManager} from '../slack/slackConnectionManager.js';
 
 export type {StreamEvent, StreamCallback} from './types.js';
 
-// SDK 的 SDKToolProgressMessage 不含 output/result 欄位，此為我們實際接收到的訊息結構
-type SDKToolProgressWithOutput = {
-    type: 'tool_progress';
+// SDK 的 SDKToolProgressMessage 不含 output/result 欄位，此為實際接收到的訊息結構（runtime 額外夾帶）
+type SDKToolProgressWithOutput = SDKToolProgressMessage & {
     output?: string;
     result?: string;
-    tool_use_id?: string;
 };
 
 type AssistantTextBlock = {type: 'text'; text: string};
@@ -83,6 +81,13 @@ export class ClaudeService {
         queryStream: Query;
         abortController: AbortController;
     }>();
+
+    private readonly sdkMessageHandlers: Record<string, (msg: SDKMessage, state: QueryState, onStream: StreamCallback) => void> = {
+        assistant: (msg, state, onStream) => this.handleAssistantMessage(msg as SDKAssistantMessage, state, onStream),
+        user: (msg, state, onStream) => this.handleUserMessage(msg as SDKUserMessageType, state, onStream),
+        tool_progress: (msg, state, onStream) => this.handleToolProgressMessage(msg as SDKToolProgressWithOutput, state, onStream),
+        result: (msg, state, onStream) => this.handleResultMessage(msg as SDKResultMessage, state, onStream),
+    };
 
     private buildBaseOptions(cwd: string): Partial<Options> {
         return {
@@ -295,28 +300,14 @@ export class ClaudeService {
             return;
         }
 
-        switch (sdkMessage.type) {
-            case 'assistant':
-                this.handleAssistantMessage(sdkMessage as SDKAssistantMessage, state, onStream);
-                break;
-            case 'user':
-                this.handleUserMessage(sdkMessage as SDKUserMessageType, state, onStream);
-                break;
-            case 'tool_progress':
-                this.handleToolProgressMessage(sdkMessage as unknown as SDKToolProgressWithOutput, state, onStream);
-                break;
-            case 'result':
-                this.handleResultMessage(sdkMessage as SDKResultMessage, state, onStream);
-                break;
-            default:
-                break;
-        }
+        this.sdkMessageHandlers[sdkMessage.type]?.(sdkMessage, state, onStream);
     }
 
     private shouldRetrySession(error: unknown, pod: Pod, isRetry: boolean): boolean {
+        if (isRetry) return false;
+        if (!pod.claudeSessionId) return false;
         const errorMessage = getErrorMessage(error);
-        const isResumeError = errorMessage.includes('session') || errorMessage.includes('resume');
-        return isResumeError && !!pod.claudeSessionId && !isRetry;
+        return errorMessage.includes('session') || errorMessage.includes('resume');
     }
 
     private async handleSendMessageError(params: HandleSendMessageErrorParams): Promise<Message> {
@@ -337,11 +328,8 @@ export class ClaudeService {
         }
 
         const errorMessage = getErrorMessage(error);
-        if (isRetry) {
-            logger.error('Chat', 'Error', `Pod ${pod.name} 重試查詢仍然失敗: ${errorMessage}`);
-        } else {
-            logger.error('Chat', 'Error', `Pod ${pod.name} 查詢失敗: ${errorMessage}`);
-        }
+        const prefix = isRetry ? '重試查詢仍然' : '查詢';
+        logger.error('Chat', 'Error', `Pod ${pod.name} ${prefix}失敗: ${errorMessage}`);
 
         onStream({type: 'error', error: '與 Claude 通訊時發生錯誤，請稍後再試'});
         throw error;

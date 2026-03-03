@@ -42,20 +42,25 @@ export function useNoteEventHandlers(options: NoteEventHandlerOptions): {
     store.setIsOverTrash(isOver)
   }
 
+  const handleDropOnTrash = async (noteId: string, note: Note, startX: number, startY: number): Promise<void> => {
+    if (note.boundToPodId === null) {
+      await store.deleteNote(noteId)
+      return
+    }
+
+    store.setNoteAnimating(noteId, true)
+    await store.updateNotePosition(noteId, startX, startY)
+    setTimeout(() => {
+      store.setNoteAnimating(noteId, false)
+    }, 300)
+  }
+
   const handleDragComplete = async (data: { noteId: string; isOverTrash: boolean; startX: number; startY: number }): Promise<void> => {
     const note = store.getNoteById(data.noteId)
     if (!note) return
 
     if (data.isOverTrash) {
-      if (note.boundToPodId === null) {
-        await store.deleteNote(data.noteId)
-      } else {
-        store.setNoteAnimating(data.noteId, true)
-        await store.updateNotePosition(data.noteId, data.startX, data.startY)
-        setTimeout(() => {
-          store.setNoteAnimating(data.noteId, false)
-        }, 300)
-      }
+      await handleDropOnTrash(data.noteId, note, data.startX, data.startY)
     } else {
       await store.updateNotePosition(data.noteId, note.x, note.y)
     }

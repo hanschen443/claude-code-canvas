@@ -5,6 +5,7 @@ import { mockWebSocketModule, resetMockWebSocket } from '../../helpers/mockWebSo
 import { createMockPod, createMockMessage } from '../../helpers/factories'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { usePodStore } from '@/stores/pod/podStore'
+import { createAssistantMessageShape, createUserMessageShape } from '@/stores/chat/chatMessageActions'
 import type {
   PodChatMessagePayload,
   PodChatToolUsePayload,
@@ -1618,6 +1619,120 @@ describe('chatMessageActions', () => {
       const updatedPod = podStore.pods.find(p => p.id === 'pod-1')
       expect(updatedPod!.output).toHaveLength(1)
       expect(updatedPod!.output[0]).toBe('Valid content')
+    })
+  })
+
+  describe('createAssistantMessageShape', () => {
+    it('應回傳包含 subMessages 和 expectingNewBlock 的 Message', () => {
+      const shape = createAssistantMessageShape('msg-1', 'content', true, 'delta')
+
+      expect(shape.subMessages).toHaveLength(1)
+      expect(shape.subMessages![0]).toMatchObject({
+        id: 'msg-1-sub-0',
+        content: 'delta',
+        isPartial: true,
+      })
+      expect(shape.expectingNewBlock).toBe(true)
+    })
+
+    it('delta 為空時應以 content 作為 subMessage 內容', () => {
+      const shape = createAssistantMessageShape('msg-1', 'my content', false)
+
+      expect(shape.subMessages![0]!.content).toBe('my content')
+    })
+  })
+
+  describe('createUserMessageShape', () => {
+    it('應回傳不含 subMessages 和 expectingNewBlock 的 Message', () => {
+      const shape = createUserMessageShape()
+
+      expect(shape.subMessages).toBeUndefined()
+      expect(shape.expectingNewBlock).toBeUndefined()
+    })
+  })
+
+  describe('addNewChatMessage - 角色分支', () => {
+    it('assistant 訊息應使用 createAssistantMessageShape 建構', async () => {
+      const chatStore = useChatStore()
+      const messageActions = chatStore.getMessageActions()
+
+      await messageActions.addNewChatMessage('pod-1', 'msg-1', 'Hello', true, 'assistant', 'Hello')
+
+      const messages = chatStore.messagesByPodId.get('pod-1')
+      expect(messages![0]!.subMessages).toHaveLength(1)
+      expect(messages![0]!.expectingNewBlock).toBe(true)
+    })
+
+    it('user 訊息應使用 createUserMessageShape 建構', async () => {
+      const chatStore = useChatStore()
+      const podStore = usePodStore()
+      podStore.pods = [createMockPod({ id: 'pod-1', output: [] })]
+      const messageActions = chatStore.getMessageActions()
+
+      await messageActions.addNewChatMessage('pod-1', 'msg-1', 'Hello', false, 'user')
+
+      const messages = chatStore.messagesByPodId.get('pod-1')
+      expect(messages![0]!.subMessages).toBeUndefined()
+      expect(messages![0]!.expectingNewBlock).toBeUndefined()
+    })
+
+    it('user 訊息應呼叫 appendUserOutputToPod', async () => {
+      const chatStore = useChatStore()
+      const podStore = usePodStore()
+      podStore.pods = [createMockPod({ id: 'pod-1', output: [] })]
+      const messageActions = chatStore.getMessageActions()
+
+      await messageActions.addNewChatMessage('pod-1', 'msg-1', 'User input', false, 'user')
+
+      const updatedPod = podStore.pods.find(p => p.id === 'pod-1')
+      expect(updatedPod!.output).toHaveLength(1)
+      expect(updatedPod!.output[0]).toMatch(/^> User input/)
+    })
+  })
+
+  describe('updateExistingChatMessage - 角色分支', () => {
+    it('assistant 角色應呼叫 updateAssistantSubMessages', () => {
+      const chatStore = useChatStore()
+      const messageActions = chatStore.getMessageActions()
+
+      const messages: Message[] = [
+        {
+          id: 'msg-1',
+          role: 'assistant',
+          content: 'Hello',
+          isPartial: true,
+          timestamp: new Date().toISOString(),
+          subMessages: [{ id: 'msg-1-sub-0', content: 'Hello', isPartial: true }],
+          expectingNewBlock: false,
+        }
+      ]
+      chatStore.messagesByPodId.set('pod-1', messages)
+
+      messageActions.updateExistingChatMessage('pod-1', messages, 0, 'Hello World', true, ' World')
+
+      const updated = chatStore.messagesByPodId.get('pod-1')
+      expect(updated![0]!.subMessages).toBeDefined()
+    })
+
+    it('user 角色不應更新 subMessages', () => {
+      const chatStore = useChatStore()
+      const messageActions = chatStore.getMessageActions()
+
+      const messages: Message[] = [
+        {
+          id: 'msg-1',
+          role: 'user',
+          content: 'Hello',
+          isPartial: false,
+          timestamp: new Date().toISOString(),
+        }
+      ]
+      chatStore.messagesByPodId.set('pod-1', messages)
+
+      messageActions.updateExistingChatMessage('pod-1', messages, 0, 'Hello World', false, ' World')
+
+      const updated = chatStore.messagesByPodId.get('pod-1')
+      expect(updated![0]!.subMessages).toBeUndefined()
     })
   })
 })

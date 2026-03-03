@@ -15,7 +15,7 @@ import type {
 import {CONTENT_PREVIEW_LENGTH} from '@/lib/constants'
 import {truncateContent} from './chatUtils'
 import type {ChatStoreInstance} from './chatStore'
-import {updateSubMessageContent} from './subMessageHelpers'
+import {updateAssistantSubMessages} from './subMessageHelpers'
 import {createToolTrackingActions} from './toolTrackingActions'
 import {createMessageCompletionActions} from './messageCompletionActions'
 
@@ -45,6 +45,22 @@ async function appendUserOutputToPod(podId: string, content: string): Promise<vo
         ...pod,
         output: [...pod.output, truncatedContent]
     })
+}
+
+export function createAssistantMessageShape(messageId: string, content: string, isPartial: boolean, delta?: string): Partial<Message> {
+    const firstSubMessage: SubMessage = {
+        id: `${messageId}-sub-0`,
+        content: delta || content,
+        isPartial
+    }
+    return {
+        subMessages: [firstSubMessage],
+        expectingNewBlock: true
+    }
+}
+
+export function createUserMessageShape(): Partial<Message> {
+    return {}
 }
 
 export interface ChatMessageActions {
@@ -125,7 +141,7 @@ export function createMessageActions(store: ChatStoreInstance): ChatMessageActio
         const messages = store.messagesByPodId.get(podId) || []
         const effectiveRole = role ?? 'assistant'
 
-        const newMessage: Message = {
+        const baseMessage: Message = {
             id: messageId,
             role: effectiveRole,
             content,
@@ -133,15 +149,11 @@ export function createMessageActions(store: ChatStoreInstance): ChatMessageActio
             timestamp: new Date().toISOString()
         }
 
-        if (effectiveRole === 'assistant') {
-            const firstSubMessage: SubMessage = {
-                id: `${messageId}-sub-0`,
-                content: delta || content,
-                isPartial
-            }
-            newMessage.subMessages = [firstSubMessage]
-            newMessage.expectingNewBlock = true
-        }
+        const shape = effectiveRole === 'assistant'
+            ? createAssistantMessageShape(messageId, content, isPartial, delta)
+            : createUserMessageShape()
+
+        const newMessage: Message = { ...baseMessage, ...shape }
 
         store.messagesByPodId.set(podId, [...messages, newMessage])
         store.currentStreamingMessageId = messageId
@@ -169,14 +181,7 @@ export function createMessageActions(store: ChatStoreInstance): ChatMessageActio
         }
 
         if (existingMessage.role === 'assistant' && existingMessage.subMessages) {
-            updatedMessages[messageIndex].subMessages = updateSubMessageContent(
-                existingMessage.subMessages,
-                existingMessage,
-                delta,
-                isPartial,
-                content
-            )
-            updatedMessages[messageIndex].expectingNewBlock = existingMessage.expectingNewBlock ? false : undefined
+            Object.assign(updatedMessages[messageIndex], updateAssistantSubMessages(existingMessage, delta, isPartial, content))
         }
 
         store.messagesByPodId.set(podId, updatedMessages)

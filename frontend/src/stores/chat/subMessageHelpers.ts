@@ -59,6 +59,23 @@ export function updateSubMessageContent(
     return updatedSubMessages
 }
 
+export function updateAssistantSubMessages(
+    existingMessage: Message,
+    delta: string,
+    isPartial: boolean,
+    content: string
+): Pick<Message, 'subMessages' | 'expectingNewBlock'> {
+    const subMessages = updateSubMessageContent(
+        existingMessage.subMessages!,
+        existingMessage,
+        delta,
+        isPartial,
+        content
+    )
+    const expectingNewBlock = existingMessage.expectingNewBlock ? false : undefined
+    return { subMessages, expectingNewBlock }
+}
+
 function updateSingleSubToolUse(sub: SubMessage, toolUseId: string, output: string): SubMessage {
     if (!sub.toolUse) return sub
 
@@ -98,15 +115,12 @@ export function finalizeToolUse(toolUse: ToolUseInfo[] | undefined): ToolUseInfo
 }
 
 function finalizeToolUseInSub(sub: SubMessage): SubMessage {
-    if (!sub.toolUse || sub.toolUse.length === 0) {
-        return {...sub, isPartial: false}
+    const finalizedToolUse = finalizeToolUse(sub.toolUse)
+    return {
+        ...sub,
+        isPartial: false,
+        toolUse: finalizedToolUse,
     }
-
-    const updatedSubToolUse = sub.toolUse.map(tool =>
-        tool.status === 'running' ? markToolCompleted(tool) : tool
-    )
-
-    return {...sub, isPartial: false, toolUse: updatedSubToolUse}
 }
 
 export function finalizeSubMessages(subMessages: SubMessage[] | undefined): SubMessage[] | undefined {

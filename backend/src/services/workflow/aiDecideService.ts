@@ -156,6 +156,23 @@ class AiDecideService {
     return { valid: true, sourcePod, sourceSummary, targets };
   }
 
+  private validateDecisionResults(
+    results: DecisionResults | null,
+    connections: Connection[]
+  ): { valid: true; results: DecisionResults } | { valid: false; error: AiDecideBatchResult } {
+    if (!results) {
+      logger.error('Workflow', 'Error', '[AiDecideService] Custom Tool handler 未被呼叫');
+      return { valid: false, error: this.buildDecisionErrors(connections, 'AI 決策工具未被執行') };
+    }
+
+    if (!results.decisions || !Array.isArray(results.decisions)) {
+      logger.error('Workflow', 'Error', '[AiDecideService] 決策結果格式無效');
+      return { valid: false, error: this.buildDecisionErrors(connections, 'AI 決策結果格式無效') };
+    }
+
+    return { valid: true, results };
+  }
+
   async decideConnections(
     canvasId: string,
     sourcePodId: string,
@@ -180,17 +197,12 @@ class AiDecideService {
       return this.buildDecisionErrors(connections, getErrorMessage(error));
     }
 
-    if (!decisionResults) {
-      logger.error('Workflow', 'Error', '[AiDecideService] Custom Tool handler 未被呼叫');
-      return this.buildDecisionErrors(connections, 'AI 決策工具未被執行');
+    const resultValidation = this.validateDecisionResults(decisionResults, connections);
+    if (!resultValidation.valid) {
+      return resultValidation.error;
     }
 
-    if (!decisionResults.decisions || !Array.isArray(decisionResults.decisions)) {
-      logger.error('Workflow', 'Error', '[AiDecideService] 決策結果格式無效');
-      return this.buildDecisionErrors(connections, 'AI 決策結果格式無效');
-    }
-
-    return this.mapDecisionResults(connections, decisionResults);
+    return this.mapDecisionResults(connections, resultValidation.results);
   }
 
   private async resolveTargetPodResources(

@@ -142,18 +142,17 @@ function buildGitlabAuthUrl(repoUrl: string, token: string): string {
     return repoUrl;
 }
 
+const authUrlBuilders: Partial<Record<GitSource, { getToken: () => string | undefined; build: (url: string, token: string) => string }>> = {
+    github: { getToken: () => config.githubToken, build: buildGithubAuthUrl },
+    gitlab: { getToken: () => config.gitlabToken, build: buildGitlabAuthUrl },
+};
+
 function buildAuthenticatedUrl(repoUrl: string): string {
     const source = detectGitSource(repoUrl);
-
-    if (source === 'github' && config.githubToken) {
-        return buildGithubAuthUrl(repoUrl, config.githubToken);
-    }
-
-    if (source === 'gitlab' && config.gitlabToken) {
-        return buildGitlabAuthUrl(repoUrl, config.gitlabToken);
-    }
-
-    return repoUrl;
+    const builder = authUrlBuilders[source];
+    const token = builder?.getToken();
+    if (!builder || !token) return repoUrl;
+    return builder.build(repoUrl, token);
 }
 
 const privateRepoMessages: Record<GitSource, string> = {

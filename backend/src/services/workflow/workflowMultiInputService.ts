@@ -48,6 +48,43 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
     pendingTargetStore.clearPendingTarget(connection.targetPodId);
   }
 
+  private recordAndCheckAllSourcesReady(
+    targetPodId: string,
+    sourcePodId: string,
+    requiredSourcePodIds: string[],
+    summary: string
+  ): { ready: boolean; hasRejection: boolean } {
+    if (!pendingTargetStore.hasPendingTarget(targetPodId)) {
+      pendingTargetStore.initializePendingTarget(targetPodId, requiredSourcePodIds);
+    }
+
+    const { allSourcesResponded, hasRejection } = pendingTargetStore.recordSourceCompletion(
+      targetPodId,
+      sourcePodId,
+      summary
+    );
+
+    return { ready: allSourcesResponded, hasRejection };
+  }
+
+  private getMergedContentOrNull(
+    canvasId: string,
+    targetPodId: string
+  ): { completedSummaries: Map<string, string>; mergedContent: string } | null {
+    const completedSummaries = pendingTargetStore.getCompletedSummaries(targetPodId);
+    if (!completedSummaries) {
+      logger.error('Workflow', 'Error', '無法取得已完成的摘要');
+      return null;
+    }
+
+    const mergedContent = formatMergedSummaries(
+      completedSummaries,
+      (podId) => podStore.getById(canvasId, podId)
+    );
+
+    return { completedSummaries, mergedContent };
+  }
+
   async handleMultiInputForConnection(
     canvasId: string,
     sourcePodId: string,
@@ -56,17 +93,14 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
     summary: string,
     triggerMode: 'auto' | 'ai-decide'
   ): Promise<void> {
-    if (!pendingTargetStore.hasPendingTarget(connection.targetPodId)) {
-      pendingTargetStore.initializePendingTarget(connection.targetPodId, requiredSourcePodIds);
-    }
-
-    const { allSourcesResponded, hasRejection } = pendingTargetStore.recordSourceCompletion(
+    const { ready, hasRejection } = this.recordAndCheckAllSourcesReady(
       connection.targetPodId,
       sourcePodId,
+      requiredSourcePodIds,
       summary
     );
 
-    if (!allSourcesResponded) {
+    if (!ready) {
       workflowStateService.emitPendingStatus(canvasId, connection.targetPodId);
       return;
     }
@@ -79,20 +113,12 @@ class WorkflowMultiInputService extends LazyInitializable<MultiInputServiceDeps>
       return;
     }
 
-    const completedSummaries = pendingTargetStore.getCompletedSummaries(connection.targetPodId);
-    if (!completedSummaries) {
-      logger.error('Workflow', 'Error', '無法取得已完成的摘要');
-      return;
-    }
-
-    const mergedContent = formatMergedSummaries(
-      completedSummaries,
-      (podId) => podStore.getById(canvasId, podId)
-    );
+    const merged = this.getMergedContentOrNull(canvasId, connection.targetPodId);
+    if (!merged) return;
 
     const targetPod = podStore.getById(canvasId, connection.targetPodId);
     if (this.isTargetPodBusy(targetPod)) {
-      this.enqueueIfBusy(canvasId, connection, completedSummaries, mergedContent, triggerMode);
+      this.enqueueIfBusy(canvasId, connection, merged.completedSummaries, merged.mergedContent, triggerMode);
       return;
     }
 
