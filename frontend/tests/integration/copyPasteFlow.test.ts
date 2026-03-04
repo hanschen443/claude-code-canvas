@@ -4,7 +4,7 @@ import { setupTestPinia } from '../helpers/mockStoreFactory'
 import { mockWebSocketModule, resetMockWebSocket } from '../helpers/mockWebSocket'
 import { createMockPod, createMockNote, createMockConnection } from '../helpers/factories'
 import { usePodStore, useSelectionStore, useViewportStore } from '@/stores/pod'
-import { useOutputStyleStore, useSkillStore, useRepositoryStore, useSubAgentStore, useCommandStore } from '@/stores/note'
+import { useOutputStyleStore, useSkillStore, useRepositoryStore, useSubAgentStore, useCommandStore, useMcpServerStore } from '@/stores/note'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useClipboardStore } from '@/stores/clipboardStore'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -42,6 +42,7 @@ describe('複製貼上/批量操作完整流程', () => {
   let repositoryStore: ReturnType<typeof useRepositoryStore>
   let subAgentStore: ReturnType<typeof useSubAgentStore>
   let commandStore: ReturnType<typeof useCommandStore>
+  let mcpServerStore: ReturnType<typeof useMcpServerStore>
   let connectionStore: ReturnType<typeof useConnectionStore>
   let clipboardStore: ReturnType<typeof useClipboardStore>
   let canvasStore: ReturnType<typeof useCanvasStore>
@@ -60,6 +61,7 @@ describe('複製貼上/批量操作完整流程', () => {
     repositoryStore = useRepositoryStore()
     subAgentStore = useSubAgentStore()
     commandStore = useCommandStore()
+    mcpServerStore = useMcpServerStore()
     connectionStore = useConnectionStore()
     clipboardStore = useClipboardStore()
     canvasStore = useCanvasStore()
@@ -87,6 +89,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -130,7 +133,7 @@ describe('複製貼上/批量操作完整流程', () => {
           originalPosition: n.originalPosition,
         }))
 
-      clipboardStore.setCopy(copiedPods, copiedOutputStyleNotes as any, copiedSkillNotes as any, [], [], [], [])
+      clipboardStore.setCopy(copiedPods, copiedOutputStyleNotes as any, copiedSkillNotes as any, [], [], [], [], [])
 
       expect(clipboardStore.isEmpty).toBe(false)
       expect(clipboardStore.copiedPods).toHaveLength(2)
@@ -158,6 +161,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -174,7 +178,7 @@ describe('複製貼上/批量操作完整流程', () => {
           originalPosition: n.originalPosition,
         }))
 
-      clipboardStore.setCopy([], copiedOutputStyleNotes as any, [], [], [], [], [])
+      clipboardStore.setCopy([], copiedOutputStyleNotes as any, [], [], [], [], [], [])
 
       expect(clipboardStore.copiedOutputStyleNotes).toHaveLength(1)
       expect(clipboardStore.copiedOutputStyleNotes[0]!.id).toBe('note-2')
@@ -204,6 +208,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -219,11 +224,52 @@ describe('複製貼上/批量操作完整流程', () => {
           triggerMode: conn.triggerMode,
         }))
 
-      clipboardStore.setCopy([], [], [], [], [], [], copiedConnections as any)
+      clipboardStore.setCopy([], [], [], [], [], [], [], copiedConnections as any)
 
       expect(clipboardStore.copiedConnections).toHaveLength(1)
       expect(clipboardStore.copiedConnections[0]!.sourcePodId).toBe('pod-1')
       expect(clipboardStore.copiedConnections[0]!.targetPodId).toBe('pod-2')
+    })
+
+    it('框選含 MCP Server Note 的區域，複製後 clipboardStore 包含 MCP Server Note', () => {
+      const pod = createMockPod({ id: 'pod-1', x: 100, y: 100 })
+      const mcpServerNote = createMockNote('mcpServer', { id: 'mcp-note-1', x: 300, y: 300, boundToPodId: null })
+
+      podStore.pods = [pod]
+      mcpServerStore.notes = [mcpServerNote as any]
+
+      selectionStore.startSelection(0, 0)
+      selectionStore.updateSelection(500, 500)
+      selectionStore.calculateSelectedElements({
+        pods: podStore.pods,
+        noteGroups: [
+          { notes: outputStyleStore.notes, type: 'outputStyleNote' },
+          { notes: skillStore.notes, type: 'skillNote' },
+          { notes: repositoryStore.notes, type: 'repositoryNote' },
+          { notes: subAgentStore.notes, type: 'subAgentNote' },
+          { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
+        ],
+      })
+
+      const selectedElements = selectionStore.selectedElements
+      const copiedMcpServerNotes = mcpServerStore.notes
+        .filter(n => selectedElements.some(el => el.type === 'mcpServerNote' && el.id === n.id))
+        .map(n => ({
+          id: n.id,
+          mcpServerId: (n as any).mcpServerId,
+          name: n.name,
+          x: n.x,
+          y: n.y,
+          boundToPodId: n.boundToPodId,
+          originalPosition: n.originalPosition,
+        }))
+
+      clipboardStore.setCopy([], [], [], [], [], [], copiedMcpServerNotes as any, [])
+
+      expect(clipboardStore.isEmpty).toBe(false)
+      expect(clipboardStore.copiedMcpServerNotes).toHaveLength(1)
+      expect(clipboardStore.copiedMcpServerNotes[0]!.id).toBe('mcp-note-1')
     })
 
     it('應在貼上後更新 selectionStore 為新建立的元素', () => {
@@ -247,6 +293,7 @@ describe('複製貼上/批量操作完整流程', () => {
           boundToPodId: note.boundToPodId,
           originalPosition: note.originalPosition,
         }],
+        [],
         [],
         [],
         [],
@@ -284,6 +331,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -326,6 +374,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -405,6 +454,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -438,6 +488,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
 
@@ -508,6 +559,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
       selectionStore.endSelection()
@@ -532,6 +584,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
       selectionStore.endSelection()
@@ -548,6 +601,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
       selectionStore.endSelection()
@@ -573,6 +627,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
       selectionStore.endSelection()
@@ -598,6 +653,7 @@ describe('複製貼上/批量操作完整流程', () => {
           { notes: repositoryStore.notes, type: 'repositoryNote' },
           { notes: subAgentStore.notes, type: 'subAgentNote' },
           { notes: commandStore.notes, type: 'commandNote' },
+          { notes: mcpServerStore.notes, type: 'mcpServerNote' as const },
         ],
       })
       selectionStore.endSelection()

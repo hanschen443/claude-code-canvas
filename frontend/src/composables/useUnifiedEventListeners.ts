@@ -292,10 +292,14 @@ function validateIdAndName(id: unknown, name: unknown, context: string): boolean
   return true
 }
 
+function containsXssPattern(name: string): boolean {
+  return /<script|javascript:|on\w+=/i.test(name)
+}
+
 const validateRepositoryItem = (repository: RepositoryItem): boolean => {
   if (!validateIdAndName(repository.id, repository.name, 'repository')) return false
 
-  if (/<script|javascript:|on\w+=/i.test(repository.name)) {
+  if (containsXssPattern(repository.name)) {
     console.error('[Security] 潛在惡意的 repository.name:', repository.name)
     return false
   }
@@ -347,7 +351,14 @@ const handleCommandDeleted = createUnifiedHandler<BasePayload & { commandId: str
 )
 
 const validateMcpServer = (mcpServer: McpServer): boolean => {
-  return validateIdAndName(mcpServer.id, mcpServer.name, 'mcpServer')
+  if (!validateIdAndName(mcpServer.id, mcpServer.name, 'mcpServer')) return false
+
+  if (containsXssPattern(mcpServer.name)) {
+    console.error('[Security] 潛在惡意的 mcpServer.name:', mcpServer.name)
+    return false
+  }
+
+  return true
 }
 
 const handleMcpServerCreated = createUnifiedHandler<BasePayload & { mcpServer?: McpServer; canvasId: string }>(
@@ -428,6 +439,7 @@ const handleCanvasPasted = createUnifiedHandler<BasePayload & {
   createdRepositoryNotes?: RepositoryNote[]
   createdSubAgentNotes?: SubAgentNote[]
   createdCommandNotes?: CommandNote[]
+  createdMcpServerNotes?: McpServerNote[]
   createdConnections?: RawConnectionFromEvent[]
 }>(
   (payload) => {
@@ -438,6 +450,7 @@ const handleCanvasPasted = createUnifiedHandler<BasePayload & {
     const repositoryStore = useRepositoryStore()
     const subAgentStore = useSubAgentStore()
     const commandStore = useCommandStore()
+    const mcpServerStore = useMcpServerStore()
 
     addCreatedItems(payload.createdPods, pod => podStore.addPodFromEvent(pod))
     addCreatedItems(payload.createdOutputStyleNotes, note => outputStyleStore.addNoteFromEvent(note))
@@ -445,6 +458,7 @@ const handleCanvasPasted = createUnifiedHandler<BasePayload & {
     addCreatedItems(payload.createdRepositoryNotes, note => repositoryStore.addNoteFromEvent(note))
     addCreatedItems(payload.createdSubAgentNotes, note => subAgentStore.addNoteFromEvent(note))
     addCreatedItems(payload.createdCommandNotes, note => commandStore.addNoteFromEvent(note))
+    addCreatedItems(payload.createdMcpServerNotes, note => mcpServerStore.addNoteFromEvent(note))
     addCreatedItems(payload.createdConnections, connection => connectionStore.addConnectionFromEvent(connection))
   },
   { toastMessage: '貼上成功' }

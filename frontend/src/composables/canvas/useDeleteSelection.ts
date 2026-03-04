@@ -5,61 +5,30 @@ import { isEditingElement } from '@/utils/domHelpers'
 import { DEFAULT_TOAST_DURATION_MS } from '@/lib/constants'
 
 async function deleteSelectedElements(): Promise<void> {
-  const { podStore, selectionStore, outputStyleStore, skillStore, repositoryStore, subAgentStore, commandStore } = useCanvasContext()
+  const { podStore, selectionStore, outputStyleStore, skillStore, repositoryStore, subAgentStore, commandStore, mcpServerStore } = useCanvasContext()
   const { toast } = useToast()
 
   const selectedElements = selectionStore.selectedElements
   if (selectedElements.length === 0) return
 
-  const pods = selectedElements
-    .filter(el => el.type === 'pod')
-    .map(el => el.id)
-
-  const outputStyleNotes = selectedElements
-    .filter(el => el.type === 'outputStyleNote')
-    .map(el => el.id)
-
-  const skillNotes = selectedElements
-    .filter(el => el.type === 'skillNote')
-    .map(el => el.id)
-
-  const repositoryNotes = selectedElements
-    .filter(el => el.type === 'repositoryNote')
-    .map(el => el.id)
-
-  const subAgentNotes = selectedElements
-    .filter(el => el.type === 'subAgentNote')
-    .map(el => el.id)
-
-  const commandNotes = selectedElements
-    .filter(el => el.type === 'commandNote')
-    .map(el => el.id)
+  const storeMap: Record<string, (id: string) => Promise<void>> = {
+    pod: id => podStore.deletePodWithBackend(id),
+    outputStyleNote: id => outputStyleStore.deleteNote(id),
+    skillNote: id => skillStore.deleteNote(id),
+    repositoryNote: id => repositoryStore.deleteNote(id),
+    subAgentNote: id => subAgentStore.deleteNote(id),
+    commandNote: id => commandStore.deleteNote(id),
+    mcpServerNote: id => mcpServerStore.deleteNote(id),
+  }
 
   const deletePromises: Promise<void>[] = []
 
-  pods.forEach(id => {
-    deletePromises.push(podStore.deletePodWithBackend(id))
-  })
-
-  outputStyleNotes.forEach(id => {
-    deletePromises.push(outputStyleStore.deleteNote(id))
-  })
-
-  skillNotes.forEach(id => {
-    deletePromises.push(skillStore.deleteNote(id))
-  })
-
-  repositoryNotes.forEach(id => {
-    deletePromises.push(repositoryStore.deleteNote(id))
-  })
-
-  subAgentNotes.forEach(id => {
-    deletePromises.push(subAgentStore.deleteNote(id))
-  })
-
-  commandNotes.forEach(id => {
-    deletePromises.push(commandStore.deleteNote(id))
-  })
+  for (const element of selectedElements) {
+    const deleteFn = storeMap[element.type]
+    if (deleteFn) {
+      deletePromises.push(deleteFn(element.id))
+    }
+  }
 
   const results = await Promise.allSettled(deletePromises)
 

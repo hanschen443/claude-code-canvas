@@ -6,6 +6,7 @@ import type {
   CopiedRepositoryNote,
   CopiedSubAgentNote,
   CopiedCommandNote,
+  CopiedMcpServerNote,
   CopiedConnection,
   AnchorPosition,
   TriggerMode,
@@ -14,19 +15,12 @@ import type {
 
 type NoteWithIndexSignature = { boundToPodId: string | null; [key: string]: unknown }
 
-type AnyNote = CopiedOutputStyleNote | CopiedSkillNote | CopiedRepositoryNote | CopiedSubAgentNote | CopiedCommandNote
+type AnyNote = CopiedOutputStyleNote | CopiedSkillNote | CopiedRepositoryNote | CopiedSubAgentNote | CopiedCommandNote | CopiedMcpServerNote
 
 type StoreWithNotes<TNote extends NoteWithIndexSignature = NoteWithIndexSignature> = {
   notes: TNote[]
 }
 
-export interface BoundNoteStores {
-  outputStyleStore: StoreWithNotes
-  skillStore: StoreWithNotes
-  repositoryStore: StoreWithNotes
-  subAgentStore: StoreWithNotes
-  commandStore: StoreWithNotes
-}
 
 export interface BoundNotesByType {
   outputStyleNotes: CopiedOutputStyleNote[]
@@ -34,6 +28,7 @@ export interface BoundNotesByType {
   repositoryNotes: CopiedRepositoryNote[]
   subAgentNotes: CopiedSubAgentNote[]
   commandNotes: CopiedCommandNote[]
+  mcpServerNotes: CopiedMcpServerNote[]
 }
 
 export function collectBoundNotesFromStore<T, TNote extends NoteWithIndexSignature>(
@@ -77,16 +72,18 @@ function createOriginalBoundNoteMapper<T extends NoteBaseFields & { boundToOrigi
 const mapToOutputStyleNote = createBoundNoteMapper<CopiedOutputStyleNote>('outputStyleId')
 const mapToSkillNote = createBoundNoteMapper<CopiedSkillNote>('skillId')
 const mapToSubAgentNote = createBoundNoteMapper<CopiedSubAgentNote>('subAgentId')
+const mapToMcpServerNote = createBoundNoteMapper<CopiedMcpServerNote>('mcpServerId')
 const mapToRepositoryNote = createOriginalBoundNoteMapper<CopiedRepositoryNote>('repositoryId')
 const mapToCommandNote = createOriginalBoundNoteMapper<CopiedCommandNote>('commandId')
 
-export function collectBoundNotes(podId: string, stores: BoundNoteStores): BoundNotesByType {
+export function collectBoundNotes(podId: string, stores: NoteStores): BoundNotesByType {
   return {
     outputStyleNotes: collectBoundNotesFromStore(podId, stores.outputStyleStore, mapToOutputStyleNote),
     skillNotes: collectBoundNotesFromStore(podId, stores.skillStore, mapToSkillNote),
     repositoryNotes: collectBoundNotesFromStore(podId, stores.repositoryStore, mapToRepositoryNote),
     subAgentNotes: collectBoundNotesFromStore(podId, stores.subAgentStore, mapToSubAgentNote),
     commandNotes: collectBoundNotesFromStore(podId, stores.commandStore, mapToCommandNote),
+    mcpServerNotes: collectBoundNotesFromStore(podId, stores.mcpServerStore, mapToMcpServerNote),
   }
 }
 
@@ -149,6 +146,7 @@ export interface NoteStores {
   repositoryStore: StoreWithNotes
   subAgentStore: StoreWithNotes
   commandStore: StoreWithNotes
+  mcpServerStore: StoreWithNotes
 }
 
 interface NoteStoreConfig {
@@ -183,6 +181,11 @@ const NOTE_STORE_CONFIGS: NoteStoreConfig[] = [
     getStore: (noteStores) => noteStores.commandStore,
     mapFn: mapToCommandNote,
   },
+  {
+    key: 'mcpServerNote',
+    getStore: (noteStores) => noteStores.mcpServerStore,
+    mapFn: mapToMcpServerNote,
+  },
 ]
 
 export function collectSelectedNotes(
@@ -195,12 +198,14 @@ export function collectSelectedNotes(
   repositoryNotes: CopiedRepositoryNote[]
   subAgentNotes: CopiedSubAgentNote[]
   commandNotes: CopiedCommandNote[]
+  mcpServerNotes: CopiedMcpServerNote[]
 } {
   const copiedOutputStyleNotes: CopiedOutputStyleNote[] = []
   const copiedSkillNotes: CopiedSkillNote[] = []
   const copiedRepositoryNotes: CopiedRepositoryNote[] = []
   const copiedSubAgentNotes: CopiedSubAgentNote[] = []
   const copiedCommandNotes: CopiedCommandNote[] = []
+  const copiedMcpServerNotes: CopiedMcpServerNote[] = []
 
   for (const podId of selectedPodIds) {
     const boundNotes = collectBoundNotes(podId, noteStores)
@@ -209,6 +214,7 @@ export function collectSelectedNotes(
     copiedRepositoryNotes.push(...boundNotes.repositoryNotes)
     copiedSubAgentNotes.push(...boundNotes.subAgentNotes)
     copiedCommandNotes.push(...boundNotes.commandNotes)
+    copiedMcpServerNotes.push(...boundNotes.mcpServerNotes)
   }
 
   const arrays: Record<string, AnyNote[]> = {
@@ -217,6 +223,7 @@ export function collectSelectedNotes(
     repositoryNote: copiedRepositoryNotes as AnyNote[],
     subAgentNote: copiedSubAgentNotes as AnyNote[],
     commandNote: copiedCommandNotes as AnyNote[],
+    mcpServerNote: copiedMcpServerNotes as AnyNote[],
   }
 
   const noteCollectorMap = Object.fromEntries(
@@ -239,6 +246,7 @@ export function collectSelectedNotes(
     repositoryNotes: copiedRepositoryNotes,
     subAgentNotes: copiedSubAgentNotes,
     commandNotes: copiedCommandNotes,
+    mcpServerNotes: copiedMcpServerNotes,
   }
 }
 

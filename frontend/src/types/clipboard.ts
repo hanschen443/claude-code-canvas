@@ -63,6 +63,16 @@ export interface CopiedCommandNote {
   originalPosition: { x: number; y: number } | null
 }
 
+export interface CopiedMcpServerNote {
+  id: string
+  mcpServerId: string
+  name: string
+  x: number
+  y: number
+  boundToPodId: string | null
+  originalPosition: { x: number; y: number } | null
+}
+
 export interface CopiedConnection {
   sourcePodId: string
   sourceAnchor: AnchorPosition

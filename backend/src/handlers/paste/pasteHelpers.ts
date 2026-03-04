@@ -5,6 +5,7 @@ import type {
   RepositoryNote,
   SubAgentNote,
   CommandNote,
+  McpServerNote,
   Connection,
   PasteError,
 } from '../../types';
@@ -15,7 +16,7 @@ import type {
 import { podStore } from '../../services/podStore.js';
 import { getPodDisplayName } from '../../utils/handlerHelpers.js';
 import { workspaceService } from '../../services/workspace';
-import { noteStore, skillNoteStore, subAgentNoteStore, repositoryNoteStore, commandNoteStore } from '../../services/noteStores.js';
+import { noteStore, skillNoteStore, subAgentNoteStore, repositoryNoteStore, commandNoteStore, mcpServerNoteStore } from '../../services/noteStores.js';
 import { connectionStore } from '../../services/connectionStore.js';
 import { repositoryService } from '../../services/repositoryService.js';
 import { getErrorMessage } from '../../utils/websocketResponse.js';
@@ -69,7 +70,7 @@ async function createSinglePod(
   if (finalRepositoryId) {
     const exists = await repositoryService.exists(finalRepositoryId);
     if (!exists) {
-      throw new Error(`Repository 找不到: ${finalRepositoryId}`);
+      throw new Error('Repository 不存在');
     }
   }
 
@@ -210,6 +211,7 @@ type SkillNoteItem = NoteItemBase & { skillId: string };
 type RepositoryNoteItem = NoteItemBase & { repositoryId: string };
 type SubAgentNoteItem = NoteItemBase & { subAgentId: string };
 type CommandNoteItem = NoteItemBase & { commandId: string };
+type McpServerNoteItem = NoteItemBase & { mcpServerId: string };
 
 type NotePasteConfig<TNoteItem extends NoteItemBase, TNote extends { id: string; name: string; x: number; y: number; boundToPodId: string | null; originalPosition: { x: number; y: number } | null }> = {
   store: NoteStoreType<TNote>;
@@ -284,6 +286,19 @@ const NOTE_PASTE_CONFIGS = {
       originalPosition: item.originalPosition,
     }),
   } satisfies NotePasteConfig<CommandNoteItem, CommandNote>,
+  mcpServer: {
+    store: mcpServerNoteStore,
+    type: 'mcpServerNote',
+    getId: (item: McpServerNoteItem): string => item.mcpServerId,
+    createParams: (item: McpServerNoteItem, boundToPodId: string | null): NoteCreateParams<McpServerNote> => ({
+      mcpServerId: item.mcpServerId,
+      name: item.name,
+      x: item.x,
+      y: item.y,
+      boundToPodId,
+      originalPosition: item.originalPosition,
+    }),
+  } satisfies NotePasteConfig<McpServerNoteItem, McpServerNote>,
 } as const;
 
 export type NotePasteType = keyof typeof NOTE_PASTE_CONFIGS;
@@ -294,6 +309,7 @@ type NoteItemForType<K extends NotePasteType> =
   K extends 'repository' ? RepositoryNoteItem :
   K extends 'subAgent' ? SubAgentNoteItem :
   K extends 'command' ? CommandNoteItem :
+  K extends 'mcpServer' ? McpServerNoteItem :
   never;
 
 type NoteForType<K extends NotePasteType> =
@@ -302,6 +318,7 @@ type NoteForType<K extends NotePasteType> =
   K extends 'repository' ? RepositoryNote :
   K extends 'subAgent' ? SubAgentNote :
   K extends 'command' ? CommandNote :
+  K extends 'mcpServer' ? McpServerNote :
   never;
 
 export function createPastedNotesByType<K extends NotePasteType>(

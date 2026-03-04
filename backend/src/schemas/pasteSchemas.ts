@@ -9,12 +9,12 @@ export const pastePodItemSchema = z.object({
   x: coordinateSchema,
   y: coordinateSchema,
   rotation: z.number().finite(),
-  outputStyleId: z.string().nullable().optional(),
-  skillIds: z.array(z.string()).optional(),
-  subAgentIds: z.array(z.string()).optional(),
+  outputStyleId: z.string().uuid().nullable().optional(),
+  skillIds: z.array(z.string().uuid()).optional(),
+  subAgentIds: z.array(z.string().uuid()).optional(),
   model: modelTypeSchema.optional(),
-  repositoryId: z.string().nullable().optional(),
-  commandId: z.string().nullable().optional(),
+  repositoryId: z.string().uuid().nullable().optional(),
+  commandId: z.string().uuid().nullable().optional(),
 });
 
 export const pasteOutputStyleNoteItemSchema = createPasteNoteItemSchema({ outputStyleId: z.string() });
@@ -26,6 +26,8 @@ export const pasteRepositoryNoteItemSchema = createPasteNoteItemSchema({ reposit
 export const pasteSubAgentNoteItemSchema = createPasteNoteItemSchema({ subAgentId: z.string() });
 
 export const pasteCommandNoteItemSchema = createPasteNoteItemSchema({ commandId: z.string() });
+
+export const pasteMcpServerNoteItemSchema = createPasteNoteItemSchema({ mcpServerId: z.string() });
 
 export const pasteConnectionItemSchema = z.object({
   originalSourcePodId: z.uuid(),
@@ -44,6 +46,7 @@ export const canvasPasteSchema = z.object({
   repositoryNotes: z.array(pasteRepositoryNoteItemSchema).max(100),
   subAgentNotes: z.array(pasteSubAgentNoteItemSchema).max(100),
   commandNotes: z.array(pasteCommandNoteItemSchema).max(100).optional(),
+  mcpServerNotes: z.array(pasteMcpServerNoteItemSchema).max(100).optional(),
   connections: z.array(pasteConnectionItemSchema).max(200).optional(),
 });
 
@@ -54,4 +57,5 @@ export type PasteSkillNoteItem = z.infer<typeof pasteSkillNoteItemSchema>;
 export type PasteRepositoryNoteItem = z.infer<typeof pasteRepositoryNoteItemSchema>;
 export type PasteSubAgentNoteItem = z.infer<typeof pasteSubAgentNoteItemSchema>;
 export type PasteCommandNoteItem = z.infer<typeof pasteCommandNoteItemSchema>;
+export type PasteMcpServerNoteItem = z.infer<typeof pasteMcpServerNoteItemSchema>;
 export type PasteConnectionItem = z.infer<typeof pasteConnectionItemSchema>;

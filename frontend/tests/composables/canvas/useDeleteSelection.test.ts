@@ -239,8 +239,33 @@ describe('useDeleteSelection', () => {
       expect(selectionStore.clearSelection).toHaveBeenCalled()
     })
 
-    it('混合刪除 Pod 和多種 Note', async () => {
-      const { selectionStore, podStore, outputStyleStore, skillStore, repositoryStore, subAgentStore, commandStore } = useCanvasContext()
+    it('刪除選中的 mcpServerNote', async () => {
+      const { selectionStore, mcpServerStore } = useCanvasContext()
+
+      const TestComponent = defineComponent({
+        setup() {
+          return useDeleteSelection()
+        },
+        template: '<div></div>',
+      })
+
+      const wrapper = mount(TestComponent)
+      const { deleteSelectedElements } = wrapper.vm as ReturnType<typeof useDeleteSelection>
+
+      selectionStore.selectedElements = [
+        { type: 'mcpServerNote', id: 'mcp-server-note-1' },
+      ] as SelectableElement[]
+
+      const deleteNoteSpy = vi.spyOn(mcpServerStore, 'deleteNote').mockResolvedValue()
+
+      await deleteSelectedElements()
+
+      expect(deleteNoteSpy).toHaveBeenCalledWith('mcp-server-note-1')
+      expect(selectionStore.clearSelection).toHaveBeenCalled()
+    })
+
+    it('混合刪除 Pod 和多種 Note（含 mcpServerNote）', async () => {
+      const { selectionStore, podStore, outputStyleStore, skillStore, repositoryStore, subAgentStore, commandStore, mcpServerStore } = useCanvasContext()
 
       const TestComponent = defineComponent({
         setup() {
@@ -259,6 +284,7 @@ describe('useDeleteSelection', () => {
         { type: 'repositoryNote', id: 'repo-1' },
         { type: 'subAgentNote', id: 'subagent-1' },
         { type: 'commandNote', id: 'command-1' },
+        { type: 'mcpServerNote', id: 'mcp-1' },
       ] as SelectableElement[]
 
       const deletePodSpy = vi.spyOn(podStore, 'deletePodWithBackend').mockResolvedValue()
@@ -267,6 +293,7 @@ describe('useDeleteSelection', () => {
       const deleteRepositorySpy = vi.spyOn(repositoryStore, 'deleteNote').mockResolvedValue()
       const deleteSubAgentSpy = vi.spyOn(subAgentStore, 'deleteNote').mockResolvedValue()
       const deleteCommandSpy = vi.spyOn(commandStore, 'deleteNote').mockResolvedValue()
+      const deleteMcpServerSpy = vi.spyOn(mcpServerStore, 'deleteNote').mockResolvedValue()
 
       await deleteSelectedElements()
 
@@ -276,6 +303,7 @@ describe('useDeleteSelection', () => {
       expect(deleteRepositorySpy).toHaveBeenCalledWith('repo-1')
       expect(deleteSubAgentSpy).toHaveBeenCalledWith('subagent-1')
       expect(deleteCommandSpy).toHaveBeenCalledWith('command-1')
+      expect(deleteMcpServerSpy).toHaveBeenCalledWith('mcp-1')
       expect(selectionStore.clearSelection).toHaveBeenCalled()
     })
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   collectBoundNotesFromStore,
+  collectBoundNotes,
   collectSelectedPods,
   collectRelatedConnections,
   createUnboundNoteCollector,
@@ -101,6 +102,30 @@ describe('collectCopyData', () => {
       const result = collectRelatedConnections(selectedPodIds, connections as any)
 
       expect(result).toHaveLength(0)
+    })
+  })
+
+  describe('collectBoundNotes - mcpServerNote', () => {
+    it('應收集 mcpServerNote 並用 boundToPodId 綁定', () => {
+      const stores = {
+        outputStyleStore: { notes: [] },
+        skillStore: { notes: [] },
+        repositoryStore: { notes: [] },
+        subAgentStore: { notes: [] },
+        commandStore: { notes: [] },
+        mcpServerStore: {
+          notes: [
+            { id: 'mcp-note-1', mcpServerId: 'mcp-1', name: 'MCP Note', x: 10, y: 20, boundToPodId: 'pod-1', originalPosition: null },
+            { id: 'mcp-note-2', mcpServerId: 'mcp-2', name: 'MCP Note 2', x: 30, y: 40, boundToPodId: 'pod-2', originalPosition: null },
+          ],
+        },
+      }
+
+      const result = collectBoundNotes('pod-1', stores)
+
+      expect(result.mcpServerNotes).toHaveLength(1)
+      expect(result.mcpServerNotes[0]!.mcpServerId).toBe('mcp-1')
+      expect(result.mcpServerNotes[0]!.boundToPodId).toBe('pod-1')
     })
   })
 

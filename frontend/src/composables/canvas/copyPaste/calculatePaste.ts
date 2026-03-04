@@ -6,6 +6,7 @@ import type {
   CopiedRepositoryNote,
   CopiedSubAgentNote,
   CopiedCommandNote,
+  CopiedMcpServerNote,
   CopiedConnection,
   PastePodItem,
   PasteOutputStyleNoteItem,
@@ -13,6 +14,7 @@ import type {
   PasteRepositoryNoteItem,
   PasteSubAgentNoteItem,
   PasteCommandNoteItem,
+  PasteMcpServerNoteItem,
   PasteConnectionItem,
 } from '@/types'
 
@@ -61,7 +63,8 @@ export function calculateBoundingBox<
   TS extends HasPosition,
   TR extends HasPosition,
   TSA extends HasPosition,
-  TC extends HasPosition
+  TC extends HasPosition,
+  TM extends HasPosition
 >(
   pods: CopiedPod[],
   notes: {
@@ -70,6 +73,7 @@ export function calculateBoundingBox<
     repositoryNotes: TR[]
     subAgentNotes: TSA[]
     commandNotes: TC[]
+    mcpServerNotes: TM[]
   },
   getBoundKeys: {
     outputStyleNote: (n: TO) => string | null
@@ -77,6 +81,7 @@ export function calculateBoundingBox<
     repositoryNote: (n: TR) => string | null
     subAgentNote: (n: TSA) => string | null
     commandNote: (n: TC) => string | null
+    mcpServerNote: (n: TM) => string | null
   }
 ): BoundingBox {
   const bounds = createInitialBounds()
@@ -91,6 +96,7 @@ export function calculateBoundingBox<
     toUnboundNoteEntry(notes.repositoryNotes, getBoundKeys.repositoryNote),
     toUnboundNoteEntry(notes.subAgentNotes, getBoundKeys.subAgentNote),
     toUnboundNoteEntry(notes.commandNotes, getBoundKeys.commandNote),
+    toUnboundNoteEntry(notes.mcpServerNotes, getBoundKeys.mcpServerNote),
   ])
 
   return bounds
@@ -164,10 +170,11 @@ type ClipboardData = {
   repositoryNotes: CopiedRepositoryNote[]
   subAgentNotes: CopiedSubAgentNote[]
   commandNotes: CopiedCommandNote[]
+  mcpServerNotes: CopiedMcpServerNote[]
   connections: CopiedConnection[]
 }
 
-type CopiedNote = CopiedOutputStyleNote | CopiedSkillNote | CopiedRepositoryNote | CopiedSubAgentNote | CopiedCommandNote
+type CopiedNote = CopiedOutputStyleNote | CopiedSkillNote | CopiedRepositoryNote | CopiedSubAgentNote | CopiedCommandNote | CopiedMcpServerNote
 
 type NoteTransformConfig<TSource extends CopiedNote, TResult> = {
   notes: TSource[]
@@ -176,14 +183,15 @@ type NoteTransformConfig<TSource extends CopiedNote, TResult> = {
 }
 
 function isEmptyClipboard(clipboardData: ClipboardData): boolean {
-  const { pods, outputStyleNotes, skillNotes, repositoryNotes, subAgentNotes, commandNotes } = clipboardData
+  const { pods, outputStyleNotes, skillNotes, repositoryNotes, subAgentNotes, commandNotes, mcpServerNotes } = clipboardData
   return (
     pods.length === 0 &&
     outputStyleNotes.length === 0 &&
     skillNotes.length === 0 &&
     repositoryNotes.length === 0 &&
     subAgentNotes.length === 0 &&
-    commandNotes.length === 0
+    commandNotes.length === 0 &&
+    mcpServerNotes.length === 0
   )
 }
 
@@ -197,12 +205,13 @@ export function calculatePastePositions(
   repositoryNotes: PasteRepositoryNoteItem[]
   subAgentNotes: PasteSubAgentNoteItem[]
   commandNotes: PasteCommandNoteItem[]
+  mcpServerNotes: PasteMcpServerNoteItem[]
   connections: PasteConnectionItem[]
 } {
-  const { pods, outputStyleNotes, skillNotes, repositoryNotes, subAgentNotes, commandNotes, connections } = clipboardData
+  const { pods, outputStyleNotes, skillNotes, repositoryNotes, subAgentNotes, commandNotes, mcpServerNotes, connections } = clipboardData
 
   if (isEmptyClipboard(clipboardData)) {
-    return { pods: [], outputStyleNotes: [], skillNotes: [], repositoryNotes: [], subAgentNotes: [], commandNotes: [], connections: [] }
+    return { pods: [], outputStyleNotes: [], skillNotes: [], repositoryNotes: [], subAgentNotes: [], commandNotes: [], mcpServerNotes: [], connections: [] }
   }
 
   const boundingBox = calculateBoundingBox(pods, {
@@ -210,89 +219,55 @@ export function calculatePastePositions(
     skillNotes,
     repositoryNotes,
     subAgentNotes,
-    commandNotes
+    commandNotes,
+    mcpServerNotes,
   }, {
     outputStyleNote: note => note.boundToPodId,
     skillNote: note => note.boundToPodId,
     repositoryNote: note => note.boundToOriginalPodId,
     subAgentNote: note => note.boundToPodId,
-    commandNote: note => note.boundToOriginalPodId
+    commandNote: note => note.boundToOriginalPodId,
+    mcpServerNote: note => note.boundToPodId,
   })
 
   const offset = calculateOffsets(boundingBox, targetPosition)
 
-  const outputStyleConfig: NoteTransformConfig<CopiedOutputStyleNote, PasteOutputStyleNoteItem> = {
-    notes: outputStyleNotes,
-    getBoundKey: note => note.boundToPodId,
-    mapFn: (note, position) => ({
-      outputStyleId: note.outputStyleId,
-      name: note.name,
-      x: position.x,
-      y: position.y,
-      boundToOriginalPodId: note.boundToPodId,
-      originalPosition: note.originalPosition,
-    }),
-  }
-
-  const skillConfig: NoteTransformConfig<CopiedSkillNote, PasteSkillNoteItem> = {
-    notes: skillNotes,
-    getBoundKey: note => note.boundToPodId,
-    mapFn: (note, position) => ({
-      skillId: note.skillId,
-      name: note.name,
-      x: position.x,
-      y: position.y,
-      boundToOriginalPodId: note.boundToPodId,
-      originalPosition: note.originalPosition,
-    }),
-  }
-
-  const repositoryConfig: NoteTransformConfig<CopiedRepositoryNote, PasteRepositoryNoteItem> = {
-    notes: repositoryNotes,
-    getBoundKey: note => note.boundToOriginalPodId,
-    mapFn: (note, position) => ({
-      repositoryId: note.repositoryId,
-      name: note.name,
-      x: position.x,
-      y: position.y,
-      boundToOriginalPodId: note.boundToOriginalPodId,
-      originalPosition: note.originalPosition,
-    }),
-  }
-
-  const subAgentConfig: NoteTransformConfig<CopiedSubAgentNote, PasteSubAgentNoteItem> = {
-    notes: subAgentNotes,
-    getBoundKey: note => note.boundToPodId,
-    mapFn: (note, position) => ({
-      subAgentId: note.subAgentId,
-      name: note.name,
-      x: position.x,
-      y: position.y,
-      boundToOriginalPodId: note.boundToPodId,
-      originalPosition: note.originalPosition,
-    }),
-  }
-
-  const commandConfig: NoteTransformConfig<CopiedCommandNote, PasteCommandNoteItem> = {
-    notes: commandNotes,
-    getBoundKey: note => note.boundToOriginalPodId,
-    mapFn: (note, position) => ({
-      commandId: note.commandId,
-      name: note.name,
-      x: position.x,
-      y: position.y,
-      boundToOriginalPodId: note.boundToOriginalPodId,
-      originalPosition: note.originalPosition,
-    }),
+  function applyTransform<TSource extends CopiedNote, TResult>(config: NoteTransformConfig<TSource, TResult>): TResult[] {
+    return transformNotes(config.notes, offset, config.getBoundKey, config.mapFn)
   }
 
   return {
     pods: transformPods(pods, offset),
-    outputStyleNotes: transformNotes(outputStyleConfig.notes, offset, outputStyleConfig.getBoundKey, outputStyleConfig.mapFn),
-    skillNotes: transformNotes(skillConfig.notes, offset, skillConfig.getBoundKey, skillConfig.mapFn),
-    repositoryNotes: transformNotes(repositoryConfig.notes, offset, repositoryConfig.getBoundKey, repositoryConfig.mapFn),
-    subAgentNotes: transformNotes(subAgentConfig.notes, offset, subAgentConfig.getBoundKey, subAgentConfig.mapFn),
-    commandNotes: transformNotes(commandConfig.notes, offset, commandConfig.getBoundKey, commandConfig.mapFn),
+    outputStyleNotes: applyTransform<CopiedOutputStyleNote, PasteOutputStyleNoteItem>({
+      notes: outputStyleNotes,
+      getBoundKey: note => note.boundToPodId,
+      mapFn: (note, position) => ({ outputStyleId: note.outputStyleId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
+    }),
+    skillNotes: applyTransform<CopiedSkillNote, PasteSkillNoteItem>({
+      notes: skillNotes,
+      getBoundKey: note => note.boundToPodId,
+      mapFn: (note, position) => ({ skillId: note.skillId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
+    }),
+    repositoryNotes: applyTransform<CopiedRepositoryNote, PasteRepositoryNoteItem>({
+      notes: repositoryNotes,
+      getBoundKey: note => note.boundToOriginalPodId,
+      mapFn: (note, position) => ({ repositoryId: note.repositoryId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToOriginalPodId, originalPosition: note.originalPosition }),
+    }),
+    subAgentNotes: applyTransform<CopiedSubAgentNote, PasteSubAgentNoteItem>({
+      notes: subAgentNotes,
+      getBoundKey: note => note.boundToPodId,
+      mapFn: (note, position) => ({ subAgentId: note.subAgentId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
+    }),
+    commandNotes: applyTransform<CopiedCommandNote, PasteCommandNoteItem>({
+      notes: commandNotes,
+      getBoundKey: note => note.boundToOriginalPodId,
+      mapFn: (note, position) => ({ commandId: note.commandId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToOriginalPodId, originalPosition: note.originalPosition }),
+    }),
+    mcpServerNotes: applyTransform<CopiedMcpServerNote, PasteMcpServerNoteItem>({
+      notes: mcpServerNotes,
+      getBoundKey: note => note.boundToPodId,
+      mapFn: (note, position) => ({ mcpServerId: note.mcpServerId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
+    }),
     connections: transformConnections(connections),
   }
 }

@@ -48,8 +48,8 @@ export function createPasteNoteItemSchema<T extends z.ZodRawShape>(foreignKey: T
   return z.object({
     ...foreignKey,
     name: z.string().min(1).max(100),
-    x: z.number(),
-    y: z.number(),
+    x: coordinateSchema,
+    y: coordinateSchema,
     boundToOriginalPodId: z.uuid().nullable(),
     originalPosition: positionSchema.nullable(),
   }) as ReturnType<typeof createPasteNoteItemSchema<T>>;

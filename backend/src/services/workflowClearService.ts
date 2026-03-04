@@ -7,7 +7,6 @@ import { pendingTargetStore } from './pendingTargetStore.js';
 import { directTriggerStore } from './directTriggerStore.js';
 import { logger } from '../utils/logger.js';
 import { safeExecuteAsync } from '../utils/operationHelpers.js';
-import { isAutoTriggerable } from './workflow/workflowHelpers.js';
 import type { Connection } from '../types/index.js';
 
 function enqueueUnvisitedTargets(
@@ -46,8 +45,7 @@ class WorkflowClearService {
     while (queue.length > 0) {
       const currentId = queue.shift();
       if (!currentId) break;
-      const connections = connectionStore.findBySourcePodId(canvasId, currentId)
-        .filter(conn => isAutoTriggerable(conn.triggerMode));
+      const connections = connectionStore.findBySourcePodId(canvasId, currentId);
       enqueueUnvisitedTargets(connections, visited, queue);
     }
 
@@ -79,7 +77,7 @@ class WorkflowClearService {
         clearedPodIds: [],
         clearedPodNames: [],
         clearedConnectionIds: [],
-        error: `找不到 Canvas：${canvasId}`,
+        error: 'Canvas 不存在',
       };
     }
 

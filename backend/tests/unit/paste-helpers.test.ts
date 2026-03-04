@@ -133,7 +133,7 @@ describe('Paste Helpers', () => {
       expect(errors[0]).toEqual({
         type: 'pod',
         originalId: originalPodId,
-        error: expect.stringContaining('Repository 找不到'),
+        error: expect.stringContaining('Repository 不存在'),
       });
       expect(repositoryService.exists).toHaveBeenCalledWith(nonExistentRepoId);
     });

@@ -6,7 +6,7 @@ import type {Repository, RepositoryNote} from '@/types'
 import type {SubAgentNote} from '@/types'
 import type {CommandNote} from '@/types'
 import type {AnchorPosition} from '@/types'
-import type {McpServerConfig} from '../mcpServer'
+import type {McpServerConfig, McpServerNote} from '../mcpServer'
 import type {ResultPayload} from './index'
 
 export interface ConnectionReadyPayload {
@@ -203,7 +203,7 @@ export interface WorkflowClearResultPayload extends ResultPayload {
 }
 
 export interface PasteError {
-    type: 'pod' | 'outputStyleNote' | 'skillNote' | 'repositoryNote' | 'subAgentNote' | 'commandNote'
+    type: 'pod' | 'outputStyleNote' | 'skillNote' | 'repositoryNote' | 'subAgentNote' | 'commandNote' | 'mcpServerNote'
     originalId: string
     error: string
 }
@@ -215,6 +215,7 @@ export interface CanvasPasteResultPayload extends ResultPayload {
     createdRepositoryNotes: RepositoryNote[]
     createdSubAgentNotes: SubAgentNote[]
     createdCommandNotes: CommandNote[]
+    createdMcpServerNotes: McpServerNote[]
     createdConnections: Array<{
         id: string
         sourcePodId: string

@@ -193,6 +193,7 @@ export interface CanvasPastePayload {
   repositoryNotes: PasteRepositoryNoteItem[]
   subAgentNotes: PasteSubAgentNoteItem[]
   commandNotes: PasteCommandNoteItem[]
+  mcpServerNotes: PasteMcpServerNoteItem[]
   connections: PasteConnectionItem[]
 }
 
@@ -238,6 +239,15 @@ export interface CommandNoteCreatePayload {
 
 export interface PasteCommandNoteItem {
   commandId: string
+  name: string
+  x: number
+  y: number
+  boundToOriginalPodId: string | null
+  originalPosition: { x: number; y: number } | null
+}
+
+export interface PasteMcpServerNoteItem {
+  mcpServerId: string
   name: string
   x: number
   y: number

@@ -109,7 +109,7 @@ describe('WorkflowClearService', () => {
       const result = await workflowClearService.clearWorkflow(CANVAS_ID, SOURCE_POD_ID);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain(CANVAS_ID);
+      expect(result.error).toBe('Canvas 不存在');
       expect(result.clearedPodIds).toHaveLength(0);
     });
 
@@ -294,6 +294,39 @@ describe('WorkflowClearService', () => {
       expect(result).toContain(SOURCE_POD_ID);
       expect(result).toContain(TARGET_POD_ID);
       expect(result).toContain(DOWNSTREAM_POD_ID);
+    });
+
+    it('direct connection 的下游 pod 也應被遍歷', () => {
+      (connectionStore.findBySourcePodId as any).mockImplementation((_cId: string, podId: string) => {
+        if (podId === SOURCE_POD_ID) {
+          return [{ id: 'conn-direct', sourcePodId: SOURCE_POD_ID, targetPodId: TARGET_POD_ID, triggerMode: 'direct', decideStatus: 'none' }];
+        }
+        return [];
+      });
+
+      const result = workflowClearService.getDownstreamPodIds(CANVAS_ID, SOURCE_POD_ID);
+
+      expect(result).toContain(SOURCE_POD_ID);
+      expect(result).toContain(TARGET_POD_ID);
+    });
+  });
+
+  describe('clearWorkflow direct connection 下游清除', () => {
+    it('direct connection 下游 pod 也應被清除', async () => {
+      (connectionStore.findBySourcePodId as any).mockImplementation((_cId: string, podId: string) => {
+        if (podId === SOURCE_POD_ID) {
+          return [{ id: 'conn-direct', sourcePodId: SOURCE_POD_ID, targetPodId: TARGET_POD_ID, triggerMode: 'direct', decideStatus: 'none' }];
+        }
+        return [];
+      });
+
+      const result = await workflowClearService.clearWorkflow(CANVAS_ID, SOURCE_POD_ID);
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPodIds).toContain(SOURCE_POD_ID);
+      expect(result.clearedPodIds).toContain(TARGET_POD_ID);
+      expect(messageStore.clearMessages).toHaveBeenCalledWith(SOURCE_POD_ID);
+      expect(messageStore.clearMessages).toHaveBeenCalledWith(TARGET_POD_ID);
     });
   });
 });
