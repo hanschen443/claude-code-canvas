@@ -9,6 +9,9 @@ import {slackClientManager} from './slackClientManager.js';
 import {connectionStore} from '../connectionStore.js';
 import {executeStreamingChat} from '../claude/streamingChatExecutor.js';
 import {logger} from '../../utils/logger.js';
+import {createPostChatCompleteCallback} from '../../utils/operationHelpers.js';
+import {autoClearService} from '../autoClear/index.js';
+import {workflowExecutionService} from '../workflow/index.js';
 
 const BUSY_STATUSES = new Set(['chatting', 'summarizing'] as const);
 const MAX_WORKFLOW_CHAIN_SIZE = 50;
@@ -64,8 +67,16 @@ class SlackEventService {
             return;
         }
 
-        for (const {canvasId, pod} of boundPods) {
-            await this.processBoundPod(canvasId, pod, message);
+        const results = await Promise.allSettled(
+            boundPods.map(({canvasId, pod}) => this.processBoundPod(canvasId, pod, message))
+        );
+
+        for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            if (result.status === 'rejected') {
+                const pod = boundPods[i].pod;
+                logger.error('Slack', 'Error', `[SlackEventService] Pod「${pod.name}」處理 Slack 訊息失敗`, result.reason);
+            }
         }
     }
 
@@ -181,22 +192,34 @@ class SlackEventService {
 
         podStore.setStatus(canvasId, podId, 'chatting');
 
-        await messageStore.addMessage(canvasId, podId, 'user', formattedText);
+        try {
+            await messageStore.addMessage(canvasId, podId, 'user', formattedText);
 
-        socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, {
-            canvasId,
-            podId,
-            messageId: uuidv4(),
-            content: formattedText,
-            timestamp: new Date().toISOString(),
-        });
+            socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, {
+                canvasId,
+                podId,
+                messageId: uuidv4(),
+                content: formattedText,
+                timestamp: new Date().toISOString(),
+            });
 
-        logger.log('Slack', 'Complete', `[SlackEventService] 注入 Slack 訊息至 Pod「${podName}」`);
+            logger.log('Slack', 'Complete', `[SlackEventService] 注入 Slack 訊息至 Pod「${podName}」`);
 
-        await executeStreamingChat(
-            {canvasId, podId, message: formattedText, abortable: false},
-            {}
-        );
+            const onComplete = createPostChatCompleteCallback(
+                (canvasId, podId) => autoClearService.onPodComplete(canvasId, podId),
+                (canvasId, podId) => workflowExecutionService.checkAndTriggerWorkflows(canvasId, podId),
+                'Slack'
+            );
+
+            await executeStreamingChat(
+                {canvasId, podId, message: formattedText, abortable: false},
+                {onComplete}
+            );
+        } catch (error) {
+            podStore.setStatus(canvasId, podId, 'error');
+            logger.error('Slack', 'Error', `[SlackEventService] Pod「${podName}」注入 Slack 訊息失敗`, error);
+            throw error;
+        }
     }
 
     findBoundPods(slackAppId: string, channelId: string): Array<{canvasId: string; pod: Pod}> {

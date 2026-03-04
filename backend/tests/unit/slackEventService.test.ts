@@ -51,6 +51,18 @@ vi.mock('../../src/utils/logger.js', () => ({
     },
 }));
 
+vi.mock('../../src/services/autoClear/index.js', () => ({
+    autoClearService: {
+        onPodComplete: vi.fn(() => Promise.resolve()),
+    },
+}));
+
+vi.mock('../../src/services/workflow/index.js', () => ({
+    workflowExecutionService: {
+        checkAndTriggerWorkflows: vi.fn(() => Promise.resolve()),
+    },
+}));
+
 import {slackEventService} from '../../src/services/slack/slackEventService.js';
 import {podStore} from '../../src/services/podStore.js';
 import {messageStore} from '../../src/services/messageStore.js';
@@ -59,9 +71,10 @@ import {slackAppStore} from '../../src/services/slack/slackAppStore.js';
 import {slackClientManager} from '../../src/services/slack/slackClientManager.js';
 import {connectionStore} from '../../src/services/connectionStore.js';
 import {executeStreamingChat} from '../../src/services/claude/streamingChatExecutor.js';
+import {autoClearService} from '../../src/services/autoClear/index.js';
+import {workflowExecutionService} from '../../src/services/workflow/index.js';
 import {WebSocketResponseEvents} from '../../src/schemas/events.js';
-import type {SlackMessage} from '../../src/types/index.js';
-import type {Pod} from '../../src/types/index.js';
+import type {Pod, SlackMessage} from '../../src/types/index.js';
 
 function asMock(fn: unknown): Mock<any> {
     return fn as Mock<any>;
@@ -107,7 +120,15 @@ describe('SlackEventService', () => {
     const podId = 'pod-1';
 
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
+        asMock(podStore.findBySlackApp).mockReturnValue([]);
+        asMock(messageStore.addMessage).mockResolvedValue({success: true, data: {id: 'msg-1'}});
+        asMock(slackClientManager.sendMessage).mockResolvedValue({success: true});
+        asMock(connectionStore.findBySourcePodId).mockReturnValue([]);
+        asMock(connectionStore.findByTargetPodId).mockReturnValue([]);
+        asMock(executeStreamingChat).mockResolvedValue({messageId: 'stream-1', content: '回覆', hasContent: true, aborted: false});
+        asMock(autoClearService.onPodComplete).mockResolvedValue(undefined);
+        asMock(workflowExecutionService.checkAndTriggerWorkflows).mockResolvedValue(undefined);
     });
 
     describe('findBoundPods', () => {
@@ -474,6 +495,96 @@ describe('SlackEventService', () => {
             expect(slackClientManager.sendMessage).not.toHaveBeenCalled();
         });
 
+        it('多個 Pod 應並行執行', async () => {
+            const pod1 = makePod({
+                id: 'pod-1',
+                status: 'idle',
+                slackBinding: {slackAppId: 'app-1', slackChannelId: 'C123'},
+            });
+            const pod2 = makePod({
+                id: 'pod-2',
+                status: 'idle',
+                slackBinding: {slackAppId: 'app-1', slackChannelId: 'C123'},
+            });
+            asMock(slackAppStore.getById).mockReturnValue({id: 'app-1', botUserId: 'UBOT'});
+            asMock(podStore.findBySlackApp).mockReturnValue([
+                {canvasId, pod: pod1},
+                {canvasId, pod: pod2},
+            ]);
+            asMock(podStore.getById).mockImplementation((_canvasId: string, id: string) => {
+                if (id === 'pod-1') return pod1;
+                if (id === 'pod-2') return pod2;
+                return undefined;
+            });
+
+            const startedIds: string[] = [];
+            const resolvers: Array<() => void> = [];
+
+            asMock(executeStreamingChat).mockImplementation(async (params) => {
+                startedIds.push(params.podId as string);
+                await new Promise<void>(resolve => resolvers.push(resolve));
+                return {messageId: 'stream-1', content: '回覆', hasContent: true, aborted: false};
+            });
+
+            const handlePromise = slackEventService.handleAppMention('app-1', {
+                type: 'app_mention',
+                channel: 'C123',
+                user: 'U456',
+                text: '<@UBOT> 你好',
+                event_ts: '111.222',
+            } as any);
+
+            // 等待兩個 Pod 都開始執行（並行發起）
+            await vi.waitFor(() => {
+                expect(startedIds).toHaveLength(2);
+            });
+
+            // resolve 所有 pending promise
+            resolvers.forEach(resolve => resolve());
+            await handlePromise;
+
+            expect(executeStreamingChat).toHaveBeenCalledTimes(2);
+        });
+
+        it('部分 Pod 執行失敗不影響其他 Pod', async () => {
+            const pod1 = makePod({
+                id: 'pod-1',
+                status: 'idle',
+                slackBinding: {slackAppId: 'app-1', slackChannelId: 'C123'},
+            });
+            const pod2 = makePod({
+                id: 'pod-2',
+                status: 'idle',
+                slackBinding: {slackAppId: 'app-1', slackChannelId: 'C123'},
+            });
+            asMock(slackAppStore.getById).mockReturnValue({id: 'app-1', botUserId: 'UBOT'});
+            asMock(podStore.findBySlackApp).mockReturnValue([
+                {canvasId, pod: pod1},
+                {canvasId, pod: pod2},
+            ]);
+            asMock(podStore.getById).mockImplementation((_canvasId: string, id: string) => {
+                if (id === 'pod-1') return pod1;
+                if (id === 'pod-2') return pod2;
+                return undefined;
+            });
+
+            asMock(executeStreamingChat)
+                .mockRejectedValueOnce(new Error('Pod 1 執行失敗'))
+                .mockResolvedValueOnce({messageId: 'stream-2', content: '回覆', hasContent: true, aborted: false});
+
+            await expect(
+                slackEventService.handleAppMention('app-1', {
+                    type: 'app_mention',
+                    channel: 'C123',
+                    user: 'U456',
+                    text: '<@UBOT> 你好',
+                    event_ts: '111.222',
+                } as any)
+            ).resolves.not.toThrow();
+
+            expect(executeStreamingChat).toHaveBeenCalledTimes(2);
+        });
+
         it('Pod 狀態為 error 時應先重置為 idle 再注入訊息', async () => {
             const pod = makePod({
                 status: 'error',
@@ -537,6 +648,16 @@ describe('SlackEventService', () => {
 
     describe('injectSlackMessage', () => {
         const message = makeMessage();
+
+        it('Pod 在二次確認時已變為 chatting 應跳過注入', async () => {
+            const pod = makePod({status: 'chatting'});
+            asMock(podStore.getById).mockReturnValue(pod);
+
+            await slackEventService.injectSlackMessage(canvasId, podId, message);
+
+            expect(executeStreamingChat).not.toHaveBeenCalled();
+            expect(podStore.setStatus).not.toHaveBeenCalled();
+        });
 
         it('組合正確的使用者訊息格式', async () => {
             const pod = makePod();
@@ -616,8 +737,27 @@ describe('SlackEventService', () => {
 
             expect(executeStreamingChat).toHaveBeenCalledWith(
                 expect.objectContaining({canvasId, podId, abortable: false}),
-                {}
+                {onComplete: expect.any(Function)}
             );
+        });
+
+        it('完成後應觸發 autoClear 和 workflow', async () => {
+            const pod = makePod();
+            asMock(podStore.getById).mockReturnValue(pod);
+
+            asMock(executeStreamingChat).mockImplementationOnce(async (_params, options) => {
+                if (options?.onComplete) {
+                    await options.onComplete(canvasId, podId);
+                }
+                return {messageId: 'stream-1', content: '回覆', hasContent: true, aborted: false};
+            });
+
+            await slackEventService.injectSlackMessage(canvasId, podId, message);
+
+            await vi.waitFor(() => {
+                expect(autoClearService.onPodComplete).toHaveBeenCalledWith(canvasId, podId);
+                expect(workflowExecutionService.checkAndTriggerWorkflows).toHaveBeenCalledWith(canvasId, podId);
+            });
         });
     });
 });
