@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia } from 'pinia'
+import { webSocketMockFactory, mockCreateWebSocketRequest, mockWebSocketClient } from '../helpers/mockWebSocket'
+import { setupStoreTest, mockErrorSanitizerFactory } from '../helpers/testSetup'
 import { setupTestPinia } from '../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket, mockWebSocketClient } from '../helpers/mockWebSocket'
 import { createMockCanvas, createMockPod, createMockSchedule } from '../helpers/factories'
 import { usePodStore } from '@/stores/pod/podStore'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -10,14 +11,7 @@ import type { Pod, ModelType, Schedule } from '@/types'
 import { MAX_POD_NAME_LENGTH } from '@/lib/constants'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const mockShowSuccessToast = vi.fn()
@@ -30,13 +24,7 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 // Mock sanitizeErrorForUser
-vi.mock('@/utils/errorSanitizer', () => ({
-  sanitizeErrorForUser: vi.fn((error: unknown) => {
-    if (error instanceof Error) return error.message
-    if (typeof error === 'string') return error
-    return '未知錯誤'
-  }),
-}))
+vi.mock('@/utils/errorSanitizer', () => mockErrorSanitizerFactory())
 
 // Mock useCanvasWebSocketAction
 const mockExecuteAction = vi.fn()
@@ -47,11 +35,7 @@ vi.mock('@/composables/useCanvasWebSocketAction', () => ({
 }))
 
 describe('podStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
+  setupStoreTest(() => {
     mockExecuteAction.mockResolvedValue({ success: false, error: '未知錯誤' })
   })
 

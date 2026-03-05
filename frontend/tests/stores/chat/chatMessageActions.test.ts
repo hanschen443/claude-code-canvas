@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod, createMockMessage } from '../../helpers/factories'
 import { useChatStore, resetChatActionsCache } from '@/stores/chat/chatStore'
 import { usePodStore } from '@/stores/pod/podStore'
@@ -20,14 +19,7 @@ import type { Message, SubMessage, ToolUseInfo } from '@/types/chat'
 import { CONTENT_PREVIEW_LENGTH, RESPONSE_PREVIEW_LENGTH } from '@/lib/constants'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 vi.mock('@/composables/useToast', () => ({
@@ -38,12 +30,8 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 describe('chatMessageActions', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
+  setupStoreTest(() => {
     resetChatActionsCache()
-    vi.clearAllMocks()
   })
 
   describe('addUserMessage', () => {

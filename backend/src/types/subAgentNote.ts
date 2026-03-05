@@ -1,9 +1,5 @@
-export interface SubAgentNote {
-  id: string;
+import type { BaseNote } from './baseNote';
+
+export interface SubAgentNote extends BaseNote {
   subAgentId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }

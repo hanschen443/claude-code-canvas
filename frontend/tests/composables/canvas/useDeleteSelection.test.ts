@@ -1,23 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod } from '../../helpers/factories'
 import { useDeleteSelection } from '@/composables/canvas/useDeleteSelection'
 import { useCanvasContext } from '@/composables/canvas/useCanvasContext'
 import type { SelectableElement } from '@/types'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast and domHelpers
 const { mockToast, mockIsEditingElement } = vi.hoisted(() => ({
@@ -36,13 +28,8 @@ vi.mock('@/utils/domHelpers', () => ({
 }))
 
 describe('useDeleteSelection', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
+  setupStoreTest(() => {
     mockIsEditingElement.mockReturnValue(false)
-
     const { canvasStore } = useCanvasContext()
     canvasStore.activeCanvasId = 'canvas-1'
   })

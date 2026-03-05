@@ -1,11 +1,7 @@
 import {v4 as uuidv4} from 'uuid';
 import {
-    closeTestServer,
-    createSocketClient,
-    createTestServer,
-    disconnectSocket,
     emitAndWaitResponse,
-    type TestServerInstance, TestWebSocketClient,
+    setupIntegrationTest,
 } from '../setup';
 import {createCommand, createOutputStyle, createSubAgent} from '../helpers';
 import {
@@ -27,20 +23,11 @@ import {
 } from '../../src/types';
 
 describe('Group 管理', () => {
-    let server: TestServerInstance;
-    let client: TestWebSocketClient;
-
-    beforeAll(async () => {
-        server = await createTestServer();
-        client = await createSocketClient(server.baseUrl, server.canvasId);
-    });
-
-    afterAll(async () => {
-        if (client?.connected) await disconnectSocket(client);
-        if (server) await closeTestServer(server);
-    });
+    const { getServer, getClient } = setupIntegrationTest();
 
     async function createGroup(type: 'command' | 'output-style' | 'subagent', name?: string) {
+        const client = getClient();
+        const server = getServer();
         const groupName = name ?? `group-${uuidv4().slice(0, 8)}`;
 
         return await emitAndWaitResponse<GroupCreatePayload, GroupCreatedResponse>(
@@ -87,6 +74,8 @@ describe('Group 管理', () => {
         });
 
         it('路徑穿越攻擊時建立群組失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const response = await emitAndWaitResponse<GroupCreatePayload, GroupCreatedResponse>(
                 client,
                 WebSocketRequestEvents.GROUP_CREATE,
@@ -98,6 +87,8 @@ describe('Group 管理', () => {
         });
 
         it('包含斜線時建立群組失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const response = await emitAndWaitResponse<GroupCreatePayload, GroupCreatedResponse>(
                 client,
                 WebSocketRequestEvents.GROUP_CREATE,
@@ -109,6 +100,8 @@ describe('Group 管理', () => {
         });
 
         it('包含特殊字元時建立群組失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const response = await emitAndWaitResponse<GroupCreatePayload, GroupCreatedResponse>(
                 client,
                 WebSocketRequestEvents.GROUP_CREATE,
@@ -120,6 +113,8 @@ describe('Group 管理', () => {
         });
 
         it('成功建立包含破折號的群組', async () => {
+            const client = getClient();
+            const server = getServer();
             const response = await emitAndWaitResponse<GroupCreatePayload, GroupCreatedResponse>(
                 client,
                 WebSocketRequestEvents.GROUP_CREATE,
@@ -134,6 +129,8 @@ describe('Group 管理', () => {
 
     describe('列出 Groups', () => {
         it('成功列出 Command 群組', async () => {
+            const client = getClient();
+            const server = getServer();
             const group = await createGroup('command');
 
             const response = await emitAndWaitResponse<GroupListPayload, GroupListResultResponse>(
@@ -150,6 +147,8 @@ describe('Group 管理', () => {
         });
 
         it('成功列出 Output Style 群組', async () => {
+            const client = getClient();
+            const server = getServer();
             const group = await createGroup('output-style');
 
             const response = await emitAndWaitResponse<GroupListPayload, GroupListResultResponse>(
@@ -165,6 +164,8 @@ describe('Group 管理', () => {
         });
 
         it('成功列出 SubAgent 群組', async () => {
+            const client = getClient();
+            const server = getServer();
             const group = await createGroup('subagent');
 
             const response = await emitAndWaitResponse<GroupListPayload, GroupListResultResponse>(
@@ -182,6 +183,8 @@ describe('Group 管理', () => {
 
     describe('刪除 Group', () => {
         it('成功刪除空群組', async () => {
+            const client = getClient();
+            const server = getServer();
             const group = await createGroup('command');
 
             const response = await emitAndWaitResponse<GroupDeletePayload, GroupDeletedResponse>(
@@ -196,6 +199,8 @@ describe('Group 管理', () => {
         });
 
         it('群組內有項目時刪除失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const group = await createGroup('command');
             const command = await createCommand(client, `cmd-${uuidv4()}`, '# Content');
 
@@ -218,6 +223,8 @@ describe('Group 管理', () => {
         });
 
         it('不存在的群組時刪除失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const response = await emitAndWaitResponse<GroupDeletePayload, GroupDeletedResponse>(
                 client,
                 WebSocketRequestEvents.GROUP_DELETE,
@@ -232,6 +239,7 @@ describe('Group 管理', () => {
 
     describe('Command 移動到 Group', () => {
         it('成功將 Command 移至群組', async () => {
+            const client = getClient();
             const group = await createGroup('command');
             const command = await createCommand(client, `cmd-${uuidv4()}`, '# Content');
 
@@ -248,6 +256,7 @@ describe('Group 管理', () => {
         });
 
         it('成功將 Command 從群組移至根目錄', async () => {
+            const client = getClient();
             const group = await createGroup('command');
             const command = await createCommand(client, `cmd-${uuidv4()}`, '# Content');
 
@@ -270,6 +279,7 @@ describe('Group 管理', () => {
         });
 
         it('成功在群組間移動 Command', async () => {
+            const client = getClient();
             const group1 = await createGroup('command');
             const group2 = await createGroup('command');
             const command = await createCommand(client, `cmd-${uuidv4()}`, '# Content');
@@ -295,6 +305,7 @@ describe('Group 管理', () => {
 
     describe('Output Style 移動到 Group', () => {
         it('成功將 Output Style 移至群組', async () => {
+            const client = getClient();
             const group = await createGroup('output-style');
             const style = await createOutputStyle(client, `style-${uuidv4()}`, '# Style');
 
@@ -311,6 +322,7 @@ describe('Group 管理', () => {
         });
 
         it('成功將 Output Style 從群組移至根目錄', async () => {
+            const client = getClient();
             const group = await createGroup('output-style');
             const style = await createOutputStyle(client, `style-${uuidv4()}`, '# Style');
 
@@ -335,6 +347,7 @@ describe('Group 管理', () => {
 
     describe('SubAgent 移動到 Group', () => {
         it('成功將 SubAgent 移至群組', async () => {
+            const client = getClient();
             const group = await createGroup('subagent');
             const agent = await createSubAgent(client, `agent-${uuidv4()}`, '# Agent');
 
@@ -351,6 +364,7 @@ describe('Group 管理', () => {
         });
 
         it('成功將 SubAgent 從群組移至根目錄', async () => {
+            const client = getClient();
             const group = await createGroup('subagent');
             const agent = await createSubAgent(client, `agent-${uuidv4()}`, '# Agent');
 

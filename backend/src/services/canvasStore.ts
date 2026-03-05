@@ -265,15 +265,14 @@ class CanvasStore {
             });
 
             const finalOrder = [...reordered, ...notReordered];
-
-            for (const [sortIndex, canvas] of finalOrder.entries()) {
+            const writePromises = finalOrder.map((canvas, sortIndex) => {
                 canvas.sortIndex = sortIndex;
-
                 const canvasJsonPath = path.join(config.getCanvasPath(canvas.name), 'canvas.json');
                 const persistedCanvas = this.buildPersistedCanvas(canvas);
+                return fs.writeFile(canvasJsonPath, JSON.stringify(persistedCanvas, null, 2), 'utf-8');
+            });
 
-                await fs.writeFile(canvasJsonPath, JSON.stringify(persistedCanvas, null, 2), 'utf-8');
-            }
+            await Promise.all(writePromises);
         }, '重新排序 Canvas 失敗');
 
         if (!reorderResult.success) {

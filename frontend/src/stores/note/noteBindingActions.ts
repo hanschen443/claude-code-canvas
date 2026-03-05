@@ -21,10 +21,27 @@ interface NoteItem {
     originalPosition?: Position | null
 }
 
+// 允許透過 config.itemIdField（如 'commandId'、'skillId'）進行動態 key 查找
+// 與 NoteItem 分離，避免 index signature 擴散到使用 NoteItem 的介面
+interface NoteItemWithDynamicKey extends NoteItem {
+    [key: string]: unknown
+}
+
 interface NoteBindingStore {
     notes: NoteItem[]
     getNotesByPodId: (podId: string) => NoteItem[]
     unbindFromPod?: (podId: string, behavior?: UnbindBehavior) => Promise<void>
+}
+
+interface UnbindPositionPayload {
+    canvasId: string
+    noteId: string
+    boundToPodId: null
+    originalPosition: null
+    x?: number
+    y?: number
+    // BasePayload 要求 index signature，才能作為 WebSocket payload 傳入
+    [key: string]: unknown
 }
 
 function resolveUnbindPosition(
@@ -32,8 +49,8 @@ function resolveUnbindPosition(
     behavior: UnbindBehavior,
     canvasId: string,
     noteId: string,
-): Record<string, unknown> {
-    const base: Record<string, unknown> = {
+): UnbindPositionPayload {
+    const base: UnbindPositionPayload = {
         canvasId,
         noteId,
         boundToPodId: null,
@@ -93,7 +110,7 @@ export function createNoteBindingActions<TItem>(config: NoteStoreConfig<TItem>):
                     payload: {
                         canvasId,
                         podId,
-                        [config.itemIdField]: (note as unknown as Record<string, unknown>)[config.itemIdField]
+                        [config.itemIdField]: (note as NoteItemWithDynamicKey)[config.itemIdField]
                     }
                 }),
                 createWebSocketRequest<BasePayload, BaseResponse>({

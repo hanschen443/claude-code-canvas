@@ -1,21 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
 import { ref, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, resetMockWebSocket, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useCursorTracker } from '@/composables/canvas/useCursorTracker'
 import { useViewportStore } from '@/stores/pod/viewportStore'
 import { WebSocketRequestEvents } from '@/types/websocket'
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 function createContainerEl(): HTMLElement {
   const el = document.createElement('div')
@@ -42,11 +34,11 @@ function fireMouseMove(el: HTMLElement, clientX: number, clientY: number): void 
 describe('useCursorTracker', () => {
   let el: HTMLElement
 
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
+  setupStoreTest(() => {
     vi.useFakeTimers()
+  })
+
+  beforeEach(() => {
     el = createContainerEl()
   })
 

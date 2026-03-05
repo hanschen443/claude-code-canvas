@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import { createPod, createOutputStyle, createSkillFile, FAKE_UUID, FAKE_STYLE_ID, getCanvasId} from '../helpers';
 import {
@@ -31,20 +26,10 @@ import {
 } from '../../src/types';
 
 describe('Note 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
-
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
+  const { getClient } = setupIntegrationTest();
 
   async function createTestNote(boundToPodId: string | null = null) {
+    const client = getClient();
     const style = await createOutputStyle(client, `note-style-${uuidv4()}`, '# S');
     const canvasId = await getCanvasId(client);
 
@@ -79,6 +64,7 @@ describe('Note 管理', () => {
     });
 
     it('綁定 Pod 時成功建立', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const note = await createTestNote(pod.id);
 
@@ -88,6 +74,7 @@ describe('Note 管理', () => {
 
   describe('Note 列表', () => {
     it('成功回傳所有 Note', async () => {
+      const client = getClient();
       await createTestNote();
       await createTestNote();
 
@@ -106,6 +93,7 @@ describe('Note 管理', () => {
 
   describe('Note 更新', () => {
     it('成功更新位置', async () => {
+      const client = getClient();
       const note = await createTestNote();
 
       const canvasId = await getCanvasId(client);
@@ -122,6 +110,7 @@ describe('Note 管理', () => {
     });
 
     it('成功更新綁定', async () => {
+      const client = getClient();
       const note = await createTestNote();
       const pod = await createPod(client);
 
@@ -138,6 +127,7 @@ describe('Note 管理', () => {
     });
 
     it('不存在的 ID 時更新失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<NoteUpdatePayload, NoteUpdatedPayload>(
         client,
@@ -153,6 +143,7 @@ describe('Note 管理', () => {
 
   describe('Note 刪除', () => {
     it('成功刪除', async () => {
+      const client = getClient();
       const note = await createTestNote();
 
       const canvasId = await getCanvasId(client);
@@ -168,6 +159,7 @@ describe('Note 管理', () => {
     });
 
     it('不存在的 ID 時刪除失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<NoteDeletePayload, NoteDeletedPayload>(
         client,
@@ -183,6 +175,7 @@ describe('Note 管理', () => {
 
   describe('OutputStyle Note 邊界測試', () => {
     it('OutputStyle 不存在時建立失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<NoteCreatePayload, NoteCreatedPayload>(
         client,
@@ -205,6 +198,7 @@ describe('Note 管理', () => {
     });
 
     it('已刪除後再更新失敗', async () => {
+      const client = getClient();
       const note = await createTestNote();
       const canvasId = await getCanvasId(client);
 
@@ -232,6 +226,7 @@ describe('Note 管理', () => {
     });
 
     it('重複刪除失敗', async () => {
+      const client = getClient();
       const note = await createTestNote();
       const canvasId = await getCanvasId(client);
 
@@ -254,6 +249,7 @@ describe('Note 管理', () => {
     });
 
     it('部分欄位只更新提供的', async () => {
+      const client = getClient();
       const style = await createOutputStyle(client, `style-${uuidv4()}`, '# Test');
       const canvasId = await getCanvasId(client);
       const createResponse = await emitAndWaitResponse<NoteCreatePayload, NoteCreatedPayload>(
@@ -295,6 +291,7 @@ describe('Note 管理', () => {
 
   describe('Skill Note 邊界測試', () => {
     it('無驗證函數時成功建立', async () => {
+      const client = getClient();
       const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test');
       const canvasId = await getCanvasId(client);
 
@@ -319,6 +316,7 @@ describe('Note 管理', () => {
     });
 
     it('不存在的 ID 時更新失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<SkillNoteUpdatePayload, SkillNoteUpdatedPayload>(
         client,
@@ -337,6 +335,7 @@ describe('Note 管理', () => {
     });
 
     it('不存在的 ID 時刪除失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<SkillNoteDeletePayload, SkillNoteDeletedPayload>(
         client,
@@ -350,6 +349,7 @@ describe('Note 管理', () => {
     });
 
     it('部分欄位只更新提供的', async () => {
+      const client = getClient();
       const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test');
       const canvasId = await getCanvasId(client);
       const createResponse = await emitAndWaitResponse<SkillNoteCreatePayload, SkillNoteCreatedPayload>(

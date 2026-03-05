@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../helpers/mockWebSocket'
+import { setupStoreTest } from '../helpers/testSetup'
 import { createMockCanvas, createMockConnection, createMockPod } from '../helpers/factories'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -21,14 +20,7 @@ import type {
 } from '@/types/websocket'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const mockToast = vi.fn()
@@ -47,11 +39,7 @@ vi.mock('@/composables/useCanvasWebSocketAction', () => ({
 }))
 
 describe('connectionStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
+  setupStoreTest(() => {
     mockExecuteAction.mockResolvedValue({ success: false, error: '未知錯誤' })
   })
 

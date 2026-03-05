@@ -102,30 +102,27 @@ export function collectSelectedPods(
   selectedElements: SelectableElement[],
   pods: Pod[]
 ): CopiedPod[] {
-  const copiedPods: CopiedPod[] = []
+  const podMap = new Map(pods.map(pod => [pod.id, pod]))
 
-  for (const element of selectedElements) {
-    if (element.type === 'pod') {
-      const pod = pods.find(pod => pod.id === element.id)
-      if (pod) {
-        copiedPods.push({
-          id: pod.id,
-          name: pod.name,
-          x: pod.x,
-          y: pod.y,
-          rotation: pod.rotation,
-          outputStyleId: pod.outputStyleId,
-          skillIds: pod.skillIds,
-          subAgentIds: pod.subAgentIds,
-          model: pod.model,
-          repositoryId: pod.repositoryId,
-          commandId: pod.commandId,
-        })
-      }
-    }
-  }
-
-  return copiedPods
+  return selectedElements
+    .filter(element => element.type === 'pod')
+    .flatMap(element => {
+      const pod = podMap.get(element.id)
+      if (!pod) return []
+      return [{
+        id: pod.id,
+        name: pod.name,
+        x: pod.x,
+        y: pod.y,
+        rotation: pod.rotation,
+        outputStyleId: pod.outputStyleId,
+        skillIds: pod.skillIds,
+        subAgentIds: pod.subAgentIds,
+        model: pod.model,
+        repositoryId: pod.repositoryId,
+        commandId: pod.commandId,
+      }]
+    })
 }
 
 function collectNoteFromElement(

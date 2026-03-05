@@ -9,7 +9,6 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const MAX_BODY_SIZE = 1_000_000;
 const MAX_DEDUP_MAP_SIZE = 10000;
 
-// event_id -> 收到的時間戳（ms）
 const processedEventIds = new Map<string, number>();
 
 const slackEventSchema = z.object({

@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
+import { describe, it, expect, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useBoxSelect } from '@/composables/canvas/useBoxSelect'
 import { useSelectionStore } from '@/stores/pod/selectionStore'
 import { useViewportStore } from '@/stores/pod/viewportStore'
@@ -32,11 +31,7 @@ vi.mock('@/utils/keyboardHelpers', () => ({
 const BOX_SELECT_THRESHOLD = 5
 
 describe('useBoxSelect', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('回傳值', () => {
     it('應回傳 isBoxSelecting ref 和 startBoxSelect 函數', () => {

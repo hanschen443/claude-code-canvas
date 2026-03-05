@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod } from '../../helpers/factories'
 import ChatModal from '@/components/chat/ChatModal.vue'
 
@@ -79,10 +78,7 @@ function mountChatModal() {
 }
 
 describe('ChatModal ESC 鍵行為', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-  })
+  setupStoreTest()
 
   afterEach(() => {
     // 清理可能殘留在 document.body 的測試 DOM 元素
@@ -149,9 +145,7 @@ describe('ChatModal ESC 鍵行為', () => {
 })
 
 describe('Workflow Input 限制', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
+  setupStoreTest(() => {
     mockGetPodWorkflowRole.mockReturnValue('independent')
     mockIsPartOfRunningWorkflow.mockReturnValue(false)
     mockIsTyping.mockReturnValue(false)
@@ -199,9 +193,7 @@ describe('Workflow Input 限制', () => {
 })
 
 describe('isWorkflowBusy', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
+  setupStoreTest(() => {
     mockIsTyping.mockReturnValue(false)
     mockIsPartOfRunningWorkflow.mockReturnValue(false)
     mockGetPodWorkflowRole.mockReturnValue('independent')
@@ -279,9 +271,7 @@ describe('isWorkflowBusy', () => {
 })
 
 describe('Slack 綁定 Input 限制', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
+  setupStoreTest(() => {
     mockGetPodWorkflowRole.mockReturnValue('independent')
     mockIsPartOfRunningWorkflow.mockReturnValue(false)
     mockIsTyping.mockReturnValue(false)

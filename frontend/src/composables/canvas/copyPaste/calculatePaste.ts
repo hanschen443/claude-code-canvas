@@ -49,12 +49,11 @@ function toUnboundNoteEntry<T extends HasPosition>(noteList: T[], getBoundKey: (
 }
 
 function updateBoundsForUnboundNotes(bounds: BoundingBox, noteStoreConfigs: UnboundNoteEntry[]): void {
-  for (const { noteList, getBoundKey } of noteStoreConfigs) {
-    for (const note of noteList) {
-      if (getBoundKey(note) === null) {
-        updateBoundingBox(bounds, note.x, note.y, NOTE_WIDTH, NOTE_HEIGHT)
-      }
-    }
+  const unboundNotes = noteStoreConfigs.flatMap(({ noteList, getBoundKey }) =>
+    noteList.filter(note => getBoundKey(note) === null)
+  )
+  for (const note of unboundNotes) {
+    updateBoundingBox(bounds, note.x, note.y, NOTE_WIDTH, NOTE_HEIGHT)
   }
 }
 
@@ -116,10 +115,8 @@ export function calculateOffsets(
 }
 
 const PASTE_NAME_MAX_COUNTER = 9999
-// " (9999)" 最長 7 字元
 const SUFFIX_MAX_LENGTH = 7
 
-/** 產生貼上時的 Pod 名稱，遞增避免衝突 */
 export function generatePasteName(originalName: string, existingNames: Set<string>): string {
   const suffixPattern = / \((\d+)\)$/
   const match = originalName.match(suffixPattern)

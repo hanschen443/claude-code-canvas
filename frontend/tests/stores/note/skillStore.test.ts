@@ -1,18 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import type { Skill, SkillNote } from '@/types'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock createWebSocketRequest separately
 vi.mock('@/services/websocket/createWebSocketRequest', () => ({
@@ -36,12 +28,9 @@ describe('skillStore', () => {
   let useSkillStore: any
   let useCanvasStore: any
 
-  beforeEach(async () => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
+  setupStoreTest()
 
+  beforeEach(async () => {
     // Import stores after mocks are set up
     const skillStoreModule = await import('@/stores/note/skillStore')
     const canvasStoreModule = await import('@/stores/canvasStore')

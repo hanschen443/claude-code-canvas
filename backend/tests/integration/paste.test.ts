@@ -1,11 +1,7 @@
 import {v4 as uuidv4} from 'uuid';
 import {
-    createTestServer,
-    closeTestServer,
-    createSocketClient,
     emitAndWaitResponse,
-    disconnectSocket,
-    type TestServerInstance, TestWebSocketClient,
+    setupIntegrationTest,
 } from '../setup';
 import {
     createOutputStyle,
@@ -32,20 +28,10 @@ import {
 import { type CanvasPasteResultPayload } from '../../src/types';
 
 describe('貼上功能', () => {
-    let server: TestServerInstance;
-    let client: TestWebSocketClient;
-
-    beforeAll(async () => {
-        server = await createTestServer();
-        client = await createSocketClient(server.baseUrl, server.canvasId);
-    });
-
-    afterAll(async () => {
-        if (client?.connected) await disconnectSocket(client);
-        if (server) await closeTestServer(server);
-    });
+    const { getClient } = setupIntegrationTest();
 
     async function emptyPastePayload(): Promise<CanvasPastePayload> {
+        const client = getClient();
         const canvasId = await getCanvasId(client);
         return {
             requestId: uuidv4(),
@@ -62,6 +48,7 @@ describe('貼上功能', () => {
 
     describe('Canvas 貼上', () => {
         it('成功貼上並建立 Pod 和連線', async () => {
+            const client = getClient();
             const podId1 = uuidv4();
             const podId2 = uuidv4();
 
@@ -95,6 +82,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上並建立綁定 Pod 的註記', async () => {
+            const client = getClient();
             const style = await createOutputStyle(client, `paste-style-${uuidv4()}`, '# Style');
             const podId = uuidv4();
 
@@ -130,6 +118,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上空內容', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasPastePayload, CanvasPasteResultPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_PASTE,
@@ -142,6 +131,7 @@ describe('貼上功能', () => {
         });
 
         it('成功回報無效項目的錯誤', async () => {
+            const client = getClient();
             const validPodId = uuidv4();
             const pods: PastePodItem[] = [
                 {originalId: validPodId, name: 'Valid', x: 0, y: 0, rotation: 0},
@@ -175,6 +165,7 @@ describe('貼上功能', () => {
             const triggerModes = ['auto', 'ai-decide', 'direct'] as const;
 
             it.each(triggerModes)('貼上 connection 時帶 triggerMode: %s 能成功', async (triggerMode) => {
+                const client = getClient();
                 const podId1 = uuidv4();
                 const podId2 = uuidv4();
 
@@ -206,6 +197,7 @@ describe('貼上功能', () => {
             });
 
             it('貼上 connection 時不帶 triggerMode 能成功', async () => {
+                const client = getClient();
                 const podId1 = uuidv4();
                 const podId2 = uuidv4();
 
@@ -237,6 +229,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上並建立技能註記', async () => {
+            const client = getClient();
             const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test Skill');
 
             const skillNotes: PasteSkillNoteItem[] = [
@@ -264,6 +257,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上並建立儲存庫註記', async () => {
+            const client = getClient();
             const repository = await createRepository(client, `repo-${uuidv4()}`);
 
             const repositoryNotes: PasteRepositoryNoteItem[] = [
@@ -291,6 +285,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上並建立子代理註記', async () => {
+            const client = getClient();
             const subAgent = await createSubAgent(client, `subagent-${uuidv4()}`, '# Test SubAgent');
 
             const subAgentNotes: PasteSubAgentNoteItem[] = [
@@ -318,6 +313,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上並建立綁定 Pod 的指令註記', async () => {
+            const client = getClient();
             const command = await createCommand(client, `command-${uuidv4()}`, '# Test Command');
             const originalPodId = uuidv4();
 
@@ -358,6 +354,7 @@ describe('貼上功能', () => {
         });
 
         it('成功貼上並建立綁定 Pod 的 MCP server 註記，且 Pod 的 mcpServerIds 被更新', async () => {
+            const client = getClient();
             const mcpServer = await createMcpServer(client, `mcp-${uuidv4()}`);
             const originalPodId = uuidv4();
 
@@ -398,6 +395,7 @@ describe('貼上功能', () => {
         });
 
         it('Command Note 未綁定 Pod 時可獨立貼上，且不建立任何 Pod', async () => {
+            const client = getClient();
             const command = await createCommand(client, `command-unbound-${uuidv4()}`, '# Test Command');
 
             const commandNotes: PasteCommandNoteItem[] = [
@@ -426,6 +424,7 @@ describe('貼上功能', () => {
         });
 
         it('貼上 Command Note 時，若 Pod 已有 commandId，不覆蓋原本的 commandId', async () => {
+            const client = getClient();
             const command1 = await createCommand(client, `command-existing-${uuidv4()}`, '# Existing Command');
             const command2 = await createCommand(client, `command-new-${uuidv4()}`, '# New Command');
             const originalPodId = uuidv4();
@@ -488,6 +487,7 @@ describe('貼上功能', () => {
         });
 
         it('Pod 的 repositoryId 指向不存在的 UUID 時，回報錯誤且不建立該 Pod', async () => {
+            const client = getClient();
             const nonExistentRepositoryId = uuidv4();
             const originalPodId = uuidv4();
 
@@ -512,6 +512,7 @@ describe('貼上功能', () => {
         });
 
         it('MCP Server Note 未綁定 Pod 時可獨立貼上，且不影響任何 Pod 的 mcpServerIds', async () => {
+            const client = getClient();
             const mcpServer = await createMcpServer(client, `mcp-unbound-${uuidv4()}`);
 
             const mcpServerNotes: PasteMcpServerNoteItem[] = [
@@ -541,6 +542,7 @@ describe('貼上功能', () => {
         });
 
         it('貼上 MCP Server Note 時，若 Pod 的 mcpServerIds 已包含該 mcpServerId，不應重複加入', async () => {
+            const client = getClient();
             const mcpServer = await createMcpServer(client, `mcp-dedup-${uuidv4()}`);
             const originalPodId = uuidv4();
 

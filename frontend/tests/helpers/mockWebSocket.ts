@@ -92,3 +92,15 @@ export function mockWebSocketModule() {
     createWebSocketRequest: mockCreateWebSocketRequest,
   }
 }
+
+/**
+ * 供 vi.mock() 使用的 factory，包含真實的 WebSocketRequestEvents 與 WebSocketResponseEvents
+ */
+export async function webSocketMockFactory() {
+  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
+  return {
+    ...mockWebSocketModule(),
+    WebSocketRequestEvents: actual.WebSocketRequestEvents,
+    WebSocketResponseEvents: actual.WebSocketResponseEvents,
+  }
+}

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockWebSocketClient, resetMockWebSocket, simulateEvent } from '../helpers/mockWebSocket'
+import { webSocketMockFactory, mockWebSocketClient, resetMockWebSocket, simulateEvent } from '../helpers/mockWebSocket'
+import { setupStoreTest } from '../helpers/testSetup'
 import { createMockPod, createMockConnection, createMockNote, createMockCanvas } from '../helpers/factories'
 import { useUnifiedEventListeners, listeners } from '@/composables/useUnifiedEventListeners'
 import { resetChatActionsCache } from '@/stores/chat/chatStore'
@@ -19,15 +18,7 @@ import { useSlackStore } from '@/stores/slackStore'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
 import type { SlackApp } from '@/types/slack'
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  const { mockWebSocketModule } = await import('../helpers/mockWebSocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 vi.mock('@/services/websocket/createWebSocketRequest', () => ({
   tryResolvePendingRequest: vi.fn().mockReturnValue(false),
@@ -47,19 +38,17 @@ vi.mock('@/composables/useToast', () => ({
 describe('useUnifiedEventListeners', () => {
   let mockTryResolvePendingRequest: ReturnType<typeof vi.fn>
 
-  beforeEach(async () => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
+  setupStoreTest(() => {
     resetChatActionsCache()
+    const canvasStore = useCanvasStore()
+    canvasStore.activeCanvasId = 'canvas-1'
+  })
 
+  beforeEach(async () => {
     const createWebSocketRequestModule = await import('@/services/websocket/createWebSocketRequest')
     mockTryResolvePendingRequest = vi.mocked(createWebSocketRequestModule.tryResolvePendingRequest)
     mockTryResolvePendingRequest.mockReturnValue(false)
-
     sharedMockToast.mockClear()
-
-    const canvasStore = useCanvasStore()
-    canvasStore.activeCanvasId = 'canvas-1'
   })
 
   afterEach(() => {

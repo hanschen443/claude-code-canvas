@@ -61,18 +61,14 @@ export const useCanvasStore = defineStore('canvas', {
     async loadCanvases(): Promise<void> {
       this.isLoading = true
 
-      let response: CanvasListResultPayload;
-
-      try {
-        response = await createWebSocketRequest<CanvasListPayload, CanvasListResultPayload>({
-          requestEvent: WebSocketRequestEvents.CANVAS_LIST,
-          responseEvent: WebSocketResponseEvents.CANVAS_LIST_RESULT,
-          payload: {}
-        })
-      } catch (error) {
+      const response = await createWebSocketRequest<CanvasListPayload, CanvasListResultPayload>({
+        requestEvent: WebSocketRequestEvents.CANVAS_LIST,
+        responseEvent: WebSocketResponseEvents.CANVAS_LIST_RESULT,
+        payload: {}
+      }).catch((error) => {
         this.isLoading = false
         throw error
-      }
+      })
 
       if (!response.canvases) {
         console.warn('[CanvasStore] 後端未回傳任何 Canvas')

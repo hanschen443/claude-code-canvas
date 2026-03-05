@@ -1,11 +1,7 @@
 import {v4 as uuidv4} from 'uuid';
 import {
-    createTestServer,
-    closeTestServer,
-    createSocketClient,
-    disconnectSocket,
     emitAndWaitResponse,
-    type TestServerInstance,
+    setupIntegrationTest,
 } from '../setup';
 import {
     createCanvas,
@@ -32,24 +28,13 @@ import {
     type CanvasSwitchedPayload,
     type CanvasReorderedPayload,
 } from '../../src/types';
-import {TestWebSocketClient} from "../setup";
 
 describe('Canvas 管理', () => {
-    let server: TestServerInstance;
-    let client: TestWebSocketClient;
-
-    beforeAll(async () => {
-        server = await createTestServer();
-        client = await createSocketClient(server.baseUrl, server.canvasId);
-    });
-
-    afterAll(async () => {
-        if (client?.connected) await disconnectSocket(client);
-        if (server) await closeTestServer(server);
-    });
+    const { getClient } = setupIntegrationTest();
 
     describe('Canvas 建立', () => {
         it('使用有效名稱成功建立', async () => {
+            const client = getClient();
             const canvas = await createCanvas(client, 'Test Canvas');
 
             expect(canvas.id).toBeDefined();
@@ -57,6 +42,7 @@ describe('Canvas 管理', () => {
         });
 
         it('空白名稱時建立失敗', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasCreatePayload, CanvasCreatedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_CREATE,
@@ -69,6 +55,7 @@ describe('Canvas 管理', () => {
         });
 
         it('無效名稱時建立失敗', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasCreatePayload, CanvasCreatedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_CREATE,
@@ -83,6 +70,7 @@ describe('Canvas 管理', () => {
 
     describe('Canvas 列表', () => {
         it('成功回傳所有 Canvas', async () => {
+            const client = getClient();
             await createCanvas(client, 'List Canvas 1');
             await createCanvas(client, 'List Canvas 2');
 
@@ -100,6 +88,7 @@ describe('Canvas 管理', () => {
         });
 
         it('成功回傳陣列格式', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasListPayload, CanvasListResultPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_LIST,
@@ -114,6 +103,7 @@ describe('Canvas 管理', () => {
 
     describe('Canvas 重命名', () => {
         it('成功重命名', async () => {
+            const client = getClient();
             const canvas = await createCanvas(client, 'Original Name');
 
             const response = await emitAndWaitResponse<CanvasRenamePayload, CanvasRenamedPayload>(
@@ -129,6 +119,7 @@ describe('Canvas 管理', () => {
         });
 
         it('不存在的 ID 時重命名失敗', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasRenamePayload, CanvasRenamedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_RENAME,
@@ -141,6 +132,7 @@ describe('Canvas 管理', () => {
         });
 
         it('空白名稱時重命名失敗', async () => {
+            const client = getClient();
             const canvas = await createCanvas(client, 'Valid Name');
 
             const response = await emitAndWaitResponse<CanvasRenamePayload, CanvasRenamedPayload>(
@@ -155,6 +147,7 @@ describe('Canvas 管理', () => {
         });
 
         it('無效名稱時重命名失敗', async () => {
+            const client = getClient();
             const createResponse = await emitAndWaitResponse<CanvasCreatePayload, CanvasCreatedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_CREATE,
@@ -177,6 +170,7 @@ describe('Canvas 管理', () => {
         });
 
         it('重複名稱時重命名失敗', async () => {
+            const client = getClient();
             await createCanvas(client, 'Canvas_One');
             const canvas2 = await createCanvas(client, 'Canvas_Two');
             const response = await emitAndWaitResponse<CanvasRenamePayload, CanvasRenamedPayload>(
@@ -193,6 +187,7 @@ describe('Canvas 管理', () => {
 
     describe('Canvas 刪除', () => {
         it('成功刪除', async () => {
+            const client = getClient();
             const canvas = await createCanvas(client, 'To Delete');
 
             const response = await emitAndWaitResponse<CanvasDeletePayload, CanvasDeletedPayload>(
@@ -207,6 +202,7 @@ describe('Canvas 管理', () => {
         });
 
         it('不存在的 ID 時刪除失敗', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasDeletePayload, CanvasDeletedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_DELETE,
@@ -219,6 +215,7 @@ describe('Canvas 管理', () => {
         });
 
         it('使用中時刪除失敗', async () => {
+            const client = getClient();
             const activeCanvasId = await getCanvasId(client);
 
             const response = await emitAndWaitResponse<CanvasDeletePayload, CanvasDeletedPayload>(
@@ -235,6 +232,7 @@ describe('Canvas 管理', () => {
 
     describe('Canvas 切換', () => {
         it('成功切換', async () => {
+            const client = getClient();
             const canvas = await createCanvas(client, 'Switch Target');
 
             const response = await emitAndWaitResponse<CanvasSwitchPayload, CanvasSwitchedPayload>(
@@ -249,6 +247,7 @@ describe('Canvas 管理', () => {
         });
 
         it('不存在的 ID 時切換失敗', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasSwitchPayload, CanvasSwitchedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_SWITCH,
@@ -263,6 +262,7 @@ describe('Canvas 管理', () => {
 
     describe('Canvas 排序', () => {
         it('成功重新排序', async () => {
+            const client = getClient();
             await listCanvases(client);
             const canvasA = await createCanvas(client, 'Canvas A');
             const canvasB = await createCanvas(client, 'Canvas B');
@@ -280,6 +280,7 @@ describe('Canvas 管理', () => {
         });
 
         it('列表回傳排序後的順序', async () => {
+            const client = getClient();
             const canvas1 = await createCanvas(client, 'Canvas 1');
             const canvas2 = await createCanvas(client, 'Canvas 2');
             const canvas3 = await createCanvas(client, 'Canvas 3');
@@ -296,6 +297,7 @@ describe('Canvas 管理', () => {
         });
 
         it('新 Canvas 新增到最後', async () => {
+            const client = getClient();
             const canvas1 = await createCanvas(client, 'Canvas X');
             const canvas2 = await createCanvas(client, 'Canvas Y');
             const allCanvases1 = await listCanvases(client);
@@ -312,6 +314,7 @@ describe('Canvas 管理', () => {
         });
 
         it('無效 ID 時排序失敗', async () => {
+            const client = getClient();
             const canvas = await createCanvas(client, 'Valid Canvas');
             const response = await emitAndWaitResponse<CanvasReorderPayload, CanvasReorderedPayload>(
                 client,
@@ -325,6 +328,7 @@ describe('Canvas 管理', () => {
         });
 
         it('空陣列時排序失敗', async () => {
+            const client = getClient();
             const response = await emitAndWaitResponse<CanvasReorderPayload, CanvasReorderedPayload>(
                 client,
                 WebSocketRequestEvents.CANVAS_REORDER,
@@ -336,6 +340,7 @@ describe('Canvas 管理', () => {
         });
 
         it('部分 ID 時成功排序', async () => {
+            const client = getClient();
             // 建立 3 個 Canvas
             const canvasP1 = await createCanvas(client, 'Partial_1');
             const canvasP2 = await createCanvas(client, 'Partial_2');
@@ -363,6 +368,7 @@ describe('Canvas 管理', () => {
         });
 
         it('重複 ID 時排序失敗', async () => {
+            const client = getClient();
             // 建立 1 個 Canvas
             const canvas = await createCanvas(client, 'Duplicate_Test');
 

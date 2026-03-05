@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import PodContextMenu from '@/components/canvas/PodContextMenu.vue'
 
 const { mockWrapWebSocketRequest, mockToast, mockGetActiveCanvasIdOrWarn, mockGetPodById } = vi.hoisted(() => ({
@@ -70,10 +69,7 @@ function mountMenu(props = {}) {
 }
 
 describe('PodContextMenu', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
+  setupStoreTest(() => {
     mockGetActiveCanvasIdOrWarn.mockReturnValue('canvas-1')
   })
 

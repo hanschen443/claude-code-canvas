@@ -1,31 +1,16 @@
 import {
-	createTestServer,
-	closeTestServer,
-	createSocketClient,
-	disconnectSocket,
 	waitForEvent,
-	type TestServerInstance,
+	setupIntegrationTest,
 } from '../setup';
 import { createCanvas, postCanvas } from '../helpers';
-import type { TestWebSocketClient } from '../setup';
 import { canvasStore } from '../../src/services/canvasStore.js';
 
 describe('Canvas REST API', () => {
-	let server: TestServerInstance;
-	let client: TestWebSocketClient;
-
-	beforeAll(async () => {
-		server = await createTestServer();
-		client = await createSocketClient(server.baseUrl, server.canvasId);
-	});
-
-	afterAll(async () => {
-		if (client?.connected) await disconnectSocket(client);
-		if (server) await closeTestServer(server);
-	});
+	const { getServer, getClient } = setupIntegrationTest();
 
 	describe('GET /api/canvas/list', () => {
 		it('成功取得畫布列表', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas/list`);
 
 			expect(response.status).toBe(200);
@@ -36,6 +21,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('回傳資料包含正確欄位', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas/list`);
 			const body = await response.json();
 
@@ -48,6 +34,8 @@ describe('Canvas REST API', () => {
 		});
 
 		it('回傳資料按 sortIndex 排序', async () => {
+			const server = getServer();
+			const client = getClient();
 			await createCanvas(client, 'Api Test Canvas A');
 			await createCanvas(client, 'Api Test Canvas B');
 
@@ -63,6 +51,7 @@ describe('Canvas REST API', () => {
 
 	describe('POST /api/canvas', () => {
 		it('成功建立 Canvas 並回傳 201 與正確欄位', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, { name: 'rest-api-test' });
 			expect(response.status).toBe(201);
 			const body = await response.json();
@@ -73,6 +62,8 @@ describe('Canvas REST API', () => {
 		});
 
 		it('成功建立後透過 WebSocket 廣播 canvas:created 事件', async () => {
+			const server = getServer();
+			const client = getClient();
 			const eventPromise = waitForEvent(client, 'canvas:created', 5000);
 			const response = await postCanvas(server.baseUrl, { name: 'ws-broadcast-test' });
 			expect(response.status).toBe(201);
@@ -84,6 +75,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('缺少 name 欄位回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, {});
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -91,6 +83,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('name 為空字串回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, { name: '   ' });
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -98,6 +91,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('name 包含非法字元回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, { name: 'test@canvas!' });
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -105,6 +99,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('name 超過 50 字元回傳 400', async () => {
+			const server = getServer();
 			const longName = 'a'.repeat(51);
 			const response = await postCanvas(server.baseUrl, { name: longName });
 			expect(response.status).toBe(400);
@@ -113,6 +108,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('重複名稱回傳 400', async () => {
+			const server = getServer();
 			await postCanvas(server.baseUrl, { name: 'duplicate-test' });
 			const response = await postCanvas(server.baseUrl, { name: 'duplicate-test' });
 			expect(response.status).toBe(400);
@@ -121,6 +117,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('request body 非 JSON 格式回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, 'not json', 'text/plain');
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -128,6 +125,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('name 為 null 回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, { name: null });
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -135,6 +133,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('name 為非字串型別回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, { name: 123 });
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -142,6 +141,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('Windows 保留名稱回傳 400', async () => {
+			const server = getServer();
 			const response = await postCanvas(server.baseUrl, { name: 'CON' });
 			expect(response.status).toBe(400);
 			const body = await response.json();
@@ -149,6 +149,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('name 剛好 50 字元應成功建立', async () => {
+			const server = getServer();
 			const name50 = 'a'.repeat(50);
 			const response = await postCanvas(server.baseUrl, { name: name50 });
 			expect(response.status).toBe(201);
@@ -157,6 +158,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('不帶 body 回傳 400', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -167,6 +169,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('建立後 GET /api/canvas/list 應包含新 Canvas', async () => {
+			const server = getServer();
 			const createResponse = await postCanvas(server.baseUrl, { name: 'list-verify-test' });
 			expect(createResponse.status).toBe(201);
 			const created = await createResponse.json();
@@ -179,6 +182,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('canvasStore.create 拋出例外時回傳 500', async () => {
+			const server = getServer();
 			const spy = vi.spyOn(canvasStore, 'create').mockRejectedValueOnce(new Error('模擬錯誤'));
 			const response = await postCanvas(server.baseUrl, { name: 'error-test' });
 			expect(response.status).toBe(500);
@@ -190,6 +194,7 @@ describe('Canvas REST API', () => {
 
 	describe('DELETE /api/canvas/:id', () => {
 		it('成功刪除 Canvas 回傳 200', async () => {
+			const server = getServer();
 			const createResponse = await postCanvas(server.baseUrl, { name: 'delete-test-canvas' });
 			expect(createResponse.status).toBe(201);
 			const created = await createResponse.json();
@@ -202,6 +207,8 @@ describe('Canvas REST API', () => {
 		});
 
 		it('成功刪除後透過 WebSocket 廣播 canvas:deleted 事件', async () => {
+			const server = getServer();
+			const client = getClient();
 			const createResponse = await postCanvas(server.baseUrl, { name: 'delete-ws-test' });
 			expect(createResponse.status).toBe(201);
 			const created = await createResponse.json();
@@ -218,6 +225,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('刪除後 GET /api/canvas/list 不包含已刪除的 Canvas', async () => {
+			const server = getServer();
 			const createResponse = await postCanvas(server.baseUrl, { name: 'delete-list-verify' });
 			expect(createResponse.status).toBe(201);
 			const created = await createResponse.json();
@@ -232,6 +240,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('刪除不存在的 Canvas 回傳 404', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas/00000000-0000-4000-8000-000000000000`, { method: 'DELETE' });
 			expect(response.status).toBe(404);
 			const body = await response.json();
@@ -239,6 +248,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('用 canvas name 刪除 Canvas 成功', async () => {
+			const server = getServer();
 			const createResponse = await postCanvas(server.baseUrl, { name: 'delete-by-name-test' });
 			expect(createResponse.status).toBe(201);
 
@@ -249,6 +259,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('找不到的 canvas name 回傳 404', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas/non-existent-canvas`, { method: 'DELETE' });
 			expect(response.status).toBe(404);
 			const body = await response.json();
@@ -256,6 +267,8 @@ describe('Canvas REST API', () => {
 		});
 
 		it('canvasStore.delete 失敗時回傳 500', async () => {
+			const server = getServer();
+			const client = getClient();
 			const created = await createCanvas(client, 'delete-error-test');
 			const spy = vi.spyOn(canvasStore, 'delete').mockResolvedValueOnce({ success: false, error: '模擬刪除失敗' });
 
@@ -268,6 +281,8 @@ describe('Canvas REST API', () => {
 		});
 
 		it('重複刪除同一個 Canvas 回傳 404', async () => {
+			const server = getServer();
+			const client = getClient();
 			const created = await createCanvas(client, 'double-delete-test');
 
 			const first = await fetch(`${server.baseUrl}/api/canvas/${created.id}`, { method: 'DELETE' });
@@ -282,6 +297,7 @@ describe('Canvas REST API', () => {
 
 	describe('錯誤處理', () => {
 		it('呼叫錯誤路徑回傳 404', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas`);
 
 			expect(response.status).toBe(404);
@@ -292,6 +308,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('呼叫錯誤 HTTP method 回傳 404', async () => {
+			const server = getServer();
 			const response = await fetch(`${server.baseUrl}/api/canvas/list`, {
 				method: 'POST',
 			});
@@ -304,6 +321,7 @@ describe('Canvas REST API', () => {
 		});
 
 		it('handler 拋出例外時回傳 500', async () => {
+			const server = getServer();
 			const { canvasStore } = await import('../../src/services/canvasStore.js');
 			vi.spyOn(canvasStore, 'list').mockImplementationOnce(() => {
 				throw new Error('模擬資料庫錯誤');
@@ -323,6 +341,7 @@ describe('Canvas REST API', () => {
 
 	describe('空列表情境', () => {
 		it('沒有畫布時回傳空陣列', async () => {
+			const server = getServer();
 			const { canvasStore } = await import('../../src/services/canvasStore.js');
 			vi.spyOn(canvasStore, 'list').mockReturnValueOnce([]);
 

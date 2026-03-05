@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
+import { describe, it, expect } from 'vitest'
+import { setupStoreTest } from '../helpers/testSetup'
 import { useCursorStore } from '@/stores/cursorStore'
 import type { CursorMovedPayload } from '@/types/websocket'
 
@@ -15,10 +14,7 @@ function makeCursorPayload(overrides: Partial<CursorMovedPayload> = {}): CursorM
 }
 
 describe('cursorStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-  })
+  setupStoreTest()
 
   describe('初始狀態', () => {
     it('cursors 應為空 Map', () => {

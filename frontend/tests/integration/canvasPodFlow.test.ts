@@ -1,7 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../helpers/mockWebSocket'
+import { describe, it, expect, vi } from 'vitest'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../helpers/mockWebSocket'
+import { setupStoreTest, mockErrorSanitizerFactory } from '../helpers/testSetup'
 import { createMockCanvas, createMockPod, createMockConnection, createMockNote, createMockSchedule } from '../helpers/factories'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { usePodStore } from '@/stores/pod/podStore'
@@ -9,14 +8,7 @@ import { useConnectionStore } from '@/stores/connectionStore'
 import type { Canvas, Pod, Connection } from '@/types'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const mockShowSuccessToast = vi.fn()
@@ -32,21 +24,10 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 // Mock sanitizeErrorForUser
-vi.mock('@/utils/errorSanitizer', () => ({
-  sanitizeErrorForUser: vi.fn((error: unknown) => {
-    if (error instanceof Error) return error.message
-    if (typeof error === 'string') return error
-    return '未知錯誤'
-  }),
-}))
+vi.mock('@/utils/errorSanitizer', () => mockErrorSanitizerFactory())
 
 describe('Canvas/Pod 操作完整流程', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('建立 Canvas 並新增 Pod', () => {
     it('建立 Canvas -> 建立 Pod -> Pod 加入到正確的 Canvas', async () => {

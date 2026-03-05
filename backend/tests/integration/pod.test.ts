@@ -1,13 +1,8 @@
 import { spyOn } from 'bun:test';
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import { createPod, createPodPair, movePod, renamePod, setPodModel, setPodSchedule, FAKE_UUID, getCanvasId} from '../helpers';
 import { createConnection } from '../helpers';
@@ -46,21 +41,11 @@ import {
 } from '../../src/types';
 
 describe('Pod 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
-
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
+  const { getClient } = setupIntegrationTest();
 
   describe('Pod 建立', () => {
     it('成功建立 Pod', async () => {
+      const client = getClient();
       const pod = await createPod(client, {
         name: 'Created Pod',
         x: 100,
@@ -79,6 +64,7 @@ describe('Pod 管理', () => {
     });
 
     it('新建立的 Pod 預設狀態為 idle', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       expect(pod.status).toBe('idle');
     });
@@ -86,6 +72,7 @@ describe('Pod 管理', () => {
 
   describe('Pod 列表', () => {
     it('成功取得所有 Pod 列表', async () => {
+      const client = getClient();
       await createPod(client, { name: 'List Pod 1' });
       await createPod(client, { name: 'List Pod 2' });
 
@@ -104,6 +91,7 @@ describe('Pod 管理', () => {
     });
 
     it('Pod 列表回傳陣列格式', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodListPayload, PodListResultPayload>(
         client,
@@ -119,6 +107,7 @@ describe('Pod 管理', () => {
 
   describe('Pod 取得', () => {
     it('成功取得現有的 Pod', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Get Pod' });
 
       const canvasId = await getCanvasId(client);
@@ -135,6 +124,7 @@ describe('Pod 管理', () => {
     });
 
     it('取得不存在的 Pod 時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodGetPayload, PodGetResultPayload>(
         client,
@@ -150,6 +140,7 @@ describe('Pod 管理', () => {
 
   describe('Pod 移動', () => {
     it('成功移動 Pod 位置', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const updatedPod = await movePod(client, pod.id, 500, 600);
 
@@ -158,6 +149,7 @@ describe('Pod 管理', () => {
     });
 
     it('移動不存在的 Pod 時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodMovePayload, PodMovedPayload>(
         client,
@@ -173,6 +165,7 @@ describe('Pod 管理', () => {
 
   describe('Pod 重命名', () => {
     it('成功重命名 Pod', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const updatedPod = await renamePod(client, pod.id, 'New Name');
 
@@ -180,6 +173,7 @@ describe('Pod 管理', () => {
     });
 
     it('重命名不存在的 Pod 時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodRenamePayload, PodRenamedPayload>(
         client,
@@ -193,6 +187,7 @@ describe('Pod 管理', () => {
     });
 
     it('重命名為已存在的名稱應回傳錯誤', async () => {
+      const client = getClient();
       const podA = await createPod(client, { name: `rename-conflict-a-${uuidv4()}` });
       const podB = await createPod(client, { name: `rename-conflict-b-${uuidv4()}` });
 
@@ -209,6 +204,7 @@ describe('Pod 管理', () => {
     });
 
     it('重命名為自己目前的名稱應成功', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: `rename-self-${uuidv4()}` });
 
       const canvasId = await getCanvasId(client);
@@ -226,6 +222,7 @@ describe('Pod 管理', () => {
 
   describe('Pod 設定模型', () => {
     it('成功設定 Pod 模型為 Sonnet', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, 'sonnet');
 
@@ -233,6 +230,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功設定 Pod 模型為 Haiku', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, 'haiku');
 
@@ -240,6 +238,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功設定 Pod 模型為 Opus', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, 'opus');
 
@@ -247,6 +246,7 @@ describe('Pod 管理', () => {
     });
 
     it('設定不存在的 Pod 模型時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodSetModelPayload, PodModelSetPayload>(
         client,
@@ -262,6 +262,7 @@ describe('Pod 管理', () => {
 
   describe('Pod 刪除', () => {
     it('成功刪除 Pod', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'To Delete' });
 
       const canvasId = await getCanvasId(client);
@@ -277,6 +278,7 @@ describe('Pod 管理', () => {
     });
 
     it('刪除 Pod 時清理相關連線', async () => {
+      const client = getClient();
       const { podA, podB } = await createPodPair(client);
       await createConnection(client, podA.id, podB.id);
 
@@ -302,6 +304,7 @@ describe('Pod 管理', () => {
     });
 
     it('刪除 Pod 時清理相關筆記', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const style = await createOutputStyle(client, `style-${uuidv4()}`, '# Test');
 
@@ -341,6 +344,7 @@ describe('Pod 管理', () => {
     });
 
     it('刪除 Pod 時清理綁定的 MCP Server Note', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const mcpServer = await createMcpServer(client, `mcp-${uuidv4()}`);
 
@@ -369,6 +373,7 @@ describe('Pod 管理', () => {
     });
 
     it('刪除不存在的 Pod 時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodDeletePayload, PodDeletedPayload>(
         client,
@@ -384,6 +389,7 @@ describe('Pod 管理', () => {
 
   describe('Pod Schedule 管理', () => {
     it('成功設定 Pod 排程', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Schedule Pod' });
       const updatedPod = await setPodSchedule(client, pod.id, {
         frequency: 'every-day',
@@ -402,6 +408,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功更新 Pod 排程', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Update Schedule Pod' });
       const updatedPod = await setPodSchedule(client, pod.id, {
         frequency: 'every-x-minute',
@@ -420,6 +427,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功停用 Pod 排程', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Toggle Schedule Pod' });
 
       await setPodSchedule(client, pod.id, {
@@ -448,6 +456,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功移除 Pod 排程', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Remove Schedule Pod' });
 
       await setPodSchedule(client, pod.id, {
@@ -467,6 +476,7 @@ describe('Pod 管理', () => {
     });
 
     it('啟用 Pod 排程時設定 lastTriggeredAt', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Schedule with lastTriggeredAt' });
       const updatedPod = await setPodSchedule(client, pod.id, {
         frequency: 'every-x-minute',
@@ -485,6 +495,7 @@ describe('Pod 管理', () => {
     });
 
     it('重新啟用 Pod 排程時更新 lastTriggeredAt', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Re-enable Schedule Pod' });
 
       const firstPod = await setPodSchedule(client, pod.id, {
@@ -534,6 +545,7 @@ describe('Pod 管理', () => {
     });
 
     it('更新 Pod 排程時保留 lastTriggeredAt', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Update Schedule Preserve lastTriggeredAt' });
 
       const firstPod = await setPodSchedule(client, pod.id, {
@@ -565,6 +577,7 @@ describe('Pod 管理', () => {
     });
 
     it('設定不存在的 Pod 排程時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodSetSchedulePayload, PodScheduleSetPayload>(
         client,
@@ -617,6 +630,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功打開沒有綁定 Repository 的 Pod 工作目錄', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Open Directory Pod' });
 
       const canvasId = await getCanvasId(client);
@@ -634,6 +648,7 @@ describe('Pod 管理', () => {
     });
 
     it('成功打開有綁定 Repository 的 Pod 工作目錄', async () => {
+      const client = getClient();
       const repo = await createRepository(client, `open-dir-repo-${uuidv4()}`);
       const pod = await createPod(client, { name: 'Open Directory Repo Pod' });
 
@@ -659,6 +674,7 @@ describe('Pod 管理', () => {
     });
 
     it('打開不存在的 Pod 的工作目錄時失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodOpenDirectoryPayload, PodDirectoryOpenedPayload>(
         client,

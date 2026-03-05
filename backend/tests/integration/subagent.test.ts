@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import {
   createPod,
@@ -31,20 +26,9 @@ import {
 } from '../../src/types';
 
 describe('SubAgent 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
+  const { getClient, getServer } = setupIntegrationTest();
 
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
-
-  async function makeAgent(client: TestWebSocketClient, name?: string) {
+  async function makeAgent(client: any, name?: string) {
     return createSubAgent(client, name ?? `agent-${uuidv4()}`, '# Agent Content');
   }
 
@@ -99,7 +83,7 @@ describe('SubAgent 管理', () => {
       ],
       hasContentValidation: true,
     },
-    () => ({ client, server })
+    () => ({ client: getClient(), server: getServer() })
   );
 
   describeNoteCRUDTests(
@@ -123,7 +107,7 @@ describe('SubAgent 管理', () => {
       },
       parentIdFieldName: 'subAgentId',
     },
-    () => ({ client, server })
+    () => ({ client: getClient(), server: getServer() })
   );
 
   describePodBindingTests(
@@ -140,11 +124,12 @@ describe('SubAgent 管理', () => {
         expect(response.pod!.subAgentIds).toContain(subAgentId);
       },
     },
-    () => ({ client, server })
+    () => ({ client: getClient(), server: getServer() })
   );
 
   describe('Pod 綁定 SubAgent', () => {
     it('SubAgent 已綁定時綁定失敗', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const agent = await makeAgent(client);
 
@@ -168,6 +153,7 @@ describe('SubAgent 管理', () => {
     });
 
     it('成功綁定 SubAgent 到已有 Repository 的 Pod', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const repo = await createRepository(client, `sa-repo-${uuidv4()}`);
 

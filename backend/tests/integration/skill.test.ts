@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import {
   createPod,
@@ -31,20 +26,9 @@ import {
 } from '../../src/types';
 
 describe('Skill 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
+  const { getClient, getServer } = setupIntegrationTest();
 
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
-
-  async function ensureSkill(client: TestWebSocketClient, name?: string): Promise<{ id: string }> {
+  async function ensureSkill(client: any, name?: string): Promise<{ id: string }> {
     const skillName = name ?? `skill-${uuidv4()}`;
     await createSkillFile(skillName, '# Test Skill');
     return { id: skillName };
@@ -52,6 +36,7 @@ describe('Skill 管理', () => {
 
   describe('Skill 列表', () => {
     it('成功回傳所有 Skill', async () => {
+      const client = getClient();
       const skill = await ensureSkill(client);
 
       const canvasId = await getCanvasId(client);
@@ -89,7 +74,7 @@ describe('Skill 管理', () => {
       },
       parentIdFieldName: 'skillId',
     },
-    () => ({ client, server })
+    () => ({ client: getClient(), server: getServer() })
   );
 
   describePodBindingTests(
@@ -106,11 +91,12 @@ describe('Skill 管理', () => {
         expect(response.pod!.skillIds).toContain(skillId);
       },
     },
-    () => ({ client, server })
+    () => ({ client: getClient(), server: getServer() })
   );
 
   describe('Pod 綁定 Skill', () => {
     it('Skill 已綁定時綁定失敗', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const skill = await ensureSkill(client);
 
@@ -136,6 +122,7 @@ describe('Skill 管理', () => {
 
   describe('Skill 刪除', () => {
     it('成功刪除', async () => {
+      const client = getClient();
       const skill = await ensureSkill(client);
 
       const canvasId = await getCanvasId(client);
@@ -150,6 +137,7 @@ describe('Skill 管理', () => {
     });
 
     it('不存在的 ID 時刪除失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<SkillDeletePayload, SkillDeletedPayload>(
         client,
@@ -163,6 +151,7 @@ describe('Skill 管理', () => {
     });
 
     it('使用中時刪除失敗', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const skill = await ensureSkill(client);
 

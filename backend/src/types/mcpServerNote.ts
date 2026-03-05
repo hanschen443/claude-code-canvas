@@ -1,9 +1,5 @@
-export interface McpServerNote {
-  id: string;
+import type { BaseNote } from './baseNote';
+
+export interface McpServerNote extends BaseNote {
   mcpServerId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }

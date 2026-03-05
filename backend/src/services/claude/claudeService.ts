@@ -541,13 +541,10 @@ export class ClaudeService {
 
     private extractTextFromAssistantMessage(sdkMessage: SDKAssistantMessage): string {
         if (!sdkMessage.message) return '';
-        let text = '';
-        for (const block of sdkMessage.message.content as AssistantContentBlock[]) {
-            if ('text' in block && block.text) {
-                text += block.text;
-            }
-        }
-        return text;
+        return (sdkMessage.message.content as AssistantContentBlock[])
+            .filter((block): block is AssistantTextBlock => block.type === 'text' && Boolean(block.text))
+            .map(block => block.text)
+            .join('');
     }
 
     private processResultMessage(sdkMessage: SDKResultMessage): {success: boolean; content: string; error?: string} {

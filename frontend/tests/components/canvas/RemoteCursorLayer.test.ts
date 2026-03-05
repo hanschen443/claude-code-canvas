@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useCursorStore } from '@/stores/cursorStore'
 import { useViewportStore } from '@/stores/pod/viewportStore'
 import RemoteCursorLayer from '@/components/canvas/RemoteCursorLayer.vue'
@@ -14,10 +13,7 @@ function mountRemoteCursorLayer() {
 }
 
 describe('RemoteCursorLayer', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-  })
+  setupStoreTest()
 
   describe('渲染', () => {
     it('無游標時不渲染任何游標元素', () => {

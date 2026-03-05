@@ -28,7 +28,13 @@ function findItemById<T extends { id: string }>(items: T[], itemId: string): T |
 }
 
 interface NoteItem extends BaseNote {
+    // index signature 允許透過 config.itemIdField（如 'commandId'、'skillId'）進行動態 key 查找
     [key: string]: unknown
+}
+
+// 用於 groupId 存取的最小介面，實際 TItem 可能包含更多欄位
+interface ItemWithGroupId {
+    groupId?: string | null
 }
 
 export interface NoteCRUDConfig<TItem extends { id: string; name: string }, TReadResult extends { id: string; name: string } = { id: string; name: string; content: string }> {
@@ -91,7 +97,11 @@ function shouldCreateNote(pod: Pod, itemId: string | null | undefined, existingN
     return itemId !== undefined && itemId !== null && itemId !== '' && existingNotes.length === 0
 }
 
-function buildNoteRequest(
+interface RebuildNoteResponse {
+    note?: NoteItem
+}
+
+async function createAndAddNote(
     pod: Pod,
     itemId: string,
     config: RebuildNotesConfig,
@@ -101,7 +111,7 @@ function buildNoteRequest(
     const item = findItemById(context.availableItems as { id: string; name?: string }[], itemId)
     const itemName = item?.name ?? itemId
 
-    return createWebSocketRequest<BasePayload, Record<string, unknown>>({
+    const response = await createWebSocketRequest<BasePayload, RebuildNoteResponse>({
         requestEvent: config.requestEvent,
         responseEvent: config.responseEvent,
         payload: {
@@ -113,11 +123,11 @@ function buildNoteRequest(
             boundToPodId: pod.id,
             originalPosition: { x: pod.x, y: pod.y + config.yOffset },
         }
-    }).then(response => {
-        if (response.note) {
-            context.notes.push(response.note as NoteItem)
-        }
     })
+
+    if (response.note) {
+        context.notes.push(response.note)
+    }
 }
 
 export async function rebuildNotesFromPods(
@@ -130,7 +140,7 @@ export async function rebuildNotesFromPods(
 
     const promises = pods
         .filter(pod => shouldCreateNote(pod, pod[config.podIdField] as string | null | undefined, context.getNotesByPodId(pod.id)))
-        .map(pod => buildNoteRequest(pod, pod[config.podIdField] as string, config, canvasId, context))
+        .map(pod => createAndAddNote(pod, pod[config.podIdField] as string, config, canvasId, context))
 
     if (promises.length > 0) {
         await Promise.all(promises)
@@ -215,24 +225,24 @@ export function createNoteStore<TItem, TNote extends BaseNote, TCustomActions ex
             },
 
             isItemInUse: (state) => (itemId: string): boolean =>
-                state.notes.some(note => (note as Record<string, unknown>)[config.itemIdField] === itemId && note.boundToPodId !== null),
+                state.notes.some(note => note[config.itemIdField] === itemId && note.boundToPodId !== null),
 
             isItemBoundToPod: (state) => (itemId: string, podId: string): boolean =>
-                state.notes.some(note => (note as Record<string, unknown>)[config.itemIdField] === itemId && note.boundToPodId === podId),
+                state.notes.some(note => note[config.itemIdField] === itemId && note.boundToPodId === podId),
 
             getGroupById: (state) => (groupId: string): Group | undefined =>
                 state.groups.find(group => group.id === groupId),
 
             getItemsByGroupId: (state) => (groupId: string | null): TItem[] =>
-                state.availableItems.filter(item => (item as Record<string, unknown>).groupId === groupId) as TItem[],
+                state.availableItems.filter(item => (item as ItemWithGroupId).groupId === groupId) as TItem[],
 
             getRootItems: (state): TItem[] =>
-                state.availableItems.filter(item => !(item as Record<string, unknown>).groupId) as TItem[],
+                state.availableItems.filter(item => !(item as ItemWithGroupId).groupId) as TItem[],
 
             getSortedItemsWithGroups: (state): { groups: Group[]; rootItems: TItem[] } => {
                 const groups = [...state.groups].sort((a, b) => a.name.localeCompare(b.name))
                 const rootItems = state.availableItems
-                    .filter(item => !(item as Record<string, unknown>).groupId)
+                    .filter(item => !(item as ItemWithGroupId).groupId)
                     .sort((a, b) => getItemName(a as TItem).localeCompare(getItemName(b as TItem)))
                 return {groups, rootItems: rootItems as TItem[]}
             },
@@ -241,7 +251,7 @@ export function createNoteStore<TItem, TNote extends BaseNote, TCustomActions ex
                 state.expandedGroupIds.has(groupId),
 
             canDeleteGroup: (state) => (groupId: string): boolean =>
-                !state.availableItems.some(item => (item as Record<string, unknown>).groupId === groupId),
+                !state.availableItems.some(item => (item as ItemWithGroupId).groupId === groupId),
         },
 
         actions: {
@@ -378,13 +388,15 @@ export function createNoteStore<TItem, TNote extends BaseNote, TCustomActions ex
                 const itemName = item ? getItemName(item as TItem) : undefined
                 const category: ToastCategory = STORE_TO_CATEGORY_MAP[config.storeName] ?? 'Note'
 
-                const response = await deleteItem<Record<string, unknown>, BaseResponse>({
+                // payload 使用動態 key（config.itemIdField），無法以靜態型別表達，故使用 DynamicKeyPayload
+                type DynamicKeyPayload = { canvasId: string } & { [key: string]: string }
+                const response = await deleteItem<DynamicKeyPayload, BaseResponse>({
                     requestEvent: config.deleteItemEvents.request,
                     responseEvent: config.deleteItemEvents.response,
                     payload: {
                         canvasId,
                         [config.itemIdField]: itemId
-                    },
+                    } as DynamicKeyPayload,
                     errorMessage: '刪除項目失敗',
                 })
 
@@ -404,6 +416,8 @@ export function createNoteStore<TItem, TNote extends BaseNote, TCustomActions ex
             addNoteFromEvent(note: TNote): void {
                 const exists = this.notes.some(existingNote => existingNote.id === note.id)
                 if (!exists) {
+                    // TNote extends BaseNote，NoteItem 也 extends BaseNote 且加上 index signature。
+                    // 兩者在 runtime 結構相同，此轉換僅為適配 state 的內部型別。
                     this.notes.push(note as unknown as NoteItem)
                 }
             },
@@ -411,6 +425,7 @@ export function createNoteStore<TItem, TNote extends BaseNote, TCustomActions ex
             updateNoteFromEvent(note: TNote): void {
                 const index = this.notes.findIndex(existingNote => existingNote.id === note.id)
                 if (index !== -1) {
+                    // 同 addNoteFromEvent，TNote 與 NoteItem 在 runtime 結構相同。
                     this.notes.splice(index, 1, note as unknown as NoteItem)
                 }
             },
@@ -489,6 +504,22 @@ interface CRUDActions {
     loadAll: (this: CRUDStoreContext) => Promise<void>
 }
 
+/**
+ * 根據 crudConfig.methodPrefix 動態產生命名方法，以符合各 store 的語意慣例。
+ *
+ * 對應規則（以 methodPrefix = 'command' 為例）：
+ *   - createCommand  → 建立資源
+ *   - updateCommand  → 更新資源
+ *   - readCommand    → 讀取單一資源內容
+ *   - deleteCommand  → 刪除資源（委派給 deleteItem）
+ *   - loadCommands   → 載入所有資源（委派給 loadItems）
+ *
+ * 目前使用此機制的 store：
+ *   - commandStore  (methodPrefix: 'command')
+ *   - repositoryStore (methodPrefix: 'repository')
+ *   - outputStyleStore (methodPrefix: 'outputStyle')
+ *   - mcpServerStore (methodPrefix: 'mcpServer')
+ */
 function buildCRUDActions<TItem>(config: NoteStoreConfig<TItem>): Record<string, CRUDActions[keyof CRUDActions]> {
     if (!config.crudConfig) return {}
 

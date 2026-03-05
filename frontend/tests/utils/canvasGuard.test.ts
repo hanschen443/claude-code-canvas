@@ -1,40 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
+import { describe, it, expect, vi } from 'vitest'
+import { webSocketMockFactory } from '../helpers/mockWebSocket'
+import { setupStoreTest, mockErrorSanitizerFactory, mockToastFactory } from '../helpers/testSetup'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { requireActiveCanvas, getActiveCanvasIdOrWarn } from '@/utils/canvasGuard'
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    websocketClient: { on: vi.fn(), off: vi.fn(), emit: vi.fn() },
-    createWebSocketRequest: vi.fn(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
-vi.mock('@/composables/useToast', () => ({
-  useToast: () => ({
-    toast: vi.fn(),
-    showSuccessToast: vi.fn(),
-    showErrorToast: vi.fn(),
-  }),
-}))
+vi.mock('@/composables/useToast', () => mockToastFactory())
 
-vi.mock('@/utils/errorSanitizer', () => ({
-  sanitizeErrorForUser: vi.fn((error: unknown) => {
-    if (error instanceof Error) return error.message
-    return '未知錯誤'
-  }),
-}))
+vi.mock('@/utils/errorSanitizer', () => mockErrorSanitizerFactory())
 
 describe('canvasGuard', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('requireActiveCanvas', () => {
     it('有 activeCanvasId 時回傳 id', () => {

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod, createMockNote, createMockConnection } from '../../helpers/factories'
 import { useCopyPaste } from '@/composables/canvas/useCopyPaste'
 import { usePodStore, useViewportStore, useSelectionStore } from '@/stores/pod'
@@ -26,14 +25,7 @@ const { mockShowSuccessToast, mockShowErrorToast, mockIsEditingElement, mockHasT
 }))
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 vi.mock('@/composables/useToast', () => ({
@@ -113,16 +105,13 @@ describe('useCopyPaste', () => {
   let clipboardStore: ReturnType<typeof useClipboardStore>
   let canvasStore: ReturnType<typeof useCanvasStore>
 
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-
+  setupStoreTest(() => {
     mockIsEditingElement.mockReturnValue(false)
     mockHasTextSelection.mockReturnValue(false)
     mockIsModifierKeyPressed.mockReturnValue(true)
+  })
 
+  beforeEach(() => {
     podStore = usePodStore()
     viewportStore = useViewportStore()
     selectionStore = useSelectionStore()

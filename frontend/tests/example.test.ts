@@ -1,24 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
+import { describe, it, expect, vi } from 'vitest'
 import {
-  setupTestPinia,
   createMockCanvas,
   createMockPod,
   createMockConnection,
   createMockMessage,
-  mockWebSocketModule,
-  resetMockWebSocket,
+  webSocketMockFactory,
+  setupStoreTest,
 } from './helpers'
 
 // Mock WebSocket 模組
-vi.mock('@/services/websocket', () => mockWebSocketModule())
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 describe('測試工具範例', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-  })
+  setupStoreTest()
 
   describe('測試資料工廠', () => {
     it('應該建立 Mock Canvas', () => {

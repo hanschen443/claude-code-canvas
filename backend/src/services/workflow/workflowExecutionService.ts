@@ -197,6 +197,47 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     );
   }
 
+  private async onWorkflowChatComplete(params: {
+    canvasId: string;
+    connectionId: string;
+    sourcePodId: string;
+    targetPodId: string;
+    participatingConnectionIds: string[];
+    strategy: TriggerStrategy;
+  }): Promise<void> {
+    const { canvasId, connectionId, sourcePodId, targetPodId, participatingConnectionIds, strategy } = params;
+    strategy.onComplete(
+      { canvasId, connectionId, sourcePodId, targetPodId, triggerMode: strategy.mode, participatingConnectionIds },
+      true
+    );
+    await autoClearService.onPodComplete(canvasId, targetPodId);
+    // 刻意不 await：下游 workflow 觸發獨立於當前查詢完成流程
+    fireAndForget(
+      this.checkAndTriggerWorkflows(canvasId, targetPodId),
+      'Workflow',
+      `下游 workflow 觸發失敗 (pod: ${targetPodId})`
+    );
+    this.scheduleNextInQueue(canvasId, targetPodId);
+  }
+
+  private async onWorkflowChatError(params: {
+    canvasId: string;
+    connectionId: string;
+    sourcePodId: string;
+    targetPodId: string;
+    participatingConnectionIds: string[];
+    strategy: TriggerStrategy;
+  }, error: Error): Promise<void> {
+    const { canvasId, connectionId, sourcePodId, targetPodId, participatingConnectionIds, strategy } = params;
+    strategy.onError(
+      { canvasId, connectionId, sourcePodId, targetPodId, triggerMode: strategy.mode, participatingConnectionIds },
+      error.message
+    );
+    logger.error('Workflow', 'Error', 'Workflow 執行失敗', error);
+    podStore.setStatus(canvasId, targetPodId, 'idle');
+    this.scheduleNextInQueue(canvasId, targetPodId);
+  }
+
   private async executeClaudeQuery(params: {
     canvasId: string;
     connectionId: string;
@@ -206,7 +247,7 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     participatingConnectionIds: string[];
     strategy: TriggerStrategy;
   }): Promise<void> {
-    const { canvasId, connectionId, sourcePodId, targetPodId, content, participatingConnectionIds, strategy } = params;
+    const { canvasId, targetPodId, content } = params;
     const baseMessage = buildTransferMessage(content);
     const targetPod = podStore.getById(canvasId, targetPodId);
     const commands = await commandService.list();
@@ -228,35 +269,12 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
 
     await messageStore.addMessage(canvasId, targetPodId, 'user', messageToSend);
 
-    const onWorkflowChatComplete = async (_canvasId: string, _podId: string): Promise<void> => {
-      strategy.onComplete(
-        { canvasId, connectionId, sourcePodId, targetPodId, triggerMode: strategy.mode, participatingConnectionIds },
-        true
-      );
-      await autoClearService.onPodComplete(canvasId, targetPodId);
-      // 刻意不 await：下游 workflow 觸發獨立於當前查詢完成流程
-      fireAndForget(
-        this.checkAndTriggerWorkflows(canvasId, targetPodId),
-        'Workflow',
-        `下游 workflow 觸發失敗 (pod: ${targetPodId})`
-      );
-      this.scheduleNextInQueue(canvasId, targetPodId);
-    };
-
-    const onWorkflowChatError = async (_canvasId: string, _podId: string, error: Error): Promise<void> => {
-      const errorMessage = error.message;
-      strategy.onError(
-        { canvasId, connectionId, sourcePodId, targetPodId, triggerMode: strategy.mode, participatingConnectionIds },
-        errorMessage
-      );
-      logger.error('Workflow', 'Error', 'Workflow 執行失敗', error);
-      podStore.setStatus(canvasId, targetPodId, 'idle');
-      this.scheduleNextInQueue(canvasId, targetPodId);
-    };
-
     await executeStreamingChat(
       { canvasId, podId: targetPodId, message: messageToSend, abortable: false },
-      { onComplete: onWorkflowChatComplete, onError: onWorkflowChatError }
+      {
+        onComplete: (_canvasId, _podId) => this.onWorkflowChatComplete(params),
+        onError: (_canvasId, _podId, error) => this.onWorkflowChatError(params, error),
+      }
     );
   }
 }

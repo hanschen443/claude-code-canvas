@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import RepositoryContextMenu from '@/components/canvas/RepositoryContextMenu.vue'
 
 const mockCheckIsGit = vi.fn()
@@ -102,10 +101,7 @@ function mountMenu(props = {}) {
 }
 
 describe('RepositoryContextMenu', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
+  setupStoreTest(() => {
     mockCheckIsGit.mockResolvedValue(true)
   })
 

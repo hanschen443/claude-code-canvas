@@ -47,22 +47,16 @@ class RepositorySyncService {
   }
 
   private collectPodResources(allCanvases: ReturnType<typeof canvasStore.list>, repositoryId: string): Map<string, PodResources> {
-    const podResourcesMap = new Map<string, PodResources>();
+    const allPods = allCanvases.flatMap(canvas => podStore.findByRepositoryId(canvas.id, repositoryId));
 
-    for (const canvas of allCanvases) {
-      const pods = podStore.findByRepositoryId(canvas.id, repositoryId);
-
-      for (const pod of pods) {
-        const resources: PodResources = {
-          commandIds: pod.commandId ? [pod.commandId] : [],
-          skillIds: [...pod.skillIds],
-          subAgentIds: [...pod.subAgentIds],
-        };
-        podResourcesMap.set(pod.id, resources);
-      }
-    }
-
-    return podResourcesMap;
+    return new Map(allPods.map(pod => [
+      pod.id,
+      {
+        commandIds: pod.commandId ? [pod.commandId] : [],
+        skillIds: [...pod.skillIds],
+        subAgentIds: [...pod.subAgentIds],
+      },
+    ]));
   }
 
   private async writePodManifests(podResourcesMap: Map<string, PodResources>, repositoryPath: string, repositoryId: string): Promise<void> {
@@ -74,26 +68,17 @@ class RepositorySyncService {
   private async writeSinglePodManifest(podId: string, resources: PodResources, repositoryPath: string, repositoryId: string): Promise<void> {
     await podManifestService.deleteManagedFiles(repositoryPath, podId);
 
-    for (const commandId of resources.commandIds) {
-      await fsOperation(
-        () => commandService.copyCommandToRepository(commandId, repositoryPath),
-        `複製 command ${commandId} 到 repository ${repositoryId} 失敗`
-      );
-    }
+    const copyCommands = resources.commandIds.map(commandId =>
+      fsOperation(() => commandService.copyCommandToRepository(commandId, repositoryPath), `複製 command ${commandId} 到 repository ${repositoryId} 失敗`)
+    );
+    const copySkills = resources.skillIds.map(skillId =>
+      fsOperation(() => skillService.copySkillToRepository(skillId, repositoryPath), `複製 skill ${skillId} 到 repository ${repositoryId} 失敗`)
+    );
+    const copySubAgents = resources.subAgentIds.map(subAgentId =>
+      fsOperation(() => subAgentService.copySubAgentToRepository(subAgentId, repositoryPath), `複製 subagent ${subAgentId} 到 repository ${repositoryId} 失敗`)
+    );
 
-    for (const skillId of resources.skillIds) {
-      await fsOperation(
-        () => skillService.copySkillToRepository(skillId, repositoryPath),
-        `複製 skill ${skillId} 到 repository ${repositoryId} 失敗`
-      );
-    }
-
-    for (const subAgentId of resources.subAgentIds) {
-      await fsOperation(
-        () => subAgentService.copySubAgentToRepository(subAgentId, repositoryPath),
-        `複製 subagent ${subAgentId} 到 repository ${repositoryId} 失敗`
-      );
-    }
+    await Promise.all([...copyCommands, ...copySkills, ...copySubAgents]);
 
     const managedFiles = await this.collectPodManagedFiles(resources);
     await podManifestService.writeManifest(repositoryPath, podId, managedFiles);

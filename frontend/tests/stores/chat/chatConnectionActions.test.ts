@@ -1,20 +1,12 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, resetMockWebSocket, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useChatStore, resetChatActionsCache } from '@/stores/chat/chatStore'
 import { WebSocketRequestEvents } from '@/types/websocket/events'
 import type { HeartbeatPingPayload, PodErrorPayload } from '@/types/websocket'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const { mockToast, mockShowSuccessToast, mockShowErrorToast } = vi.hoisted(() => ({
@@ -32,12 +24,8 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 describe('chatConnectionActions', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
+  setupStoreTest(() => {
     resetChatActionsCache()
-    vi.clearAllMocks()
     vi.useRealTimers()
   })
 

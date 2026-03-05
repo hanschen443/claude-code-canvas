@@ -1,22 +1,14 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { setActivePinia } from 'pinia'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { nextTick } from 'vue'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, resetMockWebSocket, simulateEvent, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, simulateEvent, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useCheckoutProgress } from '@/composables/canvas/useCheckoutProgress'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { useRepositoryStore } from '@/stores/note/repositoryStore'
 import { WebSocketResponseEvents } from '@/types/websocket'
 import type { RepositoryCheckoutBranchProgressPayload, RepositoryBranchCheckedOutPayload } from '@/types/websocket'
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 vi.mock('@/composables/canvas/useCanvasContext', () => ({
   useCanvasContext: () => {
@@ -43,12 +35,8 @@ vi.mock('@/components/canvas/ProgressNote.vue', () => ({
 }))
 
 describe('useCheckoutProgress', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
+  setupStoreTest(() => {
     vi.clearAllTimers()
-    vi.clearAllMocks()
     vi.useFakeTimers()
   })
 

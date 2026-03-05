@@ -61,9 +61,9 @@ async function findInGroupDirectories(basePath: string, resourceId: string): Pro
     }
 
     const entries: Dirent[] = await fs.readdir(basePath, { withFileTypes: true });
+    const groupDirs = entries.filter(entry => entry.isDirectory());
 
-    for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
+    for (const entry of groupDirs) {
         const groupPath = path.join(basePath, entry.name, `${resourceId}.md`);
         if (await fileExists(groupPath)) {
             return groupPath;

@@ -1,13 +1,5 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
-  emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
-} from '../setup';
+import { emitAndWaitResponse, setupIntegrationTest } from '../setup';
 import { createPod, FAKE_UUID, getCanvasId} from '../helpers';
 import {
   WebSocketRequestEvents,
@@ -17,21 +9,11 @@ import {
 import { type PodAutoClearSetPayload } from '../../src/types';
 
 describe('自動清除', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
-
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
+  const { getClient } = setupIntegrationTest();
 
   describe('設定 Pod 自動清除', () => {
     it('成功設定為 true', async () => {
+      const client = getClient();
       const pod = await createPod(client);
 
       const canvasId = await getCanvasId(client);
@@ -47,6 +29,7 @@ describe('自動清除', () => {
     });
 
     it('成功設定為 false', async () => {
+      const client = getClient();
       const pod = await createPod(client);
 
       const canvasId = await getCanvasId(client);
@@ -69,6 +52,7 @@ describe('自動清除', () => {
     });
 
     it('Pod 不存在時設定失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodSetAutoClearPayload, PodAutoClearSetPayload>(
         client,

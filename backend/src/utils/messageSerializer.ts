@@ -43,6 +43,7 @@ export function deserialize(data: string | Buffer): WebSocketMessage {
 	return validateMessageShape(obj);
 }
 
+// deserialize 在格式無效時會 throw（由 parseJson/validateMessageShape 拋出），try-catch 是將例外轉換為 Result 的必要機制
 export function tryDeserialize(data: string | Buffer): Result<WebSocketMessage> {
 	try {
 		return ok(deserialize(data));

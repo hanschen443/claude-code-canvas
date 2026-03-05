@@ -9,35 +9,56 @@ import {logger} from '../../utils/logger.js';
 
 function getAutoTriggerTargets(canvasId: string, podId: string): string[] {
     const connections = connectionStore.findBySourcePodId(canvasId, podId);
-    const triggerableConnections = connections.filter((conn) => conn.triggerMode === 'auto');
-    return triggerableConnections.map((conn) => conn.targetPodId);
+    const triggerableConnections = connections.filter((connection) => connection.triggerMode === 'auto');
+    return triggerableConnections.map((connection) => connection.targetPodId);
 }
 
 function isTerminalPod(podId: string, sourcePodId: string, hasAutoTriggerTargets: boolean): boolean {
     return podId !== sourcePodId && !hasAutoTriggerTargets;
 }
 
-type BfsVisitor = (podId: string, isTerminal: boolean, autoTriggerTargets: string[]) => void;
-
 class AutoClearService {
-    private buildPropagatedCounts(canvasId: string, sourcePodId: string): Map<string, number> {
+    private traverseAutoTriggerGraph(
+        canvasId: string,
+        startPodIds: string[],
+        visitor: (podId: string, autoTriggerTargets: string[]) => void,
+    ): void {
         const visitedPodIds = new Set<string>();
-        const pendingPodIds: string[] = [sourcePodId];
-        const propagatedCounts = new Map<string, number>();
+        const pendingPodIds: string[] = [];
 
-        visitedPodIds.add(sourcePodId);
-        propagatedCounts.set(sourcePodId, 1);
+        for (const podId of startPodIds) {
+            visitedPodIds.add(podId);
+            pendingPodIds.push(podId);
+        }
 
         while (pendingPodIds.length > 0) {
             const currentPodId = pendingPodIds.shift()!;
-            const currentCount = propagatedCounts.get(currentPodId) ?? 1;
-
-            this.accumulateDirectBonus(canvasId, currentPodId, sourcePodId, currentCount, propagatedCounts);
-
-            const updatedCount = propagatedCounts.get(currentPodId) ?? 1;
             const autoTriggerTargets = getAutoTriggerTargets(canvasId, currentPodId);
-            this.enqueueAutoTriggerTargets(autoTriggerTargets, visitedPodIds, pendingPodIds, propagatedCounts, updatedCount);
+
+            visitor(currentPodId, autoTriggerTargets);
+
+            for (const nextPodId of autoTriggerTargets) {
+                if (!visitedPodIds.has(nextPodId)) {
+                    visitedPodIds.add(nextPodId);
+                    pendingPodIds.push(nextPodId);
+                }
+            }
         }
+    }
+
+    private buildPropagatedCounts(canvasId: string, sourcePodId: string): Map<string, number> {
+        const propagatedCounts = new Map<string, number>();
+        propagatedCounts.set(sourcePodId, 1);
+
+        this.traverseAutoTriggerGraph(canvasId, [sourcePodId], (podId, autoTriggerTargets) => {
+            const currentCount = propagatedCounts.get(podId) ?? 1;
+            this.accumulateDirectBonus(canvasId, podId, sourcePodId, currentCount, propagatedCounts);
+
+            const updatedCount = propagatedCounts.get(podId) ?? 1;
+            for (const targetPodId of autoTriggerTargets) {
+                propagatedCounts.set(targetPodId, (propagatedCounts.get(targetPodId) ?? 0) + updatedCount);
+            }
+        });
 
         return propagatedCounts;
     }
@@ -160,29 +181,6 @@ class AutoClearService {
         logger.log('AutoClear', 'Complete', `成功清除 ${result.clearedPodIds.length} 個 Pod：${result.clearedPodNames.join(', ')}`);
     }
 
-    private bfsAutoTriggerGraph(canvasId: string, startPodId: string, visitor: BfsVisitor): void {
-        const visitedPodIds = new Set<string>();
-        const pendingPodIds = [startPodId];
-
-        visitedPodIds.add(startPodId);
-
-        while (pendingPodIds.length > 0) {
-            const currentPodId = pendingPodIds.shift()!;
-            const autoTriggerTargets = getAutoTriggerTargets(canvasId, currentPodId);
-            const hasAutoTriggerTargets = autoTriggerTargets.length > 0;
-            const isTerminal = isTerminalPod(currentPodId, startPodId, hasAutoTriggerTargets);
-
-            visitor(currentPodId, isTerminal, autoTriggerTargets);
-
-            for (const nextPodId of autoTriggerTargets) {
-                if (!visitedPodIds.has(nextPodId)) {
-                    visitedPodIds.add(nextPodId);
-                    pendingPodIds.push(nextPodId);
-                }
-            }
-        }
-    }
-
     private accumulateDirectBonus(
         canvasId: string,
         podId: string,
@@ -195,32 +193,17 @@ class AutoClearService {
         }
 
         const incomingConnections = connectionStore.findByTargetPodId(canvasId, podId);
-        const hasDirectIncoming = incomingConnections.some(conn => conn.triggerMode === 'direct');
+        const hasDirectIncoming = incomingConnections.some(connection => connection.triggerMode === 'direct');
         if (hasDirectIncoming) {
             propagatedCounts.set(podId, currentCount + 1);
-        }
-    }
-
-    private enqueueAutoTriggerTargets(
-        targets: string[],
-        visitedPodIds: Set<string>,
-        pendingPodIds: string[],
-        propagatedCounts: Map<string, number>,
-        parentCount: number
-    ): void {
-        for (const targetPodId of targets) {
-            if (!visitedPodIds.has(targetPodId)) {
-                visitedPodIds.add(targetPodId);
-                propagatedCounts.set(targetPodId, (propagatedCounts.get(targetPodId) ?? 0) + parentCount);
-                pendingPodIds.push(targetPodId);
-            }
         }
     }
 
     private findAffectedTerminalPods(canvasId: string, targetPodId: string): string[] {
         const affectedPodIds: string[] = [];
 
-        this.bfsAutoTriggerGraph(canvasId, targetPodId, (podId, isTerminal, autoTriggerTargets) => {
+        this.traverseAutoTriggerGraph(canvasId, [targetPodId], (podId, autoTriggerTargets) => {
+            const isTerminal = isTerminalPod(podId, targetPodId, autoTriggerTargets.length > 0);
             if (isTerminal || (podId === targetPodId && autoTriggerTargets.length === 0)) {
                 affectedPodIds.push(podId);
             }

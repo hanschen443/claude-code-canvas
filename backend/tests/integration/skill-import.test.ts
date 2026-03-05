@@ -1,13 +1,8 @@
 import {v4 as uuidv4} from 'uuid';
 import {zipSync} from 'fflate';
 import {
-    createTestServer,
-    closeTestServer,
-    createSocketClient,
-    disconnectSocket,
     emitAndWaitResponse,
-    type TestServerInstance,
-    type TestWebSocketClient,
+    setupIntegrationTest,
 } from '../setup';
 import {
     WebSocketRequestEvents,
@@ -19,18 +14,7 @@ import {
 } from '../../src/types';
 
 describe('Skill 匯入', () => {
-    let server: TestServerInstance;
-    let client: TestWebSocketClient;
-
-    beforeAll(async () => {
-        server = await createTestServer();
-        client = await createSocketClient(server.baseUrl, server.canvasId);
-    });
-
-    afterAll(async () => {
-        if (client?.connected) await disconnectSocket(client);
-        if (server) await closeTestServer(server);
-    });
+    const { getServer, getClient } = setupIntegrationTest();
 
     /**
      * 建立有效的 Skill ZIP（包含根目錄的 SKILL.md）
@@ -78,6 +62,8 @@ description: "測試技能描述"
 
     describe('匯入成功', () => {
         it('有效 ZIP 檔案成功匯入', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'test-valid-skill.zip';
             const fileData = createValidSkillZip('test-valid-skill');
             const fileSize = Buffer.from(fileData, 'base64').length;
@@ -104,6 +90,8 @@ description: "測試技能描述"
         });
 
         it('覆蓋模式成功匯入', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'test-overwrite-skill.zip';
             const fileData = createValidSkillZip('test-overwrite-skill');
             const fileSize = Buffer.from(fileData, 'base64').length;
@@ -147,6 +135,8 @@ description: "測試技能描述"
 
     describe('匯入失敗', () => {
         it('檔案大小超過限制時失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'large-skill.zip';
             const fileData = createValidSkillZip('large-skill');
             const fileSize = 6 * 1024 * 1024; // 6MB
@@ -169,6 +159,8 @@ description: "測試技能描述"
         });
 
         it('缺少 SKILL.md 時失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'invalid-skill.zip';
             const fileData = createInvalidSkillZip();
             const fileSize = Buffer.from(fileData, 'base64').length;
@@ -191,6 +183,8 @@ description: "測試技能描述"
         });
 
         it('SKILL.md 不在根目錄時失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'nested-skill.zip';
             const fileData = createNestedSkillZip();
             const fileSize = Buffer.from(fileData, 'base64').length;
@@ -213,6 +207,8 @@ description: "測試技能描述"
         });
 
         it('無效 ZIP 格式時失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'invalid-format.zip';
             const fileData = Buffer.from('這不是一個有效的 ZIP 檔案').toString('base64');
             const fileSize = Buffer.from(fileData, 'base64').length;
@@ -235,6 +231,8 @@ description: "測試技能描述"
         });
 
         it('空白 Base64 資料時失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'empty.zip';
             const fileData = '';
             const fileSize = 0;
@@ -257,6 +255,8 @@ description: "測試技能描述"
         });
 
         it('無效副檔名時失敗', async () => {
+            const client = getClient();
+            const server = getServer();
             const fileName = 'test-skill.txt';
             const fileData = createValidSkillZip('test-skill');
             const fileSize = Buffer.from(fileData, 'base64').length;

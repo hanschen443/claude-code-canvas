@@ -3,3 +3,4 @@
 export * from './factories'
 export * from './mockStoreFactory'
 export * from './mockWebSocket'
+export * from './testSetup'

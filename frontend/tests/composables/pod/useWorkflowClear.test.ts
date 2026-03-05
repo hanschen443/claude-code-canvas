@@ -1,19 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ref } from 'vue'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useWorkflowClear } from '@/composables/pod/useWorkflowClear'
 import { useCanvasStore } from '@/stores/canvasStore'
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 describe('useWorkflowClear', () => {
   const podId = ref('pod-1')
@@ -23,15 +15,12 @@ describe('useWorkflowClear', () => {
   let mockGetAiDecideConnectionsBySourcePodId: ReturnType<typeof vi.fn>
   let mockClearAiDecideStatusByConnectionIds: ReturnType<typeof vi.fn>
 
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-
+  setupStoreTest(() => {
     const canvasStore = useCanvasStore()
     canvasStore.activeCanvasId = 'canvas-1'
+  })
 
+  beforeEach(() => {
     mockClearMessagesByPodIds = vi.fn()
     mockClearPodOutputsByIds = vi.fn()
     mockGetAiDecideConnectionsBySourcePodId = vi.fn(() => [])

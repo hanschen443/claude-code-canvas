@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
+import { describe, it, expect } from 'vitest'
+import { setupStoreTest } from '../helpers/testSetup'
 import { useSelectionStore } from '@/stores/pod/selectionStore'
 import { createMockPod, createMockNote } from '../helpers/factories'
 import type { SelectableElement } from '@/types'
@@ -12,10 +11,7 @@ const NOTE_WIDTH = 80
 const NOTE_HEIGHT = 30
 
 describe('selectionStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-  })
+  setupStoreTest()
 
   describe('初始狀態', () => {
     it('isSelecting 應為 false', () => {

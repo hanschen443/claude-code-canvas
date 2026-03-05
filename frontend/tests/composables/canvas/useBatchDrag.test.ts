@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod, createMockNote } from '../../helpers/factories'
 import { useBatchDrag } from '@/composables/canvas/useBatchDrag'
 import type { Pod } from '@/types'
@@ -102,10 +101,9 @@ vi.mock('@/composables/canvas/useCanvasContext', () => ({
 }))
 
 describe('useBatchDrag', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
+  setupStoreTest()
 
+  beforeEach(() => {
     // 重置 mock stores
     mockPodStore.pods = []
     mockPodStore.movePod.mockClear()

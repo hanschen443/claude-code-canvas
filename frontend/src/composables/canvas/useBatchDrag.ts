@@ -187,11 +187,8 @@ export function useBatchDrag(): {
       const item = config.getItem(element.id)
       if (!item) continue
 
-      if (config.isPod) {
-        movePodElement(config, element.id, item, deltaX, deltaY)
-      } else {
-        moveNoteElement(config, element.id, item, deltaX, deltaY)
-      }
+      const moveElement = config.isPod ? movePodElement : moveNoteElement
+      moveElement(config, element.id, item, deltaX, deltaY)
     }
   }
 
@@ -202,22 +199,17 @@ export function useBatchDrag(): {
       updateNotePosition: (noteId: string, x: number, y: number) => Promise<void>
     }
   ): Promise<void> => {
-    for (const noteId of movedNoteIds) {
+    const updates = [...movedNoteIds].flatMap(noteId => {
       const note = store.notes.find(note => note.id === noteId)
-      if (note) {
-        await store.updateNotePosition(noteId, note.x, note.y)
-      }
-    }
+      return note ? [store.updateNotePosition(noteId, note.x, note.y)] : []
+    })
+    await Promise.all(updates)
   }
 
   const syncElementsToBackend = async (): Promise<void> => {
-    for (const podId of dragState.movedPods) {
-      podStore.syncPodPosition(podId)
-    }
+    dragState.movedPods.forEach(podId => podStore.syncPodPosition(podId))
 
-    for (const { set, store } of noteMovedSets) {
-      await syncNotesByType(set, store)
-    }
+    await Promise.all(noteMovedSets.map(({ set, store }) => syncNotesByType(set, store)))
 
     clearDragState()
   }

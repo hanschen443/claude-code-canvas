@@ -5,6 +5,9 @@ import { useToast } from '@/composables/useToast'
 import type { WebSocketRequestEvents, WebSocketResponseEvents } from '@/types/websocket'
 import type { ToastCategory } from '@/composables/useToast'
 
+// 各資源的 WebSocket payload 欄位不同（如 commandId、skillId 等），無法以單一靜態型別表達
+export type ResourcePayload = Record<string, unknown>
+
 // TItem 可能包含比 { id, name } 更多的欄位，因此需要 as unknown as TItem 斷言。
 // 後端回傳的 newItem 結構已涵蓋所有必要欄位，類型上的差異是泛型設計的限制。
 export function defaultReplaceItemInList<TItem extends { id: string }>(
@@ -50,9 +53,9 @@ export interface CRUDPayloadConfig<
   TUpdateInput = string,
   TReadResult extends { id: string; name: string } = { id: string; name: string; content: string }
 > {
-  getCreatePayload?: (name: string, input: TCreateInput) => Record<string, unknown>
-  getUpdatePayload: (itemId: string, input: TUpdateInput) => Record<string, unknown>
-  getReadPayload: (itemId: string) => Record<string, unknown>
+  getCreatePayload?: (name: string, input: TCreateInput) => ResourcePayload
+  getUpdatePayload: (itemId: string, input: TUpdateInput) => ResourcePayload
+  getReadPayload: (itemId: string) => ResourcePayload
   extractItemFromResponse: {
     create: (response: unknown) => { id: string; name: string } | undefined
     update: (response: unknown) => { id: string; name: string } | undefined

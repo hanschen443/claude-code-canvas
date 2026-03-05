@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import type { WebSocketMessage } from '@/types/websocket'
 import { logger } from '@/utils/logger'
+import { safeJsonParse } from '@/utils/safeJsonParse'
 
 type EventCallback<T> = (payload: T) => void
 
@@ -8,6 +9,8 @@ const RECONNECT_INTERVAL_MS = 3000
 
 type EventHandler = (payload: unknown) => void
 
+// EventCallback<T> 與 EventHandler 在 runtime 完全相同（都是接收單一參數的函式）。
+// 泛型 T 只在編譯期存在，不影響實際函式簽名，因此此轉換在 runtime 是安全的。
 function castToEventHandler<T>(callback: EventCallback<T>): EventHandler {
     return callback as unknown as EventHandler
 }
@@ -27,20 +30,23 @@ class WebSocketClient {
       return
     }
 
-    const VITE_DEFAULT_DEV_PORT = '5173'
-    const BACKEND_DEV_PORT = 3001
-
-    // dev 模式（port 5173）連到後端 port 3001；prod 模式（前後端同 port）直接用當前 origin
-    const isDev = window.location.port === VITE_DEFAULT_DEV_PORT
-    const defaultUrl = isDev
-      ? `http://${window.location.hostname}:${BACKEND_DEV_PORT}`
-      : window.location.origin
-    this.wsUrl = url ?? import.meta.env.VITE_WS_URL ?? defaultUrl
+    this.wsUrl = url ?? import.meta.env.VITE_WS_URL ?? this.resolveDefaultWebSocketUrl()
 
     const wsProtocol = this.wsUrl.replace(/^http/, 'ws')
 
     this.socket = new WebSocket(wsProtocol)
     this.setupSocketHandlers(this.socket)
+  }
+
+  // dev 模式（port 5173）連到後端 port 3001；prod 模式（前後端同 port）直接用當前 origin
+  private resolveDefaultWebSocketUrl(): string {
+    const VITE_DEFAULT_DEV_PORT = '5173'
+    const BACKEND_DEV_PORT = 3001
+
+    const isDev = window.location.port === VITE_DEFAULT_DEV_PORT
+    return isDev
+      ? `http://${window.location.hostname}:${BACKEND_DEV_PORT}`
+      : window.location.origin
   }
 
   disconnect(): void {
@@ -134,11 +140,9 @@ class WebSocketClient {
   }
 
   private handleMessage(event: MessageEvent): void {
-    let message: WebSocketMessage
-    try {
-      message = JSON.parse(event.data) as WebSocketMessage
-    } catch (error) {
-      logger.error('[WebSocket] 訊息解析錯誤:', error)
+    const message = safeJsonParse<WebSocketMessage>(event.data)
+    if (!message) {
+      logger.error('[WebSocket] 訊息解析錯誤，資料格式無效')
       return
     }
 

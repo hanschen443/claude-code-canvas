@@ -62,17 +62,11 @@ export function createWorkflowEventHandlers(store: WorkflowHandlerStore): {
     }
 
     const handleWorkflowDirectTriggered = (payload: WorkflowDirectTriggeredPayload): void => {
-        const connection = store.findConnectionById(payload.connectionId)
-        if (connection) {
-            connection.status = 'active'
-        }
+        store.setConnectionStatus(payload.connectionId, 'active')
     }
 
     const handleWorkflowDirectWaiting = (payload: WorkflowDirectWaitingPayload): void => {
-        const connection = store.findConnectionById(payload.connectionId)
-        if (connection) {
-            connection.status = 'waiting'
-        }
+        store.setConnectionStatus(payload.connectionId, 'waiting')
     }
 
     const handleWorkflowQueued = (payload: WorkflowQueuedPayload): void => {

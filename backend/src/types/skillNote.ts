@@ -1,9 +1,5 @@
-export interface SkillNote {
-  id: string;
+import type { BaseNote } from './baseNote';
+
+export interface SkillNote extends BaseNote {
   skillId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }

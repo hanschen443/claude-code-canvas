@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import {
   createPod,
@@ -32,22 +27,11 @@ import {
 } from '../../src/types';
 
 describe('Command 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
+  const { getClient, getServer } = setupIntegrationTest();
 
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
+  const getContext = () => ({ client: getClient(), server: getServer() });
 
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
-
-  const getContext = () => ({ client, server });
-
-  async function makeCommand(client: TestWebSocketClient, name?: string) {
+  async function makeCommand(client: any, name?: string) {
     return createCommand(client, name ?? `cmd-${uuidv4()}`, '# Command Content');
   }
 
@@ -116,6 +100,7 @@ describe('Command 管理', () => {
 
   describe('Pod 綁定 Command - Command 特有測試', () => {
     it('Pod 已有 Command 時綁定失敗', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const cmd1 = await makeCommand(client);
       const cmd2 = await makeCommand(client);
@@ -139,6 +124,7 @@ describe('Command 管理', () => {
     });
 
     it('綁定 Command 後重新載入仍保留', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const cmd = await makeCommand(client);
 
@@ -169,6 +155,7 @@ describe('Command 管理', () => {
 
   describe('Pod 解除綁定 Command - Command 特有測試', () => {
     it('成功解除綁定 Command', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const cmd = await makeCommand(client);
 
@@ -192,6 +179,7 @@ describe('Command 管理', () => {
     });
 
     it('Pod 無 Command 時解除綁定成功', async () => {
+      const client = getClient();
       const pod = await createPod(client);
 
       const canvasId = await getCanvasId(client);
@@ -206,6 +194,7 @@ describe('Command 管理', () => {
     });
 
     it('Pod 不存在時解除綁定失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodUnbindCommandPayload, PodCommandUnboundPayload>(
         client,

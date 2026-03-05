@@ -1,7 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { describe, it, expect, vi } from 'vitest'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod } from '../../helpers/factories'
 import { useOutputStyleStore } from '@/stores/note/outputStyleStore'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -9,14 +8,7 @@ import type { OutputStyleListItem, Pod } from '@/types'
 import type { Group } from '@/types'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 vi.mock('@/composables/useToast', () => {
@@ -35,12 +27,7 @@ vi.mock('@/composables/useToast', () => {
 const { mockShowSuccessToast, mockShowErrorToast } = await import('@/composables/useToast') as any
 
 describe('outputStyleStore 自訂 actions', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-
+  setupStoreTest(() => {
     const canvasStore = useCanvasStore()
     canvasStore.activeCanvasId = 'canvas-1'
   })

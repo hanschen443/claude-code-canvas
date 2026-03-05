@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import { createPod, FAKE_UUID, getCanvasId} from '../helpers';
 import { createConnection } from '../helpers';
@@ -22,21 +17,11 @@ import {
 } from '../../src/types';
 
 describe('Workflow 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
-
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
+  const { getClient } = setupIntegrationTest();
 
   describe('取得下游 Pod', () => {
     it('成功取得下游 Pod 鏈', async () => {
+      const client = getClient();
       const podA = await createPod(client, { name: 'Chain A' });
       const podB = await createPod(client, { name: 'Chain B' });
       const podC = await createPod(client, { name: 'Chain C' });
@@ -62,6 +47,7 @@ describe('Workflow 管理', () => {
     });
 
     it('葉節點 Pod 成功回傳空的下游列表', async () => {
+      const client = getClient();
       const pod = await createPod(client, { name: 'Leaf Pod' });
 
       const canvasId = await getCanvasId(client);
@@ -82,6 +68,7 @@ describe('Workflow 管理', () => {
     });
 
     it('Pod 不存在時取得下游 Pod 失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<
         WorkflowGetDownstreamPodsPayload,
@@ -100,6 +87,7 @@ describe('Workflow 管理', () => {
 
   describe('清除下游 Pod', () => {
     it('成功清除下游 Pod', async () => {
+      const client = getClient();
       const podA = await createPod(client, { name: 'Clear A' });
       const podB = await createPod(client, { name: 'Clear B' });
       const podC = await createPod(client, { name: 'Clear C' });
@@ -121,6 +109,7 @@ describe('Workflow 管理', () => {
     });
 
     it('Pod 不存在時清除下游 Pod 失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<WorkflowClearPayload, WorkflowClearResultPayload>(
         client,

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
-import { mockWebSocketModule, resetMockWebSocket } from '../helpers/mockWebSocket'
+import { webSocketMockFactory } from '../helpers/mockWebSocket'
+import { setupStoreTest } from '../helpers/testSetup'
 import { createMockPod, createMockNote, createMockConnection } from '../helpers/factories'
 import { usePodStore, useSelectionStore, useViewportStore } from '@/stores/pod'
 import { useOutputStyleStore, useSkillStore, useRepositoryStore, useSubAgentStore, useCommandStore, useMcpServerStore } from '@/stores/note'
@@ -16,14 +15,7 @@ const { mockShowSuccessToast, mockShowErrorToast, mockToast } = vi.hoisted(() =>
   mockToast: vi.fn(),
 }))
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 vi.mock('@/composables/useToast', () => ({
   useToast: () => ({
@@ -47,12 +39,9 @@ describe('複製貼上/批量操作完整流程', () => {
   let clipboardStore: ReturnType<typeof useClipboardStore>
   let canvasStore: ReturnType<typeof useCanvasStore>
 
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
+  setupStoreTest()
 
+  beforeEach(() => {
     podStore = usePodStore()
     selectionStore = useSelectionStore()
     viewportStore = useViewportStore()

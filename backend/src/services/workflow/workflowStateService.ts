@@ -56,8 +56,8 @@ class WorkflowStateService {
 
   checkMultiInputScenario(canvasId: string, targetPodId: string): { isMultiInput: boolean; requiredSourcePodIds: string[] } {
     const incomingConnections = connectionStore.findByTargetPodId(canvasId, targetPodId);
-    const triggerableConnections = incomingConnections.filter((conn) => isAutoTriggerable(conn.triggerMode));
-    const requiredSourcePodIds = triggerableConnections.map((conn) => conn.sourcePodId);
+    const triggerableConnections = incomingConnections.filter((connection) => isAutoTriggerable(connection.triggerMode));
+    const requiredSourcePodIds = triggerableConnections.map((connection) => connection.sourcePodId);
 
     return {
       isMultiInput: triggerableConnections.length > 1,
@@ -67,7 +67,7 @@ class WorkflowStateService {
 
   getDirectConnectionCount(canvasId: string, targetPodId: string): number {
     const incomingConnections = connectionStore.findByTargetPodId(canvasId, targetPodId);
-    return incomingConnections.filter((conn) => conn.triggerMode === 'direct').length;
+    return incomingConnections.filter((connection) => connection.triggerMode === 'direct').length;
   }
 
   emitPendingStatus(canvasId: string, targetPodId: string): void {
@@ -96,7 +96,7 @@ class WorkflowStateService {
     workflowEventEmitter.emitWorkflowPending(canvasId, pendingPayload);
   }
 
-  private processAffectedTarget(canvasId: string, targetPodId: string): void {
+  private tryCompletePendingOrClear(canvasId: string, targetPodId: string, logReason: string): void {
     const pending = pendingTargetStore.getPendingTarget(targetPodId);
     if (!pending) {
       return;
@@ -104,12 +104,16 @@ class WorkflowStateService {
 
     if (pending.requiredSourcePodIds.length === 0) {
       pendingTargetStore.clearPendingTarget(targetPodId);
-      logger.log('Workflow', 'Delete', `已清除等待目標 ${targetPodId} - 無剩餘來源`);
+      logger.log('Workflow', 'Delete', `已清除等待目標 ${targetPodId} - ${logReason}`);
       return;
     }
 
-    logger.log('Workflow', 'Update', `來源已刪除，但目標 ${targetPodId} 的剩餘來源已全部完成`);
+    logger.log('Workflow', 'Update', `${logReason}，但目標 ${targetPodId} 的剩餘來源已全部完成`);
     emitMergedIfAllComplete(canvasId, targetPodId, this.emitPendingStatus.bind(this));
+  }
+
+  private processAffectedTarget(canvasId: string, targetPodId: string): void {
+    this.tryCompletePendingOrClear(canvasId, targetPodId, '來源已刪除，無剩餘來源');
   }
 
   handleSourceDeletion(canvasId: string, sourcePodId: string): string[] {
@@ -138,19 +142,7 @@ class WorkflowStateService {
 
     pendingTargetStore.removeSourceFromPending(targetPodId, sourcePodId);
 
-    const pending = pendingTargetStore.getPendingTarget(targetPodId);
-    if (!pending) {
-      return;
-    }
-
-    if (pending.requiredSourcePodIds.length === 0) {
-      pendingTargetStore.clearPendingTarget(targetPodId);
-      logger.log('Workflow', 'Delete', `已清除等待目標 ${targetPodId} - 連線已刪除`);
-      return;
-    }
-
-    logger.log('Workflow', 'Update', `連線已刪除，但目標 ${targetPodId} 的剩餘來源已全部完成`);
-    emitMergedIfAllComplete(canvasId, targetPodId, this.emitPendingStatus.bind(this));
+    this.tryCompletePendingOrClear(canvasId, targetPodId, '連線已刪除，無剩餘來源');
   }
 
   handleConnectionDeletion(canvasId: string, connectionId: string): void {

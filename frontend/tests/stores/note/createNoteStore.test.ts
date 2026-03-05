@@ -1,7 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { describe, it, expect, vi } from 'vitest'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockNote, createMockCanvas } from '../../helpers/factories'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { createNoteStore, type NoteStoreConfig } from '@/stores/note/createNoteStore'
@@ -9,14 +8,7 @@ import type { BaseNote } from '@/types'
 import type { Group } from '@/types/group'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const mockShowSuccessToast = vi.fn()
@@ -80,12 +72,7 @@ function createTestConfig(overrides?: Partial<NoteStoreConfig<TestItem>>): NoteS
 }
 
 describe('createNoteStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('初始狀態', () => {
     it('availableItems 應為空陣列', () => {

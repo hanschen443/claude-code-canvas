@@ -1,21 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { describe, it, expect, vi } from 'vitest'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockPod } from '../../helpers/factories'
 import { useCommandStore } from '@/stores/note/commandStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { Command, CommandNote, Group } from '@/types'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 vi.mock('@/composables/useToast', () => {
@@ -35,12 +27,7 @@ const mockShowSuccessToast = toast.showSuccessToast as ReturnType<typeof vi.fn>
 const mockShowErrorToast = toast.showErrorToast as ReturnType<typeof vi.fn>
 
 describe('commandStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('初始狀態', () => {
     it('availableItems 應為空陣列', () => {

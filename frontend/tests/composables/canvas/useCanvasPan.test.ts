@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useCanvasPan } from '@/composables/canvas/useCanvasPan'
 
 // Mock useCanvasContext
@@ -16,15 +15,10 @@ vi.mock('@/composables/canvas/useCanvasContext', () => ({
 }))
 
 describe('useCanvasPan', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
+  setupStoreTest(() => {
     mockViewportStore.offset = { x: 0, y: 0 }
-
     // 清理任何可能殘留的事件監聽器
-    const upEvent = new MouseEvent('mouseup')
-    document.dispatchEvent(upEvent)
+    document.dispatchEvent(new MouseEvent('mouseup'))
   })
 
   describe('startPan', () => {

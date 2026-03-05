@@ -1,20 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest, mockWebSocketClient } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useChatStore, resetChatActionsCache } from '@/stores/chat/chatStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { PodChatHistoryResultPayload, PersistedMessage } from '@/types/websocket/responses'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const { mockToast, mockShowSuccessToast, mockShowErrorToast } = vi.hoisted(() => ({
@@ -43,17 +35,11 @@ vi.mock('@/composables/useWebSocketErrorHandler', () => ({
 }))
 
 describe('chatHistoryActions', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
+  setupStoreTest(() => {
     resetChatActionsCache()
-    vi.clearAllMocks()
-
     mockWebSocketClient.isConnected.value = true
     const chatStore = useChatStore()
     chatStore.connectionStatus = 'connected'
-
     mockWrapWebSocketRequest.mockImplementation(async (promise) => promise)
   })
 

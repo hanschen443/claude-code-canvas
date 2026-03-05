@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
+import { describe, it, expect, vi } from 'vitest'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useCanvasZoom } from '@/composables/canvas/useCanvasZoom'
 import { useViewportStore } from '@/stores/pod/viewportStore'
 
@@ -13,10 +12,7 @@ vi.mock('@/composables/canvas/useCanvasContext', () => ({
 }))
 
 describe('useCanvasZoom', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-  })
+  setupStoreTest()
 
   describe('handleWheel', () => {
     it('向下滾動（deltaY > 0）應縮小（zoom * 0.9）', () => {

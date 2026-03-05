@@ -1,9 +1,5 @@
-export interface OutputStyleNote {
-  id: string;
+import type { BaseNote } from './baseNote';
+
+export interface OutputStyleNote extends BaseNote {
   outputStyleId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }

@@ -100,6 +100,8 @@ const handlePodScheduleSet = createUnifiedHandler<BasePayload & { pod?: Pod; can
 )
 
 type DeletedNoteIds = {
+  // 'note' 對應後端 PodDeletedPayload.deletedNoteIds.note，實際為 OutputStyleNote 的 ID 清單。
+  // 此命名由後端 WebSocket 協議決定，前端不應單方面更改以避免協議不一致。
   note?: string[]
   skillNote?: string[]
   repositoryNote?: string[]
@@ -125,10 +127,10 @@ const removeDeletedNotes = (deletedNoteIds: DeletedNoteIds | undefined): void =>
 
   for (const { key, getStore } of noteTypeHandlers) {
     const ids = deletedNoteIds[key]
-    if (ids && ids.length > 0) {
-      const store = getStore()
-      ids.forEach(noteId => store.removeNoteFromEvent(noteId))
-    }
+    if (!ids || ids.length === 0) continue
+
+    const store = getStore()
+    ids.forEach(noteId => store.removeNoteFromEvent(noteId))
   }
 }
 

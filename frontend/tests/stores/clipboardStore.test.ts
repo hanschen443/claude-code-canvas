@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
+import { describe, it, expect, vi } from 'vitest'
+import { setupStoreTest } from '../helpers/testSetup'
 import { useClipboardStore } from '@/stores/clipboardStore'
 import type {
   CopiedPod,
@@ -14,11 +13,7 @@ import type {
 } from '@/types'
 
 describe('clipboardStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('初始狀態', () => {
     it('所有 copied 陣列應為空', () => {

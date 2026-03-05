@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import {
   createPod,
@@ -29,20 +24,9 @@ import {
 } from '../../src/types';
 
 describe('OutputStyle 管理', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
+  const { getClient, getServer } = setupIntegrationTest();
 
-  beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
-  });
-
-  const getContext = () => ({ client, server });
+  const getContext = () => ({ client: getClient(), server: getServer() });
 
   describeCRUDTests(
     {
@@ -94,6 +78,7 @@ describe('OutputStyle 管理', () => {
 
   describe('Pod 解除綁定 OutputStyle - OutputStyle 特有測試', () => {
     it('成功解除綁定 OutputStyle', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const style = await createOutputStyle(client, `unbind-style-${uuidv4()}`, '# UB');
 
@@ -117,6 +102,7 @@ describe('OutputStyle 管理', () => {
     });
 
     it('Pod 不存在時解除綁定失敗', async () => {
+      const client = getClient();
       const canvasId = await getCanvasId(client);
       const response = await emitAndWaitResponse<PodUnbindOutputStylePayload, PodOutputStyleUnboundPayload>(
         client,

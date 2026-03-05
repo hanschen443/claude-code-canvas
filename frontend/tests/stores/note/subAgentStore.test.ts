@@ -1,20 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { describe, it, expect, vi } from 'vitest'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { createMockSubAgent, createMockGroup } from '../../helpers/factories'
 import { useSubAgentStore } from '@/stores/note/subAgentStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 vi.mock('@/composables/useToast', () => {
@@ -33,12 +25,7 @@ vi.mock('@/composables/useToast', () => {
 const { mockShowSuccessToast, mockShowErrorToast } = await import('@/composables/useToast') as any
 
 describe('subAgentStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   describe('createSubAgent', () => {
     it('成功時應回傳 success: true 並新增 item 到 availableItems', async () => {

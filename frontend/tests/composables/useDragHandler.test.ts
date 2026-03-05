@@ -1,14 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { setupStoreTest } from '../helpers/testSetup'
 import { useDragHandler } from '@/composables/useDragHandler'
 
 describe('useDragHandler', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    vi.clearAllMocks()
-  })
+  setupStoreTest()
 
   afterEach(() => {
     // 確保清理殘留監聽器

@@ -1,21 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, mockCreateWebSocketRequest, resetMockWebSocket } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, mockCreateWebSocketRequest } from '../../helpers/mockWebSocket'
+import { setupStoreTest, mockErrorSanitizerFactory } from '../../helpers/testSetup'
 import { createGroupCRUDActions } from '@/stores/note/createGroupCRUDActions'
 import type { GroupCRUDStoreContext } from '@/stores/note/createGroupCRUDActions'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { WebSocketRequestEvents, WebSocketResponseEvents } from '@/services/websocket'
 
 // Mock WebSocket
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 // Mock useToast
 const mockShowSuccessToast = vi.fn()
@@ -28,13 +20,7 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 // Mock sanitizeErrorForUser
-vi.mock('@/utils/errorSanitizer', () => ({
-  sanitizeErrorForUser: vi.fn((error: unknown) => {
-    if (error instanceof Error) return error.message
-    if (typeof error === 'string') return error
-    return '未知錯誤'
-  }),
-}))
+vi.mock('@/utils/errorSanitizer', () => mockErrorSanitizerFactory())
 
 function createMockContext(): GroupCRUDStoreContext & { groups: Array<{ id: string; name: string; [key: string]: unknown }> } {
   return {
@@ -56,12 +42,7 @@ const testConfig = {
 }
 
 describe('createGroupCRUDActions', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-    vi.clearAllMocks()
-
+  setupStoreTest(() => {
     const canvasStore = useCanvasStore()
     canvasStore.activeCanvasId = 'canvas-1'
   })

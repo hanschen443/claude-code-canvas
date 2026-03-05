@@ -1,12 +1,7 @@
-import type { TestWebSocketClient } from '../setup';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  createTestServer,
-  closeTestServer,
-  createSocketClient,
   emitAndWaitResponse,
-  disconnectSocket,
-  type TestServerInstance,
+  setupIntegrationTest,
 } from '../setup';
 import { createPod, FAKE_UUID, createSkillFile, createSubAgent, getCanvasId} from '../helpers';
 import {
@@ -25,24 +20,17 @@ import {
 // 注意：podStore 和 connectionStore 使用動態 import，避免在測試配置覆蓋前載入
 
 describe('Store 覆蓋率測試', () => {
-  let server: TestServerInstance;
-  let client: TestWebSocketClient;
+  const { getServer, getClient } = setupIntegrationTest();
+
   let podStore: Awaited<typeof import('../../src/services/podStore.js')>['podStore'];
   let connectionStore: Awaited<typeof import('../../src/services/connectionStore.js')>['connectionStore'];
 
   beforeAll(async () => {
-    server = await createTestServer();
-    client = await createSocketClient(server.baseUrl, server.canvasId);
     // 動態 import stores（確保使用測試配置）
     const podStoreModule = await import('../../src/services/podStore.js');
     const connectionStoreModule = await import('../../src/services/connectionStore.js');
     podStore = podStoreModule.podStore;
     connectionStore = connectionStoreModule.connectionStore;
-  });
-
-  afterAll(async () => {
-    if (client?.connected) await disconnectSocket(client);
-    if (server) await closeTestServer(server);
   });
 
   describe('PodStore', () => {
@@ -55,6 +43,8 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('相同狀態時跳過更新', async () => {
+      const client = getClient();
+      const server = getServer();
       const pod = await createPod(client);
       const canvasId = server.canvasId;
 
@@ -75,6 +65,8 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('不同狀態時觸發事件', async () => {
+      const client = getClient();
+      const server = getServer();
       const pod = await createPod(client);
       const canvasId = server.canvasId;
 
@@ -98,6 +90,7 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('Skill 不在列表時新增成功', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test');
 
@@ -114,6 +107,7 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('Skill 已在列表時跳過', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test');
       const canvasId = await getCanvasId(client);
@@ -135,6 +129,7 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('SubAgent 不在列表時新增成功', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const subAgent = await createSubAgent(client, `subagent-${uuidv4()}`, '# Test');
 
@@ -151,6 +146,7 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('SubAgent 已在列表時跳過', async () => {
+      const client = getClient();
       const pod = await createPod(client);
       const subAgent = await createSubAgent(client, `subagent-${uuidv4()}`, '# Test');
       const canvasId = await getCanvasId(client);
@@ -195,6 +191,7 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('刪除時儲存到磁碟', async () => {
+      const client = getClient();
       const podA = await createPod(client, { name: 'Pod A' });
       const podB = await createPod(client, { name: 'Pod B' });
 
@@ -226,6 +223,7 @@ describe('Store 覆蓋率測試', () => {
     });
 
     it('刪除失敗時跳過儲存', () => {
+      const server = getServer();
       const canvasId = server.canvasId;
 
       const deleted = connectionStore.delete(canvasId, FAKE_UUID);

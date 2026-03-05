@@ -1,13 +1,8 @@
 import {
-	createTestServer,
-	closeTestServer,
-	createSocketClient,
-	disconnectSocket,
 	waitForEvent,
-	type TestServerInstance,
+	setupIntegrationTest,
 } from '../setup';
 import { createPod, deletePod, postCanvas, postPod } from '../helpers';
-import type { TestWebSocketClient } from '../setup';
 import { WebSocketResponseEvents } from '../../src/schemas';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -16,20 +11,11 @@ async function fetchPods(baseUrl: string, canvasId: string) {
 }
 
 describe('GET /api/canvas/:id/pods', () => {
-	let server: TestServerInstance;
-	let client: TestWebSocketClient;
-
-	beforeAll(async () => {
-		server = await createTestServer();
-		client = await createSocketClient(server.baseUrl, server.canvasId);
-	});
-
-	afterAll(async () => {
-		if (client?.connected) await disconnectSocket(client);
-		if (server) await closeTestServer(server);
-	});
+	const { getServer, getClient } = setupIntegrationTest();
 
 	it('成功取得 Pod 列表', async () => {
+		const server = getServer();
+		const client = getClient();
 		await createPod(client);
 
 		const response = await fetchPods(server.baseUrl, server.canvasId);
@@ -41,6 +27,7 @@ describe('GET /api/canvas/:id/pods', () => {
 	});
 
 	it('Canvas 存在但沒有 Pod 時回傳空陣列', async () => {
+		const server = getServer();
 		const createResponse = await postCanvas(server.baseUrl, { name: 'pod-api-empty-canvas' });
 		expect(createResponse.status).toBe(201);
 		const created = await createResponse.json();
@@ -54,6 +41,8 @@ describe('GET /api/canvas/:id/pods', () => {
 	});
 
 	it('回傳資料包含 Pod 完整欄位', async () => {
+		const server = getServer();
+		const client = getClient();
 		await createPod(client);
 
 		const response = await fetchPods(server.baseUrl, server.canvasId);
@@ -77,6 +66,7 @@ describe('GET /api/canvas/:id/pods', () => {
 	});
 
 	it('用 canvas name 取得 Pod 列表', async () => {
+		const server = getServer();
 		const createResponse = await postCanvas(server.baseUrl, { name: 'pod-api-name-canvas' });
 		expect(createResponse.status).toBe(201);
 
@@ -88,6 +78,7 @@ describe('GET /api/canvas/:id/pods', () => {
 	});
 
 	it('找不到 Canvas 回傳 404', async () => {
+		const server = getServer();
 		const response = await fetchPods(server.baseUrl, 'non-existent-canvas');
 		expect(response.status).toBe(404);
 
@@ -96,6 +87,7 @@ describe('GET /api/canvas/:id/pods', () => {
 	});
 
 	it('用不存在的 UUID 查詢 Pod 列表回傳 404', async () => {
+		const server = getServer();
 		const response = await fetchPods(server.baseUrl, '00000000-0000-4000-8000-000000000000');
 		expect(response.status).toBe(404);
 		const body = await response.json();
@@ -104,20 +96,10 @@ describe('GET /api/canvas/:id/pods', () => {
 });
 
 describe('POST /api/canvas/:id/pods', () => {
-	let server: TestServerInstance;
-	let client: TestWebSocketClient;
-
-	beforeAll(async () => {
-		server = await createTestServer();
-		client = await createSocketClient(server.baseUrl, server.canvasId);
-	});
-
-	afterAll(async () => {
-		if (client?.connected) await disconnectSocket(client);
-		if (server) await closeTestServer(server);
-	});
+	const { getServer, getClient } = setupIntegrationTest();
 
 	it('成功建立 Pod（只傳 name, x, y），預設 model 為 opus', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'REST Pod', x: 100, y: 200 });
 		expect(response.status).toBe(201);
 
@@ -131,6 +113,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('成功建立 Pod 並指定 model 為 sonnet', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'Sonnet Pod', x: 0, y: 0, model: 'sonnet' });
 		expect(response.status).toBe(201);
 
@@ -139,6 +122,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('用 canvas name 建立 Pod', async () => {
+		const server = getServer();
 		const createResponse = await postCanvas(server.baseUrl, { name: 'post-pod-name-canvas' });
 		expect(createResponse.status).toBe(201);
 
@@ -147,6 +131,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('缺少 name 回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { x: 0, y: 0 });
 		expect(response.status).toBe(400);
 
@@ -155,6 +140,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('name 為空字串回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: '', x: 0, y: 0 });
 		expect(response.status).toBe(400);
 
@@ -163,6 +149,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('name 超過 100 字元回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'a'.repeat(101), x: 0, y: 0 });
 		expect(response.status).toBe(400);
 
@@ -171,6 +158,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('缺少 x 回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'Pod', y: 0 });
 		expect(response.status).toBe(400);
 
@@ -179,6 +167,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('缺少 y 回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'Pod', x: 0 });
 		expect(response.status).toBe(400);
 
@@ -187,6 +176,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('無效 model 回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'Pod', x: 0, y: 0, model: 'gpt-4' });
 		expect(response.status).toBe(400);
 
@@ -195,6 +185,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('Canvas 不存在回傳 404', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, 'non-existent-canvas', { name: 'Pod', x: 0, y: 0 });
 		expect(response.status).toBe(404);
 
@@ -203,6 +194,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('無效 JSON body 回傳 400', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, 'not json', 'text/plain');
 		expect(response.status).toBe(400);
 
@@ -211,6 +203,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('用不存在的 UUID 建立 Pod 回傳 404', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, '00000000-0000-4000-8000-000000000000', {
 			name: 'Test', x: 0, y: 0,
 		});
@@ -220,6 +213,8 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('建立 Pod 成功後 WebSocket client 收到 pod:created 事件', async () => {
+		const server = getServer();
+		const client = getClient();
 		const eventPromise = waitForEvent<{ pod: { name: string; x: number; y: number } }>(
 			client,
 			WebSocketResponseEvents.POD_CREATED,
@@ -235,6 +230,7 @@ describe('POST /api/canvas/:id/pods', () => {
 	});
 
 	it('回傳的 Pod 包含完整欄位', async () => {
+		const server = getServer();
 		const response = await postPod(server.baseUrl, server.canvasId, { name: 'Full Field Pod', x: 50, y: 75 });
 		expect(response.status).toBe(201);
 
@@ -257,20 +253,10 @@ describe('POST /api/canvas/:id/pods', () => {
 });
 
 describe('DELETE /api/canvas/:id/pods/:podId', () => {
-	let server: TestServerInstance;
-	let client: TestWebSocketClient;
-
-	beforeAll(async () => {
-		server = await createTestServer();
-		client = await createSocketClient(server.baseUrl, server.canvasId);
-	});
-
-	afterAll(async () => {
-		if (client?.connected) await disconnectSocket(client);
-		if (server) await closeTestServer(server);
-	});
+	const { getServer, getClient } = setupIntegrationTest();
 
 	it('成功刪除 Pod 回傳 200，再次 GET 確認已移除', async () => {
+		const server = getServer();
 		const createResponse = await postPod(server.baseUrl, server.canvasId, { name: 'Delete Pod', x: 0, y: 0 });
 		expect(createResponse.status).toBe(201);
 		const { pod } = await createResponse.json();
@@ -288,6 +274,7 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('用 Canvas name 刪除 Pod 成功', async () => {
+		const server = getServer();
 		const canvasResponse = await postCanvas(server.baseUrl, { name: 'delete-pod-by-name-canvas' });
 		expect(canvasResponse.status).toBe(201);
 		const { canvas } = await canvasResponse.json();
@@ -304,6 +291,8 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('刪除後透過 WebSocket 廣播 pod:deleted 事件', async () => {
+		const server = getServer();
+		const client = getClient();
 		const createResponse = await postPod(server.baseUrl, server.canvasId, { name: 'WS Delete Pod', x: 0, y: 0 });
 		expect(createResponse.status).toBe(201);
 		const { pod } = await createResponse.json();
@@ -321,6 +310,7 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('Canvas 不存在回傳 404', async () => {
+		const server = getServer();
 		const nonExistentCanvasId = uuidv4();
 		const nonExistentPodId = uuidv4();
 
@@ -332,6 +322,7 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('Pod 不存在回傳 404', async () => {
+		const server = getServer();
 		const nonExistentPodId = uuidv4();
 
 		const response = await deletePod(server.baseUrl, server.canvasId, nonExistentPodId);
@@ -342,6 +333,7 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('用 Pod 名稱刪除成功回傳 200', async () => {
+		const server = getServer();
 		const createResponse = await postPod(server.baseUrl, server.canvasId, { name: 'Delete By Name Pod', x: 0, y: 0 });
 		expect(createResponse.status).toBe(201);
 		const { pod } = await createResponse.json();
@@ -359,6 +351,7 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('用不存在 Pod 名稱刪除回傳 404', async () => {
+		const server = getServer();
 		const response = await deletePod(server.baseUrl, server.canvasId, 'Non Existent Pod Name');
 		expect(response.status).toBe(404);
 
@@ -367,6 +360,7 @@ describe('DELETE /api/canvas/:id/pods/:podId', () => {
 	});
 
 	it('重複刪除同一個 Pod 回傳 404', async () => {
+		const server = getServer();
 		const createResponse = await postPod(server.baseUrl, server.canvasId, { name: 'Duplicate Delete Pod', x: 0, y: 0 });
 		expect(createResponse.status).toBe(201);
 		const { pod } = await createResponse.json();

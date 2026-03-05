@@ -1,9 +1,5 @@
-export interface RepositoryNote {
-  id: string;
+import type { BaseNote } from './baseNote';
+
+export interface RepositoryNote extends BaseNote {
   repositoryId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }

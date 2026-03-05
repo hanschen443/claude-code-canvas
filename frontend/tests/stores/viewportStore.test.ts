@@ -1,13 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { setActivePinia } from 'pinia'
-import { setupTestPinia } from '../helpers/mockStoreFactory'
+import { describe, it, expect } from 'vitest'
+import { setupStoreTest } from '../helpers/testSetup'
 import { useViewportStore } from '@/stores/pod/viewportStore'
 
 describe('viewportStore', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-  })
+  setupStoreTest()
 
   describe('初始狀態', () => {
     it('offset 應為 {x: 0, y: 0}', () => {

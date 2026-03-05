@@ -143,6 +143,7 @@ export function writePidFile(pidPath: string, data: { pid: number; port: number;
 }
 
 export function isProcessAlive(pid: number): boolean {
+	// process.kill(pid, 0) 在 pid 不存在時會 throw，這是 Node.js 的行為，try-catch 是必要的
 	try {
 		process.kill(pid, 0);
 		return true;

@@ -1,11 +1,7 @@
 import {v4 as uuidv4} from 'uuid';
 import {
-    closeTestServer,
-    createSocketClient,
-    createTestServer,
-    disconnectSocket,
     emitAndWaitResponse,
-    type TestServerInstance, TestWebSocketClient,
+    setupIntegrationTest,
 } from '../setup';
 import {
     createPod,
@@ -41,21 +37,11 @@ import {
 } from '../../src/types';
 
 describe('Repository 管理', () => {
-    let server: TestServerInstance;
-    let client: TestWebSocketClient;
-
-    beforeAll(async () => {
-        server = await createTestServer();
-        client = await createSocketClient(server.baseUrl, server.canvasId);
-    });
-
-    afterAll(async () => {
-        if (client?.connected) await disconnectSocket(client);
-        if (server) await closeTestServer(server);
-    });
+    const { getServer, getClient } = setupIntegrationTest();
 
     describe('Repository 建立', () => {
         it('成功建立', async () => {
+            const client = getClient();
             const name = `repo-${uuidv4()}`;
             const repo = await createRepository(client, name);
 
@@ -64,6 +50,7 @@ describe('Repository 管理', () => {
         });
 
         it('重複名稱時建立失敗', async () => {
+            const client = getClient();
             const name = `dup-repo-${uuidv4()}`;
             await createRepository(client, name);
 
@@ -82,6 +69,7 @@ describe('Repository 管理', () => {
 
     describe('Repository 列表', () => {
         it('成功回傳所有 Repository', async () => {
+            const client = getClient();
             const name = `list-repo-${uuidv4()}`;
             await createRepository(client, name);
 
@@ -101,6 +89,7 @@ describe('Repository 管理', () => {
 
     describe('Repository Note 特有測試', () => {
         it('Repository 不存在時建立 Note 失敗', async () => {
+            const client = getClient();
             const canvasId = await getCanvasId(client);
             const response = await emitAndWaitResponse<RepositoryNoteCreatePayload, RepositoryNoteCreatedPayload>(
                 client,
@@ -125,7 +114,7 @@ describe('Repository 管理', () => {
 
 
     describe('Pod 綁定 Repository 資源同步', () => {
-        async function bindSkillToPod(podId: string, skillId: string) {
+        async function bindSkillToPod(client: any, podId: string, skillId: string) {
             const canvasId = await getCanvasId(client);
             const { WebSocketRequestEvents, WebSocketResponseEvents } = await import('../../src/schemas/index.js');
             return await emitAndWaitResponse(
@@ -136,7 +125,7 @@ describe('Repository 管理', () => {
             );
         }
 
-        async function bindSubAgentToPod(podId: string, subAgentId: string) {
+        async function bindSubAgentToPod(client: any, podId: string, subAgentId: string) {
             const canvasId = await getCanvasId(client);
             const { WebSocketRequestEvents, WebSocketResponseEvents } = await import('../../src/schemas/index.js');
             return await emitAndWaitResponse(
@@ -147,7 +136,7 @@ describe('Repository 管理', () => {
             );
         }
 
-        async function bindCommandToPod(podId: string, commandId: string) {
+        async function bindCommandToPod(client: any, podId: string, commandId: string) {
             const canvasId = await getCanvasId(client);
             const { WebSocketRequestEvents, WebSocketResponseEvents } = await import('../../src/schemas/index.js');
             return await emitAndWaitResponse(
@@ -159,6 +148,7 @@ describe('Repository 管理', () => {
         }
 
         it('綁定 Repository 後 Pod 資源被刪除', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo = await createRepository(client, `sync-delete-${uuidv4()}`);
 
@@ -167,9 +157,9 @@ describe('Repository 管理', () => {
             const subAgent = await createSubAgent(client, `subagent-${uuidv4()}`, 'Test SubAgent');
             const command = await createCommand(client, `command-${uuidv4()}`, 'Test Command');
 
-            await bindSkillToPod(pod.id, skillId);
-            await bindSubAgentToPod(pod.id, subAgent.id);
-            await bindCommandToPod(pod.id, command.id);
+            await bindSkillToPod(client, pod.id, skillId);
+            await bindSubAgentToPod(client, pod.id, subAgent.id);
+            await bindCommandToPod(client, pod.id, command.id);
 
             const path = await import('path');
             const fs = await import('fs/promises');
@@ -205,6 +195,7 @@ describe('Repository 管理', () => {
         });
 
         it('綁定後 Repository 資源同步成功', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo = await createRepository(client, `sync-add-${uuidv4()}`);
 
@@ -213,9 +204,9 @@ describe('Repository 管理', () => {
             const subAgent = await createSubAgent(client, `subagent-${uuidv4()}`, 'Test SubAgent');
             const command = await createCommand(client, `command-${uuidv4()}`, 'Test Command');
 
-            await bindSkillToPod(pod.id, skillId);
-            await bindSubAgentToPod(pod.id, subAgent.id);
-            await bindCommandToPod(pod.id, command.id);
+            await bindSkillToPod(client, pod.id, skillId);
+            await bindSubAgentToPod(client, pod.id, subAgent.id);
+            await bindCommandToPod(client, pod.id, command.id);
 
             const canvasId = await getCanvasId(client);
             await emitAndWaitResponse<PodBindRepositoryPayload, PodRepositoryBoundPayload>(
@@ -244,6 +235,7 @@ describe('Repository 管理', () => {
         });
 
         it('重新綁定後舊 Repository 同步成功', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo1 = await createRepository(client, `sync-old-${uuidv4()}`);
             const repo2 = await createRepository(client, `sync-new-${uuidv4()}`);
@@ -251,7 +243,7 @@ describe('Repository 管理', () => {
             const { createSkillFile } = await import('../helpers/index.js');
             const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test Skill');
 
-            await bindSkillToPod(pod.id, skillId);
+            await bindSkillToPod(client, pod.id, skillId);
 
             const canvasId = await getCanvasId(client);
             await emitAndWaitResponse<PodBindRepositoryPayload, PodRepositoryBoundPayload>(
@@ -289,6 +281,7 @@ describe('Repository 管理', () => {
 
     describe('Pod 解除綁定 Repository', () => {
         it('成功解除綁定 Repository', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo = await createRepository(client, `unbind-repo-${uuidv4()}`);
 
@@ -312,6 +305,7 @@ describe('Repository 管理', () => {
         });
 
         it('Pod 不存在時解除綁定失敗', async () => {
+            const client = getClient();
             const canvasId = await getCanvasId(client);
             const response = await emitAndWaitResponse<PodUnbindRepositoryPayload, PodRepositoryUnboundPayload>(
                 client,
@@ -326,7 +320,7 @@ describe('Repository 管理', () => {
     });
 
     describe('Pod 解除綁定 Repository 資源同步', () => {
-        async function bindSkillToPod(podId: string, skillId: string) {
+        async function bindSkillToPod(client: any, podId: string, skillId: string) {
             const canvasId = await getCanvasId(client);
             const { WebSocketRequestEvents, WebSocketResponseEvents } = await import('../../src/schemas/index.js');
             return await emitAndWaitResponse(
@@ -337,7 +331,7 @@ describe('Repository 管理', () => {
             );
         }
 
-        async function bindSubAgentToPod(podId: string, subAgentId: string) {
+        async function bindSubAgentToPod(client: any, podId: string, subAgentId: string) {
             const canvasId = await getCanvasId(client);
             const { WebSocketRequestEvents, WebSocketResponseEvents } = await import('../../src/schemas/index.js');
             return await emitAndWaitResponse(
@@ -348,7 +342,7 @@ describe('Repository 管理', () => {
             );
         }
 
-        async function bindCommandToPod(podId: string, commandId: string) {
+        async function bindCommandToPod(client: any, podId: string, commandId: string) {
             const canvasId = await getCanvasId(client);
             const { WebSocketRequestEvents, WebSocketResponseEvents } = await import('../../src/schemas/index.js');
             return await emitAndWaitResponse(
@@ -360,6 +354,7 @@ describe('Repository 管理', () => {
         }
 
         it('解除綁定後資源複製到 Pod', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo = await createRepository(client, `unbind-copy-${uuidv4()}`);
 
@@ -368,9 +363,9 @@ describe('Repository 管理', () => {
             const subAgent = await createSubAgent(client, `subagent-${uuidv4()}`, 'Test SubAgent');
             const command = await createCommand(client, `command-${uuidv4()}`, 'Test Command');
 
-            await bindSkillToPod(pod.id, skillId);
-            await bindSubAgentToPod(pod.id, subAgent.id);
-            await bindCommandToPod(pod.id, command.id);
+            await bindSkillToPod(client, pod.id, skillId);
+            await bindSubAgentToPod(client, pod.id, subAgent.id);
+            await bindCommandToPod(client, pod.id, command.id);
 
             const canvasId = await getCanvasId(client);
             await emitAndWaitResponse<PodBindRepositoryPayload, PodRepositoryBoundPayload>(
@@ -409,13 +404,14 @@ describe('Repository 管理', () => {
         });
 
         it('解除綁定後舊 Repository 清理完成', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo = await createRepository(client, `unbind-clean-${uuidv4()}`);
 
             const { createSkillFile } = await import('../helpers/index.js');
             const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test Skill');
 
-            await bindSkillToPod(pod.id, skillId);
+            await bindSkillToPod(client, pod.id, skillId);
 
             const canvasId = await getCanvasId(client);
             await emitAndWaitResponse<PodBindRepositoryPayload, PodRepositoryBoundPayload>(
@@ -448,6 +444,7 @@ describe('Repository 管理', () => {
 
     describe('Repository 刪除', () => {
         it('成功刪除', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `del-repo-${uuidv4()}`);
 
             const canvasId = await getCanvasId(client);
@@ -462,6 +459,7 @@ describe('Repository 管理', () => {
         });
 
         it('不存在的 ID 時刪除失敗', async () => {
+            const client = getClient();
             const canvasId = await getCanvasId(client);
             const response = await emitAndWaitResponse<RepositoryDeletePayload, RepositoryDeletedPayload>(
                 client,
@@ -475,6 +473,7 @@ describe('Repository 管理', () => {
         });
 
         it('使用中時刪除失敗', async () => {
+            const client = getClient();
             const pod = await createPod(client);
             const repo = await createRepository(client, `inuse-repo-${uuidv4()}`);
 
@@ -500,6 +499,7 @@ describe('Repository 管理', () => {
 
     describe('Repository Git 檢查', () => {
         it('檢查非 Git Repository 成功', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `check-repo-${uuidv4()}`);
 
             const canvasId = await getCanvasId(client);
@@ -515,6 +515,7 @@ describe('Repository 管理', () => {
         });
 
         it('Repository 不存在時檢查失敗', async () => {
+            const client = getClient();
             const canvasId = await getCanvasId(client);
             const response = await emitAndWaitResponse<RepositoryCheckGitPayload, RepositoryCheckGitResultPayload>(
                 client,
@@ -530,6 +531,7 @@ describe('Repository 管理', () => {
 
     describe('Repository Worktree 建立', () => {
         it('Repository 不存在時建立失敗', async () => {
+            const client = getClient();
             const canvasId = await getCanvasId(client);
             const response = await emitAndWaitResponse<RepositoryWorktreeCreatePayload, RepositoryWorktreeCreatedPayload>(
                 client,
@@ -543,6 +545,7 @@ describe('Repository 管理', () => {
         });
 
         it('非 Git Repository 時建立失敗', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `worktree-non-git-${uuidv4()}`);
 
             const canvasId = await getCanvasId(client);
@@ -558,6 +561,7 @@ describe('Repository 管理', () => {
         });
 
         it('無 commit 時建立失敗', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `worktree-no-commit-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -579,6 +583,7 @@ describe('Repository 管理', () => {
         });
 
         it('分支已存在時建立失敗', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `worktree-dup-branch-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -607,6 +612,7 @@ describe('Repository 管理', () => {
         });
 
         it('成功建立並包含父 Repository 資訊', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `worktree-parent-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -638,6 +644,7 @@ describe('Repository 管理', () => {
 
     describe('Repository Metadata 持久化', () => {
         it('建立 Worktree 後 Metadata 持久化成功', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `metadata-persist-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -677,6 +684,7 @@ describe('Repository 管理', () => {
         });
 
         it('重啟後 Metadata 載入成功', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `metadata-restart-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -713,6 +721,7 @@ describe('Repository 管理', () => {
         });
 
         it('刪除 Repository 後 Metadata 移除成功', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `metadata-delete-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -758,6 +767,7 @@ describe('Repository 管理', () => {
 
     describe('Repository Worktree 刪除', () => {
         it('成功刪除並清理 Worktree', async () => {
+            const client = getClient();
             const repo = await createRepository(client, `worktree-cleanup-${uuidv4()}`);
 
             const { config } = await import('../../src/config/index.js');
@@ -825,7 +835,7 @@ describe('Repository 管理', () => {
             },
             parentIdFieldName: 'repositoryId',
         },
-        () => ({ client, server })
+        () => ({ client: getClient(), server: getServer() })
     );
 
     // 使用工廠函數產生 Pod Binding 測試
@@ -849,6 +859,6 @@ describe('Repository 管理', () => {
                 expect(response.pod.repositoryId).toBe(repositoryId);
             },
         },
-        () => ({ client, server })
+        () => ({ client: getClient(), server: getServer() })
     );
 });

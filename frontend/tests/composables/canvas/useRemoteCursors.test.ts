@@ -1,23 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia } from 'pinia'
+import { describe, it, expect, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
-import { setupTestPinia } from '../../helpers/mockStoreFactory'
-import { mockWebSocketModule, resetMockWebSocket, simulateEvent, simulateDisconnect } from '../../helpers/mockWebSocket'
+import { webSocketMockFactory, simulateEvent, simulateDisconnect } from '../../helpers/mockWebSocket'
+import { setupStoreTest } from '../../helpers/testSetup'
 import { useRemoteCursors } from '@/composables/canvas/useRemoteCursors'
 import { useCursorStore } from '@/stores/cursorStore'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { WebSocketResponseEvents } from '@/types/websocket'
 import type { CursorMovedPayload, CursorLeftPayload } from '@/types/websocket'
 
-vi.mock('@/services/websocket', async () => {
-  const actual = await vi.importActual<typeof import('@/services/websocket')>('@/services/websocket')
-  return {
-    ...mockWebSocketModule(),
-    WebSocketRequestEvents: actual.WebSocketRequestEvents,
-    WebSocketResponseEvents: actual.WebSocketResponseEvents,
-  }
-})
+vi.mock('@/services/websocket', () => webSocketMockFactory())
 
 function mountWithComposable() {
   return mount({
@@ -30,11 +22,7 @@ function mountWithComposable() {
 }
 
 describe('useRemoteCursors', () => {
-  beforeEach(() => {
-    const pinia = setupTestPinia()
-    setActivePinia(pinia)
-    resetMockWebSocket()
-  })
+  setupStoreTest()
 
   describe('事件處理', () => {
     it('收到 cursor:moved 事件應更新 cursorStore', async () => {

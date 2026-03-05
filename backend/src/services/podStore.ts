@@ -13,7 +13,7 @@ import {CanvasMapStore} from './shared/CanvasMapStore.js';
 type PodUpdates = Partial<Omit<Pod, 'schedule'>> & { schedule?: ScheduleConfig | null };
 
 interface ModifyPodOptions {
-    shouldPersist?: boolean;  // 預設 true
+    shouldPersist?: boolean;
     claudeSessionId?: string;
 }
 
