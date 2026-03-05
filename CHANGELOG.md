@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0] - 2026-03-05
+
+### 新增
+- SQLite 持久化遷移，取代原有 JSON file I/O + Map 快取架構
+- 新增 safeJsonParse 防禦性處理與 resetDb 環境保護
+
+### 重構
+- 重構測試重複程式碼（後端 beforeAll/afterAll、前端 websocket mock 等）
+- 後端 Note interface 繼承重構（建立 BaseNote）
+- autoClearService BFS 邏輯統一
+- AI 可讀性改善（消除 Record 濫用、修復過度嵌套、統一命名）
+- 移除 try-catch 濫用與無意義註解
+
 ## [0.3.3] - 2026-03-05
 
 ### 新增
