@@ -14,6 +14,8 @@ import { isStaticFilesAvailable, serveStaticFile } from './utils/staticFileServe
 import { handleApiRequest } from './api/apiRouter.js';
 import { slackClientManager } from './services/slack/slackClientManager.js';
 import { handleSlackWebhook } from './services/slack/slackWebhookHandler.js';
+import { telegramClientManager } from './services/telegram/telegramClientManager.js';
+import { scheduleService } from './services/scheduleService.js';
 
 function handleWebSocketUpgrade(req: Request, server: Server<{ connectionId: string }>): Response | undefined {
 	const success = server.upgrade(req, { data: { connectionId: '' } });
@@ -138,13 +140,14 @@ async function startServer(): Promise<void> {
 startServer();
 
 const shutdown = async (signal: string): Promise<void> => {
-	logger.log('Startup', 'Complete', `收到 ${signal}，正在優雅關閉`);
-
-	socketService.stopHeartbeat();
+	logger.log('Shutdown', 'Complete', `收到 ${signal}，正在優雅關閉`);
 
 	slackClientManager.destroyAll();
+	telegramClientManager.destroyAll();
+	scheduleService.stop();
+	socketService.stopHeartbeat();
 
-	logger.log('Startup', 'Complete', '伺服器已成功關閉');
+	logger.log('Shutdown', 'Complete', '伺服器已成功關閉');
 	process.exit(0);
 };
 

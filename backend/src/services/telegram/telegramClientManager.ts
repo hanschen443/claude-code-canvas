@@ -35,6 +35,13 @@ interface TelegramUpdate {
     message?: TelegramApiMessage;
 }
 
+interface TelegramApiResponse<T = unknown> {
+    ok: boolean;
+    result?: T;
+    error_code?: number;
+    description?: string;
+}
+
 type OnMessageCallback = (botId: string, message: TelegramApiMessage, botUsername: string) => Promise<void>;
 
 class TelegramClientManager {
@@ -61,7 +68,7 @@ class TelegramClientManager {
     private async validateAndUpdateBot(bot: TelegramBot): Promise<boolean> {
         try {
             const response = await fetch(`${TELEGRAM_API_BASE}${bot.botToken}/getMe`);
-            const data = await response.json() as {ok: boolean; result?: {username?: string}};
+            const data = await response.json() as TelegramApiResponse<{username?: string}>;
 
             if (!data.ok) {
                 logger.error('Telegram', 'Error', `Telegram Bot ${bot.id} 初始化失敗：Token 無效`);
@@ -84,6 +91,12 @@ class TelegramClientManager {
 
     // 每個 Bot 有獨立的 polling 迴圈，透過 AbortController 控制生命週期，避免 memory leak
     private async startPolling(botId: string, botToken: string): Promise<void> {
+        const existing = this.pollingControllers.get(botId);
+        if (existing) {
+            existing.abort();
+            logger.warn('Telegram', 'Warn', `Telegram Bot ${botId} 已有 polling 迴圈，先停止舊的再啟動新的`);
+        }
+
         const controller = new AbortController();
         this.pollingControllers.set(botId, controller);
 
@@ -120,7 +133,7 @@ class TelegramClientManager {
     ): Promise<TelegramUpdate[]> {
         const url = `${TELEGRAM_API_BASE}${botToken}/getUpdates?offset=${offset}&timeout=${timeout}`;
         const response = await fetch(url, {signal});
-        const data = await response.json() as {ok: boolean; result?: TelegramUpdate[]; error_code?: number; description?: string};
+        const data = await response.json() as TelegramApiResponse<TelegramUpdate[]>;
 
         if (!data.ok) {
             throw new Error(`getUpdates 回傳失敗: [${data.error_code}] ${data.description}`);
@@ -171,7 +184,7 @@ class TelegramClientManager {
                 body: JSON.stringify(body),
             });
 
-            const data = await response.json() as {ok: boolean; error_code?: number; description?: string};
+            const data = await response.json() as TelegramApiResponse;
             if (!data.ok) {
                 logger.error('Telegram', 'Error', `[Telegram] 發送訊息失敗: [${data.error_code}] ${data.description}`);
                 return err('發送訊息失敗');

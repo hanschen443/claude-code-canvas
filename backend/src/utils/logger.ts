@@ -35,7 +35,8 @@ export type LogCategory =
   | 'WebSocket'
   | 'McpServer'
   | 'Slack'
-  | 'Telegram';
+  | 'Telegram'
+  | 'Shutdown';
 
 /**
  * Category 顏色映射表
@@ -62,6 +63,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Schedule: ANSI_COLORS.YELLOW,
   Slack: ANSI_COLORS.BLUE,
   Telegram: ANSI_COLORS.BLUE,
+  Shutdown: ANSI_COLORS.GRAY,
 };
 
 /**

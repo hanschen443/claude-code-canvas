@@ -159,6 +159,9 @@ export async function createTestServer(): Promise<TestServerInstance> {
  * 處理優雅關閉
  */
 export async function closeTestServer(server: TestServerInstance): Promise<void> {
+  const { telegramClientManager } = await import('../../src/services/telegram/telegramClientManager.js');
+  telegramClientManager.destroyAll();
+
   const { scheduleService } = await import('../../src/services/scheduleService.js');
   scheduleService.stop();
 
