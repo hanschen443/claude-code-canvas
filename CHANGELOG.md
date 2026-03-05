@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1] - 2026-03-05
+
+### 新增
+- Pod Rename REST API（PATCH /api/canvas/:id/pods/:podId）
+- Canvas Rename REST API（PATCH /api/canvas/:id）
+
+### 修正
+- 修正 paste schema 驗證：resource ID 欄位誤用 UUID 格式驗證
+
 ## [0.4.0] - 2026-03-05
 
 ### 新增
