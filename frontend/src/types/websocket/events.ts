@@ -109,6 +109,13 @@ export const WebSocketRequestEvents = {
   SLACK_APP_CHANNELS_REFRESH: 'slack:app:channels:refresh',
   POD_BIND_SLACK: 'pod:bind-slack',
   POD_UNBIND_SLACK: 'pod:unbind-slack',
+  TELEGRAM_BOT_CREATE: 'telegram:bot:create',
+  TELEGRAM_BOT_DELETE: 'telegram:bot:delete',
+  TELEGRAM_BOT_LIST: 'telegram:bot:list',
+  TELEGRAM_BOT_GET: 'telegram:bot:get',
+  TELEGRAM_BOT_CHATS: 'telegram:bot:chats',
+  POD_BIND_TELEGRAM: 'pod:bind-telegram',
+  POD_UNBIND_TELEGRAM: 'pod:unbind-telegram',
 } as const
 
 export type WebSocketRequestEvents = typeof WebSocketRequestEvents[keyof typeof WebSocketRequestEvents]
@@ -256,6 +263,15 @@ export const WebSocketResponseEvents = {
   SLACK_CONNECTION_STATUS_CHANGED: 'slack:connection:status:changed',
   SLACK_MESSAGE_RECEIVED: 'slack:message:received',
   POD_CHAT_USER_MESSAGE: 'pod:chat:user-message',
+  TELEGRAM_BOT_CREATED: 'telegram:bot:created',
+  TELEGRAM_BOT_DELETED: 'telegram:bot:deleted',
+  TELEGRAM_BOT_LIST_RESULT: 'telegram:bot:list:result',
+  TELEGRAM_BOT_GET_RESULT: 'telegram:bot:get:result',
+  TELEGRAM_BOT_CHATS_RESULT: 'telegram:bot:chats:result',
+  POD_TELEGRAM_BOUND: 'pod:telegram:bound',
+  POD_TELEGRAM_UNBOUND: 'pod:telegram:unbound',
+  TELEGRAM_CONNECTION_STATUS_CHANGED: 'telegram:connection:status:changed',
+  TELEGRAM_MESSAGE_RECEIVED: 'telegram:message:received',
 } as const
 
 export type WebSocketResponseEvents = typeof WebSocketResponseEvents[keyof typeof WebSocketResponseEvents]

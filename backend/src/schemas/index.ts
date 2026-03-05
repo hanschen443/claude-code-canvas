@@ -18,6 +18,7 @@ export * from './groupSchemas.js';
 export * from './cursorSchemas.js';
 export * from './mcpServerSchemas.js';
 export * from './slackSchemas.js';
+export * from './telegramSchemas.js';
 
 /** 系統內部使用的 connectionId 常數（非真實 WebSocket 連線） */
 export const SystemConnectionIds = {

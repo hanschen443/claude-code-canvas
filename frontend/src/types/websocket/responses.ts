@@ -1,5 +1,6 @@
 import type {Pod, PodStatus} from '../pod'
 import type {SlackApp, SlackChannel, SlackAppConnectionStatus} from '../slack'
+import type {TelegramBot, TelegramChat, TelegramBotConnectionStatus} from '../telegram'
 import type {OutputStyleNote} from '@/types'
 import type {SkillNote} from '@/types'
 import type {Repository, RepositoryNote} from '@/types'
@@ -545,4 +546,49 @@ export interface PodSlackBoundPayload extends ResultPayload {
 export interface PodSlackUnboundPayload extends ResultPayload {
     canvasId: string
     pod?: Pod
+}
+
+export interface TelegramBotCreatedPayload extends ResultPayload {
+    telegramBot?: TelegramBot
+}
+
+export interface TelegramBotDeletedPayload extends ResultPayload {
+    telegramBotId?: string
+}
+
+export interface TelegramBotListResultPayload extends ResultPayload {
+    telegramBots?: TelegramBot[]
+}
+
+export interface TelegramBotGetResultPayload extends ResultPayload {
+    telegramBot?: TelegramBot
+}
+
+export interface TelegramBotChatsResultPayload extends ResultPayload {
+    chats?: TelegramChat[]
+}
+
+export interface PodTelegramBoundPayload extends ResultPayload {
+    canvasId: string
+    pod?: Pod
+}
+
+export interface PodTelegramUnboundPayload extends ResultPayload {
+    canvasId: string
+    pod?: Pod
+}
+
+export interface TelegramConnectionStatusChangedPayload {
+    telegramBotId: string
+    connectionStatus: TelegramBotConnectionStatus
+    chats?: TelegramChat[]
+}
+
+export interface TelegramMessageReceivedPayload {
+    canvasId: string
+    podId: string
+    telegramBotId: string
+    chatId: number
+    userName: string
+    text: string
 }

@@ -30,6 +30,7 @@ import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
 import CreateEditModal from './CreateEditModal.vue'
 import McpServerModal from './McpServerModal.vue'
 import SlackConnectModal from '@/components/slack/SlackConnectModal.vue'
+import TelegramConnectModal from '@/components/telegram/TelegramConnectModal.vue'
 import type {Pod, PodTypeConfig, Position, McpServerConfig} from '@/types'
 import {
   POD_MENU_X_OFFSET,
@@ -38,6 +39,7 @@ import {
 } from '@/lib/constants'
 import { screenToCanvasPosition } from '@/lib/canvasCoordinateUtils'
 import { useSlackStore } from '@/stores/slackStore'
+import { useTelegramStore } from '@/stores/telegramStore'
 
 const {
   podStore,
@@ -66,6 +68,11 @@ const showCloneRepositoryModal = ref(false)
 const lastMenuPosition = ref<Position | null>(null)
 
 const slackConnectModal = ref<{ visible: boolean; podId: string }>({
+  visible: false,
+  podId: ''
+})
+
+const telegramConnectModal = ref<{ visible: boolean; podId: string }>({
   visible: false,
   podId: ''
 })
@@ -244,6 +251,14 @@ const handleDisconnectSlack = async (podId: string): Promise<void> => {
   await useSlackStore().unbindSlackFromPod(podId)
 }
 
+const handleConnectTelegram = (podId: string): void => {
+  telegramConnectModal.value = { visible: true, podId }
+}
+
+const handleDisconnectTelegram = async (podId: string): Promise<void> => {
+  await useTelegramStore().unbindTelegramFromPod(podId)
+}
+
 const handleOpenCreateRepositoryModal = (): void => {
   lastMenuPosition.value = podStore.typeMenu.position
   showCreateRepositoryModal.value = true
@@ -408,6 +423,8 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
     @close="closePodContextMenu"
     @connect-slack="handleConnectSlack"
     @disconnect-slack="handleDisconnectSlack"
+    @connect-telegram="handleConnectTelegram"
+    @disconnect-telegram="handleDisconnectTelegram"
   />
 
   <RepositoryContextMenu
@@ -471,5 +488,10 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
   <SlackConnectModal
     v-model:open="slackConnectModal.visible"
     :pod-id="slackConnectModal.podId"
+  />
+
+  <TelegramConnectModal
+    v-model:open="telegramConnectModal.visible"
+    :pod-id="telegramConnectModal.podId"
   />
 </template>

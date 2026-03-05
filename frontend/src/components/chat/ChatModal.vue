@@ -7,6 +7,7 @@ import ChatMessages from './ChatMessages.vue'
 import ChatInput from './ChatInput.vue'
 import ChatWorkflowBlockedHint from './ChatWorkflowBlockedHint.vue'
 import ChatSlackBlockedHint from './ChatSlackBlockedHint.vue'
+import ChatTelegramBlockedHint from './ChatTelegramBlockedHint.vue'
 import { useChatStore } from '@/stores/chat'
 import { useConnectionStore } from '@/stores/connectionStore'
 
@@ -26,6 +27,7 @@ const isTyping = computed(() => chatStore.isTyping(props.pod.id))
 const isHistoryLoading = computed(() => chatStore.isHistoryLoading(props.pod.id))
 
 const isSlackBound = computed(() => props.pod.slackBinding != null)
+const isTelegramBound = computed(() => props.pod.telegramBinding != null)
 const workflowRole = computed(() => connectionStore.getPodWorkflowRole(props.pod.id))
 const isMiddlePod = computed(() => workflowRole.value === 'middle')
 const isWorkflowBusy = computed(() => {
@@ -81,6 +83,7 @@ onUnmounted(() => {
           :is-loading-history="isHistoryLoading"
         />
         <ChatSlackBlockedHint v-if="isSlackBound" />
+        <ChatTelegramBlockedHint v-else-if="isTelegramBound" />
         <ChatWorkflowBlockedHint v-else-if="isMiddlePod" />
         <ChatInput
           v-else

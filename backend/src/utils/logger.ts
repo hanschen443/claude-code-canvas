@@ -34,7 +34,8 @@ export type LogCategory =
   | 'Workspace'
   | 'WebSocket'
   | 'McpServer'
-  | 'Slack';
+  | 'Slack'
+  | 'Telegram';
 
 /**
  * Category 顏色映射表
@@ -60,6 +61,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   AutoClear: ANSI_COLORS.YELLOW,
   Schedule: ANSI_COLORS.YELLOW,
   Slack: ANSI_COLORS.BLUE,
+  Telegram: ANSI_COLORS.BLUE,
 };
 
 /**
@@ -119,7 +121,8 @@ function sanitizeSensitiveInfo(str: string): string {
     .replace(/ghp_[a-zA-Z0-9]{36}/g, 'ghp_***')
     .replace(/glpat-[a-zA-Z0-9_-]{20}/g, 'glpat-***')
     .replace(/xox[bpas]-[a-zA-Z0-9-]+/g, 'xox***')
-    .replace(/xapp-[a-zA-Z0-9-]+/g, 'xapp***');
+    .replace(/xapp-[a-zA-Z0-9-]+/g, 'xapp***')
+    .replace(/\d{8,12}:[A-Za-z0-9_-]{35}/g, '[BOT_TOKEN_REDACTED]');
 }
 
 /**

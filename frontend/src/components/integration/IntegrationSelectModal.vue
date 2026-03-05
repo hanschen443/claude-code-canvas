@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { type Component } from 'vue'
 import SlackIcon from '@/components/icons/SlackIcon.vue'
+import TelegramIcon from '@/components/icons/TelegramIcon.vue'
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,12 @@ const categories: IntegrationCategory[] = [
     name: 'Slack',
     description: '管理 Slack App 連線與設定',
     icon: SlackIcon,
+  },
+  {
+    id: 'telegram',
+    name: 'Telegram',
+    description: '管理 Telegram Bot 連線與設定',
+    icon: TelegramIcon,
   },
 ]
 

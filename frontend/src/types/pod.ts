@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import type { PodSlackBinding } from './slack'
+import type { PodTelegramBinding } from './telegram'
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku'
 
@@ -39,6 +40,7 @@ export interface Pod {
   commandId?: string | null
   schedule?: Schedule | null
   slackBinding?: PodSlackBinding | null
+  telegramBinding?: PodTelegramBinding | null
 }
 
 export interface PodTypeConfig {

@@ -24,6 +24,7 @@ import PodAnchors from '@/components/pod/PodAnchors.vue'
 import PodActions from '@/components/pod/PodActions.vue'
 import PodModelSelector from '@/components/pod/PodModelSelector.vue'
 import SlackStatusIcon from '@/components/pod/SlackStatusIcon.vue'
+import TelegramStatusIcon from '@/components/pod/TelegramStatusIcon.vue'
 import ScheduleModal from '@/components/canvas/ScheduleModal.vue'
 
 const props = defineProps<{
@@ -361,6 +362,10 @@ const handleContextMenu = (e: MouseEvent): void => {
         />
 
         <SlackStatusIcon :slack-binding="pod.slackBinding" />
+        <TelegramStatusIcon
+          :telegram-binding="pod.telegramBinding"
+          :has-slack-binding="!!pod.slackBinding"
+        />
 
         <div class="p-3">
           <PodHeader

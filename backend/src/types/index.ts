@@ -39,6 +39,8 @@ export type { McpServerNote } from './mcpServerNote.js';
 
 export type { SlackApp, SlackAppConnectionStatus, SlackChannel, PodSlackBinding, SlackMessage, SlackEvent, AppMentionEvent, SlackUrlVerificationPayload } from './slack.js';
 
+export type { TelegramBot, TelegramBotConnectionStatus, TelegramChat, TelegramChatType, PodTelegramBinding, TelegramMessage } from './telegram.js';
+
 export type {
   CreatePodRequest,
   CreatePodResponse,

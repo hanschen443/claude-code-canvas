@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { FolderOpen, Unplug } from 'lucide-vue-next'
 import SlackIcon from '@/components/icons/SlackIcon.vue'
+import TelegramIcon from '@/components/icons/TelegramIcon.vue'
 import { useWebSocketErrorHandler } from '@/composables/useWebSocketErrorHandler'
 import { useToast } from '@/composables/useToast'
 import { createWebSocketRequest, WebSocketRequestEvents, WebSocketResponseEvents } from '@/services/websocket'
@@ -21,12 +22,15 @@ const emit = defineEmits<{
   close: []
   'connect-slack': [podId: string]
   'disconnect-slack': [podId: string]
+  'connect-telegram': [podId: string]
+  'disconnect-telegram': [podId: string]
 }>()
 
 const { toast } = useToast()
 
 const pod = computed(() => usePodStore().getPodById(props.podId))
 const isSlackBound = computed(() => pod.value?.slackBinding !== undefined)
+const isTelegramBound = computed(() => pod.value?.telegramBinding !== undefined)
 
 const handleOpenDirectory = async (): Promise<void> => {
   const canvasId = getActiveCanvasIdOrWarn('PodContextMenu')
@@ -64,6 +68,16 @@ const handleConnectSlack = (): void => {
 
 const handleDisconnectSlack = (): void => {
   emit('disconnect-slack', props.podId)
+  emit('close')
+}
+
+const handleConnectTelegram = (): void => {
+  emit('connect-telegram', props.podId)
+  emit('close')
+}
+
+const handleDisconnectTelegram = (): void => {
+  emit('disconnect-telegram', props.podId)
   emit('close')
 }
 
@@ -111,6 +125,26 @@ const handleBackgroundClick = (): void => {
       >
         <Unplug :size="14" />
         <span class="font-mono">斷開 Slack</span>
+      </button>
+
+      <div class="my-1 border-t border-border" />
+
+      <button
+        v-if="!isTelegramBound"
+        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
+        @click="handleConnectTelegram"
+      >
+        <TelegramIcon :size="14" />
+        <span class="font-mono">連接 Telegram</span>
+      </button>
+
+      <button
+        v-else
+        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
+        @click="handleDisconnectTelegram"
+      >
+        <Unplug :size="14" />
+        <span class="font-mono">斷開 Telegram</span>
       </button>
     </div>
   </div>

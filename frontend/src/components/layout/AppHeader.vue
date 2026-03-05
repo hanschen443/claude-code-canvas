@@ -42,6 +42,7 @@
     @select="handleIntegrationSelect"
   />
   <SlackAppsModal v-model:open="showSlackAppsModal" />
+  <TelegramBotsModal v-model:open="showTelegramBotsModal" />
 </template>
 
 <script setup lang="ts">
@@ -49,16 +50,21 @@ import { ref } from 'vue'
 import { Sparkles, LayoutDashboard, KeyRound } from 'lucide-vue-next'
 import ConnectionStatus from '@/components/ui/ConnectionStatus.vue'
 import SlackAppsModal from '@/components/slack/SlackAppsModal.vue'
+import TelegramBotsModal from '@/components/telegram/TelegramBotsModal.vue'
 import IntegrationSelectModal from '@/components/integration/IntegrationSelectModal.vue'
 import { useCanvasStore } from '@/stores/canvasStore'
 
 const canvasStore = useCanvasStore()
 const showIntegrationModal = ref<boolean>(false)
 const showSlackAppsModal = ref<boolean>(false)
+const showTelegramBotsModal = ref<boolean>(false)
 
 const handleIntegrationSelect = (category: string): void => {
   if (category === 'slack') {
     showSlackAppsModal.value = true
+  }
+  if (category === 'telegram') {
+    showTelegramBotsModal.value = true
   }
 }
 </script>

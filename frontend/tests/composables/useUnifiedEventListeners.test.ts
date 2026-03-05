@@ -15,8 +15,10 @@ import { useMcpServerStore } from '@/stores/note/mcpServerStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { useSlackStore } from '@/stores/slackStore'
+import { useTelegramStore } from '@/stores/telegramStore'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
 import type { SlackApp } from '@/types/slack'
+import type { TelegramBot } from '@/types/telegram'
 
 vi.mock('@/services/websocket', () => webSocketMockFactory())
 
@@ -66,8 +68,8 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.on).toHaveBeenCalled()
       const callCount = mockWebSocketClient.on.mock.calls.length
-      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message、slack:connection:status:changed、slack:message:received 共 3 個
-      const expectedCount = listeners.length + 3
+      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received 共 5 個
+      const expectedCount = listeners.length + 5
       expect(callCount).toBe(expectedCount)
     })
 
@@ -90,8 +92,8 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.off).toHaveBeenCalled()
       const callCount = mockWebSocketClient.off.mock.calls.length
-      // listeners 陣列長度加上單獨取消的 pod:chat:user-message、slack:connection:status:changed、slack:message:received 共 3 個
-      const expectedCount = listeners.length + 3
+      // listeners 陣列長度加上單獨取消的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received 共 5 個
+      const expectedCount = listeners.length + 5
       expect(callCount).toBe(expectedCount)
     })
 
@@ -1441,6 +1443,214 @@ describe('useUnifiedEventListeners', () => {
 
       const updatedPod = podStore.getPodById('pod-1')
       expect(updatedPod?.slackBinding).toBeUndefined()
+    })
+  })
+
+  describe('Telegram 事件處理', () => {
+    const createMockTelegramBot = (overrides?: Partial<TelegramBot>): TelegramBot => ({
+      id: 'telegram-bot-1',
+      name: 'Test Telegram Bot',
+      connectionStatus: 'disconnected',
+      chats: [],
+      botUsername: 'test_bot',
+      ...overrides,
+    })
+
+    it('telegram:bot:created 應新增 Telegram Bot', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = []
+
+      registerUnifiedListeners()
+
+      const telegramBot = createMockTelegramBot()
+      simulateEvent('telegram:bot:created', { telegramBot })
+
+      expect(telegramStore.telegramBots.some(b => b.id === 'telegram-bot-1')).toBe(true)
+    })
+
+    it('telegram:bot:created 無 telegramBot 時不應新增', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = []
+
+      registerUnifiedListeners()
+
+      simulateEvent('telegram:bot:created', {})
+
+      expect(telegramStore.telegramBots.length).toBe(0)
+    })
+
+    it('telegram:bot:created telegramBot.name 含 XSS 時不應新增', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = []
+
+      registerUnifiedListeners()
+
+      const telegramBot = createMockTelegramBot({ name: '<script>alert(1)</script>' })
+      simulateEvent('telegram:bot:created', { telegramBot })
+
+      expect(telegramStore.telegramBots.length).toBe(0)
+    })
+
+    it('telegram:bot:created telegramBot.id 為空時不應新增', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = []
+
+      registerUnifiedListeners()
+
+      const telegramBot = createMockTelegramBot({ id: '' })
+      simulateEvent('telegram:bot:created', { telegramBot })
+
+      expect(telegramStore.telegramBots.length).toBe(0)
+    })
+
+    it('telegram:bot:deleted 應移除 Telegram Bot', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = [createMockTelegramBot()]
+
+      registerUnifiedListeners()
+
+      simulateEvent('telegram:bot:deleted', { telegramBotId: 'telegram-bot-1' })
+
+      expect(telegramStore.telegramBots.some(b => b.id === 'telegram-bot-1')).toBe(false)
+    })
+
+    it('telegram:bot:deleted 無 telegramBotId 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = [createMockTelegramBot()]
+
+      registerUnifiedListeners()
+
+      simulateEvent('telegram:bot:deleted', {})
+
+      expect(telegramStore.telegramBots.length).toBe(1)
+    })
+
+    it('pod:telegram:bound 應更新 Pod', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const podStore = usePodStore()
+      const pod = createMockPod({ id: 'pod-1' })
+      podStore.pods = [pod]
+
+      registerUnifiedListeners()
+
+      const telegramBinding = { telegramBotId: 'telegram-bot-1', telegramChatId: 123456, chatType: 'group' as const }
+      simulateEvent('pod:telegram:bound', {
+        canvasId: 'canvas-1',
+        pod: { ...pod, telegramBinding },
+      })
+
+      const updatedPod = podStore.getPodById('pod-1')
+      expect(updatedPod?.telegramBinding).toEqual(telegramBinding)
+    })
+
+    it('pod:telegram:unbound 應更新 Pod', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const podStore = usePodStore()
+      const telegramBinding = { telegramBotId: 'telegram-bot-1', telegramChatId: 123456, chatType: 'group' as const }
+      const pod = createMockPod({ id: 'pod-1', telegramBinding })
+      podStore.pods = [pod]
+
+      registerUnifiedListeners()
+
+      simulateEvent('pod:telegram:unbound', {
+        canvasId: 'canvas-1',
+        pod: { ...pod, telegramBinding: undefined },
+      })
+
+      const updatedPod = podStore.getPodById('pod-1')
+      expect(updatedPod?.telegramBinding).toBeUndefined()
+    })
+
+    it('telegram:connection:status:changed 應更新 Telegram Bot 狀態', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      simulateEvent('telegram:connection:status:changed', {
+        telegramBotId: 'telegram-bot-1',
+        connectionStatus: 'connected',
+        chats: [{ id: 123, type: 'group', title: 'Test Group' }],
+      })
+
+      const bot = telegramStore.telegramBots.find(b => b.id === 'telegram-bot-1')
+      expect(bot?.connectionStatus).toBe('connected')
+      expect(bot?.chats).toEqual([{ id: 123, type: 'group', title: 'Test Group' }])
+    })
+
+    it('telegram:connection:status:changed 一般狀態變更不應觸發 toast', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      simulateEvent('telegram:connection:status:changed', {
+        telegramBotId: 'telegram-bot-1',
+        connectionStatus: 'connected',
+      })
+
+      expect(sharedMockToast).not.toHaveBeenCalled()
+    })
+
+    it('telegram:connection:status:changed 缺少 telegramBotId 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      expect(() => {
+        simulateEvent('telegram:connection:status:changed', {
+          connectionStatus: 'connected',
+        })
+      }).not.toThrow()
+
+      const bot = telegramStore.telegramBots.find(b => b.id === 'telegram-bot-1')
+      expect(bot?.connectionStatus).toBe('disconnected')
+    })
+
+    it('telegram:connection:status:changed 缺少 connectionStatus 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const telegramStore = useTelegramStore()
+      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      expect(() => {
+        simulateEvent('telegram:connection:status:changed', {
+          telegramBotId: 'telegram-bot-1',
+        })
+      }).not.toThrow()
+
+      const bot = telegramStore.telegramBots.find(b => b.id === 'telegram-bot-1')
+      expect(bot?.connectionStatus).toBe('disconnected')
+    })
+
+    it('telegram:message:received 應顯示 toast 通知', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+
+      registerUnifiedListeners()
+
+      simulateEvent('telegram:message:received', {
+        podId: 'pod-1',
+        telegramBotId: 'telegram-bot-1',
+        chatId: 123456,
+        canvasId: 'canvas-1',
+        userName: 'testUser',
+        text: '這是一條 Telegram 測試訊息',
+      })
+
+      expect(sharedMockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Telegram 訊息' })
+      )
     })
   })
 })

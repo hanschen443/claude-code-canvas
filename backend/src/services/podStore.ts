@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Database } from 'bun:sqlite';
 import { WebSocketResponseEvents } from '../schemas';
 import type { Pod, PodStatus, CreatePodRequest, ScheduleConfig } from '../types';
-import type { PodSlackBinding } from '../types';
+import type { PodSlackBinding, PodTelegramBinding } from '../types';
 import { socketService } from './socketService.js';
 import { canvasStore } from './canvasStore.js';
 import { getDb } from '../database/index.js';
@@ -28,6 +28,7 @@ interface PodRow {
     auto_clear: number;
     schedule_json: string | null;
     slack_binding_json: string | null;
+    telegram_binding_json: string | null;
 }
 
 function rowToPod(row: PodRow): Pod {
@@ -73,6 +74,13 @@ function rowToPod(row: PodRow): Pod {
         }
     }
 
+    if (row.telegram_binding_json) {
+        const binding = safeJsonParse<PodTelegramBinding>(row.telegram_binding_json);
+        if (binding) {
+            pod.telegramBinding = binding;
+        }
+    }
+
     return pod;
 }
 
@@ -85,6 +93,11 @@ function serializeSchedule(schedule?: ScheduleConfig): string | null {
 }
 
 function serializeSlackBinding(binding?: PodSlackBinding): string | null {
+    if (!binding) return null;
+    return JSON.stringify(binding);
+}
+
+function serializeTelegramBinding(binding?: PodTelegramBinding): string | null {
     if (!binding) return null;
     return JSON.stringify(binding);
 }
@@ -138,6 +151,7 @@ class PodStore {
             $autoClear: 0,
             $scheduleJson: null,
             $slackBindingJson: null,
+            $telegramBindingJson: null,
         });
 
         for (const skillId of pod.skillIds) {
@@ -222,6 +236,7 @@ class PodStore {
             $autoClear: updatedPod.autoClear ? 1 : 0,
             $scheduleJson: serializeSchedule(updatedPod.schedule),
             $slackBindingJson: serializeSlackBinding(updatedPod.slackBinding),
+            $telegramBindingJson: serializeTelegramBinding(updatedPod.telegramBinding),
         });
 
         if (updates.skillIds !== undefined) {
@@ -377,6 +392,19 @@ class PodStore {
 
     findBySlackApp(slackAppId: string): Array<{ canvasId: string; pod: Pod }> {
         const rows = this.stmts.pod.selectBySlackAppId.all(slackAppId) as PodRow[];
+        return rows.map(row => ({ canvasId: row.canvas_id, pod: rowToPod(row) }));
+    }
+
+    setTelegramBinding(canvasId: string, podId: string, binding: PodTelegramBinding | null): Promise<void> {
+        this.stmts.pod.updateTelegramBindingJson.run({
+            $telegramBindingJson: binding ? JSON.stringify(binding) : null,
+            $id: podId,
+        });
+        return Promise.resolve();
+    }
+
+    findByTelegramBot(telegramBotId: string): Array<{ canvasId: string; pod: Pod }> {
+        const rows = this.stmts.pod.selectByTelegramBotId.all(telegramBotId) as PodRow[];
         return rows.map(row => ({ canvasId: row.canvas_id, pod: rowToPod(row) }));
     }
 

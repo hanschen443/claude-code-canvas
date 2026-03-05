@@ -22,6 +22,7 @@ describe('Database', () => {
         'canvases', 'connections', 'mcp_servers', 'messages', 'notes',
         'pod_manifests', 'pod_mcp_server_ids', 'pod_skill_ids', 'pod_sub_agent_ids',
         'pods', 'repository_metadata', 'slack_app_channels', 'slack_apps',
+        'telegram_bot_chats', 'telegram_bots',
       ]);
     });
 
@@ -143,6 +144,7 @@ describe('Database', () => {
         $autoClear: 0,
         $scheduleJson: null,
         $slackBindingJson: null,
+        $telegramBindingJson: null,
       });
 
       stmts.podSkillIds.insert.run({ $podId: 'p1', $skillId: 'skill-1' });

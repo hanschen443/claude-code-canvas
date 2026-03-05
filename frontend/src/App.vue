@@ -20,6 +20,8 @@ import {truncateContent} from '@/stores/chat/chatUtils'
 import {useCursorStore} from '@/stores/cursorStore'
 import {logger} from '@/utils/logger'
 
+import { useTelegramStore } from '@/stores/telegramStore'
+
 const {
   podStore,
   viewportStore,
@@ -34,6 +36,8 @@ const {
   canvasStore,
   slackStore
 } = useCanvasContext()
+
+const telegramStore = useTelegramStore()
 
 const cursorStore = useCursorStore()
 
@@ -80,6 +84,7 @@ const loadCanvasData = async (): Promise<void> => {
     })(),
     connectionStore.loadConnectionsFromBackend(),
     slackStore.loadSlackApps(),
+    telegramStore.loadTelegramBots(),
   ])
 
   connectionStore.setupWorkflowListeners()

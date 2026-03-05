@@ -19,6 +19,7 @@ import {
 import type {StreamCallback} from './types.js';
 import {z} from 'zod';
 import {slackClientManager} from '../slack/slackClientManager.js';
+import {telegramClientManager} from '../telegram/telegramClientManager.js';
 
 export type {StreamEvent, StreamCallback} from './types.js';
 
@@ -388,6 +389,49 @@ export class ClaudeService {
         ];
     }
 
+    private applyTelegramToolOptions(pod: Pod, queryOptions: Options): void {
+        if (!pod.telegramBinding) return;
+
+        const {telegramBotId, telegramChatId} = pod.telegramBinding;
+
+        const telegramReplyTool = tool(
+            'telegram_reply',
+            '回覆 Telegram 訊息。當需要在 Telegram 中回覆用戶時使用此工具。',
+            {
+                text: z.string().min(1).max(4096).describe('要發送到 Telegram 的訊息內容（1-4096 字元）'),
+                reply_to_message_id: z.number().int().optional().describe('要回覆的訊息 ID（選填）'),
+            },
+            async (params: {text: string; reply_to_message_id?: number}) => {
+                const result = await telegramClientManager.sendMessage(
+                    telegramBotId,
+                    telegramChatId,
+                    params.text,
+                    params.reply_to_message_id
+                );
+
+                if (!result.success) {
+                    return {success: false, error: result.error};
+                }
+                return {success: true};
+            }
+        );
+
+        const telegramMcpServer = createSdkMcpServer({
+            name: 'telegram-reply',
+            tools: [telegramReplyTool],
+        });
+
+        queryOptions.mcpServers = {
+            ...queryOptions.mcpServers,
+            'telegram-reply': telegramMcpServer,
+        } as Options['mcpServers'];
+
+        queryOptions.allowedTools = [
+            ...(queryOptions.allowedTools ?? []),
+            'mcp__telegram-reply__telegram_reply',
+        ];
+    }
+
     private async applyOutputStyle(pod: Pod, queryOptions: Options): Promise<void> {
         if (!pod.outputStyleId) return;
 
@@ -423,6 +467,7 @@ export class ClaudeService {
         await this.applyOutputStyle(pod, queryOptions);
         this.applyMcpServers(pod, queryOptions);
         this.applySlackToolOptions(pod, queryOptions);
+        this.applyTelegramToolOptions(pod, queryOptions);
 
         if (pod.claudeSessionId) {
             queryOptions.resume = pod.claudeSessionId;

@@ -26,7 +26,8 @@ export function createTables(db: Database): void {
       'command_id TEXT,' +
       'auto_clear INTEGER NOT NULL DEFAULT 0,' +
       'schedule_json TEXT,' +
-      'slack_binding_json TEXT' +
+      'slack_binding_json TEXT,' +
+      'telegram_binding_json TEXT' +
       ')'
   );
   db.exec('CREATE INDEX IF NOT EXISTS idx_pods_canvas_id ON pods(canvas_id)');
@@ -105,6 +106,26 @@ export function createTables(db: Database): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_messages_pod_id ON messages(pod_id)');
 
   db.exec(
+    'CREATE TABLE IF NOT EXISTS telegram_bots (' +
+      'id TEXT PRIMARY KEY,' +
+      'name TEXT NOT NULL,' +
+      'bot_token TEXT NOT NULL UNIQUE,' +
+      'bot_username TEXT NOT NULL DEFAULT \'\'' +
+      ')'
+  );
+
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS telegram_bot_chats (' +
+      'telegram_bot_id TEXT NOT NULL REFERENCES telegram_bots(id) ON DELETE CASCADE,' +
+      'chat_id INTEGER NOT NULL,' +
+      'chat_type TEXT NOT NULL,' +
+      'title TEXT,' +
+      'username TEXT,' +
+      'PRIMARY KEY (telegram_bot_id, chat_id)' +
+      ')'
+  );
+
+  db.exec(
     'CREATE TABLE IF NOT EXISTS slack_apps (' +
       'id TEXT PRIMARY KEY,' +
       'name TEXT NOT NULL,' +
@@ -150,4 +171,13 @@ export function createTables(db: Database): void {
       'PRIMARY KEY (pod_id, repository_id)' +
       ')'
   );
+
+  try {
+    db.exec('ALTER TABLE pods ADD COLUMN telegram_binding_json TEXT');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('duplicate column')) {
+      throw error;
+    }
+  }
 }

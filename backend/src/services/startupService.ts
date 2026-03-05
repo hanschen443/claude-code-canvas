@@ -4,8 +4,12 @@ import { canvasStore } from './canvasStore.js';
 import { Result, ok, err } from '../types';
 import { config } from '../config';
 import { logger } from '../utils/logger.js';
+import type { LogCategory } from '../utils/logger.js';
 import { slackAppStore } from './slack/slackAppStore.js';
 import { slackClientManager } from './slack/slackClientManager.js';
+import { telegramBotStore } from './telegram/telegramBotStore.js';
+import { telegramClientManager } from './telegram/telegramClientManager.js';
+import './telegram/telegramEventService.js';
 import { getDb } from '../database/index.js';
 
 class StartupService {
@@ -36,6 +40,10 @@ class StartupService {
       logger.error('Slack', 'Error', '[StartupService] Slack 連線恢復時發生非預期錯誤', error);
     });
 
+    this.restoreTelegramConnections().catch((error) => {
+      logger.error('Telegram', 'Error', '[StartupService] Telegram 連線恢復時發生非預期錯誤', error);
+    });
+
     logger.log('Startup', 'Complete', '伺服器初始化完成');
     return ok(undefined);
   }
@@ -51,26 +59,44 @@ class StartupService {
     return ok(undefined);
   }
 
-  private async restoreSlackConnections(): Promise<void> {
-    const apps = slackAppStore.list();
-    if (apps.length === 0) {
-      return;
-    }
+  private async restoreConnections<T extends {name: string}>(
+    items: T[],
+    initFn: (item: T) => Promise<void>,
+    category: LogCategory,
+    label: string,
+  ): Promise<void> {
+    if (items.length === 0) return;
 
-    logger.log('Slack', 'Load', `[StartupService] 開始恢復 ${apps.length} 個 Slack App 連線`);
+    logger.log(category, 'Load', `[StartupService] 開始恢復 ${items.length} 個 ${label} 連線`);
 
-    const results = await Promise.allSettled(
-      apps.map((app) => slackClientManager.initialize(app))
-    );
+    const results = await Promise.allSettled(items.map((item) => initFn(item)));
 
-    const appsWithResults = apps.map((slackApp, index) => ({ slackApp, result: results[index] }));
-    for (const { slackApp, result } of appsWithResults) {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (result.status === 'rejected') {
-        logger.error('Slack', 'Error', `[StartupService] Slack App「${slackApp.name}」初始化恢復失敗`, result.reason);
+        logger.error(category, 'Error', `[StartupService] ${label}「${items[i].name}」初始化恢復失敗`, result.reason);
       }
     }
 
-    logger.log('Slack', 'Complete', '[StartupService] Slack App 初始化恢復完成');
+    logger.log(category, 'Complete', `[StartupService] ${label} 初始化恢復完成`);
+  }
+
+  private async restoreSlackConnections(): Promise<void> {
+    await this.restoreConnections(
+      slackAppStore.list(),
+      (app) => slackClientManager.initialize(app),
+      'Slack',
+      'Slack App',
+    );
+  }
+
+  private async restoreTelegramConnections(): Promise<void> {
+    await this.restoreConnections(
+      telegramBotStore.list(),
+      (bot) => telegramClientManager.initialize(bot),
+      'Telegram',
+      'Telegram Bot',
+    );
   }
 }
 

@@ -29,11 +29,13 @@ function buildStatements(db: Database): {
     updateAutoClear: ReturnType<Database['prepare']>;
     updateScheduleJson: ReturnType<Database['prepare']>;
     updateSlackBindingJson: ReturnType<Database['prepare']>;
+    updateTelegramBindingJson: ReturnType<Database['prepare']>;
     selectWithSchedule: ReturnType<Database['prepare']>;
     selectByOutputStyleId: ReturnType<Database['prepare']>;
     selectByRepositoryId: ReturnType<Database['prepare']>;
     selectByCommandId: ReturnType<Database['prepare']>;
     selectBySlackAppId: ReturnType<Database['prepare']>;
+    selectByTelegramBotId: ReturnType<Database['prepare']>;
     deleteById: ReturnType<Database['prepare']>;
     deleteByCanvasId: ReturnType<Database['prepare']>;
   };
@@ -109,6 +111,19 @@ function buildStatements(db: Database): {
     selectByAppId: ReturnType<Database['prepare']>;
     deleteByAppId: ReturnType<Database['prepare']>;
   };
+  telegramBot: {
+    insert: ReturnType<Database['prepare']>;
+    selectAll: ReturnType<Database['prepare']>;
+    selectById: ReturnType<Database['prepare']>;
+    selectByBotToken: ReturnType<Database['prepare']>;
+    updateBotUsername: ReturnType<Database['prepare']>;
+    deleteById: ReturnType<Database['prepare']>;
+  };
+  telegramBotChat: {
+    upsert: ReturnType<Database['prepare']>;
+    selectByBotId: ReturnType<Database['prepare']>;
+    deleteByBotId: ReturnType<Database['prepare']>;
+  };
   repositoryMetadata: {
     upsert: ReturnType<Database['prepare']>;
     selectById: ReturnType<Database['prepare']>;
@@ -144,7 +159,7 @@ function buildStatements(db: Database): {
 
     pod: {
       insert: db.prepare(
-        'INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, auto_clear, schedule_json, slack_binding_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $autoClear, $scheduleJson, $slackBindingJson)',
+        'INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, auto_clear, schedule_json, slack_binding_json, telegram_binding_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $autoClear, $scheduleJson, $slackBindingJson, $telegramBindingJson)',
       ),
       selectByCanvasId: db.prepare('SELECT * FROM pods WHERE canvas_id = ?'),
       selectById: db.prepare('SELECT * FROM pods WHERE id = ?'),
@@ -154,7 +169,7 @@ function buildStatements(db: Database): {
         'SELECT COUNT(*) as count FROM pods WHERE canvas_id = $canvasId AND name = $name AND id != $excludeId',
       ),
       update: db.prepare(
-        'UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, auto_clear = $autoClear, schedule_json = $scheduleJson, slack_binding_json = $slackBindingJson WHERE id = $id',
+        'UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, auto_clear = $autoClear, schedule_json = $scheduleJson, slack_binding_json = $slackBindingJson, telegram_binding_json = $telegramBindingJson WHERE id = $id',
       ),
       updateStatus: db.prepare('UPDATE pods SET status = $status WHERE id = $id'),
       updateClaudeSessionId: db.prepare('UPDATE pods SET claude_session_id = $claudeSessionId WHERE id = $id'),
@@ -164,12 +179,16 @@ function buildStatements(db: Database): {
       updateAutoClear: db.prepare('UPDATE pods SET auto_clear = $autoClear WHERE id = $id'),
       updateScheduleJson: db.prepare('UPDATE pods SET schedule_json = $scheduleJson WHERE id = $id'),
       updateSlackBindingJson: db.prepare('UPDATE pods SET slack_binding_json = $slackBindingJson WHERE id = $id'),
+      updateTelegramBindingJson: db.prepare('UPDATE pods SET telegram_binding_json = $telegramBindingJson WHERE id = $id'),
       selectWithSchedule: db.prepare('SELECT * FROM pods WHERE schedule_json IS NOT NULL'),
       selectByOutputStyleId: db.prepare('SELECT * FROM pods WHERE output_style_id = ?'),
       selectByRepositoryId: db.prepare('SELECT * FROM pods WHERE repository_id = ?'),
       selectByCommandId: db.prepare('SELECT * FROM pods WHERE command_id = ?'),
       selectBySlackAppId: db.prepare(
         "SELECT * FROM pods WHERE json_extract(slack_binding_json, '$.slackAppId') = ?",
+      ),
+      selectByTelegramBotId: db.prepare(
+        "SELECT * FROM pods WHERE json_extract(telegram_binding_json, '$.telegramBotId') = ?",
       ),
       deleteById: db.prepare('DELETE FROM pods WHERE id = ?'),
       deleteByCanvasId: db.prepare('DELETE FROM pods WHERE canvas_id = ?'),
@@ -307,6 +326,25 @@ function buildStatements(db: Database): {
       ),
       selectByAppId: db.prepare('SELECT * FROM slack_app_channels WHERE slack_app_id = ?'),
       deleteByAppId: db.prepare('DELETE FROM slack_app_channels WHERE slack_app_id = ?'),
+    },
+
+    telegramBot: {
+      insert: db.prepare(
+        'INSERT INTO telegram_bots (id, name, bot_token, bot_username) VALUES ($id, $name, $botToken, $botUsername)',
+      ),
+      selectAll: db.prepare('SELECT * FROM telegram_bots'),
+      selectById: db.prepare('SELECT * FROM telegram_bots WHERE id = ?'),
+      selectByBotToken: db.prepare('SELECT * FROM telegram_bots WHERE bot_token = ?'),
+      updateBotUsername: db.prepare('UPDATE telegram_bots SET bot_username = $botUsername WHERE id = $id'),
+      deleteById: db.prepare('DELETE FROM telegram_bots WHERE id = ?'),
+    },
+
+    telegramBotChat: {
+      upsert: db.prepare(
+        'INSERT OR REPLACE INTO telegram_bot_chats (telegram_bot_id, chat_id, chat_type, title, username) VALUES ($telegramBotId, $chatId, $chatType, $title, $username)',
+      ),
+      selectByBotId: db.prepare('SELECT * FROM telegram_bot_chats WHERE telegram_bot_id = ?'),
+      deleteByBotId: db.prepare('DELETE FROM telegram_bot_chats WHERE telegram_bot_id = ?'),
     },
 
     repositoryMetadata: {

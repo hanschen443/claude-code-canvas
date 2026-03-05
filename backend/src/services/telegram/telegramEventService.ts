@@ -1,102 +1,114 @@
 import {v4 as uuidv4} from 'uuid';
-import type {Pod, SlackMessage, AppMentionEvent} from '../../types/index.js';
+import type {Pod, TelegramMessage} from '../../types/index.js';
 import {WebSocketResponseEvents} from '../../schemas/events.js';
 import {podStore} from '../podStore.js';
 import {messageStore} from '../messageStore.js';
 import {socketService} from '../socketService.js';
-import {slackAppStore} from './slackAppStore.js';
-import {slackClientManager} from './slackClientManager.js';
 import {connectionStore} from '../connectionStore.js';
 import {executeStreamingChat} from '../claude/streamingChatExecutor.js';
 import {logger} from '../../utils/logger.js';
 import {createPostChatCompleteCallback} from '../../utils/operationHelpers.js';
 import {autoClearService} from '../autoClear/index.js';
 import {workflowExecutionService} from '../workflow/index.js';
+import {telegramClientManager} from './telegramClientManager.js';
+import type {TelegramApiMessage} from './telegramClientManager.js';
 import {escapeUserInput} from '../../utils/escapeInput.js';
 import {shouldSendBusyReply} from '../../utils/busyChatManager.js';
 
 const BUSY_STATUSES = new Set(['chatting', 'summarizing'] as const);
+const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
 const MAX_WORKFLOW_CHAIN_SIZE = 50;
-const MAX_SLACK_MESSAGE_LENGTH = 4000;
 
-class SlackEventService {
+export {escapeUserInput as escapeTelegramInput};
+
+class TelegramEventService {
     private busyReplyCooldowns = new Map<string, number>();
 
-    async handleAppMention(slackAppId: string, event: AppMentionEvent): Promise<void> {
-        const {channel, user, text, thread_ts, event_ts} = event;
+    // 觸發條件複雜（私聊、群組 @mention、群組 /command、Bot 自己訊息過濾），加上超長截斷和文字清理，超過 6 個判斷
+    async handleMessage(botId: string, message: TelegramApiMessage, botUsername: string): Promise<void> {
+        if (message.from?.is_bot === true) return;
 
-        const slackApp = slackAppStore.getById(slackAppId);
-        const botUserId = slackApp?.botUserId ?? '';
-        const rawCleanedText = text.replace(/<@[A-Z0-9]+(?:\|[^>]+)?>/g, '').trim();
-        const cleanedText = rawCleanedText.length > MAX_SLACK_MESSAGE_LENGTH
-            ? rawCleanedText.slice(0, MAX_SLACK_MESSAGE_LENGTH) + '\n...(訊息過長，已截斷)'
-            : rawCleanedText;
+        const chatType = message.chat.type;
+        const rawText = message.text ?? '';
 
-        const userName = user ?? 'unknown';
+        const isPrivate = chatType === 'private';
+        const hasMention = rawText.includes(`@${botUsername}`);
+        // 群組中只處理帶有 @botUsername 的斜線指令，避免響應其他 Bot 的指令大量消耗額度
+        const hasCommand = isPrivate
+            ? rawText.startsWith('/')
+            : rawText.startsWith('/') && rawText.includes(`@${botUsername}`);
 
-        const message: SlackMessage = {
+        if (!isPrivate && !hasMention && !hasCommand) return;
+
+        const truncatedText = rawText.length > MAX_TELEGRAM_MESSAGE_LENGTH
+            ? rawText.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH) + '\n...(訊息過長，已截斷)'
+            : rawText;
+
+        const cleanedText = truncatedText.replace(new RegExp(`@${botUsername}`, 'g'), '').trim();
+
+        const userName = message.from?.username ?? message.from?.first_name ?? 'unknown';
+        const chatId = message.chat.id;
+
+        const telegramMessage: TelegramMessage = {
             id: uuidv4(),
-            slackAppId,
-            channelId: channel,
-            userId: userName,
+            telegramBotId: botId,
+            chatId,
+            userId: message.from?.id ?? 0,
             userName,
             text: cleanedText,
-            threadTs: thread_ts,
-            eventTs: event_ts,
+            messageId: message.message_id,
         };
 
-        logger.log('Slack', 'Complete', `[SlackEventService] 收到 app_mention，頻道 ${channel}，Bot User ID: ${botUserId}`);
+        logger.log('Telegram', 'Complete', `[TelegramEventService] 收到訊息，Chat ${chatId}，Bot: ${botUsername}`);
 
-        const boundPods = this.findBoundPods(slackAppId, channel);
+        const fromUserId = message.from?.id;
+        const boundPods = this.findBoundPods(botId, chatId, fromUserId);
         if (boundPods.length === 0) {
-            logger.log('Slack', 'Complete', `[SlackEventService] 找不到綁定 App ${slackAppId} 和頻道 ${channel} 的 Pod`);
+            logger.log('Telegram', 'Complete', `[TelegramEventService] 找不到綁定 Bot ${botId} 和 Chat ${chatId} 的 Pod`);
             return;
         }
 
-        if (await this.handleBusyChannel(slackAppId, channel)) {
-            return;
-        }
+        if (await this.handleBusyChat(botId, chatId)) return;
 
         const results = await Promise.allSettled(
-            boundPods.map(({canvasId, pod}) => this.processBoundPod(canvasId, pod, message))
+            boundPods.map(({canvasId, pod}) => this.processBoundPod(canvasId, pod, telegramMessage))
         );
 
         for (let i = 0; i < results.length; i++) {
             const result = results[i];
             if (result.status === 'rejected') {
                 const pod = boundPods[i].pod;
-                logger.error('Slack', 'Error', `[SlackEventService] Pod「${pod.name}」處理 Slack 訊息失敗`, result.reason);
+                logger.error('Telegram', 'Error', `[TelegramEventService] Pod「${pod.name}」處理 Telegram 訊息失敗`, result.reason);
             }
         }
     }
 
-    private async handleBusyChannel(slackAppId: string, channel: string): Promise<boolean> {
-        if (!this.isSlackChannelBusy(slackAppId, channel)) {
-            return false;
-        }
-        if (shouldSendBusyReply(this.busyReplyCooldowns, channel)) {
-            await slackClientManager.sendMessage(slackAppId, channel, '目前忙碌中，請稍後再試');
+    private async handleBusyChat(botId: string, chatId: number): Promise<boolean> {
+        if (!this.isTelegramChatBusy(botId, chatId)) return false;
+
+        const chatKey = `${botId}:${chatId}`;
+        if (shouldSendBusyReply(this.busyReplyCooldowns, chatKey)) {
+            await telegramClientManager.sendMessage(botId, chatId, '目前忙碌中，請稍後再試');
         }
         return true;
     }
 
-    private async processBoundPod(canvasId: string, pod: Pod, message: SlackMessage): Promise<void> {
+    private async processBoundPod(canvasId: string, pod: Pod, message: TelegramMessage): Promise<void> {
         if (BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing')) return;
 
         if (pod.status === 'error') {
             podStore.setStatus(canvasId, pod.id, 'idle');
         }
 
-        await this.injectSlackMessage(canvasId, pod.id, message);
+        await this.injectTelegramMessage(canvasId, pod.id, message);
     }
 
-    isSlackChannelBusy(slackAppId: string, channelId: string): boolean {
-        const allBoundPods = podStore.findBySlackApp(slackAppId);
-        const channelPods = allBoundPods.filter(({pod}) => pod.slackBinding?.slackChannelId === channelId);
+    isTelegramChatBusy(botId: string, chatId: number): boolean {
+        const allBoundPods = podStore.findByTelegramBot(botId);
+        const chatPods = allBoundPods.filter(({pod}) => pod.telegramBinding?.telegramChatId === chatId);
 
-        return channelPods.some(({canvasId, pod}) =>
+        return chatPods.some(({canvasId, pod}) =>
             BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing') || this.isWorkflowChainBusy(canvasId, pod.id));
-
     }
 
     private getAdjacentPodIds(canvasId: string, podId: string): string[] {
@@ -110,7 +122,7 @@ class SlackEventService {
         currentId: string,
         visited: Set<string>,
         queue: string[],
-        predicate: (podId: string) => boolean
+        predicate: (podId: string) => boolean,
     ): boolean {
         if (predicate(currentId)) return true;
 
@@ -127,11 +139,11 @@ class SlackEventService {
         canvasId: string,
         queue: string[],
         visited: Set<string>,
-        predicate: (podId: string) => boolean
+        predicate: (podId: string) => boolean,
     ): boolean {
         while (queue.length > 0) {
             if (visited.size > MAX_WORKFLOW_CHAIN_SIZE) {
-                logger.warn('Slack', 'Warn', `Workflow 鏈超過最大限制 ${MAX_WORKFLOW_CHAIN_SIZE}，停止遍歷`);
+                logger.warn('Telegram', 'Warn', `Workflow 鏈超過最大限制 ${MAX_WORKFLOW_CHAIN_SIZE}，停止遍歷`);
                 return false;
             }
             const currentId = queue.shift();
@@ -156,11 +168,11 @@ class SlackEventService {
         });
     }
 
-    async injectSlackMessage(canvasId: string, podId: string, message: SlackMessage): Promise<void> {
-        // 二次確認 Pod 狀態，防止並發 Slack 事件穿透
+    async injectTelegramMessage(canvasId: string, podId: string, message: TelegramMessage): Promise<void> {
+        // 二次確認 Pod 狀態，防止並發 Telegram 事件穿透
         const currentPod = podStore.getById(canvasId, podId);
         if (currentPod && BUSY_STATUSES.has(currentPod.status as 'chatting' | 'summarizing')) {
-            logger.log('Slack', 'Complete', `Pod「${currentPod.name}」已在忙碌中，跳過注入`);
+            logger.log('Telegram', 'Complete', `Pod「${currentPod.name}」已在忙碌中，跳過注入`);
             return;
         }
 
@@ -169,7 +181,7 @@ class SlackEventService {
         const escapedUserName = escapeUserInput(message.userName);
         const escapedText = escapeUserInput(message.text);
         // 第一層：escapeUserInput 處理特殊字元；第二層：<user_data> 標籤作為結構性隔離
-        const formattedText = `[Slack: @${escapedUserName}] <user_data>${escapedText}</user_data>`;
+        const formattedText = `[Telegram: @${escapedUserName}] <user_data>${escapedText}</user_data>`;
 
         podStore.setStatus(canvasId, podId, 'chatting');
 
@@ -183,31 +195,42 @@ class SlackEventService {
             timestamp: new Date().toISOString(),
         });
 
-        logger.log('Slack', 'Complete', `[SlackEventService] 注入 Slack 訊息至 Pod「${podName}」`);
+        logger.log('Telegram', 'Complete', `[TelegramEventService] 注入 Telegram 訊息至 Pod「${podName}」`);
 
         const onComplete = createPostChatCompleteCallback(
-            (canvasId, podId) => autoClearService.onPodComplete(canvasId, podId),
-            (canvasId, podId) => workflowExecutionService.checkAndTriggerWorkflows(canvasId, podId),
-            'Slack'
+            (cId, pId) => autoClearService.onPodComplete(cId, pId),
+            (cId, pId) => workflowExecutionService.checkAndTriggerWorkflows(cId, pId),
+            'Telegram',
         );
 
         try {
             await executeStreamingChat(
                 {canvasId, podId, message: formattedText, abortable: false},
-                {onComplete}
+                {onComplete},
             );
         } catch (error) {
             podStore.setStatus(canvasId, podId, 'error');
-            logger.error('Slack', 'Error', `[SlackEventService] Pod「${podName}」注入 Slack 訊息失敗`, error);
+            logger.error('Telegram', 'Error', `[TelegramEventService] Pod「${podName}」注入 Telegram 訊息失敗`, error);
             throw error;
         }
     }
 
-    findBoundPods(slackAppId: string, channelId: string): Array<{canvasId: string; pod: Pod}> {
-        return podStore.findBySlackApp(slackAppId).filter(
-            ({pod}) => pod.slackBinding?.slackChannelId === channelId
-        );
+    findBoundPods(botId: string, chatId: number, fromUserId?: number): Array<{canvasId: string; pod: Pod}> {
+        const allPods = podStore.findByTelegramBot(botId);
+
+        return allPods.filter(({pod}) => {
+            const binding = pod.telegramBinding;
+            if (!binding || binding.telegramChatId !== chatId) return false;
+            if (binding.chatType === 'private' && fromUserId !== undefined) {
+                return fromUserId === binding.telegramChatId;
+            }
+            return true;
+        });
     }
 }
 
-export const slackEventService = new SlackEventService();
+export const telegramEventService = new TelegramEventService();
+
+telegramClientManager.setOnMessage((botId, message, botUsername) =>
+    telegramEventService.handleMessage(botId, message, botUsername),
+);

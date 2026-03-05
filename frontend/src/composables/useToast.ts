@@ -24,6 +24,7 @@ export type ToastCategory =
   | 'McpServer'
   | 'Connection'
   | 'Slack'
+  | 'Telegram'
 
 interface ToastOptions {
   title: string

@@ -29,6 +29,7 @@ export default [
         Response: 'readonly',
         URL: 'readonly',
         AbortController: 'readonly',
+        AbortSignal: 'readonly',
         structuredClone: 'readonly',
         Blob: 'readonly',
         Headers: 'readonly',

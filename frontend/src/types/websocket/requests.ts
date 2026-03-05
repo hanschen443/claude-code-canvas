@@ -412,3 +412,43 @@ export interface PodUnbindSlackPayload {
   canvasId: string
   podId: string
 }
+
+export interface TelegramBotCreatePayload {
+  requestId: string
+  name: string
+  botToken: string
+}
+
+export interface TelegramBotDeletePayload {
+  requestId: string
+  telegramBotId: string
+}
+
+export interface TelegramBotListPayload {
+  requestId: string
+}
+
+export interface TelegramBotGetPayload {
+  requestId: string
+  telegramBotId: string
+}
+
+export interface TelegramBotChatsPayload {
+  requestId: string
+  telegramBotId: string
+}
+
+export interface PodBindTelegramPayload {
+  requestId: string
+  canvasId: string
+  podId: string
+  telegramBotId: string
+  telegramChatId: number
+  chatType: 'private' | 'group'
+}
+
+export interface PodUnbindTelegramPayload {
+  requestId: string
+  canvasId: string
+  podId: string
+}
