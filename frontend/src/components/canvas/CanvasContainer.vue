@@ -31,6 +31,7 @@ import CreateEditModal from './CreateEditModal.vue'
 import McpServerModal from './McpServerModal.vue'
 import SlackConnectModal from '@/components/slack/SlackConnectModal.vue'
 import TelegramConnectModal from '@/components/telegram/TelegramConnectModal.vue'
+import JiraConnectModal from '@/components/jira/JiraConnectModal.vue'
 import type {Pod, PodTypeConfig, Position, McpServerConfig} from '@/types'
 import {
   POD_MENU_X_OFFSET,
@@ -40,6 +41,7 @@ import {
 import { screenToCanvasPosition } from '@/lib/canvasCoordinateUtils'
 import { useSlackStore } from '@/stores/slackStore'
 import { useTelegramStore } from '@/stores/telegramStore'
+import { useJiraStore } from '@/stores/jiraStore'
 
 const {
   podStore,
@@ -73,6 +75,11 @@ const slackConnectModal = ref<{ visible: boolean; podId: string }>({
 })
 
 const telegramConnectModal = ref<{ visible: boolean; podId: string }>({
+  visible: false,
+  podId: ''
+})
+
+const jiraConnectModal = ref<{ visible: boolean; podId: string }>({
   visible: false,
   podId: ''
 })
@@ -259,6 +266,14 @@ const handleDisconnectTelegram = async (podId: string): Promise<void> => {
   await useTelegramStore().unbindTelegramFromPod(podId)
 }
 
+const handleConnectJira = (podId: string): void => {
+  jiraConnectModal.value = { visible: true, podId }
+}
+
+const handleDisconnectJira = async (podId: string): Promise<void> => {
+  await useJiraStore().unbindJiraFromPod(podId)
+}
+
 const handleOpenCreateRepositoryModal = (): void => {
   lastMenuPosition.value = podStore.typeMenu.position
   showCreateRepositoryModal.value = true
@@ -425,6 +440,8 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
     @disconnect-slack="handleDisconnectSlack"
     @connect-telegram="handleConnectTelegram"
     @disconnect-telegram="handleDisconnectTelegram"
+    @connect-jira="handleConnectJira"
+    @disconnect-jira="handleDisconnectJira"
   />
 
   <RepositoryContextMenu
@@ -493,5 +510,10 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
   <TelegramConnectModal
     v-model:open="telegramConnectModal.visible"
     :pod-id="telegramConnectModal.podId"
+  />
+
+  <JiraConnectModal
+    v-model:open="jiraConnectModal.visible"
+    :pod-id="jiraConnectModal.podId"
   />
 </template>

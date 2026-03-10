@@ -21,6 +21,7 @@ import {useCursorStore} from '@/stores/cursorStore'
 import {logger} from '@/utils/logger'
 
 import { useTelegramStore } from '@/stores/telegramStore'
+import { useJiraStore } from '@/stores/jiraStore'
 
 const {
   podStore,
@@ -38,6 +39,7 @@ const {
 } = useCanvasContext()
 
 const telegramStore = useTelegramStore()
+const jiraStore = useJiraStore()
 
 const cursorStore = useCursorStore()
 
@@ -85,6 +87,7 @@ const loadCanvasData = async (): Promise<void> => {
     connectionStore.loadConnectionsFromBackend(),
     slackStore.loadSlackApps(),
     telegramStore.loadTelegramBots(),
+    jiraStore.loadJiraApps(),
   ])
 
   connectionStore.setupWorkflowListeners()

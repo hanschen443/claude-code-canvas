@@ -51,6 +51,7 @@
   />
   <SlackAppsModal v-model:open="showSlackAppsModal" />
   <TelegramBotsModal v-model:open="showTelegramBotsModal" />
+  <JiraAppsModal v-model:open="showJiraAppsModal" />
   <GlobalSettingsModal v-model:open="showSettingsModal" />
 </template>
 
@@ -60,6 +61,7 @@ import { Sparkles, LayoutDashboard, KeyRound, Settings } from 'lucide-vue-next'
 import ConnectionStatus from '@/components/ui/ConnectionStatus.vue'
 import SlackAppsModal from '@/components/slack/SlackAppsModal.vue'
 import TelegramBotsModal from '@/components/telegram/TelegramBotsModal.vue'
+import JiraAppsModal from '@/components/jira/JiraAppsModal.vue'
 import IntegrationSelectModal from '@/components/integration/IntegrationSelectModal.vue'
 import GlobalSettingsModal from '@/components/settings/GlobalSettingsModal.vue'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -68,6 +70,7 @@ const canvasStore = useCanvasStore()
 const showIntegrationModal = ref<boolean>(false)
 const showSlackAppsModal = ref<boolean>(false)
 const showTelegramBotsModal = ref<boolean>(false)
+const showJiraAppsModal = ref<boolean>(false)
 const showSettingsModal = ref<boolean>(false)
 
 const handleIntegrationSelect = (category: string): void => {
@@ -76,6 +79,9 @@ const handleIntegrationSelect = (category: string): void => {
   }
   if (category === 'telegram') {
     showTelegramBotsModal.value = true
+  }
+  if (category === 'jira') {
+    showJiraAppsModal.value = true
   }
 }
 </script>

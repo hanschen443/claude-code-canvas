@@ -30,12 +30,14 @@ function buildStatements(db: Database): {
     updateScheduleJson: ReturnType<Database['prepare']>;
     updateSlackBindingJson: ReturnType<Database['prepare']>;
     updateTelegramBindingJson: ReturnType<Database['prepare']>;
+    updateJiraBindingJson: ReturnType<Database['prepare']>;
     selectWithSchedule: ReturnType<Database['prepare']>;
     selectByOutputStyleId: ReturnType<Database['prepare']>;
     selectByRepositoryId: ReturnType<Database['prepare']>;
     selectByCommandId: ReturnType<Database['prepare']>;
     selectBySlackAppId: ReturnType<Database['prepare']>;
     selectByTelegramBotId: ReturnType<Database['prepare']>;
+    selectByJiraAppId: ReturnType<Database['prepare']>;
     deleteById: ReturnType<Database['prepare']>;
     deleteByCanvasId: ReturnType<Database['prepare']>;
   };
@@ -149,6 +151,13 @@ function buildStatements(db: Database): {
     upsert: ReturnType<Database['prepare']>;
     selectAll: ReturnType<Database['prepare']>;
   };
+  jiraApp: {
+    insert: ReturnType<Database['prepare']>;
+    selectAll: ReturnType<Database['prepare']>;
+    selectById: ReturnType<Database['prepare']>;
+    selectBySiteUrlAndEmail: ReturnType<Database['prepare']>;
+    deleteById: ReturnType<Database['prepare']>;
+  };
 } {
   return {
     canvas: {
@@ -164,7 +173,7 @@ function buildStatements(db: Database): {
 
     pod: {
       insert: db.prepare(
-        'INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, auto_clear, schedule_json, slack_binding_json, telegram_binding_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $autoClear, $scheduleJson, $slackBindingJson, $telegramBindingJson)',
+        'INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, auto_clear, schedule_json, slack_binding_json, telegram_binding_json, jira_binding_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $autoClear, $scheduleJson, $slackBindingJson, $telegramBindingJson, $jiraBindingJson)',
       ),
       selectByCanvasId: db.prepare('SELECT * FROM pods WHERE canvas_id = ?'),
       selectById: db.prepare('SELECT * FROM pods WHERE id = ?'),
@@ -174,7 +183,7 @@ function buildStatements(db: Database): {
         'SELECT COUNT(*) as count FROM pods WHERE canvas_id = $canvasId AND name = $name AND id != $excludeId',
       ),
       update: db.prepare(
-        'UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, auto_clear = $autoClear, schedule_json = $scheduleJson, slack_binding_json = $slackBindingJson, telegram_binding_json = $telegramBindingJson WHERE id = $id',
+        'UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, auto_clear = $autoClear, schedule_json = $scheduleJson, slack_binding_json = $slackBindingJson, telegram_binding_json = $telegramBindingJson, jira_binding_json = $jiraBindingJson WHERE id = $id',
       ),
       updateStatus: db.prepare('UPDATE pods SET status = $status WHERE id = $id'),
       updateClaudeSessionId: db.prepare('UPDATE pods SET claude_session_id = $claudeSessionId WHERE id = $id'),
@@ -185,6 +194,7 @@ function buildStatements(db: Database): {
       updateScheduleJson: db.prepare('UPDATE pods SET schedule_json = $scheduleJson WHERE id = $id'),
       updateSlackBindingJson: db.prepare('UPDATE pods SET slack_binding_json = $slackBindingJson WHERE id = $id'),
       updateTelegramBindingJson: db.prepare('UPDATE pods SET telegram_binding_json = $telegramBindingJson WHERE id = $id'),
+      updateJiraBindingJson: db.prepare('UPDATE pods SET jira_binding_json = $jiraBindingJson WHERE id = $id'),
       selectWithSchedule: db.prepare('SELECT * FROM pods WHERE schedule_json IS NOT NULL'),
       selectByOutputStyleId: db.prepare('SELECT * FROM pods WHERE output_style_id = ?'),
       selectByRepositoryId: db.prepare('SELECT * FROM pods WHERE repository_id = ?'),
@@ -194,6 +204,9 @@ function buildStatements(db: Database): {
       ),
       selectByTelegramBotId: db.prepare(
         "SELECT * FROM pods WHERE json_extract(telegram_binding_json, '$.telegramBotId') = ?",
+      ),
+      selectByJiraAppId: db.prepare(
+        "SELECT * FROM pods WHERE json_extract(jira_binding_json, '$.jiraAppId') = ?",
       ),
       deleteById: db.prepare('DELETE FROM pods WHERE id = ?'),
       deleteByCanvasId: db.prepare('DELETE FROM pods WHERE canvas_id = ?'),
@@ -389,6 +402,16 @@ function buildStatements(db: Database): {
       selectByKey: db.prepare('SELECT * FROM global_settings WHERE key = ?'),
       upsert: db.prepare('INSERT OR REPLACE INTO global_settings (key, value) VALUES ($key, $value)'),
       selectAll: db.prepare('SELECT * FROM global_settings'),
+    },
+
+    jiraApp: {
+      insert: db.prepare(
+        'INSERT INTO jira_apps (id, name, site_url, email, api_token, webhook_secret) VALUES ($id, $name, $siteUrl, $email, $apiToken, $webhookSecret)',
+      ),
+      selectAll: db.prepare('SELECT * FROM jira_apps'),
+      selectById: db.prepare('SELECT * FROM jira_apps WHERE id = ?'),
+      selectBySiteUrlAndEmail: db.prepare('SELECT * FROM jira_apps WHERE site_url = ? AND email = ?'),
+      deleteById: db.prepare('DELETE FROM jira_apps WHERE id = ?'),
     },
   };
 }

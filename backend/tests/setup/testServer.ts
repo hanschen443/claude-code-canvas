@@ -30,6 +30,7 @@ export async function createTestServer(): Promise<TestServerInstance> {
   const { deserialize } = await import('../../src/utils/messageSerializer.js');
   const { handleApiRequest } = await import('../../src/api/apiRouter.js');
   const { handleSlackWebhook } = await import('../../src/services/slack/slackWebhookHandler.js');
+  const { handleJiraWebhook } = await import('../../src/services/jira/jiraWebhookHandler.js');
   const { logger } = await import('../../src/utils/logger.js');
   const { WebSocketResponseEvents } = await import('../../src/schemas/index.js');
 
@@ -58,6 +59,16 @@ export async function createTestServer(): Promise<TestServerInstance> {
       // /slack/events 路由來自 Slack 伺服器，不需要 CORS origin 驗證
       if (req.method === 'POST' && url.pathname === '/slack/events') {
         return handleSlackWebhook(req);
+      }
+
+      // /jira/events 路由來自 Jira Cloud，不需要 CORS origin 驗證
+      if (req.method === 'POST' && url.pathname === '/jira/events') {
+        try {
+          return await handleJiraWebhook(req);
+        } catch (error) {
+          logger.error('WebSocket', 'Error', `handleJiraWebhook 失敗: ${error}`, error);
+          return new Response('Internal Server Error', { status: 500 });
+        }
       }
 
       // 檢查 CORS Origin

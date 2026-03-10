@@ -117,6 +117,14 @@ export enum WebSocketRequestEvents {
   POD_UNBIND_TELEGRAM = 'pod:unbind-telegram',
   CONFIG_GET = 'config:get',
   CONFIG_UPDATE = 'config:update',
+  JIRA_APP_CREATE = 'jira:app:create',
+  JIRA_APP_DELETE = 'jira:app:delete',
+  JIRA_APP_LIST = 'jira:app:list',
+  JIRA_APP_GET = 'jira:app:get',
+  JIRA_APP_PROJECTS = 'jira:app:projects',
+  JIRA_APP_PROJECTS_REFRESH = 'jira:app:projects:refresh',
+  POD_BIND_JIRA = 'pod:bind-jira',
+  POD_UNBIND_JIRA = 'pod:unbind-jira',
 }
 
 export enum WebSocketResponseEvents {
@@ -275,4 +283,14 @@ export enum WebSocketResponseEvents {
   TELEGRAM_MESSAGE_RECEIVED = 'telegram:message:received',
   CONFIG_GET_RESULT = 'config:get:result',
   CONFIG_UPDATED = 'config:updated',
+  JIRA_APP_CREATED = 'jira:app:created',
+  JIRA_APP_DELETED = 'jira:app:deleted',
+  JIRA_APP_LIST_RESULT = 'jira:app:list:result',
+  JIRA_APP_GET_RESULT = 'jira:app:get:result',
+  JIRA_APP_PROJECTS_RESULT = 'jira:app:projects:result',
+  JIRA_APP_PROJECTS_REFRESHED = 'jira:app:projects:refreshed',
+  POD_JIRA_BOUND = 'pod:jira:bound',
+  POD_JIRA_UNBOUND = 'pod:jira:unbound',
+  JIRA_CONNECTION_STATUS_CHANGED = 'jira:connection:status:changed',
+  JIRA_MESSAGE_RECEIVED = 'jira:message:received',
 }

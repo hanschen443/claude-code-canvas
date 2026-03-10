@@ -6,7 +6,6 @@ import {messageStore} from '../messageStore.js';
 import {socketService} from '../socketService.js';
 import {slackAppStore} from './slackAppStore.js';
 import {slackClientManager} from './slackClientManager.js';
-import {connectionStore} from '../connectionStore.js';
 import {executeStreamingChat} from '../claude/streamingChatExecutor.js';
 import {logger} from '../../utils/logger.js';
 import {createPostChatCompleteCallback} from '../../utils/operationHelpers.js';
@@ -14,9 +13,9 @@ import {autoClearService} from '../autoClear/index.js';
 import {workflowExecutionService} from '../workflow/index.js';
 import {escapeUserInput} from '../../utils/escapeInput.js';
 import {shouldSendBusyReply} from '../../utils/busyChatManager.js';
+import {isWorkflowChainBusy} from '../../utils/workflowChainTraversal.js';
 
 const BUSY_STATUSES = new Set(['chatting', 'summarizing'] as const);
-const MAX_WORKFLOW_CHAIN_SIZE = 50;
 const MAX_SLACK_MESSAGE_LENGTH = 4000;
 
 class SlackEventService {
@@ -95,65 +94,7 @@ class SlackEventService {
         const channelPods = allBoundPods.filter(({pod}) => pod.slackBinding?.slackChannelId === channelId);
 
         return channelPods.some(({canvasId, pod}) =>
-            BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing') || this.isWorkflowChainBusy(canvasId, pod.id));
-
-    }
-
-    private getAdjacentPodIds(canvasId: string, podId: string): string[] {
-        const downstream = connectionStore.findBySourcePodId(canvasId, podId).map(c => c.targetPodId);
-        const upstream = connectionStore.findByTargetPodId(canvasId, podId).map(c => c.sourcePodId);
-        return [...downstream, ...upstream];
-    }
-
-    private processQueueItem(
-        canvasId: string,
-        currentId: string,
-        visited: Set<string>,
-        queue: string[],
-        predicate: (podId: string) => boolean
-    ): boolean {
-        if (predicate(currentId)) return true;
-
-        for (const adjacentId of this.getAdjacentPodIds(canvasId, currentId)) {
-            if (!visited.has(adjacentId)) {
-                visited.add(adjacentId);
-                queue.push(adjacentId);
-            }
-        }
-        return false;
-    }
-
-    private processBfsQueue(
-        canvasId: string,
-        queue: string[],
-        visited: Set<string>,
-        predicate: (podId: string) => boolean
-    ): boolean {
-        while (queue.length > 0) {
-            if (visited.size > MAX_WORKFLOW_CHAIN_SIZE) {
-                logger.warn('Slack', 'Warn', `Workflow 鏈超過最大限制 ${MAX_WORKFLOW_CHAIN_SIZE}，停止遍歷`);
-                return false;
-            }
-            const currentId = queue.shift();
-            if (!currentId) break;
-            if (this.processQueueItem(canvasId, currentId, visited, queue, predicate)) return true;
-        }
-        return false;
-    }
-
-    // 需要雙向遍歷才能檢測到 Workflow 中間節點的狀態變化，單向遍歷會遺漏反向依賴
-    private traverseWorkflowChain(canvasId: string, startPodId: string, predicate: (podId: string) => boolean): boolean {
-        const visited = new Set<string>([startPodId]);
-        const queue = this.getAdjacentPodIds(canvasId, startPodId).filter(id => !visited.has(id));
-        queue.forEach(id => visited.add(id));
-        return this.processBfsQueue(canvasId, queue, visited, predicate);
-    }
-
-    private isWorkflowChainBusy(canvasId: string, podId: string): boolean {
-        return this.traverseWorkflowChain(canvasId, podId, (currentId) => {
-            const pod = podStore.getById(canvasId, currentId);
-            return pod !== undefined && BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing');
-        });
+            BUSY_STATUSES.has(pod.status as 'chatting' | 'summarizing') || isWorkflowChainBusy(canvasId, pod.id));
     }
 
     async injectSlackMessage(canvasId: string, podId: string, message: SlackMessage): Promise<void> {

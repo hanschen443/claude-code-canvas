@@ -8,6 +8,7 @@ import type { PodTelegramBinding } from '@/types/telegram'
 const props = defineProps<{
   telegramBinding: PodTelegramBinding | null | undefined
   hasSlackBinding?: boolean
+  hasJiraBinding?: boolean
 }>()
 
 const telegramStore = useTelegramStore()

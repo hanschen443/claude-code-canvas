@@ -15,6 +15,8 @@ import { handleApiRequest } from './api/apiRouter.js';
 import { slackClientManager } from './services/slack/slackClientManager.js';
 import { handleSlackWebhook } from './services/slack/slackWebhookHandler.js';
 import { telegramClientManager } from './services/telegram/telegramClientManager.js';
+import { jiraClientManager } from './services/jira/jiraClientManager.js';
+import { handleJiraWebhook } from './services/jira/jiraWebhookHandler.js';
 import { scheduleService } from './services/scheduleService.js';
 
 function handleWebSocketUpgrade(req: Request, server: Server<{ connectionId: string }>): Response | undefined {
@@ -50,6 +52,11 @@ async function startServer(): Promise<void> {
 			// /slack/events 路由來自 Slack 伺服器，不需要 CORS origin 驗證
 			if (req.method === 'POST' && url.pathname === '/slack/events') {
 				return handleSlackWebhook(req);
+			}
+
+			// /jira/events 路由來自 Jira Cloud，不需要 CORS origin 驗證
+			if (req.method === 'POST' && url.pathname === '/jira/events') {
+				return handleJiraWebhook(req);
 			}
 
 			const origin = req.headers.get('origin');
@@ -144,6 +151,7 @@ const shutdown = async (signal: string): Promise<void> => {
 
 	slackClientManager.destroyAll();
 	telegramClientManager.destroyAll();
+	jiraClientManager.destroyAll();
 	scheduleService.stop();
 	socketService.stopHeartbeat();
 

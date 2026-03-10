@@ -26,6 +26,7 @@ export type ToastCategory =
   | 'Slack'
   | 'Telegram'
   | 'Config'
+  | 'Jira'
 
 interface ToastOptions {
   title: string

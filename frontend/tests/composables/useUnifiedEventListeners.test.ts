@@ -16,9 +16,11 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { useSlackStore } from '@/stores/slackStore'
 import { useTelegramStore } from '@/stores/telegramStore'
+import { useJiraStore } from '@/stores/jiraStore'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
 import type { SlackApp } from '@/types/slack'
 import type { TelegramBot } from '@/types/telegram'
+import type { JiraApp } from '@/types/jira'
 
 vi.mock('@/services/websocket', () => webSocketMockFactory())
 
@@ -68,8 +70,8 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.on).toHaveBeenCalled()
       const callCount = mockWebSocketClient.on.mock.calls.length
-      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received 共 5 個
-      const expectedCount = listeners.length + 5
+      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received、jira:connection:status:changed、jira:message:received 共 7 個
+      const expectedCount = listeners.length + 7
       expect(callCount).toBe(expectedCount)
     })
 
@@ -92,8 +94,8 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.off).toHaveBeenCalled()
       const callCount = mockWebSocketClient.off.mock.calls.length
-      // listeners 陣列長度加上單獨取消的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received 共 5 個
-      const expectedCount = listeners.length + 5
+      // listeners 陣列長度加上單獨取消的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received、jira:connection:status:changed、jira:message:received 共 7 個
+      const expectedCount = listeners.length + 7
       expect(callCount).toBe(expectedCount)
     })
 
@@ -1650,6 +1652,158 @@ describe('useUnifiedEventListeners', () => {
 
       expect(sharedMockToast).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Telegram 訊息' })
+      )
+    })
+  })
+
+  describe('Jira 事件處理', () => {
+    const createMockJiraApp = (overrides?: Partial<JiraApp>): JiraApp => ({
+      id: 'jira-app-1',
+      name: 'Test Jira App',
+      siteUrl: 'https://test.atlassian.net',
+      email: 'test@example.com',
+      connectionStatus: 'disconnected',
+      projects: [],
+      ...overrides,
+    })
+
+    it('jira:app:created 收到時應新增 JiraApp 到 jiraStore', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const jiraStore = useJiraStore()
+      jiraStore.jiraApps = []
+
+      registerUnifiedListeners()
+
+      const jiraApp = createMockJiraApp()
+      simulateEvent('jira:app:created', { jiraApp })
+
+      expect(jiraStore.jiraApps.some(a => a.id === 'jira-app-1')).toBe(true)
+    })
+
+    it('jira:app:created 無 jiraApp 時不應新增', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const jiraStore = useJiraStore()
+      jiraStore.jiraApps = []
+
+      registerUnifiedListeners()
+
+      simulateEvent('jira:app:created', {})
+
+      expect(jiraStore.jiraApps.length).toBe(0)
+    })
+
+    it('jira:app:deleted 收到時應從 jiraStore 移除', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const jiraStore = useJiraStore()
+      jiraStore.jiraApps = [createMockJiraApp()]
+
+      registerUnifiedListeners()
+
+      simulateEvent('jira:app:deleted', { jiraAppId: 'jira-app-1' })
+
+      expect(jiraStore.jiraApps.some(a => a.id === 'jira-app-1')).toBe(false)
+    })
+
+    it('jira:app:deleted 無 jiraAppId 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const jiraStore = useJiraStore()
+      jiraStore.jiraApps = [createMockJiraApp()]
+
+      registerUnifiedListeners()
+
+      expect(() => {
+        simulateEvent('jira:app:deleted', {})
+      }).not.toThrow()
+
+      expect(jiraStore.jiraApps.length).toBe(1)
+    })
+
+    it('pod:jira:bound 收到時應更新 Pod 的 jiraBinding', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const podStore = usePodStore()
+      const pod = createMockPod({ id: 'pod-1' })
+      podStore.pods = [pod]
+
+      registerUnifiedListeners()
+
+      const jiraBinding = { jiraAppId: 'jira-app-1', jiraProjectKey: 'PROJ' }
+      simulateEvent('pod:jira:bound', {
+        canvasId: 'canvas-1',
+        pod: { ...pod, jiraBinding },
+      })
+
+      const updatedPod = podStore.getPodById('pod-1')
+      expect(updatedPod?.jiraBinding).toEqual(jiraBinding)
+    })
+
+    it('pod:jira:unbound 收到時應清除 Pod 的 jiraBinding', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const podStore = usePodStore()
+      const jiraBinding = { jiraAppId: 'jira-app-1', jiraProjectKey: 'PROJ' }
+      const pod = createMockPod({ id: 'pod-1', jiraBinding })
+      podStore.pods = [pod]
+
+      registerUnifiedListeners()
+
+      simulateEvent('pod:jira:unbound', {
+        canvasId: 'canvas-1',
+        pod: { ...pod, jiraBinding: undefined },
+      })
+
+      const updatedPod = podStore.getPodById('pod-1')
+      expect(updatedPod?.jiraBinding).toBeUndefined()
+    })
+
+    it('jira:connection:status:changed 應更新 JiraApp 的 connectionStatus 和 projects', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const jiraStore = useJiraStore()
+      jiraStore.jiraApps = [createMockJiraApp({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      simulateEvent('jira:connection:status:changed', {
+        jiraAppId: 'jira-app-1',
+        connectionStatus: 'connected',
+        projects: [{ key: 'PROJ', name: 'Test Project' }],
+      })
+
+      const app = jiraStore.jiraApps.find(a => a.id === 'jira-app-1')
+      expect(app?.connectionStatus).toBe('connected')
+      expect(app?.projects).toEqual([{ key: 'PROJ', name: 'Test Project' }])
+    })
+
+    it('jira:connection:status:changed 缺少 jiraAppId 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const jiraStore = useJiraStore()
+      jiraStore.jiraApps = [createMockJiraApp({ connectionStatus: 'disconnected' })]
+
+      registerUnifiedListeners()
+
+      expect(() => {
+        simulateEvent('jira:connection:status:changed', {
+          connectionStatus: 'connected',
+        })
+      }).not.toThrow()
+
+      const app = jiraStore.jiraApps.find(a => a.id === 'jira-app-1')
+      expect(app?.connectionStatus).toBe('disconnected')
+    })
+
+    it('jira:message:received 應顯示 toast 通知', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+
+      registerUnifiedListeners()
+
+      simulateEvent('jira:message:received', {
+        podId: 'pod-1',
+        jiraAppId: 'jira-app-1',
+        canvasId: 'canvas-1',
+        userName: 'testUser',
+        text: '這是一條 Jira 測試訊息',
+      })
+
+      expect(sharedMockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Jira 訊息' })
       )
     })
   })

@@ -9,6 +9,8 @@ import { slackAppStore } from './slack/slackAppStore.js';
 import { slackClientManager } from './slack/slackClientManager.js';
 import { telegramBotStore } from './telegram/telegramBotStore.js';
 import { telegramClientManager } from './telegram/telegramClientManager.js';
+import { jiraAppStore } from './jira/jiraAppStore.js';
+import { jiraClientManager } from './jira/jiraClientManager.js';
 import './telegram/telegramEventService.js';
 import { getDb } from '../database/index.js';
 
@@ -42,6 +44,10 @@ class StartupService {
 
     this.restoreTelegramConnections().catch((error) => {
       logger.error('Telegram', 'Error', '[StartupService] Telegram 連線恢復時發生非預期錯誤', error);
+    });
+
+    this.restoreJiraConnections().catch((error) => {
+      logger.error('Jira', 'Error', '[StartupService] Jira 連線恢復時發生非預期錯誤', error);
     });
 
     logger.log('Startup', 'Complete', '伺服器初始化完成');
@@ -96,6 +102,15 @@ class StartupService {
       (bot) => telegramClientManager.initialize(bot),
       'Telegram',
       'Telegram Bot',
+    );
+  }
+
+  private async restoreJiraConnections(): Promise<void> {
+    await this.restoreConnections(
+      jiraAppStore.list(),
+      (app) => jiraClientManager.initialize(app),
+      'Jira',
+      'Jira App',
     );
   }
 }

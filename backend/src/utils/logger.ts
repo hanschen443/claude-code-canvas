@@ -36,6 +36,7 @@ export type LogCategory =
   | 'McpServer'
   | 'Slack'
   | 'Telegram'
+  | 'Jira'
   | 'Shutdown';
 
 /**
@@ -63,6 +64,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Schedule: ANSI_COLORS.YELLOW,
   Slack: ANSI_COLORS.BLUE,
   Telegram: ANSI_COLORS.BLUE,
+  Jira: ANSI_COLORS.BLUE,
   Shutdown: ANSI_COLORS.GRAY,
 };
 

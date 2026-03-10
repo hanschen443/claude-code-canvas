@@ -41,6 +41,8 @@ export type { SlackApp, SlackAppConnectionStatus, SlackChannel, PodSlackBinding,
 
 export type { TelegramBot, TelegramBotConnectionStatus, TelegramChat, TelegramChatType, PodTelegramBinding, TelegramMessage } from './telegram.js';
 
+export type { JiraApp, JiraAppConnectionStatus, JiraProject, PodJiraBinding, SanitizedJiraApp, JiraChangelogItem, JiraWebhookPayloadLite } from './jira.js';
+
 export type {
   CreatePodRequest,
   CreatePodResponse,

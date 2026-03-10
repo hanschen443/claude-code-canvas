@@ -13,12 +13,14 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
 import { useSlackStore } from '@/stores/slackStore'
 import { useTelegramStore } from '@/stores/telegramStore'
+import { useJiraStore } from '@/stores/jiraStore'
 import { useToast } from '@/composables/useToast'
 import { truncateContent } from '@/stores/chat/chatUtils'
 import { CONTENT_PREVIEW_LENGTH } from '@/lib/constants'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
 import type { SlackApp, SlackAppConnectionStatus, SlackChannel } from '@/types/slack'
 import type { TelegramBot, TelegramBotConnectionStatus, TelegramChat } from '@/types/telegram'
+import type { JiraApp, JiraAppConnectionStatus, JiraProject } from '@/types/jira'
 
 const isListenerRegistered = ref(false)
 
@@ -602,6 +604,50 @@ const handleTelegramMessageReceived = (payload: { podId: string; userName: strin
   toast({ title: `Telegram 訊息`, description: `來自 ${payload.userName}：${truncatedText}` })
 }
 
+const handleJiraAppCreated = createUnifiedHandler<BasePayload & { jiraApp?: JiraApp }>(
+  (payload) => {
+    if (payload.jiraApp) {
+      useJiraStore().addJiraAppFromEvent(payload.jiraApp)
+    }
+  },
+  { skipCanvasCheck: true }
+)
+
+const handleJiraAppDeleted = createUnifiedHandler<BasePayload & { jiraAppId?: string }>(
+  (payload) => {
+    if (payload.jiraAppId) {
+      useJiraStore().removeJiraAppFromEvent(payload.jiraAppId)
+    }
+  },
+  { skipCanvasCheck: true }
+)
+
+const handlePodJiraBound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
+  (payload) => {
+    if (payload.pod) {
+      usePodStore().updatePod(payload.pod)
+    }
+  }
+)
+
+const handlePodJiraUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
+  (payload) => {
+    if (payload.pod) {
+      usePodStore().updatePod(payload.pod)
+    }
+  }
+)
+
+const handleJiraConnectionStatusChanged = (payload: { jiraAppId: string; connectionStatus: JiraAppConnectionStatus; projects?: JiraProject[] }): void => {
+  useJiraStore().updateJiraAppStatus(payload.jiraAppId, payload.connectionStatus, payload.projects)
+}
+
+const handleJiraMessageReceived = (payload: { podId: string; userName: string; text: string }): void => {
+  const { toast } = useToast()
+  const truncatedText = truncateContent(payload.text, CONTENT_PREVIEW_LENGTH)
+  toast({ title: `Jira 訊息`, description: `來自 ${payload.userName}：${truncatedText}` })
+}
+
 const handlePodChatUserMessage = (payload: { podId: string; messageId: string; content: string; timestamp: string }): void => {
   const chatStore = useChatStore()
   chatStore.addRemoteUserMessage(payload.podId, payload.messageId, payload.content, payload.timestamp)
@@ -670,6 +716,10 @@ export const listeners = [
   { event: WebSocketResponseEvents.TELEGRAM_BOT_DELETED, handler: handleTelegramBotDeleted },
   { event: WebSocketResponseEvents.POD_TELEGRAM_BOUND, handler: handlePodTelegramBound },
   { event: WebSocketResponseEvents.POD_TELEGRAM_UNBOUND, handler: handlePodTelegramUnbound },
+  { event: WebSocketResponseEvents.JIRA_APP_CREATED, handler: handleJiraAppCreated },
+  { event: WebSocketResponseEvents.JIRA_APP_DELETED, handler: handleJiraAppDeleted },
+  { event: WebSocketResponseEvents.POD_JIRA_BOUND, handler: handlePodJiraBound },
+  { event: WebSocketResponseEvents.POD_JIRA_UNBOUND, handler: handlePodJiraUnbound },
 ] as const
 
 export function registerUnifiedListeners(): void {
@@ -685,6 +735,8 @@ export function registerUnifiedListeners(): void {
   websocketClient.on(WebSocketResponseEvents.SLACK_MESSAGE_RECEIVED, handleSlackMessageReceived as (payload: unknown) => void)
   websocketClient.on(WebSocketResponseEvents.TELEGRAM_CONNECTION_STATUS_CHANGED, handleTelegramConnectionStatusChanged)
   websocketClient.on(WebSocketResponseEvents.TELEGRAM_MESSAGE_RECEIVED, handleTelegramMessageReceived as (payload: unknown) => void)
+  websocketClient.on(WebSocketResponseEvents.JIRA_CONNECTION_STATUS_CHANGED, handleJiraConnectionStatusChanged as (payload: unknown) => void)
+  websocketClient.on(WebSocketResponseEvents.JIRA_MESSAGE_RECEIVED, handleJiraMessageReceived as (payload: unknown) => void)
 }
 
 export function unregisterUnifiedListeners(): void {
@@ -700,6 +752,8 @@ export function unregisterUnifiedListeners(): void {
   websocketClient.off(WebSocketResponseEvents.SLACK_MESSAGE_RECEIVED, handleSlackMessageReceived as (payload: unknown) => void)
   websocketClient.off(WebSocketResponseEvents.TELEGRAM_CONNECTION_STATUS_CHANGED, handleTelegramConnectionStatusChanged)
   websocketClient.off(WebSocketResponseEvents.TELEGRAM_MESSAGE_RECEIVED, handleTelegramMessageReceived as (payload: unknown) => void)
+  websocketClient.off(WebSocketResponseEvents.JIRA_CONNECTION_STATUS_CHANGED, handleJiraConnectionStatusChanged as (payload: unknown) => void)
+  websocketClient.off(WebSocketResponseEvents.JIRA_MESSAGE_RECEIVED, handleJiraMessageReceived as (payload: unknown) => void)
 }
 
 export const useUnifiedEventListeners = (): {

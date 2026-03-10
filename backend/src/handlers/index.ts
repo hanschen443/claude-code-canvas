@@ -18,6 +18,7 @@ import { mcpServerHandlerGroup } from './groups/mcpServerHandlerGroup.js';
 import { slackHandlerGroup } from './groups/slackHandlerGroup.js';
 import { telegramHandlerGroup } from './groups/telegramHandlerGroup.js';
 import { configHandlerGroup } from './groups/configHandlerGroup.js';
+import { jiraHandlerGroup } from './groups/jiraHandlerGroup.js';
 
 const registry = new HandlerRegistry();
 
@@ -40,6 +41,7 @@ registry.registerGroup(mcpServerHandlerGroup);
 registry.registerGroup(slackHandlerGroup);
 registry.registerGroup(telegramHandlerGroup);
 registry.registerGroup(configHandlerGroup);
+registry.registerGroup(jiraHandlerGroup);
 
 export function registerAllHandlers(): void {
 	registry.registerToRouter();

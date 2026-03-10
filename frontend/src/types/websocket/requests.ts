@@ -462,3 +462,50 @@ export interface ConfigUpdatePayload {
   summaryModel?: ModelType
   aiDecideModel?: ModelType
 }
+
+export interface JiraAppCreatePayload {
+  requestId: string
+  name: string
+  siteUrl: string
+  email: string
+  apiToken: string
+  webhookSecret: string
+}
+
+export interface JiraAppDeletePayload {
+  requestId: string
+  jiraAppId: string
+}
+
+export interface JiraAppListPayload {
+  requestId: string
+}
+
+export interface JiraAppGetPayload {
+  requestId: string
+  jiraAppId: string
+}
+
+export interface JiraAppProjectsPayload {
+  requestId: string
+  jiraAppId: string
+}
+
+export interface JiraAppProjectsRefreshPayload {
+  requestId: string
+  jiraAppId: string
+}
+
+export interface PodBindJiraPayload {
+  requestId: string
+  canvasId: string
+  podId: string
+  jiraAppId: string
+  jiraProjectKey: string
+}
+
+export interface PodUnbindJiraPayload {
+  requestId: string
+  canvasId: string
+  podId: string
+}

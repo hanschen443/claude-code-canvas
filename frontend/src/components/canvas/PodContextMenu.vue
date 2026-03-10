@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { FolderOpen, Unplug } from 'lucide-vue-next'
 import SlackIcon from '@/components/icons/SlackIcon.vue'
 import TelegramIcon from '@/components/icons/TelegramIcon.vue'
+import JiraIcon from '@/components/icons/JiraIcon.vue'
 import { useWebSocketErrorHandler } from '@/composables/useWebSocketErrorHandler'
 import { useToast } from '@/composables/useToast'
 import { createWebSocketRequest, WebSocketRequestEvents, WebSocketResponseEvents } from '@/services/websocket'
@@ -24,6 +25,8 @@ const emit = defineEmits<{
   'disconnect-slack': [podId: string]
   'connect-telegram': [podId: string]
   'disconnect-telegram': [podId: string]
+  'connect-jira': [podId: string]
+  'disconnect-jira': [podId: string]
 }>()
 
 const { toast } = useToast()
@@ -31,6 +34,7 @@ const { toast } = useToast()
 const pod = computed(() => usePodStore().getPodById(props.podId))
 const isSlackBound = computed(() => pod.value?.slackBinding !== undefined)
 const isTelegramBound = computed(() => pod.value?.telegramBinding !== undefined)
+const isJiraBound = computed(() => pod.value?.jiraBinding !== undefined)
 
 const handleOpenDirectory = async (): Promise<void> => {
   const canvasId = getActiveCanvasIdOrWarn('PodContextMenu')
@@ -78,6 +82,16 @@ const handleConnectTelegram = (): void => {
 
 const handleDisconnectTelegram = (): void => {
   emit('disconnect-telegram', props.podId)
+  emit('close')
+}
+
+const handleConnectJira = (): void => {
+  emit('connect-jira', props.podId)
+  emit('close')
+}
+
+const handleDisconnectJira = (): void => {
+  emit('disconnect-jira', props.podId)
   emit('close')
 }
 
@@ -145,6 +159,26 @@ const handleBackgroundClick = (): void => {
       >
         <Unplug :size="14" />
         <span class="font-mono">斷開 Telegram</span>
+      </button>
+
+      <div class="my-1 border-t border-border" />
+
+      <button
+        v-if="!isJiraBound"
+        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
+        @click="handleConnectJira"
+      >
+        <JiraIcon :size="14" />
+        <span class="font-mono">連接 Jira</span>
+      </button>
+
+      <button
+        v-else
+        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
+        @click="handleDisconnectJira"
+      >
+        <Unplug :size="14" />
+        <span class="font-mono">斷開 Jira</span>
       </button>
     </div>
   </div>

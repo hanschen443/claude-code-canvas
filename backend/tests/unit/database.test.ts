@@ -19,7 +19,7 @@ describe('Database', () => {
       const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
       const tableNames = (tables as { name: string }[]).map((t) => t.name).sort();
       expect(tableNames).toEqual([
-        'canvases', 'connections', 'global_settings', 'mcp_servers', 'messages', 'notes',
+        'canvases', 'connections', 'global_settings', 'jira_apps', 'mcp_servers', 'messages', 'notes',
         'pod_manifests', 'pod_mcp_server_ids', 'pod_skill_ids', 'pod_sub_agent_ids',
         'pods', 'repository_metadata', 'slack_app_channels', 'slack_apps',
         'telegram_bot_chats', 'telegram_bots',
@@ -145,6 +145,7 @@ describe('Database', () => {
         $scheduleJson: null,
         $slackBindingJson: null,
         $telegramBindingJson: null,
+        $jiraBindingJson: null,
       });
 
       stmts.podSkillIds.insert.run({ $podId: 'p1', $skillId: 'skill-1' });

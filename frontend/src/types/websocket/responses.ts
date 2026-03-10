@@ -1,6 +1,7 @@
 import type {Pod, PodStatus, ModelType} from '../pod'
 import type {SlackApp, SlackChannel, SlackAppConnectionStatus} from '../slack'
 import type {TelegramBot, TelegramChat, TelegramBotConnectionStatus} from '../telegram'
+import type {JiraApp, JiraProject, JiraAppConnectionStatus} from '../jira'
 import type {OutputStyleNote} from '@/types'
 import type {SkillNote} from '@/types'
 import type {Repository, RepositoryNote} from '@/types'
@@ -601,4 +602,55 @@ export interface ConfigGetResultPayload extends ResultPayload {
 export interface ConfigUpdatedPayload extends ResultPayload {
     summaryModel?: ModelType
     aiDecideModel?: ModelType
+}
+
+export interface JiraAppCreatedPayload extends ResultPayload {
+    jiraApp?: JiraApp
+}
+
+export interface JiraAppDeletedPayload extends ResultPayload {
+    jiraAppId?: string
+}
+
+export interface JiraAppListResultPayload extends ResultPayload {
+    jiraApps?: JiraApp[]
+}
+
+export interface JiraAppGetResultPayload extends ResultPayload {
+    jiraApp?: JiraApp
+}
+
+export interface JiraAppProjectsResultPayload extends ResultPayload {
+    projects?: JiraProject[]
+}
+
+export interface JiraAppProjectsRefreshedPayload extends ResultPayload {
+    projects?: JiraProject[]
+}
+
+export interface JiraConnectionStatusChangedPayload {
+    jiraAppId: string
+    connectionStatus: JiraAppConnectionStatus
+    projects?: JiraProject[]
+}
+
+export interface PodJiraBoundPayload extends ResultPayload {
+    canvasId: string
+    pod?: Pod
+}
+
+export interface PodJiraUnboundPayload extends ResultPayload {
+    canvasId: string
+    pod?: Pod
+}
+
+export interface JiraMessageReceivedPayload {
+    canvasId: string
+    podId: string
+    jiraAppId: string
+    projectKey: string
+    issueKey: string
+    eventType: string
+    userName: string
+    text: string
 }

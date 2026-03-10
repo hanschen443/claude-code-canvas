@@ -2,6 +2,7 @@
 import { type Component } from 'vue'
 import SlackIcon from '@/components/icons/SlackIcon.vue'
 import TelegramIcon from '@/components/icons/TelegramIcon.vue'
+import JiraIcon from '@/components/icons/JiraIcon.vue'
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,12 @@ const categories: IntegrationCategory[] = [
     name: 'Telegram',
     description: '管理 Telegram Bot 連線與設定',
     icon: TelegramIcon,
+  },
+  {
+    id: 'jira',
+    name: 'Jira',
+    description: '管理 Jira App 連線與設定',
+    icon: JiraIcon,
   },
 ]
 
