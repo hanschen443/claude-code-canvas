@@ -21,11 +21,12 @@ export function broadcastConnectionStatus(providerName: string, appId: string): 
 export function destroyProvider(
     clients: Map<string, unknown>,
     appId: string,
+    providerName: string,
     logCategory: LogCategory,
 ): void {
     clients.delete(appId);
     integrationAppStore.updateStatus(appId, 'disconnected');
-    broadcastConnectionStatus(logCategory, appId);
+    broadcastConnectionStatus(providerName, appId);
     logger.log(logCategory, 'Complete', `${logCategory} App ${appId} 已移除`);
 }
 
@@ -66,8 +67,11 @@ export async function parseWebhookBody(
     maxBodySize: number,
 ): Promise<{ rawBody: string; payload: unknown } | Response> {
     const contentLength = req.headers.get('content-length');
-    if (contentLength && parseInt(contentLength, 10) > maxBodySize) {
-        return new Response('Payload Too Large', { status: 413 });
+    if (contentLength) {
+        const parsed = parseInt(contentLength, 10);
+        if (isNaN(parsed) || parsed < 0 || parsed > maxBodySize) {
+            return new Response('Payload Too Large', { status: 413 });
+        }
     }
 
     const rawBody = await req.text();

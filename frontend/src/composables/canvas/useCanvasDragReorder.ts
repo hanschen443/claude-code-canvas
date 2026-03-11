@@ -21,7 +21,6 @@ export function useCanvasDragReorder(sidebarRef: Ref<HTMLElement | undefined>): 
 
   const draggedIndex = ref<number | null>(null)
   const dragOverIndex = ref<number | null>(null)
-  const isDraggingOver = ref(false)
   const originalCanvases = ref<Canvas[]>([])
 
   const handleDragStart = (event: Event, index: number): void => {
@@ -43,7 +42,6 @@ export function useCanvasDragReorder(sidebarRef: Ref<HTMLElement | undefined>): 
   const handleDragEnd = (): void => {
     draggedIndex.value = null
     dragOverIndex.value = null
-    isDraggingOver.value = false
     canvasStore.setDragging(false, null)
   }
 
@@ -89,7 +87,6 @@ export function useCanvasDragReorder(sidebarRef: Ref<HTMLElement | undefined>): 
 
     draggedIndex.value = null
     dragOverIndex.value = null
-    isDraggingOver.value = false
   }
 
   const cancelDrag = (): void => {
@@ -99,7 +96,6 @@ export function useCanvasDragReorder(sidebarRef: Ref<HTMLElement | undefined>): 
 
     draggedIndex.value = null
     dragOverIndex.value = null
-    isDraggingOver.value = false
     originalCanvases.value = []
     canvasStore.setDragging(false, null)
   }

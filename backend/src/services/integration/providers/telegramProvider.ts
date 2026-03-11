@@ -5,7 +5,7 @@ import { logger } from '../../../utils/logger.js';
 import { getErrorMessage } from '../../../utils/errorHelpers.js';
 import { integrationAppStore } from '../integrationAppStore.js';
 import { integrationEventPipeline } from '../integrationEventPipeline.js';
-import { broadcastConnectionStatus, formatIntegrationMessage } from '../integrationHelpers.js';
+import { broadcastConnectionStatus, initializeProvider, formatIntegrationMessage } from '../integrationHelpers.js';
 import type {
     IntegrationProvider,
     IntegrationApp,
@@ -91,25 +91,26 @@ class TelegramProvider implements IntegrationProvider {
     // ClientManager 層
 
     async initialize(app: IntegrationApp): Promise<void> {
-        const botToken = app.config['botToken'] as string | undefined;
-        if (!botToken) {
-            this.markError(app.id);
-            return;
+        await initializeProvider(
+            app,
+            async () => {
+                const botToken = app.config['botToken'] as string | undefined;
+                if (!botToken) return false;
+
+                const botUsername = await this.fetchBotUsername(app.id, botToken);
+                if (!botUsername) return false;
+
+                integrationAppStore.updateExtraJson(app.id, { botUsername });
+                return true;
+            },
+            async () => {},
+            'Telegram',
+        );
+
+        const connectedApp = integrationAppStore.getById(app.id);
+        if (connectedApp?.connectionStatus === 'connected') {
+            this.startPolling(app.id, app.config);
         }
-
-        const botUsername = await this.fetchBotUsername(app.id, botToken);
-        if (!botUsername) {
-            this.markError(app.id);
-            return;
-        }
-
-        integrationAppStore.updateExtraJson(app.id, { botUsername });
-        integrationAppStore.updateStatus(app.id, 'connected');
-
-        broadcastConnectionStatus('telegram', app.id);
-        logger.log('Telegram', 'Complete', `Telegram Bot ${app.id} 初始化成功`);
-
-        this.startPolling(app.id, app.config);
     }
 
     destroy(appId: string): void {
@@ -252,10 +253,7 @@ class TelegramProvider implements IntegrationProvider {
         }
     }
 
-    private markError(appId: string): void {
-        integrationAppStore.updateStatus(appId, 'error');
-        broadcastConnectionStatus('telegram', appId);
-    }
+
 
     private processUpdate(appId: string, update: TelegramUpdate): void {
         const message = update.message;

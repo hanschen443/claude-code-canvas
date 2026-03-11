@@ -236,7 +236,7 @@ class SlackProvider implements IntegrationProvider {
     }
 
     destroy(appId: string): void {
-        destroyProvider(this.clients as Map<string, unknown>, appId, 'Slack');
+        destroyProvider(this.clients as Map<string, unknown>, appId, 'slack', 'Slack');
     }
 
     destroyAll(): void {

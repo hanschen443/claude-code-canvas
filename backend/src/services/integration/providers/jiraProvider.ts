@@ -217,7 +217,7 @@ class JiraProvider implements IntegrationProvider {
   }
 
   destroy(appId: string): void {
-    destroyProvider(this.clients as Map<string, unknown>, appId, 'Jira');
+    destroyProvider(this.clients as Map<string, unknown>, appId, 'jira', 'Jira');
   }
 
   destroyAll(): void {
