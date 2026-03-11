@@ -16,6 +16,14 @@ export const listeners = [
   ...getIntegrationEventListeners(),
 ]
 
+// 這兩個事件的 payload 不含 canvasId / requestId，無法套用 createUnifiedHandler 機制
+// （不需要 Canvas 過濾、不需要 Toast、不需要 pending request 解析），因此維持獨立註冊。
+// 測試也明確以 listeners.length + 2 驗證此分離設計，不應將其納入 listeners 陣列。
+const standaloneListeners: Array<{ event: string; handler: (payload: unknown) => void }> = [
+  { event: WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, handler: handlePodChatUserMessage as (payload: unknown) => void },
+  { event: WebSocketResponseEvents.INTEGRATION_CONNECTION_STATUS_CHANGED, handler: handleIntegrationConnectionStatusChanged as (payload: unknown) => void },
+]
+
 export function registerUnifiedListeners(): void {
   if (isListenerRegistered.value) return
   isListenerRegistered.value = true
@@ -24,8 +32,9 @@ export function registerUnifiedListeners(): void {
     websocketClient.on(event, handler)
   }
 
-  websocketClient.on(WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, handlePodChatUserMessage as (payload: unknown) => void)
-  websocketClient.on(WebSocketResponseEvents.INTEGRATION_CONNECTION_STATUS_CHANGED, handleIntegrationConnectionStatusChanged as (payload: unknown) => void)
+  for (const { event, handler } of standaloneListeners) {
+    websocketClient.on(event, handler)
+  }
 }
 
 export function unregisterUnifiedListeners(): void {
@@ -36,8 +45,9 @@ export function unregisterUnifiedListeners(): void {
     websocketClient.off(event, handler)
   }
 
-  websocketClient.off(WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, handlePodChatUserMessage as (payload: unknown) => void)
-  websocketClient.off(WebSocketResponseEvents.INTEGRATION_CONNECTION_STATUS_CHANGED, handleIntegrationConnectionStatusChanged as (payload: unknown) => void)
+  for (const { event, handler } of standaloneListeners) {
+    websocketClient.off(event, handler)
+  }
 }
 
 export const useUnifiedEventListeners = (): {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getProvider, getAllProviders, registerProvider } from '@/integration/providerRegistry'
+import { getProvider, getAllProviders, registerProvider, findProvider } from '@/integration/providerRegistry'
 import type { IntegrationProviderConfig } from '@/types/integration'
 import { defineComponent } from 'vue'
 
@@ -55,6 +55,19 @@ describe('providerRegistry', () => {
       expect(names).toContain('slack')
       expect(names).toContain('telegram')
       expect(names).toContain('jira')
+    })
+  })
+
+  describe('findProvider', () => {
+    it('傳入已存在的 provider name 時回傳 config（非 null）', () => {
+      const result = findProvider('slack')
+      expect(result).not.toBeNull()
+      expect(result?.name).toBe('slack')
+    })
+
+    it('傳入不存在的 provider name 時回傳 null，不拋例外', () => {
+      expect(() => findProvider('not-exist-provider')).not.toThrow()
+      expect(findProvider('not-exist-provider')).toBeNull()
     })
   })
 

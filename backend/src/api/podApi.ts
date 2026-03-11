@@ -37,10 +37,7 @@ function isInCoordinateRange(value: number): boolean {
 }
 
 function validatePodCoordinates(data: Record<string, unknown>): string | null {
-	if (!isFiniteNumber(data.x) || !isFiniteNumber(data.y)) {
-		return '必須提供有效的 x 和 y 座標';
-	}
-	if (!isInCoordinateRange(data.x) || !isInCoordinateRange(data.y)) {
+	if (!isFiniteNumber(data.x) || !isFiniteNumber(data.y) || !isInCoordinateRange(data.x) || !isInCoordinateRange(data.y)) {
 		return '必須提供有效的 x 和 y 座標';
 	}
 	return null;

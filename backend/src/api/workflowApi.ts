@@ -10,6 +10,8 @@ import { HTTP_STATUS } from '../constants.js';
 import type { Pod, ContentBlock } from '../types/index.js';
 import { isPodBusy } from '../types/index.js';
 import type { Connection } from '../types/connection.js';
+import { contentBlockSchema, MAX_MESSAGE_LENGTH } from '../schemas/chatSchemas.js';
+import { z } from 'zod';
 
 interface WorkflowNode {
 	pod: Pod;
@@ -74,25 +76,15 @@ export function buildWorkflows(canvasId: string): WorkflowInfo[] {
 }
 
 
+const messageSchema = z.union([
+	z.string().min(1).max(MAX_MESSAGE_LENGTH),
+	z.array(contentBlockSchema).min(1),
+]);
+
 function validateMessage(message: unknown): string | null {
-	if (message === undefined || message === null) {
-		return '訊息格式錯誤';
-	}
-	if (typeof message === 'string') {
-		if (message.length === 0) return '訊息格式錯誤';
-		if (message.length > 10000) return '訊息格式錯誤';
-		return null;
-	}
-	if (Array.isArray(message)) {
-		if (message.length === 0) return '訊息格式錯誤';
-		for (const block of message) {
-			if (!block || typeof block !== 'object') return '訊息格式錯誤';
-			const typedBlock = block as Record<string, unknown>;
-			if (typedBlock.type !== 'text' && typedBlock.type !== 'image') return '訊息格式錯誤';
-		}
-		return null;
-	}
-	return '訊息格式錯誤';
+	const result = messageSchema.safeParse(message);
+	if (!result.success) return '訊息格式錯誤';
+	return null;
 }
 
 export function handleListWorkflows(_req: Request, params: Record<string, string>): Response {

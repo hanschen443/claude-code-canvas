@@ -19,7 +19,6 @@ import { workflowPipeline } from './workflowPipeline.js';
 import { workflowMultiInputService } from './workflowMultiInputService.js';
 import { forEachMultiInputGroupConnection, formatConnectionLog, buildQueuedPayload, isAutoTriggerable, createMultiInputCompletionHandlers, emitQueueProcessed } from './workflowHelpers.js';
 import { logger } from '../../utils/logger.js';
-import type { LogAction } from '../../utils/logger.js';
 import { getErrorMessage } from '../../utils/errorHelpers.js';
 import { LazyInitializable } from './lazyInitializable.js';
 import { autoClearService } from '../autoClear/autoClearService.js';
@@ -170,22 +169,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     }
   }
 
-  private logConnectionEvent(
-    level: 'log' | 'error',
-    action: LogAction,
-    canvasId: string,
-    sourcePodId: string,
-    connection: Connection,
-    message: string,
-    suffix?: string
-  ): void {
-    const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
-    const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    const connLog = formatConnectionLog({connectionId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId});
-    const fullMessage = suffix ? `${message}${connLog}：${suffix}` : `${message}${connLog}`;
-    logger[level]('Workflow', action, fullMessage);
-  }
-
   private handleErrorConnection(
     canvasId: string,
     sourcePodId: string,
@@ -202,7 +185,10 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
       targetPodId: connection.targetPodId,
       error: errorMessage,
     });
-    this.logConnectionEvent('error', 'Error', canvasId, sourcePodId, connection, `AI Decide 發生錯誤，`, errorMessage);
+    const sourcePodErr = this.deps.podStore.getById(canvasId, sourcePodId);
+    const targetPodErr = this.deps.podStore.getById(canvasId, connection.targetPodId);
+    const connLogErr = formatConnectionLog({connectionId: connection.id, sourceName: sourcePodErr?.name, sourcePodId, targetName: targetPodErr?.name, targetPodId: connection.targetPodId});
+    logger.error('Workflow', 'Error', `AI Decide 發生錯誤，${connLogErr}：${errorMessage}`);
   }
 
   private handleApprovedConnection(
@@ -221,7 +207,11 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
       shouldTrigger: true,
       reason: decideResult.reason ?? '',
     });
-    this.logConnectionEvent('log', 'Create', canvasId, sourcePodId, connection, `AI Decide 核准`, decideResult.reason ?? undefined);
+    const sourcePodApprove = this.deps.podStore.getById(canvasId, sourcePodId);
+    const targetPodApprove = this.deps.podStore.getById(canvasId, connection.targetPodId);
+    const connLogApprove = formatConnectionLog({connectionId: connection.id, sourceName: sourcePodApprove?.name, sourcePodId, targetName: targetPodApprove?.name, targetPodId: connection.targetPodId});
+    const reasonApprove = decideResult.reason;
+    logger.log('Workflow', 'Create', reasonApprove ? `AI Decide 核准${connLogApprove}：${reasonApprove}` : `AI Decide 核准${connLogApprove}`);
   }
 
   private triggerApprovedPipeline(
@@ -266,7 +256,10 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
       shouldTrigger: false,
       reason,
     });
-    this.logConnectionEvent('log', 'Update', canvasId, sourcePodId, connection, `AI Decide 拒絕`, reason);
+    const sourcePodReject = this.deps.podStore.getById(canvasId, sourcePodId);
+    const targetPodReject = this.deps.podStore.getById(canvasId, connection.targetPodId);
+    const connLogReject = formatConnectionLog({connectionId: connection.id, sourceName: sourcePodReject?.name, sourcePodId, targetName: targetPodReject?.name, targetPodId: connection.targetPodId});
+    logger.log('Workflow', 'Update', reason ? `AI Decide 拒絕${connLogReject}：${reason}` : `AI Decide 拒絕${connLogReject}`);
   }
 
   private shouldDeferToMultiInput(canvasId: string, targetPodId: string): boolean {

@@ -156,19 +156,8 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     );
   }
 
-  private activateMultiInputConnections(canvasId: string, targetPodId: string): void {
-    forEachMultiInputGroupConnection(canvasId, targetPodId, (conn) => {
-      const stillExists = connectionStore.getById(canvasId, conn.id);
-      if (!stillExists) {
-        logger.warn('Workflow', 'Warn', `Connection ${conn.id} 已不存在，跳過 active 狀態設定`);
-        return;
-      }
-      connectionStore.updateConnectionStatus(canvasId, conn.id, 'active');
-    });
-  }
-
-  private activateParticipatingConnections(canvasId: string, participatingConnectionIds: string[]): void {
-    for (const id of participatingConnectionIds) {
+  private activateConnections(canvasId: string, connectionIds: string[]): void {
+    for (const id of connectionIds) {
       const stillExists = connectionStore.getById(canvasId, id);
       if (!stillExists) {
         logger.warn('Workflow', 'Warn', `Connection ${id} 已不存在，跳過 active 狀態設定`);
@@ -186,10 +175,12 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     participatingConnectionIds: string[]
   ): void {
     if (isAutoTriggerable(triggerMode)) {
-      this.activateMultiInputConnections(canvasId, targetPodId);
+      const multiInputIds: string[] = [];
+      forEachMultiInputGroupConnection(canvasId, targetPodId, (conn) => multiInputIds.push(conn.id));
+      this.activateConnections(canvasId, multiInputIds);
       return;
     }
-    this.activateParticipatingConnections(canvasId, participatingConnectionIds);
+    this.activateConnections(canvasId, participatingConnectionIds);
   }
 
   private scheduleNextInQueue(canvasId: string, targetPodId: string): void {

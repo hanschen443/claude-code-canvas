@@ -346,46 +346,57 @@ export class ClaudeService {
         return createUserMessageStream(contentArray, sessionId);
     }
 
+    private buildIntegrationTool(
+        binding: NonNullable<Pod['integrationBindings']>[number],
+        provider: NonNullable<ReturnType<typeof integrationRegistry.get>>
+    ): {mcpServer: ReturnType<typeof createSdkMcpServer>; serverName: string; toolName: string} {
+        const serverName = `${binding.provider}-reply`;
+        const toolName = `${binding.provider}_reply`;
+
+        const replyTool = tool(
+            toolName,
+            `回覆 ${provider.displayName} 訊息。當需要在 ${provider.displayName} 中回覆用戶時使用此工具。`,
+            {
+                text: z.string().min(1).describe('要發送的訊息內容'),
+            },
+            async (params: {text: string}) => {
+                const result = await provider.sendMessage!(binding.appId, binding.resourceId, params.text, binding.extra);
+                if (!result.success) {
+                    return {success: false, error: result.error};
+                }
+                return {success: true};
+            }
+        );
+
+        const mcpServer = createSdkMcpServer({
+            name: serverName,
+            tools: [replyTool],
+        });
+
+        return {mcpServer, serverName, toolName};
+    }
+
     private applyIntegrationToolOptions(pod: Pod, queryOptions: Options): void {
         if (!pod.integrationBindings?.length) return;
 
-        for (const binding of pod.integrationBindings) {
-            const provider = integrationRegistry.get(binding.provider);
-            if (!provider?.sendMessage) continue;
+        const builtTools = pod.integrationBindings
+            .map(binding => {
+                const provider = integrationRegistry.get(binding.provider);
+                if (!provider?.sendMessage) return null;
+                return this.buildIntegrationTool(binding, provider);
+            })
+            .filter(t => t !== null);
 
-            const serverName = `${binding.provider}-reply`;
-            const toolName = `${binding.provider}_reply`;
+        const mcpServers: NonNullable<Options['mcpServers']> = {...queryOptions.mcpServers};
+        const allowedTools: string[] = [...(queryOptions.allowedTools ?? [])];
 
-            const replyTool = tool(
-                toolName,
-                `回覆 ${provider.displayName} 訊息。當需要在 ${provider.displayName} 中回覆用戶時使用此工具。`,
-                {
-                    text: z.string().min(1).describe('要發送的訊息內容'),
-                },
-                async (params: {text: string}) => {
-                    const result = await provider.sendMessage!(binding.appId, binding.resourceId, params.text, binding.extra);
-                    if (!result.success) {
-                        return {success: false, error: result.error};
-                    }
-                    return {success: true};
-                }
-            );
-
-            const mcpServer = createSdkMcpServer({
-                name: serverName,
-                tools: [replyTool],
-            });
-
-            queryOptions.mcpServers = {
-                ...queryOptions.mcpServers,
-                [serverName]: mcpServer,
-            } as Options['mcpServers'];
-
-            queryOptions.allowedTools = [
-                ...(queryOptions.allowedTools ?? []),
-                `mcp__${serverName}__${toolName}`,
-            ];
+        for (const {mcpServer, serverName, toolName} of builtTools) {
+            mcpServers[serverName] = mcpServer;
+            allowedTools.push(`mcp__${serverName}__${toolName}`);
         }
+
+        queryOptions.mcpServers = mcpServers as Options['mcpServers'];
+        queryOptions.allowedTools = allowedTools;
     }
 
     private async applyOutputStyle(pod: Pod, queryOptions: Options): Promise<void> {
