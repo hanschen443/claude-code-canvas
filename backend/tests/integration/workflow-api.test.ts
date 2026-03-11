@@ -1,6 +1,8 @@
 import { setupIntegrationTest } from '../setup';
 import { postCanvas, postPod } from '../helpers';
 import { v4 as uuidv4 } from 'uuid';
+import { getDb } from '../../src/database/index.js';
+import { getStatements } from '../../src/database/statements.js';
 
 async function createConnectionRest(
 	baseUrl: string,
@@ -238,44 +240,30 @@ describe('GET /api/canvas/:id/workflows', () => {
 		}
 	});
 
-	it('有 slackBinding 的 Pod 不出現在 workflow list 中', async () => {
+	it('有 integrationBinding 的 Pod 不出現在 workflow list 中', async () => {
 		const server = getServer();
-		const createRes = await postCanvas(server.baseUrl, { name: 'workflow-slack-binding' });
+		const createRes = await postCanvas(server.baseUrl, { name: 'workflow-integration-binding' });
 		expect(createRes.status).toBe(201);
 		const { canvas } = await createRes.json();
 
-		const podRes = await postPod(server.baseUrl, canvas.id, { name: 'Slack Pod', x: 0, y: 0 });
+		const podRes = await postPod(server.baseUrl, canvas.id, { name: 'Integration Pod', x: 0, y: 0 });
 		expect(podRes.status).toBe(201);
 		const { pod } = await podRes.json();
 
-		const { podStore: podStoreModule } = await import('../../src/services/podStore.js');
-		await podStoreModule.setSlackBinding(canvas.id, pod.id, {
-			slackAppId: 'test-slack-app-id',
-			slackChannelId: 'test-channel-id',
+		const testAppId = 'test-slack-app-id-wf-list';
+		getStatements(getDb()).integrationApp.insert.run({
+			$id: testAppId,
+			$provider: 'slack',
+			$name: 'Test Slack App WF List',
+			$configJson: '{}',
+			$extraJson: null,
 		});
 
-		const response = await fetchWorkflows(server.baseUrl, canvas.id);
-		expect(response.status).toBe(200);
-
-		const body = await response.json();
-		expect(body.workflows).toHaveLength(0);
-	});
-
-	it('有 telegramBinding 的 Pod 不出現在 workflow list 中', async () => {
-		const server = getServer();
-		const createRes = await postCanvas(server.baseUrl, { name: 'workflow-telegram-binding' });
-		expect(createRes.status).toBe(201);
-		const { canvas } = await createRes.json();
-
-		const podRes = await postPod(server.baseUrl, canvas.id, { name: 'Telegram Pod', x: 0, y: 0 });
-		expect(podRes.status).toBe(201);
-		const { pod } = await podRes.json();
-
 		const { podStore: podStoreModule } = await import('../../src/services/podStore.js');
-		await podStoreModule.setTelegramBinding(canvas.id, pod.id, {
-			telegramBotId: 'test-bot-id',
-			telegramChatId: 123456789,
-			chatType: 'private',
+		podStoreModule.addIntegrationBinding(canvas.id, pod.id, {
+			provider: 'slack',
+			appId: testAppId,
+			resourceId: 'test-channel-id',
 		});
 
 		const response = await fetchWorkflows(server.baseUrl, canvas.id);
@@ -475,51 +463,37 @@ describe('POST /api/canvas/:id/workflows/:podId/chat', () => {
 		expect(body.error).toBe('無效的請求格式');
 	});
 
-	it('Pod 有 slackBinding 時回傳 400', async () => {
+	it('Pod 有 integrationBinding 時回傳 400', async () => {
 		const server = getServer();
-		const createRes = await postCanvas(server.baseUrl, { name: 'workflow-chat-slack-binding' });
+		const createRes = await postCanvas(server.baseUrl, { name: 'workflow-chat-integration-binding' });
 		expect(createRes.status).toBe(201);
 		const { canvas } = await createRes.json();
 
-		const podRes = await postPod(server.baseUrl, canvas.id, { name: 'Slack Pod', x: 0, y: 0 });
+		const podRes = await postPod(server.baseUrl, canvas.id, { name: 'Integration Pod', x: 0, y: 0 });
 		expect(podRes.status).toBe(201);
 		const { pod } = await podRes.json();
 
+		const testAppId = 'test-slack-app-id-wf-chat';
+		getStatements(getDb()).integrationApp.insert.run({
+			$id: testAppId,
+			$provider: 'slack',
+			$name: 'Test Slack App WF Chat',
+			$configJson: '{}',
+			$extraJson: null,
+		});
+
 		const { podStore: podStoreModule } = await import('../../src/services/podStore.js');
-		await podStoreModule.setSlackBinding(canvas.id, pod.id, {
-			slackAppId: 'test-slack-app-id',
-			slackChannelId: 'test-channel-id',
+		podStoreModule.addIntegrationBinding(canvas.id, pod.id, {
+			provider: 'slack',
+			appId: testAppId,
+			resourceId: 'test-channel-id',
 		});
 
 		const response = await postWorkflowChat(server.baseUrl, canvas.id, pod.id, { message: 'hello' });
 		expect(response.status).toBe(400);
 
 		const body = await response.json();
-		expect(body.error).toContain('Slack');
-	});
-
-	it('Pod 有 telegramBinding 時回傳 400', async () => {
-		const server = getServer();
-		const createRes = await postCanvas(server.baseUrl, { name: 'workflow-chat-telegram-binding' });
-		expect(createRes.status).toBe(201);
-		const { canvas } = await createRes.json();
-
-		const podRes = await postPod(server.baseUrl, canvas.id, { name: 'Telegram Pod', x: 0, y: 0 });
-		expect(podRes.status).toBe(201);
-		const { pod } = await podRes.json();
-
-		const { podStore: podStoreModule } = await import('../../src/services/podStore.js');
-		await podStoreModule.setTelegramBinding(canvas.id, pod.id, {
-			telegramBotId: 'test-bot-id',
-			telegramChatId: 123456789,
-			chatType: 'private',
-		});
-
-		const response = await postWorkflowChat(server.baseUrl, canvas.id, pod.id, { message: 'hello' });
-		expect(response.status).toBe(400);
-
-		const body = await response.json();
-		expect(body.error).toContain('Telegram');
+		expect(body.error).toContain('外部服務');
 	});
 
 	it('使用 Canvas name 和 Pod name 發送成功', async () => {

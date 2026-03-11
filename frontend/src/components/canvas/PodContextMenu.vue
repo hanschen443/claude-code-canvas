@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { FolderOpen, Unplug } from 'lucide-vue-next'
-import SlackIcon from '@/components/icons/SlackIcon.vue'
-import TelegramIcon from '@/components/icons/TelegramIcon.vue'
-import JiraIcon from '@/components/icons/JiraIcon.vue'
 import { useWebSocketErrorHandler } from '@/composables/useWebSocketErrorHandler'
 import { useToast } from '@/composables/useToast'
 import { createWebSocketRequest, WebSocketRequestEvents, WebSocketResponseEvents } from '@/services/websocket'
@@ -11,6 +8,7 @@ import type { PodOpenDirectoryPayload } from '@/types/websocket/requests'
 import type { PodDirectoryOpenedPayload } from '@/types/websocket/responses'
 import { getActiveCanvasIdOrWarn } from '@/utils/canvasGuard'
 import { usePodStore } from '@/stores'
+import { getAllProviders } from '@/integration/providerRegistry'
 
 interface Props {
   position: { x: number; y: number }
@@ -21,20 +19,18 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   close: []
-  'connect-slack': [podId: string]
-  'disconnect-slack': [podId: string]
-  'connect-telegram': [podId: string]
-  'disconnect-telegram': [podId: string]
-  'connect-jira': [podId: string]
-  'disconnect-jira': [podId: string]
+  'connect-integration': [podId: string, provider: string]
+  'disconnect-integration': [podId: string, provider: string]
 }>()
 
 const { toast } = useToast()
 
 const pod = computed(() => usePodStore().getPodById(props.podId))
-const isSlackBound = computed(() => pod.value?.slackBinding !== undefined)
-const isTelegramBound = computed(() => pod.value?.telegramBinding !== undefined)
-const isJiraBound = computed(() => pod.value?.jiraBinding !== undefined)
+const bindings = computed(() => pod.value?.integrationBindings ?? [])
+const providers = getAllProviders()
+
+const isBound = (provider: string): boolean =>
+  bindings.value.some((b) => b.provider === provider)
 
 const handleOpenDirectory = async (): Promise<void> => {
   const canvasId = getActiveCanvasIdOrWarn('PodContextMenu')
@@ -65,33 +61,13 @@ const handleOpenDirectory = async (): Promise<void> => {
   emit('close')
 }
 
-const handleConnectSlack = (): void => {
-  emit('connect-slack', props.podId)
+const handleConnect = (provider: string): void => {
+  emit('connect-integration', props.podId, provider)
   emit('close')
 }
 
-const handleDisconnectSlack = (): void => {
-  emit('disconnect-slack', props.podId)
-  emit('close')
-}
-
-const handleConnectTelegram = (): void => {
-  emit('connect-telegram', props.podId)
-  emit('close')
-}
-
-const handleDisconnectTelegram = (): void => {
-  emit('disconnect-telegram', props.podId)
-  emit('close')
-}
-
-const handleConnectJira = (): void => {
-  emit('connect-jira', props.podId)
-  emit('close')
-}
-
-const handleDisconnectJira = (): void => {
-  emit('disconnect-jira', props.podId)
+const handleDisconnect = (provider: string): void => {
+  emit('disconnect-integration', props.podId, provider)
   emit('close')
 }
 
@@ -121,65 +97,33 @@ const handleBackgroundClick = (): void => {
         <span class="font-mono">打開工作目錄</span>
       </button>
 
-      <div class="my-1 border-t border-border" />
-
-      <button
-        v-if="!isSlackBound"
-        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-        @click="handleConnectSlack"
+      <template
+        v-for="provider in providers"
+        :key="provider.name"
       >
-        <SlackIcon :size="14" />
-        <span class="font-mono">連接 Slack</span>
-      </button>
+        <div class="my-1 border-t border-border" />
 
-      <button
-        v-else
-        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-        @click="handleDisconnectSlack"
-      >
-        <Unplug :size="14" />
-        <span class="font-mono">斷開 Slack</span>
-      </button>
+        <button
+          v-if="!isBound(provider.name)"
+          class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
+          @click="handleConnect(provider.name)"
+        >
+          <component
+            :is="provider.icon"
+            :size="14"
+          />
+          <span class="font-mono">連接 {{ provider.label }}</span>
+        </button>
 
-      <div class="my-1 border-t border-border" />
-
-      <button
-        v-if="!isTelegramBound"
-        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-        @click="handleConnectTelegram"
-      >
-        <TelegramIcon :size="14" />
-        <span class="font-mono">連接 Telegram</span>
-      </button>
-
-      <button
-        v-else
-        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-        @click="handleDisconnectTelegram"
-      >
-        <Unplug :size="14" />
-        <span class="font-mono">斷開 Telegram</span>
-      </button>
-
-      <div class="my-1 border-t border-border" />
-
-      <button
-        v-if="!isJiraBound"
-        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-        @click="handleConnectJira"
-      >
-        <JiraIcon :size="14" />
-        <span class="font-mono">連接 Jira</span>
-      </button>
-
-      <button
-        v-else
-        class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-        @click="handleDisconnectJira"
-      >
-        <Unplug :size="14" />
-        <span class="font-mono">斷開 Jira</span>
-      </button>
+        <button
+          v-else
+          class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
+          @click="handleDisconnect(provider.name)"
+        >
+          <Unplug :size="14" />
+          <span class="font-mono">斷開 {{ provider.label }}</span>
+        </button>
+      </template>
     </div>
   </div>
 </template>

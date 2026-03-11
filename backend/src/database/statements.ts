@@ -28,18 +28,22 @@ function buildStatements(db: Database): {
     updateCommandId: ReturnType<Database['prepare']>;
     updateAutoClear: ReturnType<Database['prepare']>;
     updateScheduleJson: ReturnType<Database['prepare']>;
-    updateSlackBindingJson: ReturnType<Database['prepare']>;
-    updateTelegramBindingJson: ReturnType<Database['prepare']>;
-    updateJiraBindingJson: ReturnType<Database['prepare']>;
     selectWithSchedule: ReturnType<Database['prepare']>;
     selectByOutputStyleId: ReturnType<Database['prepare']>;
     selectByRepositoryId: ReturnType<Database['prepare']>;
     selectByCommandId: ReturnType<Database['prepare']>;
-    selectBySlackAppId: ReturnType<Database['prepare']>;
-    selectByTelegramBotId: ReturnType<Database['prepare']>;
-    selectByJiraAppId: ReturnType<Database['prepare']>;
     deleteById: ReturnType<Database['prepare']>;
     deleteByCanvasId: ReturnType<Database['prepare']>;
+  };
+  integrationBinding: {
+    insert: ReturnType<Database['prepare']>;
+    selectByPodId: ReturnType<Database['prepare']>;
+    selectByAppId: ReturnType<Database['prepare']>;
+    selectByAppIdAndResourceId: ReturnType<Database['prepare']>;
+    deleteById: ReturnType<Database['prepare']>;
+    deleteByPodIdAndProvider: ReturnType<Database['prepare']>;
+    deleteByPodId: ReturnType<Database['prepare']>;
+    deleteByAppId: ReturnType<Database['prepare']>;
   };
   podSkillIds: {
     insert: ReturnType<Database['prepare']>;
@@ -99,33 +103,6 @@ function buildStatements(db: Database): {
     deleteByPodId: ReturnType<Database['prepare']>;
     deleteByCanvasId: ReturnType<Database['prepare']>;
   };
-  slackApp: {
-    insert: ReturnType<Database['prepare']>;
-    selectAll: ReturnType<Database['prepare']>;
-    selectById: ReturnType<Database['prepare']>;
-    selectByBotToken: ReturnType<Database['prepare']>;
-    update: ReturnType<Database['prepare']>;
-    updateBotUserId: ReturnType<Database['prepare']>;
-    deleteById: ReturnType<Database['prepare']>;
-  };
-  slackAppChannel: {
-    insert: ReturnType<Database['prepare']>;
-    selectByAppId: ReturnType<Database['prepare']>;
-    deleteByAppId: ReturnType<Database['prepare']>;
-  };
-  telegramBot: {
-    insert: ReturnType<Database['prepare']>;
-    selectAll: ReturnType<Database['prepare']>;
-    selectById: ReturnType<Database['prepare']>;
-    selectByBotToken: ReturnType<Database['prepare']>;
-    updateBotUsername: ReturnType<Database['prepare']>;
-    deleteById: ReturnType<Database['prepare']>;
-  };
-  telegramBotChat: {
-    upsert: ReturnType<Database['prepare']>;
-    selectByBotId: ReturnType<Database['prepare']>;
-    deleteByBotId: ReturnType<Database['prepare']>;
-  };
   repositoryMetadata: {
     upsert: ReturnType<Database['prepare']>;
     selectById: ReturnType<Database['prepare']>;
@@ -151,11 +128,13 @@ function buildStatements(db: Database): {
     upsert: ReturnType<Database['prepare']>;
     selectAll: ReturnType<Database['prepare']>;
   };
-  jiraApp: {
+  integrationApp: {
     insert: ReturnType<Database['prepare']>;
     selectAll: ReturnType<Database['prepare']>;
     selectById: ReturnType<Database['prepare']>;
-    selectBySiteUrlAndEmail: ReturnType<Database['prepare']>;
+    selectByProvider: ReturnType<Database['prepare']>;
+    selectByProviderAndConfigField: ReturnType<Database['prepare']>;
+    updateExtraJson: ReturnType<Database['prepare']>;
     deleteById: ReturnType<Database['prepare']>;
   };
 } {
@@ -173,7 +152,7 @@ function buildStatements(db: Database): {
 
     pod: {
       insert: db.prepare(
-        'INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, auto_clear, schedule_json, slack_binding_json, telegram_binding_json, jira_binding_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $autoClear, $scheduleJson, $slackBindingJson, $telegramBindingJson, $jiraBindingJson)',
+        'INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, auto_clear, schedule_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $autoClear, $scheduleJson)',
       ),
       selectByCanvasId: db.prepare('SELECT * FROM pods WHERE canvas_id = ?'),
       selectById: db.prepare('SELECT * FROM pods WHERE id = ?'),
@@ -183,7 +162,7 @@ function buildStatements(db: Database): {
         'SELECT COUNT(*) as count FROM pods WHERE canvas_id = $canvasId AND name = $name AND id != $excludeId',
       ),
       update: db.prepare(
-        'UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, auto_clear = $autoClear, schedule_json = $scheduleJson, slack_binding_json = $slackBindingJson, telegram_binding_json = $telegramBindingJson, jira_binding_json = $jiraBindingJson WHERE id = $id',
+        'UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, auto_clear = $autoClear, schedule_json = $scheduleJson WHERE id = $id',
       ),
       updateStatus: db.prepare('UPDATE pods SET status = $status WHERE id = $id'),
       updateClaudeSessionId: db.prepare('UPDATE pods SET claude_session_id = $claudeSessionId WHERE id = $id'),
@@ -192,24 +171,25 @@ function buildStatements(db: Database): {
       updateCommandId: db.prepare('UPDATE pods SET command_id = $commandId WHERE id = $id'),
       updateAutoClear: db.prepare('UPDATE pods SET auto_clear = $autoClear WHERE id = $id'),
       updateScheduleJson: db.prepare('UPDATE pods SET schedule_json = $scheduleJson WHERE id = $id'),
-      updateSlackBindingJson: db.prepare('UPDATE pods SET slack_binding_json = $slackBindingJson WHERE id = $id'),
-      updateTelegramBindingJson: db.prepare('UPDATE pods SET telegram_binding_json = $telegramBindingJson WHERE id = $id'),
-      updateJiraBindingJson: db.prepare('UPDATE pods SET jira_binding_json = $jiraBindingJson WHERE id = $id'),
       selectWithSchedule: db.prepare('SELECT * FROM pods WHERE schedule_json IS NOT NULL'),
       selectByOutputStyleId: db.prepare('SELECT * FROM pods WHERE output_style_id = ?'),
       selectByRepositoryId: db.prepare('SELECT * FROM pods WHERE repository_id = ?'),
       selectByCommandId: db.prepare('SELECT * FROM pods WHERE command_id = ?'),
-      selectBySlackAppId: db.prepare(
-        "SELECT * FROM pods WHERE json_extract(slack_binding_json, '$.slackAppId') = ?",
-      ),
-      selectByTelegramBotId: db.prepare(
-        "SELECT * FROM pods WHERE json_extract(telegram_binding_json, '$.telegramBotId') = ?",
-      ),
-      selectByJiraAppId: db.prepare(
-        "SELECT * FROM pods WHERE json_extract(jira_binding_json, '$.jiraAppId') = ?",
-      ),
       deleteById: db.prepare('DELETE FROM pods WHERE id = ?'),
       deleteByCanvasId: db.prepare('DELETE FROM pods WHERE canvas_id = ?'),
+    },
+
+    integrationBinding: {
+      insert: db.prepare(
+        'INSERT INTO integration_bindings (id, pod_id, canvas_id, provider, app_id, resource_id, extra_json) VALUES ($id, $podId, $canvasId, $provider, $appId, $resourceId, $extraJson)',
+      ),
+      selectByPodId: db.prepare('SELECT * FROM integration_bindings WHERE pod_id = ?'),
+      selectByAppId: db.prepare('SELECT * FROM integration_bindings WHERE app_id = ?'),
+      selectByAppIdAndResourceId: db.prepare('SELECT * FROM integration_bindings WHERE app_id = ? AND resource_id = ?'),
+      deleteById: db.prepare('DELETE FROM integration_bindings WHERE id = ?'),
+      deleteByPodIdAndProvider: db.prepare('DELETE FROM integration_bindings WHERE pod_id = ? AND provider = ?'),
+      deleteByPodId: db.prepare('DELETE FROM integration_bindings WHERE pod_id = ?'),
+      deleteByAppId: db.prepare('DELETE FROM integration_bindings WHERE app_id = ?'),
     },
 
     podSkillIds: {
@@ -324,47 +304,6 @@ function buildStatements(db: Database): {
       deleteByCanvasId: db.prepare('DELETE FROM messages WHERE canvas_id = ?'),
     },
 
-    slackApp: {
-      insert: db.prepare(
-        'INSERT INTO slack_apps (id, name, bot_token, signing_secret, bot_user_id) VALUES ($id, $name, $botToken, $signingSecret, $botUserId)',
-      ),
-      selectAll: db.prepare('SELECT * FROM slack_apps'),
-      selectById: db.prepare('SELECT * FROM slack_apps WHERE id = ?'),
-      selectByBotToken: db.prepare('SELECT * FROM slack_apps WHERE bot_token = ?'),
-      update: db.prepare(
-        'UPDATE slack_apps SET name = $name, bot_token = $botToken, signing_secret = $signingSecret, bot_user_id = $botUserId WHERE id = $id',
-      ),
-      updateBotUserId: db.prepare('UPDATE slack_apps SET bot_user_id = $botUserId WHERE id = $id'),
-      deleteById: db.prepare('DELETE FROM slack_apps WHERE id = ?'),
-    },
-
-    slackAppChannel: {
-      insert: db.prepare(
-        'INSERT OR IGNORE INTO slack_app_channels (slack_app_id, channel_id, channel_name) VALUES ($slackAppId, $channelId, $channelName)',
-      ),
-      selectByAppId: db.prepare('SELECT * FROM slack_app_channels WHERE slack_app_id = ?'),
-      deleteByAppId: db.prepare('DELETE FROM slack_app_channels WHERE slack_app_id = ?'),
-    },
-
-    telegramBot: {
-      insert: db.prepare(
-        'INSERT INTO telegram_bots (id, name, bot_token, bot_username) VALUES ($id, $name, $botToken, $botUsername)',
-      ),
-      selectAll: db.prepare('SELECT * FROM telegram_bots'),
-      selectById: db.prepare('SELECT * FROM telegram_bots WHERE id = ?'),
-      selectByBotToken: db.prepare('SELECT * FROM telegram_bots WHERE bot_token = ?'),
-      updateBotUsername: db.prepare('UPDATE telegram_bots SET bot_username = $botUsername WHERE id = $id'),
-      deleteById: db.prepare('DELETE FROM telegram_bots WHERE id = ?'),
-    },
-
-    telegramBotChat: {
-      upsert: db.prepare(
-        'INSERT OR REPLACE INTO telegram_bot_chats (telegram_bot_id, chat_id, chat_type, title, username) VALUES ($telegramBotId, $chatId, $chatType, $title, $username)',
-      ),
-      selectByBotId: db.prepare('SELECT * FROM telegram_bot_chats WHERE telegram_bot_id = ?'),
-      deleteByBotId: db.prepare('DELETE FROM telegram_bot_chats WHERE telegram_bot_id = ?'),
-    },
-
     repositoryMetadata: {
       upsert: db.prepare(
         'INSERT OR REPLACE INTO repository_metadata (id, name, path, parent_repo_id, branch_name, current_branch) VALUES ($id, $name, $path, $parentRepoId, $branchName, $currentBranch)',
@@ -404,14 +343,18 @@ function buildStatements(db: Database): {
       selectAll: db.prepare('SELECT * FROM global_settings'),
     },
 
-    jiraApp: {
+    integrationApp: {
       insert: db.prepare(
-        'INSERT INTO jira_apps (id, name, site_url, email, api_token, webhook_secret) VALUES ($id, $name, $siteUrl, $email, $apiToken, $webhookSecret)',
+        'INSERT INTO integration_apps (id, provider, name, config_json, extra_json) VALUES ($id, $provider, $name, $configJson, $extraJson)',
       ),
-      selectAll: db.prepare('SELECT * FROM jira_apps'),
-      selectById: db.prepare('SELECT * FROM jira_apps WHERE id = ?'),
-      selectBySiteUrlAndEmail: db.prepare('SELECT * FROM jira_apps WHERE site_url = ? AND email = ?'),
-      deleteById: db.prepare('DELETE FROM jira_apps WHERE id = ?'),
+      selectAll: db.prepare('SELECT * FROM integration_apps'),
+      selectById: db.prepare('SELECT * FROM integration_apps WHERE id = ?'),
+      selectByProvider: db.prepare('SELECT * FROM integration_apps WHERE provider = ?'),
+      selectByProviderAndConfigField: db.prepare(
+        "SELECT * FROM integration_apps WHERE provider = $provider AND json_extract(config_json, $jsonPath) = $value LIMIT 1",
+      ),
+      updateExtraJson: db.prepare('UPDATE integration_apps SET extra_json = $extraJson WHERE id = $id'),
+      deleteById: db.prepare('DELETE FROM integration_apps WHERE id = ?'),
     },
   };
 }

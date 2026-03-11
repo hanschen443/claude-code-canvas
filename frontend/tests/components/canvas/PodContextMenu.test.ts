@@ -52,8 +52,14 @@ vi.mock('lucide-vue-next', () => ({
   Unplug: { name: 'Unplug', template: '<svg />' },
 }))
 
-vi.mock('@/components/icons/SlackIcon.vue', () => ({
-  default: { name: 'SlackIcon', template: '<svg />' },
+vi.mock('@/integration/providerRegistry', () => ({
+  getAllProviders: vi.fn(() => [
+    {
+      name: 'slack',
+      label: 'Slack',
+      icon: { name: 'SlackIcon', template: '<svg />' },
+    },
+  ]),
 }))
 
 const defaultProps = {
@@ -164,60 +170,60 @@ describe('PodContextMenu', () => {
     })
   })
 
-  describe('Slack 按鈕', () => {
-    it('Pod 沒有 slackBinding 時應顯示「連接 Slack」按鈕', () => {
-      mockGetPodById.mockReturnValue({ id: 'pod-123', slackBinding: undefined })
+  describe('Integration 按鈕', () => {
+    it('Pod 沒有 integrationBindings 時應顯示「連接 Slack」按鈕', () => {
+      mockGetPodById.mockReturnValue({ id: 'pod-123', integrationBindings: [] })
 
       const wrapper = mountMenu()
       const buttons = wrapper.findAll('button')
-      const slackButton = buttons.find((b) => b.text().includes('連接 Slack'))
+      const connectButton = buttons.find((b) => b.text().includes('連接 Slack'))
 
-      expect(slackButton).toBeDefined()
-      expect(slackButton?.exists()).toBe(true)
+      expect(connectButton).toBeDefined()
+      expect(connectButton?.exists()).toBe(true)
     })
 
-    it('Pod 有 slackBinding 時應顯示「斷開 Slack」按鈕', () => {
+    it('Pod 有 slack integrationBinding 時應顯示「斷開 Slack」按鈕', () => {
       mockGetPodById.mockReturnValue({
         id: 'pod-123',
-        slackBinding: { slackAppId: 'app-001', slackChannelId: 'C001' },
+        integrationBindings: [{ provider: 'slack', appId: 'app-001', resourceId: 'C001', extra: {} }],
       })
 
       const wrapper = mountMenu()
       const buttons = wrapper.findAll('button')
-      const slackButton = buttons.find((b) => b.text().includes('斷開 Slack'))
+      const disconnectButton = buttons.find((b) => b.text().includes('斷開 Slack'))
 
-      expect(slackButton).toBeDefined()
-      expect(slackButton?.exists()).toBe(true)
+      expect(disconnectButton).toBeDefined()
+      expect(disconnectButton?.exists()).toBe(true)
     })
 
-    it('點擊「連接 Slack」應 emit connect-slack 事件', async () => {
-      mockGetPodById.mockReturnValue({ id: 'pod-123', slackBinding: undefined })
+    it('點擊「連接 Slack」應 emit connect-integration 事件', async () => {
+      mockGetPodById.mockReturnValue({ id: 'pod-123', integrationBindings: [] })
 
       const wrapper = mountMenu()
       const buttons = wrapper.findAll('button')
-      const slackButton = buttons.find((b) => b.text().includes('連接 Slack'))
+      const connectButton = buttons.find((b) => b.text().includes('連接 Slack'))
 
-      await slackButton?.trigger('click')
+      await connectButton?.trigger('click')
 
-      expect(wrapper.emitted('connect-slack')).toBeTruthy()
-      expect(wrapper.emitted('connect-slack')?.[0]).toEqual(['pod-123'])
+      expect(wrapper.emitted('connect-integration')).toBeTruthy()
+      expect(wrapper.emitted('connect-integration')?.[0]).toEqual(['pod-123', 'slack'])
       expect(wrapper.emitted('close')).toBeTruthy()
     })
 
-    it('點擊「斷開 Slack」應 emit disconnect-slack 事件', async () => {
+    it('點擊「斷開 Slack」應 emit disconnect-integration 事件', async () => {
       mockGetPodById.mockReturnValue({
         id: 'pod-123',
-        slackBinding: { slackAppId: 'app-001', slackChannelId: 'C001' },
+        integrationBindings: [{ provider: 'slack', appId: 'app-001', resourceId: 'C001', extra: {} }],
       })
 
       const wrapper = mountMenu()
       const buttons = wrapper.findAll('button')
-      const slackButton = buttons.find((b) => b.text().includes('斷開 Slack'))
+      const disconnectButton = buttons.find((b) => b.text().includes('斷開 Slack'))
 
-      await slackButton?.trigger('click')
+      await disconnectButton?.trigger('click')
 
-      expect(wrapper.emitted('disconnect-slack')).toBeTruthy()
-      expect(wrapper.emitted('disconnect-slack')?.[0]).toEqual(['pod-123'])
+      expect(wrapper.emitted('disconnect-integration')).toBeTruthy()
+      expect(wrapper.emitted('disconnect-integration')?.[0]).toEqual(['pod-123', 'slack'])
       expect(wrapper.emitted('close')).toBeTruthy()
     })
   })

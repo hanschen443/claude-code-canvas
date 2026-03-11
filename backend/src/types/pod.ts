@@ -1,7 +1,5 @@
 import type { ScheduleConfig } from './schedule.js';
-import type { PodSlackBinding } from './slack.js';
-import type { PodTelegramBinding } from './telegram.js';
-import type { PodJiraBinding } from './jira.js';
+import type { IntegrationBinding } from './integration.js';
 
 export type PodStatus = 'idle' | 'chatting' | 'summarizing' | 'error';
 
@@ -25,7 +23,5 @@ export interface Pod {
   commandId: string | null;
   autoClear: boolean;
   schedule?: ScheduleConfig;
-  slackBinding?: PodSlackBinding;
-  telegramBinding?: PodTelegramBinding;
-  jiraBinding?: PodJiraBinding | null;
+  integrationBindings?: IntegrationBinding[];
 }

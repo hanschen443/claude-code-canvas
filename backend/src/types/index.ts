@@ -37,12 +37,6 @@ export type { Canvas } from './canvas.js';
 export type { McpServer, McpServerConfig, StdioMcpServerConfig, HttpMcpServerConfig } from './mcpServer.js';
 export type { McpServerNote } from './mcpServerNote.js';
 
-export type { SlackApp, SlackAppConnectionStatus, SlackChannel, PodSlackBinding, SlackMessage, SlackEvent, AppMentionEvent, SlackUrlVerificationPayload } from './slack.js';
-
-export type { TelegramBot, TelegramBotConnectionStatus, TelegramChat, TelegramChatType, PodTelegramBinding, TelegramMessage } from './telegram.js';
-
-export type { JiraApp, JiraAppConnectionStatus, JiraProject, PodJiraBinding, SanitizedJiraApp, JiraChangelogItem, JiraWebhookPayloadLite } from './jira.js';
-
 export type {
   CreatePodRequest,
   CreatePodResponse,

@@ -39,17 +39,17 @@ export function resetDb(): void {
 
   // 子表先刪，避免外鍵約束衝突
   database.exec('DELETE FROM pod_manifests');
-  database.exec('DELETE FROM slack_app_channels');
   database.exec('DELETE FROM messages');
   database.exec('DELETE FROM notes');
   database.exec('DELETE FROM connections');
   database.exec('DELETE FROM pod_skill_ids');
   database.exec('DELETE FROM pod_sub_agent_ids');
   database.exec('DELETE FROM pod_mcp_server_ids');
+  database.exec('DELETE FROM integration_bindings');
   database.exec('DELETE FROM pods');
   database.exec('DELETE FROM canvases');
   database.exec('DELETE FROM mcp_servers');
-  database.exec('DELETE FROM slack_apps');
+  database.exec('DELETE FROM integration_apps');
   database.exec('DELETE FROM repository_metadata');
 }
 

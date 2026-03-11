@@ -29,9 +29,7 @@ import CloneRepositoryModal from './CloneRepositoryModal.vue'
 import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
 import CreateEditModal from './CreateEditModal.vue'
 import McpServerModal from './McpServerModal.vue'
-import SlackConnectModal from '@/components/slack/SlackConnectModal.vue'
-import TelegramConnectModal from '@/components/telegram/TelegramConnectModal.vue'
-import JiraConnectModal from '@/components/jira/JiraConnectModal.vue'
+import IntegrationConnectModal from '@/components/integration/IntegrationConnectModal.vue'
 import type {Pod, PodTypeConfig, Position, McpServerConfig} from '@/types'
 import {
   POD_MENU_X_OFFSET,
@@ -39,9 +37,7 @@ import {
   DEFAULT_POD_ROTATION_RANGE,
 } from '@/lib/constants'
 import { screenToCanvasPosition } from '@/lib/canvasCoordinateUtils'
-import { useSlackStore } from '@/stores/slackStore'
-import { useTelegramStore } from '@/stores/telegramStore'
-import { useJiraStore } from '@/stores/jiraStore'
+import { useIntegrationStore } from '@/stores/integrationStore'
 
 const {
   podStore,
@@ -69,19 +65,10 @@ const showCreateRepositoryModal = ref(false)
 const showCloneRepositoryModal = ref(false)
 const lastMenuPosition = ref<Position | null>(null)
 
-const slackConnectModal = ref<{ visible: boolean; podId: string }>({
+const integrationConnectModal = ref<{ visible: boolean; podId: string; provider: string }>({
   visible: false,
-  podId: ''
-})
-
-const telegramConnectModal = ref<{ visible: boolean; podId: string }>({
-  visible: false,
-  podId: ''
-})
-
-const jiraConnectModal = ref<{ visible: boolean; podId: string }>({
-  visible: false,
-  podId: ''
+  podId: '',
+  provider: '',
 })
 
 const {
@@ -250,28 +237,12 @@ const handlePodDragComplete = (data: { id: string }): void => {
   podStore.syncPodPosition(data.id)
 }
 
-const handleConnectSlack = (podId: string): void => {
-  slackConnectModal.value = { visible: true, podId }
+const handleConnectIntegration = (podId: string, provider: string): void => {
+  integrationConnectModal.value = { visible: true, podId, provider }
 }
 
-const handleDisconnectSlack = async (podId: string): Promise<void> => {
-  await useSlackStore().unbindSlackFromPod(podId)
-}
-
-const handleConnectTelegram = (podId: string): void => {
-  telegramConnectModal.value = { visible: true, podId }
-}
-
-const handleDisconnectTelegram = async (podId: string): Promise<void> => {
-  await useTelegramStore().unbindTelegramFromPod(podId)
-}
-
-const handleConnectJira = (podId: string): void => {
-  jiraConnectModal.value = { visible: true, podId }
-}
-
-const handleDisconnectJira = async (podId: string): Promise<void> => {
-  await useJiraStore().unbindJiraFromPod(podId)
+const handleDisconnectIntegration = async (podId: string, provider: string): Promise<void> => {
+  await useIntegrationStore().unbindFromPod(provider, podId)
 }
 
 const handleOpenCreateRepositoryModal = (): void => {
@@ -436,12 +407,8 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
     :position="podContextMenu.position"
     :pod-id="podContextMenu.data.podId"
     @close="closePodContextMenu"
-    @connect-slack="handleConnectSlack"
-    @disconnect-slack="handleDisconnectSlack"
-    @connect-telegram="handleConnectTelegram"
-    @disconnect-telegram="handleDisconnectTelegram"
-    @connect-jira="handleConnectJira"
-    @disconnect-jira="handleDisconnectJira"
+    @connect-integration="handleConnectIntegration"
+    @disconnect-integration="handleDisconnectIntegration"
   />
 
   <RepositoryContextMenu
@@ -502,18 +469,9 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
     @submit="handleMcpServerModalSubmit"
   />
 
-  <SlackConnectModal
-    v-model:open="slackConnectModal.visible"
-    :pod-id="slackConnectModal.podId"
-  />
-
-  <TelegramConnectModal
-    v-model:open="telegramConnectModal.visible"
-    :pod-id="telegramConnectModal.podId"
-  />
-
-  <JiraConnectModal
-    v-model:open="jiraConnectModal.visible"
-    :pod-id="jiraConnectModal.podId"
+  <IntegrationConnectModal
+    v-model:open="integrationConnectModal.visible"
+    :pod-id="integrationConnectModal.podId"
+    :provider="integrationConnectModal.provider"
   />
 </template>

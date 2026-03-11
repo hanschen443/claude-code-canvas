@@ -6,9 +6,7 @@ import ChatHeader from './ChatHeader.vue'
 import ChatMessages from './ChatMessages.vue'
 import ChatInput from './ChatInput.vue'
 import ChatWorkflowBlockedHint from './ChatWorkflowBlockedHint.vue'
-import ChatSlackBlockedHint from './ChatSlackBlockedHint.vue'
-import ChatTelegramBlockedHint from './ChatTelegramBlockedHint.vue'
-import ChatJiraBlockedHint from './ChatJiraBlockedHint.vue'
+import ChatIntegrationBlockedHint from '@/components/integration/ChatIntegrationBlockedHint.vue'
 import { useChatStore } from '@/stores/chat'
 import { useConnectionStore } from '@/stores/connectionStore'
 
@@ -27,9 +25,9 @@ const messages = computed(() => chatStore.getMessages(props.pod.id))
 const isTyping = computed(() => props.pod.status === 'chatting')
 const isHistoryLoading = computed(() => chatStore.isHistoryLoading(props.pod.id))
 
-const isSlackBound = computed(() => props.pod.slackBinding != null)
-const isTelegramBound = computed(() => props.pod.telegramBinding != null)
-const isJiraBound = computed(() => props.pod.jiraBinding != null)
+const firstIntegrationProvider = computed<string | null>(() =>
+  props.pod.integrationBindings?.[0]?.provider ?? null
+)
 const workflowRole = computed(() => connectionStore.getPodWorkflowRole(props.pod.id))
 const isMiddlePod = computed(() => workflowRole.value === 'middle')
 const isWorkflowBusy = computed(() => {
@@ -84,9 +82,10 @@ onUnmounted(() => {
           :is-typing="isTyping"
           :is-loading-history="isHistoryLoading"
         />
-        <ChatSlackBlockedHint v-if="isSlackBound" />
-        <ChatTelegramBlockedHint v-else-if="isTelegramBound" />
-        <ChatJiraBlockedHint v-else-if="isJiraBound" />
+        <ChatIntegrationBlockedHint
+          v-if="firstIntegrationProvider"
+          :provider="firstIntegrationProvider"
+        />
         <ChatWorkflowBlockedHint v-else-if="isMiddlePod" />
         <ChatInput
           v-else

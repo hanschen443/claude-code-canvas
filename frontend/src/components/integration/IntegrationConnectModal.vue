@@ -1,0 +1,356 @@
+<script setup lang="ts">
+import { ref, watch, computed, nextTick } from 'vue'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { getProvider } from '@/integration/providerRegistry'
+import { useIntegrationStore } from '@/stores/integrationStore'
+import { usePodStore } from '@/stores'
+import type { IntegrationApp, IntegrationProviderConfig } from '@/types/integration'
+
+interface Props {
+  open: boolean
+  podId: string
+  provider: string
+}
+
+const props = defineProps<Props>()
+
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+}>()
+
+const integrationStore = useIntegrationStore()
+const podStore = usePodStore()
+
+const config = computed<IntegrationProviderConfig>(() => getProvider(props.provider))
+const apps = computed(() => integrationStore.getAppsByProvider(props.provider))
+
+const selectedAppId = ref<string | null>(null)
+const extraValues = ref<Record<string, string>>({})
+const selectedResourceId = ref<string | null>(null)
+const manualResourceInput = ref<string>('')
+
+// 回填 binding 時暫停清除 watch 的旗標
+const isRestoringBinding = ref(false)
+
+const selectedApp = computed<IntegrationApp | undefined>(() =>
+  selectedAppId.value ? integrationStore.getAppById(props.provider, selectedAppId.value) : undefined
+)
+
+const resources = computed(() =>
+  selectedApp.value ? config.value.getResources(selectedApp.value) : []
+)
+
+const isManualInput = computed<boolean>(() =>
+  config.value.hasManualResourceInput?.(extraValues.value) ?? false
+)
+
+// 手動輸入的錯誤訊息
+const manualInputError = computed<string>(() => {
+  const manualConfig = config.value.manualResourceInputConfig
+  if (!manualConfig) return ''
+  return manualConfig.validate(manualResourceInput.value)
+})
+
+const isConfirmDisabled = computed<boolean>(() => {
+  if (apps.value.length === 0 || !selectedAppId.value) return true
+
+  // 如果有 extra fields，確認都已選擇
+  const extraFields = config.value.bindingExtraFields ?? []
+  if (extraFields.some((field) => !extraValues.value[field.key])) return true
+
+  if (isManualInput.value) {
+    return manualInputError.value !== '' || manualResourceInput.value === ''
+  }
+
+  return !selectedResourceId.value
+})
+
+function initExtraValues(): void {
+  const extra: Record<string, string> = {}
+  const extraFields = config.value.bindingExtraFields ?? []
+  extraFields.forEach((field) => {
+    extra[field.key] = field.defaultValue
+  })
+  extraValues.value = extra
+}
+
+function resetState(): void {
+  selectedAppId.value = null
+  selectedResourceId.value = null
+  manualResourceInput.value = ''
+  initExtraValues()
+}
+
+watch(
+  () => props.open,
+  (newOpen) => {
+    if (!newOpen) {
+      resetState()
+      return
+    }
+
+    for (const app of apps.value) {
+      if (app.connectionStatus === 'connected') {
+        integrationStore.refreshAppResources(props.provider, app.id)
+      }
+    }
+
+    initExtraValues()
+
+    const pod = podStore.getPodById(props.podId)
+    const binding = (pod?.integrationBindings ?? []).find((b) => b.provider === props.provider)
+
+    if (!binding) {
+      selectedAppId.value = null
+      selectedResourceId.value = null
+      manualResourceInput.value = ''
+      return
+    }
+
+    // 回填時暫停 watch 清除邏輯，避免設定 selectedAppId 後 watch 清除 selectedResourceId
+    isRestoringBinding.value = true
+    selectedAppId.value = binding.appId
+
+    // 回填 extra values（如 Telegram 的 chatType）
+    const extraFields = config.value.bindingExtraFields ?? []
+    extraFields.forEach((field) => {
+      const savedValue = binding.extra[field.key]
+      if (typeof savedValue === 'string') {
+        extraValues.value[field.key] = savedValue
+      }
+    })
+
+    selectedResourceId.value = binding.resourceId
+
+    // 回填手動輸入值（private 模式下 resourceId 即為 User ID）
+    if (config.value.hasManualResourceInput?.(extraValues.value)) {
+      manualResourceInput.value = binding.resourceId
+    }
+
+    // 等待 watch 觸發後再解除旗標
+    nextTick(() => {
+      isRestoringBinding.value = false
+    })
+  }
+)
+
+// 切換 App 時清除 resource 選擇（回填期間不清除）
+watch(selectedAppId, () => {
+  if (isRestoringBinding.value) return
+  selectedResourceId.value = null
+  manualResourceInput.value = ''
+})
+
+// 切換 extra fields 時清除 resource 選擇（回填期間不清除）
+watch(
+  extraValues,
+  () => {
+    if (isRestoringBinding.value) return
+    selectedResourceId.value = null
+    manualResourceInput.value = ''
+  },
+  { deep: true }
+)
+
+const handleConfirm = async (): Promise<void> => {
+  if (!selectedAppId.value) return
+
+  let resourceId: string
+
+  if (isManualInput.value) {
+    if (manualInputError.value !== '' || manualResourceInput.value === '') return
+    resourceId = manualResourceInput.value
+  } else {
+    if (!selectedResourceId.value) return
+    resourceId = selectedResourceId.value
+  }
+
+  const extra: Record<string, unknown> = {}
+  Object.entries(extraValues.value).forEach(([k, v]) => {
+    extra[k] = v
+  })
+
+  await integrationStore.bindToPod(props.provider, props.podId, selectedAppId.value, resourceId, extra)
+  emit('update:open', false)
+}
+
+const handleClose = (): void => {
+  emit('update:open', false)
+}
+</script>
+
+<template>
+  <Dialog
+    :open="open"
+    @update:open="handleClose"
+  >
+    <DialogContent class="max-w-lg">
+      <DialogHeader>
+        <DialogTitle>連接 {{ config.label }}</DialogTitle>
+        <DialogDescription>
+          選擇要與此 Pod 連接的 {{ config.label }} App 和{{ config.resourceLabel }}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div class="space-y-4">
+        <div
+          v-if="apps.length === 0"
+          class="py-4 text-sm text-muted-foreground"
+        >
+          尚未有可用的 {{ config.label }} App，請先前往管理介面新增
+        </div>
+
+        <template v-else>
+          <div class="space-y-2">
+            <Label>選擇 App</Label>
+            <RadioGroup
+              v-model="selectedAppId"
+              class="space-y-2"
+            >
+              <div
+                v-for="app in apps"
+                :key="app.id"
+                class="flex items-center gap-3"
+              >
+                <RadioGroupItem
+                  :id="`app-${app.id}`"
+                  :value="app.id"
+                />
+                <Label
+                  :for="`app-${app.id}`"
+                  class="flex cursor-pointer items-center gap-2 font-normal"
+                >
+                  <span
+                    class="size-2 shrink-0 rounded-full"
+                    :class="config.connectionStatusConfig[app.connectionStatus]?.dotClass"
+                  />
+                  {{ app.name }}
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <template v-if="selectedApp">
+            <!-- 額外欄位（如 Telegram 的 private/group 選擇） -->
+            <div
+              v-for="extraField in config.bindingExtraFields ?? []"
+              :key="extraField.key"
+              class="space-y-2"
+            >
+              <Label>{{ extraField.label }}</Label>
+              <RadioGroup
+                v-model="extraValues[extraField.key]"
+                class="flex gap-4"
+              >
+                <div
+                  v-for="option in extraField.options"
+                  :key="option.value"
+                  class="flex items-center gap-2"
+                >
+                  <RadioGroupItem
+                    :id="`${extraField.key}-${option.value}`"
+                    :value="option.value"
+                  />
+                  <Label
+                    :for="`${extraField.key}-${option.value}`"
+                    class="cursor-pointer font-normal"
+                  >
+                    {{ option.label }}
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <!-- 手動輸入模式（如 Telegram private User ID） -->
+            <div
+              v-if="isManualInput && config.manualResourceInputConfig"
+              class="space-y-2"
+            >
+              <Label :for="`manual-resource-${provider}`">
+                {{ config.manualResourceInputConfig.label }}
+              </Label>
+              <Input
+                :id="`manual-resource-${provider}`"
+                v-model="manualResourceInput"
+                type="text"
+                :placeholder="config.manualResourceInputConfig.placeholder"
+              />
+              <p
+                v-if="manualResourceInput && manualInputError"
+                class="text-xs text-red-500"
+              >
+                {{ manualInputError }}
+              </p>
+              <p class="text-xs text-muted-foreground">
+                {{ config.manualResourceInputConfig.hint }}
+              </p>
+            </div>
+
+            <!-- 資源列表選擇 -->
+            <div
+              v-else
+              class="space-y-2"
+            >
+              <Label>選擇{{ config.resourceLabel }}</Label>
+              <div
+                v-if="resources.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                {{ config.emptyResourceHint }}
+              </div>
+              <RadioGroup
+                v-else
+                v-model="selectedResourceId"
+                class="space-y-2"
+              >
+                <div
+                  v-for="resource in resources"
+                  :key="resource.id"
+                  class="flex items-center gap-3"
+                >
+                  <RadioGroupItem
+                    :id="`resource-${resource.id}`"
+                    :value="String(resource.id)"
+                  />
+                  <Label
+                    :for="`resource-${resource.id}`"
+                    class="cursor-pointer font-normal"
+                  >
+                    {{ resource.label }}
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </template>
+        </template>
+      </div>
+
+      <DialogFooter>
+        <Button
+          variant="outline"
+          @click="handleClose"
+        >
+          取消
+        </Button>
+        <Button
+          variant="default"
+          :disabled="isConfirmDisabled"
+          @click="handleConfirm"
+        >
+          確認
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+</template>

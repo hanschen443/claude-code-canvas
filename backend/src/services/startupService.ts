@@ -4,14 +4,8 @@ import { canvasStore } from './canvasStore.js';
 import { Result, ok, err } from '../types';
 import { config } from '../config';
 import { logger } from '../utils/logger.js';
-import type { LogCategory } from '../utils/logger.js';
-import { slackAppStore } from './slack/slackAppStore.js';
-import { slackClientManager } from './slack/slackClientManager.js';
-import { telegramBotStore } from './telegram/telegramBotStore.js';
-import { telegramClientManager } from './telegram/telegramClientManager.js';
-import { jiraAppStore } from './jira/jiraAppStore.js';
-import { jiraClientManager } from './jira/jiraClientManager.js';
-import './telegram/telegramEventService.js';
+import { integrationRegistry, integrationAppStore } from './integration/index.js';
+import './integration/providers/index.js';
 import { getDb } from '../database/index.js';
 
 class StartupService {
@@ -38,16 +32,8 @@ class StartupService {
 
     scheduleService.start();
 
-    this.restoreSlackConnections().catch((error) => {
-      logger.error('Slack', 'Error', '[StartupService] Slack 連線恢復時發生非預期錯誤', error);
-    });
-
-    this.restoreTelegramConnections().catch((error) => {
-      logger.error('Telegram', 'Error', '[StartupService] Telegram 連線恢復時發生非預期錯誤', error);
-    });
-
-    this.restoreJiraConnections().catch((error) => {
-      logger.error('Jira', 'Error', '[StartupService] Jira 連線恢復時發生非預期錯誤', error);
+    this.restoreIntegrationConnections().catch((error) => {
+      logger.error('Integration', 'Error', '[StartupService] Integration 連線恢復時發生非預期錯誤', error);
     });
 
     logger.log('Startup', 'Complete', '伺服器初始化完成');
@@ -65,53 +51,19 @@ class StartupService {
     return ok(undefined);
   }
 
-  private async restoreConnections<T extends {name: string}>(
-    items: T[],
-    initFn: (item: T) => Promise<void>,
-    category: LogCategory,
-    label: string,
-  ): Promise<void> {
-    if (items.length === 0) return;
-
-    logger.log(category, 'Load', `[StartupService] 開始恢復 ${items.length} 個 ${label} 連線`);
-
-    const results = await Promise.allSettled(items.map((item) => initFn(item)));
-
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      if (result.status === 'rejected') {
-        logger.error(category, 'Error', `[StartupService] ${label}「${items[i].name}」初始化恢復失敗`, result.reason);
+  private async restoreIntegrationConnections(): Promise<void> {
+    const providers = integrationRegistry.list();
+    for (const provider of providers) {
+      try {
+        const apps = integrationAppStore.list(provider.name);
+        for (const app of apps) {
+          await provider.initialize(app);
+        }
+        logger.log('Integration', 'Complete', `[StartupService] ${provider.name} 已恢復 ${apps.length} 個連線`);
+      } catch (error) {
+        logger.error('Integration', 'Error', `[StartupService] ${provider.name} 連線恢復失敗`, error);
       }
     }
-
-    logger.log(category, 'Complete', `[StartupService] ${label} 初始化恢復完成`);
-  }
-
-  private async restoreSlackConnections(): Promise<void> {
-    await this.restoreConnections(
-      slackAppStore.list(),
-      (app) => slackClientManager.initialize(app),
-      'Slack',
-      'Slack App',
-    );
-  }
-
-  private async restoreTelegramConnections(): Promise<void> {
-    await this.restoreConnections(
-      telegramBotStore.list(),
-      (bot) => telegramClientManager.initialize(bot),
-      'Telegram',
-      'Telegram Bot',
-    );
-  }
-
-  private async restoreJiraConnections(): Promise<void> {
-    await this.restoreConnections(
-      jiraAppStore.list(),
-      (app) => jiraClientManager.initialize(app),
-      'Jira',
-      'Jira App',
-    );
   }
 }
 

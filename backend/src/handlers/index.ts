@@ -15,10 +15,8 @@ import { canvasHandlerGroup } from './groups/canvasHandlerGroup.js';
 import { groupHandlerGroup } from './groups/groupHandlerGroup.js';
 import { cursorHandlerGroup } from './groups/cursorHandlerGroup.js';
 import { mcpServerHandlerGroup } from './groups/mcpServerHandlerGroup.js';
-import { slackHandlerGroup } from './groups/slackHandlerGroup.js';
-import { telegramHandlerGroup } from './groups/telegramHandlerGroup.js';
 import { configHandlerGroup } from './groups/configHandlerGroup.js';
-import { jiraHandlerGroup } from './groups/jiraHandlerGroup.js';
+import { integrationHandlerGroup } from './groups/integrationHandlerGroup.js';
 
 const registry = new HandlerRegistry();
 
@@ -38,10 +36,8 @@ registry.registerGroup(canvasHandlerGroup);
 registry.registerGroup(groupHandlerGroup);
 registry.registerGroup(cursorHandlerGroup);
 registry.registerGroup(mcpServerHandlerGroup);
-registry.registerGroup(slackHandlerGroup);
-registry.registerGroup(telegramHandlerGroup);
 registry.registerGroup(configHandlerGroup);
-registry.registerGroup(jiraHandlerGroup);
+registry.registerGroup(integrationHandlerGroup);
 
 export function registerAllHandlers(): void {
 	registry.registerToRouter();

@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import { type Component } from 'vue'
-import SlackIcon from '@/components/icons/SlackIcon.vue'
-import TelegramIcon from '@/components/icons/TelegramIcon.vue'
-import JiraIcon from '@/components/icons/JiraIcon.vue'
 import {
   Dialog,
   DialogContent,
@@ -10,13 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-
-interface IntegrationCategory {
-  id: string
-  name: string
-  description: string
-  icon: Component
-}
+import { getAllProviders } from '@/integration/providerRegistry'
 
 interface Props {
   open: boolean
@@ -29,26 +19,7 @@ const emit = defineEmits<{
   select: [category: string]
 }>()
 
-const categories: IntegrationCategory[] = [
-  {
-    id: 'slack',
-    name: 'Slack',
-    description: '管理 Slack App 連線與設定',
-    icon: SlackIcon,
-  },
-  {
-    id: 'telegram',
-    name: 'Telegram',
-    description: '管理 Telegram Bot 連線與設定',
-    icon: TelegramIcon,
-  },
-  {
-    id: 'jira',
-    name: 'Jira',
-    description: '管理 Jira App 連線與設定',
-    icon: JiraIcon,
-  },
-]
+const categories = getAllProviders()
 
 const handleSelect = (categoryId: string): void => {
   emit('update:open', false)
@@ -74,9 +45,9 @@ const handleClose = (): void => {
       <div class="space-y-2 py-2">
         <button
           v-for="category in categories"
-          :key="category.id"
+          :key="category.name"
           class="flex w-full cursor-pointer items-center gap-4 rounded-lg border border-border px-4 py-3 transition-colors hover:bg-accent"
-          @click="handleSelect(category.id)"
+          @click="handleSelect(category.name)"
         >
           <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
             <component
@@ -85,7 +56,7 @@ const handleClose = (): void => {
             />
           </span>
           <div class="flex flex-col gap-0.5 text-left">
-            <span class="text-sm font-semibold">{{ category.name }}</span>
+            <span class="text-sm font-semibold">{{ category.label }}</span>
             <span class="text-xs text-muted-foreground">{{ category.description }}</span>
           </div>
         </button>

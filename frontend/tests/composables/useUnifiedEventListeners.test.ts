@@ -14,13 +14,9 @@ import { useCommandStore } from '@/stores/note/commandStore'
 import { useMcpServerStore } from '@/stores/note/mcpServerStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
-import { useSlackStore } from '@/stores/slackStore'
-import { useTelegramStore } from '@/stores/telegramStore'
-import { useJiraStore } from '@/stores/jiraStore'
+import { useIntegrationStore } from '@/stores/integrationStore'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
-import type { SlackApp } from '@/types/slack'
-import type { TelegramBot } from '@/types/telegram'
-import type { JiraApp } from '@/types/jira'
+import type { IntegrationApp } from '@/types/integration'
 
 vi.mock('@/services/websocket', () => webSocketMockFactory())
 
@@ -70,8 +66,8 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.on).toHaveBeenCalled()
       const callCount = mockWebSocketClient.on.mock.calls.length
-      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received、jira:connection:status:changed、jira:message:received 共 7 個
-      const expectedCount = listeners.length + 7
+      // listeners 陣列長度加上單獨註冊的 pod:chat:user-message 和 integration:connection:status:changed 共 2 個
+      const expectedCount = listeners.length + 2
       expect(callCount).toBe(expectedCount)
     })
 
@@ -94,8 +90,8 @@ describe('useUnifiedEventListeners', () => {
 
       expect(mockWebSocketClient.off).toHaveBeenCalled()
       const callCount = mockWebSocketClient.off.mock.calls.length
-      // listeners 陣列長度加上單獨取消的 pod:chat:user-message、slack:connection:status:changed、slack:message:received、telegram:connection:status:changed、telegram:message:received、jira:connection:status:changed、jira:message:received 共 7 個
-      const expectedCount = listeners.length + 7
+      // listeners 陣列長度加上單獨取消的 pod:chat:user-message 和 integration:connection:status:changed 共 2 個
+      const expectedCount = listeners.length + 2
       expect(callCount).toBe(expectedCount)
     })
 
@@ -1286,132 +1282,122 @@ describe('useUnifiedEventListeners', () => {
     })
   })
 
-  describe('Slack 事件處理', () => {
-    const createMockSlackApp = (overrides?: Partial<SlackApp>): SlackApp => ({
-      id: 'slack-app-1',
-      name: 'Test Slack App',
+  describe('Integration 統一事件處理', () => {
+    const createMockIntegrationApp = (overrides?: Partial<IntegrationApp>): IntegrationApp => ({
+      id: 'app-1',
+      name: 'Test App',
       connectionStatus: 'disconnected',
-      channels: [],
+      provider: 'slack',
+      resources: [],
+      raw: {},
       ...overrides,
     })
 
-    it('slack:app:created 應新增 Slack App', () => {
+    it('integration:app:created 應新增 App 到 integrationStore', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const slackStore = useSlackStore()
-      slackStore.slackApps = []
+      const integrationStore = useIntegrationStore()
+      integrationStore.apps = { slack: [] }
 
       registerUnifiedListeners()
 
-      const slackApp = createMockSlackApp()
-      simulateEvent('slack:app:created', { slackApp })
+      simulateEvent('integration:app:created', {
+        provider: 'slack',
+        app: { id: 'app-1', name: 'Test App', connectionStatus: 'disconnected', channels: [] },
+      })
 
-      expect(slackStore.slackApps.some(a => a.id === 'slack-app-1')).toBe(true)
+      expect(integrationStore.apps['slack']?.some(a => a.id === 'app-1')).toBe(true)
     })
 
-    it('slack:app:created 無 slackApp 時不應新增', () => {
+    it('integration:app:created 無 app 時不應新增', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const slackStore = useSlackStore()
-      slackStore.slackApps = []
+      const integrationStore = useIntegrationStore()
+      integrationStore.apps = { slack: [] }
 
       registerUnifiedListeners()
 
-      simulateEvent('slack:app:created', {})
+      simulateEvent('integration:app:created', { provider: 'slack' })
 
-      expect(slackStore.slackApps.length).toBe(0)
+      expect(integrationStore.apps['slack']?.length).toBe(0)
     })
 
-    it('slack:app:created 應忽略 Canvas 檢查', () => {
+    it('integration:app:created 應忽略 Canvas 檢查', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
       const canvasStore = useCanvasStore()
-      const slackStore = useSlackStore()
+      const integrationStore = useIntegrationStore()
       canvasStore.activeCanvasId = 'canvas-1'
-      slackStore.slackApps = []
+      integrationStore.apps = { slack: [] }
 
       registerUnifiedListeners()
 
-      const slackApp = createMockSlackApp()
-      simulateEvent('slack:app:created', { slackApp, canvasId: 'canvas-other' })
-
-      expect(slackStore.slackApps.some(a => a.id === 'slack-app-1')).toBe(true)
-    })
-
-    it('slack:app:deleted 應移除 Slack App', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const slackStore = useSlackStore()
-      slackStore.slackApps = [createMockSlackApp()]
-
-      registerUnifiedListeners()
-
-      simulateEvent('slack:app:deleted', { slackAppId: 'slack-app-1' })
-
-      expect(slackStore.slackApps.some(a => a.id === 'slack-app-1')).toBe(false)
-    })
-
-    it('slack:app:deleted 無 slackAppId 時不應崩潰', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const slackStore = useSlackStore()
-      slackStore.slackApps = [createMockSlackApp()]
-
-      registerUnifiedListeners()
-
-      simulateEvent('slack:app:deleted', {})
-
-      expect(slackStore.slackApps.length).toBe(1)
-    })
-
-    it('slack:connection:status:changed 應更新 Slack App 狀態', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const slackStore = useSlackStore()
-      slackStore.slackApps = [createMockSlackApp({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      simulateEvent('slack:connection:status:changed', {
-        slackAppId: 'slack-app-1',
-        connectionStatus: 'connected',
-        channels: [{ id: 'ch-1', name: 'general' }],
+      simulateEvent('integration:app:created', {
+        provider: 'slack',
+        app: { id: 'app-1', name: 'Test App', connectionStatus: 'disconnected', channels: [] },
+        canvasId: 'canvas-other',
       })
 
-      const app = slackStore.slackApps.find(a => a.id === 'slack-app-1')
-      expect(app?.connectionStatus).toBe('connected')
-      expect(app?.channels).toEqual([{ id: 'ch-1', name: 'general' }])
+      expect(integrationStore.apps['slack']?.some(a => a.id === 'app-1')).toBe(true)
     })
 
-    it('slack:connection:status:changed 一般狀態變更不應觸發 toast', () => {
+    it('integration:app:deleted 應移除 App', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const slackStore = useSlackStore()
-      slackStore.slackApps = [createMockSlackApp({ connectionStatus: 'disconnected' })]
+      const integrationStore = useIntegrationStore()
+      integrationStore.apps = { slack: [createMockIntegrationApp()] }
 
       registerUnifiedListeners()
 
-      simulateEvent('slack:connection:status:changed', {
-        slackAppId: 'slack-app-1',
+      simulateEvent('integration:app:deleted', { provider: 'slack', appId: 'app-1' })
+
+      expect(integrationStore.apps['slack']?.some(a => a.id === 'app-1')).toBe(false)
+    })
+
+    it('integration:app:deleted 無 appId 時不應崩潰', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const integrationStore = useIntegrationStore()
+      integrationStore.apps = { slack: [createMockIntegrationApp()] }
+
+      registerUnifiedListeners()
+
+      simulateEvent('integration:app:deleted', { provider: 'slack' })
+
+      expect(integrationStore.apps['slack']?.length).toBe(1)
+    })
+
+    it('integration:connection:status:changed 應更新 App 狀態', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const integrationStore = useIntegrationStore()
+      integrationStore.apps = { slack: [createMockIntegrationApp({ connectionStatus: 'disconnected' })] }
+
+      registerUnifiedListeners()
+
+      simulateEvent('integration:connection:status:changed', {
+        provider: 'slack',
+        appId: 'app-1',
+        connectionStatus: 'connected',
+        resources: [{ id: 'ch-1', name: 'general' }],
+      })
+
+      const app = integrationStore.apps['slack']?.find(a => a.id === 'app-1')
+      expect(app?.connectionStatus).toBe('connected')
+      expect(app?.resources).toEqual([{ id: 'ch-1', label: '#general' }])
+    })
+
+    it('integration:connection:status:changed 一般狀態變更不應觸發 toast', () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners()
+      const integrationStore = useIntegrationStore()
+      integrationStore.apps = { slack: [createMockIntegrationApp({ connectionStatus: 'disconnected' })] }
+
+      registerUnifiedListeners()
+
+      simulateEvent('integration:connection:status:changed', {
+        provider: 'slack',
+        appId: 'app-1',
         connectionStatus: 'connected',
       })
 
       expect(sharedMockToast).not.toHaveBeenCalled()
     })
 
-    it('slack:message:received 應顯示 toast 通知', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-
-      registerUnifiedListeners()
-
-      simulateEvent('slack:message:received', {
-        podId: 'pod-1',
-        slackAppId: 'slack-app-1',
-        channelId: 'ch-1',
-        canvasId: 'canvas-1',
-        userName: 'testUser',
-        text: '這是一條測試訊息',
-      })
-
-      expect(sharedMockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Slack 訊息' })
-      )
-    })
-
-    it('pod:slack:bound 應更新 Pod', () => {
+    it('pod:integration:bound 應更新 Pod', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
       const podStore = usePodStore()
       const pod = createMockPod({ id: 'pod-1' })
@@ -1419,392 +1405,32 @@ describe('useUnifiedEventListeners', () => {
 
       registerUnifiedListeners()
 
-      const slackBinding = { slackAppId: 'slack-app-1', slackChannelId: 'ch-1' }
-      simulateEvent('pod:slack:bound', {
+      const integrationBindings = [{ provider: 'slack', appId: 'app-1', resourceId: 'ch-1', extra: {} }]
+      simulateEvent('pod:integration:bound', {
         canvasId: 'canvas-1',
-        pod: { ...pod, slackBinding },
+        pod: { ...pod, integrationBindings },
       })
 
       const updatedPod = podStore.getPodById('pod-1')
-      expect(updatedPod?.slackBinding).toEqual(slackBinding)
+      expect(updatedPod?.integrationBindings).toEqual(integrationBindings)
     })
 
-    it('pod:slack:unbound 應更新 Pod', () => {
+    it('pod:integration:unbound 應更新 Pod', () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners()
       const podStore = usePodStore()
-      const slackBinding = { slackAppId: 'slack-app-1', slackChannelId: 'ch-1' }
-      const pod = createMockPod({ id: 'pod-1', slackBinding })
+      const integrationBindings = [{ provider: 'slack', appId: 'app-1', resourceId: 'ch-1', extra: {} }]
+      const pod = createMockPod({ id: 'pod-1', integrationBindings })
       podStore.pods = [pod]
 
       registerUnifiedListeners()
 
-      simulateEvent('pod:slack:unbound', {
+      simulateEvent('pod:integration:unbound', {
         canvasId: 'canvas-1',
-        pod: { ...pod, slackBinding: undefined },
+        pod: { ...pod, integrationBindings: [] },
       })
 
       const updatedPod = podStore.getPodById('pod-1')
-      expect(updatedPod?.slackBinding).toBeUndefined()
-    })
-  })
-
-  describe('Telegram 事件處理', () => {
-    const createMockTelegramBot = (overrides?: Partial<TelegramBot>): TelegramBot => ({
-      id: 'telegram-bot-1',
-      name: 'Test Telegram Bot',
-      connectionStatus: 'disconnected',
-      chats: [],
-      botUsername: 'test_bot',
-      ...overrides,
-    })
-
-    it('telegram:bot:created 應新增 Telegram Bot', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = []
-
-      registerUnifiedListeners()
-
-      const telegramBot = createMockTelegramBot()
-      simulateEvent('telegram:bot:created', { telegramBot })
-
-      expect(telegramStore.telegramBots.some(b => b.id === 'telegram-bot-1')).toBe(true)
-    })
-
-    it('telegram:bot:created 無 telegramBot 時不應新增', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = []
-
-      registerUnifiedListeners()
-
-      simulateEvent('telegram:bot:created', {})
-
-      expect(telegramStore.telegramBots.length).toBe(0)
-    })
-
-    it('telegram:bot:created telegramBot.name 含 XSS 時不應新增', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = []
-
-      registerUnifiedListeners()
-
-      const telegramBot = createMockTelegramBot({ name: '<script>alert(1)</script>' })
-      simulateEvent('telegram:bot:created', { telegramBot })
-
-      expect(telegramStore.telegramBots.length).toBe(0)
-    })
-
-    it('telegram:bot:created telegramBot.id 為空時不應新增', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = []
-
-      registerUnifiedListeners()
-
-      const telegramBot = createMockTelegramBot({ id: '' })
-      simulateEvent('telegram:bot:created', { telegramBot })
-
-      expect(telegramStore.telegramBots.length).toBe(0)
-    })
-
-    it('telegram:bot:deleted 應移除 Telegram Bot', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = [createMockTelegramBot()]
-
-      registerUnifiedListeners()
-
-      simulateEvent('telegram:bot:deleted', { telegramBotId: 'telegram-bot-1' })
-
-      expect(telegramStore.telegramBots.some(b => b.id === 'telegram-bot-1')).toBe(false)
-    })
-
-    it('telegram:bot:deleted 無 telegramBotId 時不應崩潰', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = [createMockTelegramBot()]
-
-      registerUnifiedListeners()
-
-      simulateEvent('telegram:bot:deleted', {})
-
-      expect(telegramStore.telegramBots.length).toBe(1)
-    })
-
-    it('pod:telegram:bound 應更新 Pod', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const podStore = usePodStore()
-      const pod = createMockPod({ id: 'pod-1' })
-      podStore.pods = [pod]
-
-      registerUnifiedListeners()
-
-      const telegramBinding = { telegramBotId: 'telegram-bot-1', telegramChatId: 123456, chatType: 'group' as const }
-      simulateEvent('pod:telegram:bound', {
-        canvasId: 'canvas-1',
-        pod: { ...pod, telegramBinding },
-      })
-
-      const updatedPod = podStore.getPodById('pod-1')
-      expect(updatedPod?.telegramBinding).toEqual(telegramBinding)
-    })
-
-    it('pod:telegram:unbound 應更新 Pod', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const podStore = usePodStore()
-      const telegramBinding = { telegramBotId: 'telegram-bot-1', telegramChatId: 123456, chatType: 'group' as const }
-      const pod = createMockPod({ id: 'pod-1', telegramBinding })
-      podStore.pods = [pod]
-
-      registerUnifiedListeners()
-
-      simulateEvent('pod:telegram:unbound', {
-        canvasId: 'canvas-1',
-        pod: { ...pod, telegramBinding: undefined },
-      })
-
-      const updatedPod = podStore.getPodById('pod-1')
-      expect(updatedPod?.telegramBinding).toBeUndefined()
-    })
-
-    it('telegram:connection:status:changed 應更新 Telegram Bot 狀態', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      simulateEvent('telegram:connection:status:changed', {
-        telegramBotId: 'telegram-bot-1',
-        connectionStatus: 'connected',
-        chats: [{ id: 123, type: 'group', title: 'Test Group' }],
-      })
-
-      const bot = telegramStore.telegramBots.find(b => b.id === 'telegram-bot-1')
-      expect(bot?.connectionStatus).toBe('connected')
-      expect(bot?.chats).toEqual([{ id: 123, type: 'group', title: 'Test Group' }])
-    })
-
-    it('telegram:connection:status:changed 一般狀態變更不應觸發 toast', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      simulateEvent('telegram:connection:status:changed', {
-        telegramBotId: 'telegram-bot-1',
-        connectionStatus: 'connected',
-      })
-
-      expect(sharedMockToast).not.toHaveBeenCalled()
-    })
-
-    it('telegram:connection:status:changed 缺少 telegramBotId 時不應崩潰', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      expect(() => {
-        simulateEvent('telegram:connection:status:changed', {
-          connectionStatus: 'connected',
-        })
-      }).not.toThrow()
-
-      const bot = telegramStore.telegramBots.find(b => b.id === 'telegram-bot-1')
-      expect(bot?.connectionStatus).toBe('disconnected')
-    })
-
-    it('telegram:connection:status:changed 缺少 connectionStatus 時不應崩潰', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const telegramStore = useTelegramStore()
-      telegramStore.telegramBots = [createMockTelegramBot({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      expect(() => {
-        simulateEvent('telegram:connection:status:changed', {
-          telegramBotId: 'telegram-bot-1',
-        })
-      }).not.toThrow()
-
-      const bot = telegramStore.telegramBots.find(b => b.id === 'telegram-bot-1')
-      expect(bot?.connectionStatus).toBe('disconnected')
-    })
-
-    it('telegram:message:received 應顯示 toast 通知', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-
-      registerUnifiedListeners()
-
-      simulateEvent('telegram:message:received', {
-        podId: 'pod-1',
-        telegramBotId: 'telegram-bot-1',
-        chatId: 123456,
-        canvasId: 'canvas-1',
-        userName: 'testUser',
-        text: '這是一條 Telegram 測試訊息',
-      })
-
-      expect(sharedMockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Telegram 訊息' })
-      )
-    })
-  })
-
-  describe('Jira 事件處理', () => {
-    const createMockJiraApp = (overrides?: Partial<JiraApp>): JiraApp => ({
-      id: 'jira-app-1',
-      name: 'Test Jira App',
-      siteUrl: 'https://test.atlassian.net',
-      email: 'test@example.com',
-      connectionStatus: 'disconnected',
-      projects: [],
-      ...overrides,
-    })
-
-    it('jira:app:created 收到時應新增 JiraApp 到 jiraStore', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const jiraStore = useJiraStore()
-      jiraStore.jiraApps = []
-
-      registerUnifiedListeners()
-
-      const jiraApp = createMockJiraApp()
-      simulateEvent('jira:app:created', { jiraApp })
-
-      expect(jiraStore.jiraApps.some(a => a.id === 'jira-app-1')).toBe(true)
-    })
-
-    it('jira:app:created 無 jiraApp 時不應新增', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const jiraStore = useJiraStore()
-      jiraStore.jiraApps = []
-
-      registerUnifiedListeners()
-
-      simulateEvent('jira:app:created', {})
-
-      expect(jiraStore.jiraApps.length).toBe(0)
-    })
-
-    it('jira:app:deleted 收到時應從 jiraStore 移除', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const jiraStore = useJiraStore()
-      jiraStore.jiraApps = [createMockJiraApp()]
-
-      registerUnifiedListeners()
-
-      simulateEvent('jira:app:deleted', { jiraAppId: 'jira-app-1' })
-
-      expect(jiraStore.jiraApps.some(a => a.id === 'jira-app-1')).toBe(false)
-    })
-
-    it('jira:app:deleted 無 jiraAppId 時不應崩潰', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const jiraStore = useJiraStore()
-      jiraStore.jiraApps = [createMockJiraApp()]
-
-      registerUnifiedListeners()
-
-      expect(() => {
-        simulateEvent('jira:app:deleted', {})
-      }).not.toThrow()
-
-      expect(jiraStore.jiraApps.length).toBe(1)
-    })
-
-    it('pod:jira:bound 收到時應更新 Pod 的 jiraBinding', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const podStore = usePodStore()
-      const pod = createMockPod({ id: 'pod-1' })
-      podStore.pods = [pod]
-
-      registerUnifiedListeners()
-
-      const jiraBinding = { jiraAppId: 'jira-app-1', jiraProjectKey: 'PROJ' }
-      simulateEvent('pod:jira:bound', {
-        canvasId: 'canvas-1',
-        pod: { ...pod, jiraBinding },
-      })
-
-      const updatedPod = podStore.getPodById('pod-1')
-      expect(updatedPod?.jiraBinding).toEqual(jiraBinding)
-    })
-
-    it('pod:jira:unbound 收到時應清除 Pod 的 jiraBinding', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const podStore = usePodStore()
-      const jiraBinding = { jiraAppId: 'jira-app-1', jiraProjectKey: 'PROJ' }
-      const pod = createMockPod({ id: 'pod-1', jiraBinding })
-      podStore.pods = [pod]
-
-      registerUnifiedListeners()
-
-      simulateEvent('pod:jira:unbound', {
-        canvasId: 'canvas-1',
-        pod: { ...pod, jiraBinding: undefined },
-      })
-
-      const updatedPod = podStore.getPodById('pod-1')
-      expect(updatedPod?.jiraBinding).toBeUndefined()
-    })
-
-    it('jira:connection:status:changed 應更新 JiraApp 的 connectionStatus 和 projects', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const jiraStore = useJiraStore()
-      jiraStore.jiraApps = [createMockJiraApp({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      simulateEvent('jira:connection:status:changed', {
-        jiraAppId: 'jira-app-1',
-        connectionStatus: 'connected',
-        projects: [{ key: 'PROJ', name: 'Test Project' }],
-      })
-
-      const app = jiraStore.jiraApps.find(a => a.id === 'jira-app-1')
-      expect(app?.connectionStatus).toBe('connected')
-      expect(app?.projects).toEqual([{ key: 'PROJ', name: 'Test Project' }])
-    })
-
-    it('jira:connection:status:changed 缺少 jiraAppId 時不應崩潰', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-      const jiraStore = useJiraStore()
-      jiraStore.jiraApps = [createMockJiraApp({ connectionStatus: 'disconnected' })]
-
-      registerUnifiedListeners()
-
-      expect(() => {
-        simulateEvent('jira:connection:status:changed', {
-          connectionStatus: 'connected',
-        })
-      }).not.toThrow()
-
-      const app = jiraStore.jiraApps.find(a => a.id === 'jira-app-1')
-      expect(app?.connectionStatus).toBe('disconnected')
-    })
-
-    it('jira:message:received 應顯示 toast 通知', () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners()
-
-      registerUnifiedListeners()
-
-      simulateEvent('jira:message:received', {
-        podId: 'pod-1',
-        jiraAppId: 'jira-app-1',
-        canvasId: 'canvas-1',
-        userName: 'testUser',
-        text: '這是一條 Jira 測試訊息',
-      })
-
-      expect(sharedMockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Jira 訊息' })
-      )
+      expect(updatedPod?.integrationBindings).toEqual([])
     })
   })
 })

@@ -18,8 +18,7 @@ import {
 } from './messageBuilder.js';
 import type {StreamCallback} from './types.js';
 import {z} from 'zod';
-import {slackClientManager} from '../slack/slackClientManager.js';
-import {telegramClientManager} from '../telegram/telegramClientManager.js';
+import {integrationRegistry} from '../integration/index.js';
 
 export type {StreamEvent, StreamCallback} from './types.js';
 
@@ -347,90 +346,46 @@ export class ClaudeService {
         return createUserMessageStream(contentArray, sessionId);
     }
 
-    private applySlackToolOptions(pod: Pod, queryOptions: Options): void {
-        if (!pod.slackBinding) return;
+    private applyIntegrationToolOptions(pod: Pod, queryOptions: Options): void {
+        if (!pod.integrationBindings?.length) return;
 
-        const {slackAppId, slackChannelId} = pod.slackBinding;
+        for (const binding of pod.integrationBindings) {
+            const provider = integrationRegistry.get(binding.provider);
+            if (!provider?.sendMessage) continue;
 
-        const slackReplyTool = tool(
-            'slack_reply',
-            '回覆 Slack 頻道訊息。當需要在 Slack 中回覆用戶時使用此工具。',
-            {
-                text: z.string().min(1).max(4000).describe('要發送到 Slack 頻道的訊息內容（1-4000 字元）'),
-                thread_ts: z.string().regex(/^\d+\.\d+$/).optional().describe('要回覆的對話串時間戳（選填，格式：timestamp.thread_timestamp）'),
-            },
-            async (params: {text: string; thread_ts?: string}) => {
-                const result = await slackClientManager.sendMessage(
-                    slackAppId,
-                    slackChannelId,
-                    params.text,
-                    params.thread_ts
-                );
+            const serverName = `${binding.provider}-reply`;
+            const toolName = `${binding.provider}_reply`;
 
-                if (!result.success) {
-                    return {success: false, error: result.error};
+            const replyTool = tool(
+                toolName,
+                `回覆 ${provider.displayName} 訊息。當需要在 ${provider.displayName} 中回覆用戶時使用此工具。`,
+                {
+                    text: z.string().min(1).describe('要發送的訊息內容'),
+                },
+                async (params: {text: string}) => {
+                    const result = await provider.sendMessage!(binding.appId, binding.resourceId, params.text, binding.extra);
+                    if (!result.success) {
+                        return {success: false, error: result.error};
+                    }
+                    return {success: true};
                 }
-                return {success: true};
-            }
-        );
+            );
 
-        const slackMcpServer = createSdkMcpServer({
-            name: 'slack-reply',
-            tools: [slackReplyTool],
-        });
+            const mcpServer = createSdkMcpServer({
+                name: serverName,
+                tools: [replyTool],
+            });
 
-        queryOptions.mcpServers = {
-            ...queryOptions.mcpServers,
-            'slack-reply': slackMcpServer,
-        } as Options['mcpServers'];
+            queryOptions.mcpServers = {
+                ...queryOptions.mcpServers,
+                [serverName]: mcpServer,
+            } as Options['mcpServers'];
 
-        queryOptions.allowedTools = [
-            ...(queryOptions.allowedTools ?? []),
-            'mcp__slack-reply__slack_reply',
-        ];
-    }
-
-    private applyTelegramToolOptions(pod: Pod, queryOptions: Options): void {
-        if (!pod.telegramBinding) return;
-
-        const {telegramBotId, telegramChatId} = pod.telegramBinding;
-
-        const telegramReplyTool = tool(
-            'telegram_reply',
-            '回覆 Telegram 訊息。當需要在 Telegram 中回覆用戶時使用此工具。',
-            {
-                text: z.string().min(1).max(4096).describe('要發送到 Telegram 的訊息內容（1-4096 字元）'),
-                reply_to_message_id: z.number().int().optional().describe('要回覆的訊息 ID（選填）'),
-            },
-            async (params: {text: string; reply_to_message_id?: number}) => {
-                const result = await telegramClientManager.sendMessage(
-                    telegramBotId,
-                    telegramChatId,
-                    params.text,
-                    params.reply_to_message_id
-                );
-
-                if (!result.success) {
-                    return {success: false, error: result.error};
-                }
-                return {success: true};
-            }
-        );
-
-        const telegramMcpServer = createSdkMcpServer({
-            name: 'telegram-reply',
-            tools: [telegramReplyTool],
-        });
-
-        queryOptions.mcpServers = {
-            ...queryOptions.mcpServers,
-            'telegram-reply': telegramMcpServer,
-        } as Options['mcpServers'];
-
-        queryOptions.allowedTools = [
-            ...(queryOptions.allowedTools ?? []),
-            'mcp__telegram-reply__telegram_reply',
-        ];
+            queryOptions.allowedTools = [
+                ...(queryOptions.allowedTools ?? []),
+                `mcp__${serverName}__${toolName}`,
+            ];
+        }
     }
 
     private async applyOutputStyle(pod: Pod, queryOptions: Options): Promise<void> {
@@ -467,8 +422,7 @@ export class ClaudeService {
 
         await this.applyOutputStyle(pod, queryOptions);
         this.applyMcpServers(pod, queryOptions);
-        this.applySlackToolOptions(pod, queryOptions);
-        this.applyTelegramToolOptions(pod, queryOptions);
+        this.applyIntegrationToolOptions(pod, queryOptions);
 
         if (pod.claudeSessionId) {
             queryOptions.resume = pod.claudeSessionId;

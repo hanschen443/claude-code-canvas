@@ -1,0 +1,293 @@
+import {WebSocketResponseEvents} from '../schemas';
+import type {
+    IntegrationAppListPayload,
+    IntegrationAppCreatePayload,
+    IntegrationAppDeletePayload,
+    IntegrationAppGetPayload,
+    IntegrationAppResourcesPayload,
+    IntegrationAppResourcesRefreshPayload,
+    PodBindIntegrationPayload,
+    PodUnbindIntegrationPayload,
+} from '../schemas';
+import type {SanitizedIntegrationApp} from '../services/integration/types.js';
+import type {IntegrationApp} from '../services/integration/types.js';
+import {integrationRegistry} from '../services/integration/integrationRegistry.js';
+import {integrationAppStore} from '../services/integration/integrationAppStore.js';
+import {podStore} from '../services/podStore.js';
+import {socketService} from '../services/socketService.js';
+import {emitError, emitNotFound, emitSuccess} from '../utils/websocketResponse.js';
+import {logger} from '../utils/logger.js';
+import {fireAndForget} from '../utils/operationHelpers.js';
+import {emitPodUpdated, handleResultError, getPodDisplayName, validatePod, withCanvasId} from '../utils/handlerHelpers.js';
+
+function sanitizeApp(app: IntegrationApp): SanitizedIntegrationApp {
+    const provider = integrationRegistry.get(app.provider);
+    const sanitizedConfig = provider ? provider.sanitizeConfig(app.config) : {};
+    return {
+        id: app.id,
+        name: app.name,
+        provider: app.provider,
+        config: sanitizedConfig,
+        connectionStatus: app.connectionStatus,
+        resources: app.resources,
+    };
+}
+
+function getAppOrEmitError(
+    connectionId: string,
+    appId: string,
+    responseEvent: WebSocketResponseEvents,
+    requestId: string
+): IntegrationApp | null {
+    const app = integrationAppStore.getById(appId);
+    if (!app) {
+        emitNotFound(connectionId, responseEvent, 'Integration App', appId, requestId);
+        return null;
+    }
+    return app;
+}
+
+export async function handleIntegrationAppCreate(
+    connectionId: string,
+    payload: IntegrationAppCreatePayload,
+    requestId: string
+): Promise<void> {
+    const {provider: providerName, name, config} = payload;
+
+    let provider;
+    try {
+        provider = integrationRegistry.getOrThrow(providerName);
+    } catch {
+        emitError(connectionId, WebSocketResponseEvents.INTEGRATION_APP_CREATED, `找不到 Integration Provider「${providerName}」`, requestId, undefined, 'PROVIDER_NOT_FOUND');
+        return;
+    }
+
+    const schemaResult = provider.createAppSchema.safeParse(config);
+    if (!schemaResult.success) {
+        const message = schemaResult.error.issues.map(i => i.message).join('；');
+        emitError(connectionId, WebSocketResponseEvents.INTEGRATION_APP_CREATED, `設定驗證失敗：${message}`, requestId, undefined, 'VALIDATION_ERROR');
+        return;
+    }
+
+    const result = integrationAppStore.create(providerName, name, config);
+    if (handleResultError(result, connectionId, WebSocketResponseEvents.INTEGRATION_APP_CREATED, requestId, '建立 Integration App 失敗')) return;
+
+    const app = result.data;
+
+    logger.log('Integration', 'Create', `建立 Integration App「${app.name}」（${provider.displayName}）`);
+
+    fireAndForget(
+        provider.initialize(app),
+        'Integration',
+        `Integration App「${app.name}」初始化失敗`
+    );
+
+    socketService.emitToAll(WebSocketResponseEvents.INTEGRATION_APP_CREATED, {
+        requestId,
+        success: true,
+        provider: providerName,
+        app: sanitizeApp(app),
+    });
+}
+
+export async function handleIntegrationAppDelete(
+    connectionId: string,
+    payload: IntegrationAppDeletePayload,
+    requestId: string
+): Promise<void> {
+    const {appId} = payload;
+
+    const app = getAppOrEmitError(connectionId, appId, WebSocketResponseEvents.INTEGRATION_APP_DELETED, requestId);
+    if (!app) return;
+
+    let provider;
+    try {
+        provider = integrationRegistry.getOrThrow(app.provider);
+    } catch {
+        emitError(connectionId, WebSocketResponseEvents.INTEGRATION_APP_DELETED, `找不到 Integration Provider「${app.provider}」`, requestId, undefined, 'PROVIDER_NOT_FOUND');
+        return;
+    }
+
+    provider.destroy(appId);
+
+    const boundPods = podStore.findByIntegrationApp(appId);
+    for (const {canvasId, pod} of boundPods) {
+        await podStore.removeIntegrationBinding(canvasId, pod.id, app.provider);
+        socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_INTEGRATION_UNBOUND, {
+            canvasId,
+            podId: pod.id,
+            provider: app.provider,
+        });
+        logger.log('Integration', 'Delete', `清除 Pod「${pod.name}」的 ${provider.displayName} 綁定`);
+    }
+
+    integrationAppStore.delete(appId);
+
+    logger.log('Integration', 'Delete', `已刪除 Integration App「${app.name}」（${provider.displayName}）`);
+
+    socketService.emitToAll(WebSocketResponseEvents.INTEGRATION_APP_DELETED, {
+        requestId,
+        success: true,
+        appId,
+        provider: app.provider,
+    });
+}
+
+export async function handleIntegrationAppList(
+    connectionId: string,
+    payload: IntegrationAppListPayload,
+    requestId: string
+): Promise<void> {
+    const {provider} = payload;
+    const apps = integrationAppStore.list(provider);
+    emitSuccess(connectionId, WebSocketResponseEvents.INTEGRATION_APP_LIST_RESULT, {
+        requestId,
+        success: true,
+        provider,
+        apps: apps.map(sanitizeApp),
+    });
+}
+
+export async function handleIntegrationAppGet(
+    connectionId: string,
+    payload: IntegrationAppGetPayload,
+    requestId: string
+): Promise<void> {
+    const {appId} = payload;
+
+    const app = getAppOrEmitError(connectionId, appId, WebSocketResponseEvents.INTEGRATION_APP_GET_RESULT, requestId);
+    if (!app) return;
+
+    emitSuccess(connectionId, WebSocketResponseEvents.INTEGRATION_APP_GET_RESULT, {
+        requestId,
+        success: true,
+        app: sanitizeApp(app),
+    });
+}
+
+export async function handleIntegrationAppResources(
+    connectionId: string,
+    payload: IntegrationAppResourcesPayload,
+    requestId: string
+): Promise<void> {
+    const {appId} = payload;
+
+    const app = getAppOrEmitError(connectionId, appId, WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_RESULT, requestId);
+    if (!app) return;
+
+    emitSuccess(connectionId, WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_RESULT, {
+        requestId,
+        success: true,
+        appId,
+        resources: app.resources,
+    });
+}
+
+export async function handleIntegrationAppResourcesRefresh(
+    connectionId: string,
+    payload: IntegrationAppResourcesRefreshPayload,
+    requestId: string
+): Promise<void> {
+    const {appId} = payload;
+
+    const app = getAppOrEmitError(connectionId, appId, WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_REFRESHED, requestId);
+    if (!app) return;
+
+    let provider;
+    try {
+        provider = integrationRegistry.getOrThrow(app.provider);
+    } catch {
+        emitError(connectionId, WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_REFRESHED, `找不到 Integration Provider「${app.provider}」`, requestId, undefined, 'PROVIDER_NOT_FOUND');
+        return;
+    }
+
+    let resources;
+    try {
+        resources = await provider.refreshResources(appId);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        emitError(connectionId, WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_REFRESHED, `重新取得 Resources 失敗：${message}`, requestId);
+        return;
+    }
+
+    logger.log('Integration', 'Complete', `Integration App「${app.name}」Resources 已重新整理`);
+
+    emitSuccess(connectionId, WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_REFRESHED, {
+        requestId,
+        success: true,
+        appId,
+        resources,
+    });
+}
+
+export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
+    WebSocketResponseEvents.POD_INTEGRATION_BOUND,
+    async (connectionId: string, canvasId: string, payload: PodBindIntegrationPayload, requestId: string): Promise<void> => {
+        const {podId, appId, resourceId, provider: providerName, extra} = payload;
+
+        const pod = validatePod(connectionId, podId, WebSocketResponseEvents.POD_INTEGRATION_BOUND, requestId);
+        if (!pod) return;
+
+        const app = integrationAppStore.getById(appId);
+        if (!app) {
+            emitNotFound(connectionId, WebSocketResponseEvents.POD_INTEGRATION_BOUND, 'Integration App', appId, requestId);
+            return;
+        }
+
+        if (app.connectionStatus !== 'connected') {
+            emitError(connectionId, WebSocketResponseEvents.POD_INTEGRATION_BOUND, `Integration App「${app.name}」尚未連線`, requestId, undefined, 'NOT_CONNECTED');
+            return;
+        }
+
+        let provider;
+        try {
+            provider = integrationRegistry.getOrThrow(providerName);
+        } catch {
+            emitError(connectionId, WebSocketResponseEvents.POD_INTEGRATION_BOUND, `找不到 Integration Provider「${providerName}」`, requestId, undefined, 'PROVIDER_NOT_FOUND');
+            return;
+        }
+
+        const bindPayload = {resourceId, ...(extra ? {extra} : {})};
+        const bindResult = provider.bindSchema.safeParse(bindPayload);
+        if (!bindResult.success) {
+            const message = bindResult.error.issues.map(i => i.message).join('；');
+            emitError(connectionId, WebSocketResponseEvents.POD_INTEGRATION_BOUND, `綁定設定驗證失敗：${message}`, requestId, undefined, 'VALIDATION_ERROR');
+            return;
+        }
+
+        const resource = app.resources.find(r => r.id === resourceId);
+        if (!resource && !provider.allowManualResourceId) {
+            emitNotFound(connectionId, WebSocketResponseEvents.POD_INTEGRATION_BOUND, 'Resource', resourceId, requestId);
+            return;
+        }
+
+        await podStore.addIntegrationBinding(canvasId, podId, {provider: providerName, appId, resourceId, ...(extra ? {extra} : {})});
+
+        const resourceName = resource?.name ?? resourceId;
+        logger.log('Integration', 'Create', `Pod「${pod.name}」已綁定 ${provider.displayName} App「${app.name}」Resource「${resourceName}」`);
+
+        emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_INTEGRATION_BOUND);
+    }
+);
+
+export const handlePodUnbindIntegration = withCanvasId<PodUnbindIntegrationPayload>(
+    WebSocketResponseEvents.POD_INTEGRATION_UNBOUND,
+    async (connectionId: string, canvasId: string, payload: PodUnbindIntegrationPayload, requestId: string): Promise<void> => {
+        const {podId, provider: providerName} = payload;
+
+        const pod = validatePod(connectionId, podId, WebSocketResponseEvents.POD_INTEGRATION_UNBOUND, requestId);
+        if (!pod) return;
+
+        const hasBinding = pod.integrationBindings?.some(b => b.provider === providerName);
+        if (!hasBinding) {
+            emitError(connectionId, WebSocketResponseEvents.POD_INTEGRATION_UNBOUND, `Pod「${getPodDisplayName(canvasId, podId)}」尚未綁定 ${providerName}`, requestId, undefined, 'NOT_BOUND');
+            return;
+        }
+
+        await podStore.removeIntegrationBinding(canvasId, podId, providerName);
+
+        logger.log('Integration', 'Delete', `Pod「${getPodDisplayName(canvasId, podId)}」已解除 ${providerName} 綁定`);
+
+        emitPodUpdated(canvasId, podId, requestId, WebSocketResponseEvents.POD_INTEGRATION_UNBOUND);
+    }
+);

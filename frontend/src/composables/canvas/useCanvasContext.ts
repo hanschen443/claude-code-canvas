@@ -4,7 +4,7 @@ import { useConnectionStore } from '@/stores/connectionStore'
 import { useClipboardStore } from '@/stores/clipboardStore'
 import { useChatStore } from '@/stores/chat'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { useSlackStore } from '@/stores/slackStore'
+import { useIntegrationStore } from '@/stores/integrationStore'
 
 export function useCanvasContext(): {
   podStore: ReturnType<typeof usePodStore>
@@ -20,7 +20,7 @@ export function useCanvasContext(): {
   clipboardStore: ReturnType<typeof useClipboardStore>
   chatStore: ReturnType<typeof useChatStore>
   canvasStore: ReturnType<typeof useCanvasStore>
-  slackStore: ReturnType<typeof useSlackStore>
+  integrationStore: ReturnType<typeof useIntegrationStore>
 } {
   const podStore = usePodStore()
   const viewportStore = useViewportStore()
@@ -35,7 +35,7 @@ export function useCanvasContext(): {
   const clipboardStore = useClipboardStore()
   const chatStore = useChatStore()
   const canvasStore = useCanvasStore()
-  const slackStore = useSlackStore()
+  const integrationStore = useIntegrationStore()
 
   return {
     podStore,
@@ -51,6 +51,6 @@ export function useCanvasContext(): {
     clipboardStore,
     chatStore,
     canvasStore,
-    slackStore
+    integrationStore,
   }
 }

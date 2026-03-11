@@ -39,11 +39,12 @@ vi.mock('@/components/chat/ChatWorkflowBlockedHint.vue', () => ({
   },
 }))
 
-// Mock ChatSlackBlockedHint
-vi.mock('@/components/chat/ChatSlackBlockedHint.vue', () => ({
+// Mock ChatIntegrationBlockedHint
+vi.mock('@/components/integration/ChatIntegrationBlockedHint.vue', () => ({
   default: {
-    name: 'ChatSlackBlockedHint',
-    template: '<div data-testid="slack-blocked-hint"></div>',
+    name: 'ChatIntegrationBlockedHint',
+    props: ['provider'],
+    template: '<div :data-testid="provider + \'-blocked-hint\'"></div>',
   },
 }))
 
@@ -272,15 +273,18 @@ describe('isWorkflowBusy', () => {
   })
 })
 
-describe('Slack 綁定 Input 限制', () => {
+describe('Integration 綁定 Input 限制', () => {
   setupStoreTest(() => {
     mockGetPodWorkflowRole.mockReturnValue('independent')
     mockIsPartOfRunningWorkflow.mockReturnValue(false)
     mockIsTyping.mockReturnValue(false)
   })
 
-  it('slackBinding 存在時，應顯示 ChatSlackBlockedHint，不顯示 ChatInput', () => {
-    const pod = createMockPod({ id: 'test-pod-1', slackBinding: { slackAppId: 'app-1', slackChannelId: 'ch-1' } })
+  it('integrationBindings 有 slack binding 時，應顯示 slack-blocked-hint，不顯示 ChatInput', () => {
+    const pod = createMockPod({
+      id: 'test-pod-1',
+      integrationBindings: [{ provider: 'slack', appId: 'app-1', resourceId: 'ch-1', extra: {} }],
+    })
     const wrapper = mount(ChatModal, { props: { pod } })
 
     expect(wrapper.find('[data-testid="slack-blocked-hint"]').exists()).toBe(true)
@@ -289,9 +293,12 @@ describe('Slack 綁定 Input 限制', () => {
     wrapper.unmount()
   })
 
-  it('slackBinding 存在且同時為 middle Pod 時，Slack 提示優先於 Workflow 提示', () => {
+  it('integrationBindings 有 slack binding 且同時為 middle Pod 時，Integration 提示優先於 Workflow 提示', () => {
     mockGetPodWorkflowRole.mockReturnValue('middle')
-    const pod = createMockPod({ id: 'test-pod-1', slackBinding: { slackAppId: 'app-1', slackChannelId: 'ch-1' } })
+    const pod = createMockPod({
+      id: 'test-pod-1',
+      integrationBindings: [{ provider: 'slack', appId: 'app-1', resourceId: 'ch-1', extra: {} }],
+    })
     const wrapper = mount(ChatModal, { props: { pod } })
 
     expect(wrapper.find('[data-testid="slack-blocked-hint"]').exists()).toBe(true)
@@ -301,7 +308,7 @@ describe('Slack 綁定 Input 限制', () => {
     wrapper.unmount()
   })
 
-  it('slackBinding 不存在時，維持原本邏輯', () => {
+  it('integrationBindings 為空時，維持原本邏輯', () => {
     const pod = createMockPod({ id: 'test-pod-1' })
     const wrapper = mount(ChatModal, { props: { pod } })
 

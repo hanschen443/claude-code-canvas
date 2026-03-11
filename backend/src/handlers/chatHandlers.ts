@@ -27,8 +27,8 @@ function validatePodChatReady(
     pod: Pod,
     requestId: string
 ): boolean {
-    if (pod.slackBinding) {
-        emitError(connectionId, WebSocketResponseEvents.POD_ERROR, `Pod「${pod.name}」已連接 Slack，無法手動發送訊息`, requestId, pod.id, 'SLACK_BOUND');
+    if (pod.integrationBindings?.length) {
+        emitError(connectionId, WebSocketResponseEvents.POD_ERROR, `Pod「${pod.name}」已連接外部服務，無法手動發送訊息`, requestId, pod.id, 'INTEGRATION_BOUND');
         return false;
     }
 

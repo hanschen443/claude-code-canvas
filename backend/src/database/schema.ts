@@ -25,10 +25,7 @@ export function createTables(db: Database): void {
       'repository_id TEXT,' +
       'command_id TEXT,' +
       'auto_clear INTEGER NOT NULL DEFAULT 0,' +
-      'schedule_json TEXT,' +
-      'slack_binding_json TEXT,' +
-      'telegram_binding_json TEXT,' +
-      'jira_binding_json TEXT' +
+      'schedule_json TEXT' +
       ')'
   );
   db.exec('CREATE INDEX IF NOT EXISTS idx_pods_canvas_id ON pods(canvas_id)');
@@ -107,45 +104,6 @@ export function createTables(db: Database): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_messages_pod_id ON messages(pod_id)');
 
   db.exec(
-    'CREATE TABLE IF NOT EXISTS telegram_bots (' +
-      'id TEXT PRIMARY KEY,' +
-      'name TEXT NOT NULL,' +
-      'bot_token TEXT NOT NULL UNIQUE,' +
-      'bot_username TEXT NOT NULL DEFAULT \'\'' +
-      ')'
-  );
-
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS telegram_bot_chats (' +
-      'telegram_bot_id TEXT NOT NULL REFERENCES telegram_bots(id) ON DELETE CASCADE,' +
-      'chat_id INTEGER NOT NULL,' +
-      'chat_type TEXT NOT NULL,' +
-      'title TEXT,' +
-      'username TEXT,' +
-      'PRIMARY KEY (telegram_bot_id, chat_id)' +
-      ')'
-  );
-
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS slack_apps (' +
-      'id TEXT PRIMARY KEY,' +
-      'name TEXT NOT NULL,' +
-      'bot_token TEXT NOT NULL UNIQUE,' +
-      'signing_secret TEXT NOT NULL,' +
-      'bot_user_id TEXT NOT NULL DEFAULT \'\'' +
-      ')'
-  );
-
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS slack_app_channels (' +
-      'slack_app_id TEXT NOT NULL REFERENCES slack_apps(id) ON DELETE CASCADE,' +
-      'channel_id TEXT NOT NULL,' +
-      'channel_name TEXT NOT NULL,' +
-      'PRIMARY KEY (slack_app_id, channel_id)' +
-      ')'
-  );
-
-  db.exec(
     'CREATE TABLE IF NOT EXISTS repository_metadata (' +
       'id TEXT PRIMARY KEY,' +
       'name TEXT NOT NULL,' +
@@ -178,32 +136,29 @@ export function createTables(db: Database): void {
   );
 
   db.exec(
-    'CREATE TABLE IF NOT EXISTS jira_apps (' +
+    'CREATE TABLE IF NOT EXISTS integration_apps (' +
       'id TEXT PRIMARY KEY,' +
+      'provider TEXT NOT NULL,' +
       'name TEXT NOT NULL,' +
-      'site_url TEXT NOT NULL,' +
-      'email TEXT NOT NULL,' +
-      'api_token TEXT NOT NULL,' +
-      'webhook_secret TEXT NOT NULL,' +
-      'UNIQUE(site_url, email)' +
+      'config_json TEXT NOT NULL,' +
+      'extra_json TEXT,' +
+      'UNIQUE(provider, name)' +
       ')'
   );
 
-  try {
-    db.exec('ALTER TABLE pods ADD COLUMN telegram_binding_json TEXT');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes('duplicate column')) {
-      throw error;
-    }
-  }
-
-  try {
-    db.exec('ALTER TABLE pods ADD COLUMN jira_binding_json TEXT');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes('duplicate column')) {
-      throw error;
-    }
-  }
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS integration_bindings (' +
+      'id TEXT PRIMARY KEY,' +
+      'pod_id TEXT NOT NULL,' +
+      'canvas_id TEXT NOT NULL,' +
+      'provider TEXT NOT NULL,' +
+      'app_id TEXT NOT NULL,' +
+      'resource_id TEXT NOT NULL,' +
+      'extra_json TEXT,' +
+      'FOREIGN KEY (pod_id) REFERENCES pods(id) ON DELETE CASCADE,' +
+      'FOREIGN KEY (app_id) REFERENCES integration_apps(id) ON DELETE CASCADE' +
+      ')'
+  );
+  db.exec('CREATE INDEX IF NOT EXISTS idx_integration_bindings_app_resource ON integration_bindings(app_id, resource_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_integration_bindings_pod ON integration_bindings(pod_id)');
 }

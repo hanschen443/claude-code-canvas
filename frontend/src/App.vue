@@ -20,8 +20,8 @@ import {truncateContent} from '@/stores/chat/chatUtils'
 import {useCursorStore} from '@/stores/cursorStore'
 import {logger} from '@/utils/logger'
 
-import { useTelegramStore } from '@/stores/telegramStore'
-import { useJiraStore } from '@/stores/jiraStore'
+import { useIntegrationStore } from '@/stores/integrationStore'
+import { getAllProviders } from '@/integration/providerRegistry'
 
 const {
   podStore,
@@ -35,11 +35,9 @@ const {
   mcpServerStore,
   connectionStore,
   canvasStore,
-  slackStore
 } = useCanvasContext()
 
-const telegramStore = useTelegramStore()
-const jiraStore = useJiraStore()
+const integrationStore = useIntegrationStore()
 
 const cursorStore = useCursorStore()
 
@@ -85,9 +83,7 @@ const loadCanvasData = async (): Promise<void> => {
       await mcpServerStore.loadNotesFromBackend()
     })(),
     connectionStore.loadConnectionsFromBackend(),
-    slackStore.loadSlackApps(),
-    telegramStore.loadTelegramBots(),
-    jiraStore.loadJiraApps(),
+    ...getAllProviders().map((provider) => integrationStore.loadApps(provider.name)),
   ])
 
   connectionStore.setupWorkflowListeners()

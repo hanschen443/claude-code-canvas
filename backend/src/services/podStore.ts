@@ -1,8 +1,8 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import type { Database } from 'bun:sqlite';
 import { WebSocketResponseEvents } from '../schemas';
 import type { Pod, PodStatus, CreatePodRequest, ScheduleConfig } from '../types';
-import type { PodSlackBinding, PodTelegramBinding, PodJiraBinding } from '../types';
+import type { IntegrationBinding } from '../types/integration.js';
 import { socketService } from './socketService.js';
 import { canvasStore } from './canvasStore.js';
 import { getDb } from '../database/index.js';
@@ -27,9 +27,16 @@ interface PodRow {
     command_id: string | null;
     auto_clear: number;
     schedule_json: string | null;
-    slack_binding_json: string | null;
-    telegram_binding_json: string | null;
-    jira_binding_json: string | null;
+}
+
+interface IntegrationBindingRow {
+    id: string;
+    pod_id: string;
+    canvas_id: string;
+    provider: string;
+    app_id: string;
+    resource_id: string;
+    extra_json: string | null;
 }
 
 function rowToPod(row: PodRow): Pod {
@@ -68,27 +75,6 @@ function rowToPod(row: PodRow): Pod {
         }
     }
 
-    if (row.slack_binding_json) {
-        const binding = safeJsonParse<PodSlackBinding>(row.slack_binding_json);
-        if (binding) {
-            pod.slackBinding = binding;
-        }
-    }
-
-    if (row.telegram_binding_json) {
-        const binding = safeJsonParse<PodTelegramBinding>(row.telegram_binding_json);
-        if (binding) {
-            pod.telegramBinding = binding;
-        }
-    }
-
-    if (row.jira_binding_json) {
-        const binding = safeJsonParse<PodJiraBinding>(row.jira_binding_json);
-        if (binding) {
-            pod.jiraBinding = binding;
-        }
-    }
-
     return pod;
 }
 
@@ -100,28 +86,33 @@ function serializeSchedule(schedule?: ScheduleConfig): string | null {
     });
 }
 
-function serializeSlackBinding(binding?: PodSlackBinding): string | null {
-    if (!binding) return null;
-    return JSON.stringify(binding);
-}
-
-function serializeTelegramBinding(binding?: PodTelegramBinding): string | null {
-    if (!binding) return null;
-    return JSON.stringify(binding);
-}
-
-function serializeJiraBinding(binding?: PodJiraBinding | null): string | null {
-    if (!binding) return null;
-    return JSON.stringify(binding);
-}
-
 class PodStore {
     private get stmts(): ReturnType<typeof getStatements> {
         return getStatements(getDb());
     }
 
+    private loadBindingsForPod(podId: string): IntegrationBinding[] {
+        const rows = this.stmts.integrationBinding.selectByPodId.all(podId) as IntegrationBindingRow[];
+        return rows.map(row => ({
+            provider: row.provider,
+            appId: row.app_id,
+            resourceId: row.resource_id,
+            extra: row.extra_json ? safeJsonParse<Record<string, unknown>>(row.extra_json) ?? undefined : undefined,
+        }));
+    }
+
+    private toPodWithBindings(row: PodRow): Pod {
+        const pod = rowToPod(row);
+        pod.integrationBindings = this.loadBindingsForPod(pod.id);
+        return pod;
+    }
+
+    private toPodListWithBindings(rows: PodRow[]): Pod[] {
+        return rows.map(row => this.toPodWithBindings(row));
+    }
+
     create(canvasId: string, data: CreatePodRequest): { pod: Pod; persisted: Promise<void> } {
-        const id = uuidv4();
+        const id = randomUUID();
         const canvasDir = canvasStore.getCanvasDir(canvasId);
 
         if (!canvasDir) {
@@ -163,9 +154,6 @@ class PodStore {
             $commandId: pod.commandId,
             $autoClear: 0,
             $scheduleJson: null,
-            $slackBindingJson: null,
-            $telegramBindingJson: null,
-            $jiraBindingJson: null,
         });
 
         for (const skillId of pod.skillIds) {
@@ -186,13 +174,13 @@ class PodStore {
     getById(canvasId: string, id: string): Pod | undefined {
         const row = this.stmts.pod.selectByCanvasIdAndId.get(canvasId, id) as PodRow | undefined;
         if (!row) return undefined;
-        return rowToPod(row);
+        return this.toPodWithBindings(row);
     }
 
     getByIdGlobal(podId: string): { canvasId: string; pod: Pod } | undefined {
         const row = this.stmts.pod.selectById.get(podId) as PodRow | undefined;
         if (!row) return undefined;
-        return { canvasId: row.canvas_id, pod: rowToPod(row) };
+        return { canvasId: row.canvas_id, pod: this.toPodWithBindings(row) };
     }
 
     getAll(canvasId: string): Pod[] {
@@ -201,13 +189,13 @@ class PodStore {
 
     list(canvasId: string): Pod[] {
         const rows = this.stmts.pod.selectByCanvasId.all(canvasId) as PodRow[];
-        return rows.map(rowToPod);
+        return this.toPodListWithBindings(rows);
     }
 
     getByName(canvasId: string, name: string): Pod | undefined {
         const row = this.stmts.pod.selectByCanvasIdAndName.get(canvasId, name) as PodRow | undefined;
         if (!row) return undefined;
-        return rowToPod(row);
+        return this.toPodWithBindings(row);
     }
 
     hasName(canvasId: string, name: string, excludePodId?: string): boolean {
@@ -249,9 +237,6 @@ class PodStore {
             $commandId: updatedPod.commandId,
             $autoClear: updatedPod.autoClear ? 1 : 0,
             $scheduleJson: serializeSchedule(updatedPod.schedule),
-            $slackBindingJson: serializeSlackBinding(updatedPod.slackBinding),
-            $telegramBindingJson: serializeTelegramBinding(updatedPod.telegramBinding),
-            $jiraBindingJson: serializeJiraBinding(updatedPod.jiraBinding),
         });
 
         if (updates.skillIds !== undefined) {
@@ -331,10 +316,10 @@ class PodStore {
         valueId: string
     ): Pod[] {
         const podIdRows = selectByValueId.all(valueId) as Array<{ pod_id: string }>;
-        return podIdRows
+        const rows = podIdRows
             .map(r => this.stmts.pod.selectByCanvasIdAndId.get(canvasId, r.pod_id) as PodRow | undefined)
-            .filter((row): row is PodRow => row !== undefined)
-            .map(rowToPod);
+            .filter((row): row is PodRow => row !== undefined);
+        return this.toPodListWithBindings(rows);
     }
 
     private replaceJoinTableIds(
@@ -366,8 +351,8 @@ class PodStore {
         statement: ReturnType<Database['prepare']>,
         id: string
     ): Pod[] {
-        const rows = statement.all(id) as PodRow[];
-        return rows.filter(r => r.canvas_id === canvasId).map(rowToPod);
+        const rows = (statement.all(id) as PodRow[]).filter(r => r.canvas_id === canvasId);
+        return this.toPodListWithBindings(rows);
     }
 
     findByCommandId(canvasId: string, commandId: string): Pod[] {
@@ -397,43 +382,41 @@ class PodStore {
         return Promise.resolve();
     }
 
-    setSlackBinding(canvasId: string, podId: string, binding: PodSlackBinding | null): Promise<void> {
-        this.stmts.pod.updateSlackBindingJson.run({
-            $slackBindingJson: binding ? JSON.stringify(binding) : null,
-            $id: podId,
+    findByIntegrationApp(appId: string): Array<{ canvasId: string; pod: Pod }> {
+        const bindingRows = this.stmts.integrationBinding.selectByAppId.all(appId) as IntegrationBindingRow[];
+        const podIds = [...new Set(bindingRows.map(r => r.pod_id))];
+        return podIds
+            .map(id => this.stmts.pod.selectById.get(id) as PodRow | undefined)
+            .filter((row): row is PodRow => row !== undefined)
+            .map(row => ({ canvasId: row.canvas_id, pod: this.toPodWithBindings(row) }));
+    }
+
+    findByIntegrationAppAndResource(appId: string, resourceId: string): Array<{ canvasId: string; pod: Pod }> {
+        const bindingRows = this.stmts.integrationBinding.selectByAppIdAndResourceId.all(appId, resourceId) as IntegrationBindingRow[];
+        const podIds = [...new Set(bindingRows.map(r => r.pod_id))];
+        return podIds
+            .map(id => this.stmts.pod.selectById.get(id) as PodRow | undefined)
+            .filter((row): row is PodRow => row !== undefined)
+            .map(row => ({ canvasId: row.canvas_id, pod: this.toPodWithBindings(row) }));
+    }
+
+    addIntegrationBinding(canvasId: string, podId: string, binding: IntegrationBinding): void {
+        // 相同 provider + appId 先刪除再插入，避免重複
+        this.stmts.integrationBinding.deleteByPodIdAndProvider.run(podId, binding.provider);
+        const id = randomUUID();
+        this.stmts.integrationBinding.insert.run({
+            $id: id,
+            $podId: podId,
+            $canvasId: canvasId,
+            $provider: binding.provider,
+            $appId: binding.appId,
+            $resourceId: binding.resourceId,
+            $extraJson: binding.extra ? JSON.stringify(binding.extra) : null,
         });
-        return Promise.resolve();
     }
 
-    findBySlackApp(slackAppId: string): Array<{ canvasId: string; pod: Pod }> {
-        const rows = this.stmts.pod.selectBySlackAppId.all(slackAppId) as PodRow[];
-        return rows.map(row => ({ canvasId: row.canvas_id, pod: rowToPod(row) }));
-    }
-
-    setTelegramBinding(canvasId: string, podId: string, binding: PodTelegramBinding | null): Promise<void> {
-        this.stmts.pod.updateTelegramBindingJson.run({
-            $telegramBindingJson: binding ? JSON.stringify(binding) : null,
-            $id: podId,
-        });
-        return Promise.resolve();
-    }
-
-    findByTelegramBot(telegramBotId: string): Array<{ canvasId: string; pod: Pod }> {
-        const rows = this.stmts.pod.selectByTelegramBotId.all(telegramBotId) as PodRow[];
-        return rows.map(row => ({ canvasId: row.canvas_id, pod: rowToPod(row) }));
-    }
-
-    setJiraBinding(canvasId: string, podId: string, binding: PodJiraBinding | null): Promise<void> {
-        this.stmts.pod.updateJiraBindingJson.run({
-            $jiraBindingJson: binding ? JSON.stringify(binding) : null,
-            $id: podId,
-        });
-        return Promise.resolve();
-    }
-
-    findByJiraApp(jiraAppId: string): Array<{ canvasId: string; pod: Pod }> {
-        const rows = this.stmts.pod.selectByJiraAppId.all(jiraAppId) as PodRow[];
-        return rows.map(row => ({ canvasId: row.canvas_id, pod: rowToPod(row) }));
+    removeIntegrationBinding(_canvasId: string, podId: string, provider: string): void {
+        this.stmts.integrationBinding.deleteByPodIdAndProvider.run(podId, provider);
     }
 
     setScheduleLastTriggeredAt(canvasId: string, podId: string, date: Date): Promise<void> {
@@ -451,7 +434,7 @@ class PodStore {
     getAllWithSchedule(): Array<{ canvasId: string; pod: Pod }> {
         const rows = this.stmts.pod.selectWithSchedule.all() as PodRow[];
         return rows
-            .map(row => ({ canvasId: row.canvas_id, pod: rowToPod(row) }))
+            .map(row => ({ canvasId: row.canvas_id, pod: this.toPodWithBindings(row) }))
             .filter(({ pod }) => pod.schedule?.enabled === true);
     }
 

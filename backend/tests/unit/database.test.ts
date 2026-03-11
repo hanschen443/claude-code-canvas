@@ -19,10 +19,10 @@ describe('Database', () => {
       const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
       const tableNames = (tables as { name: string }[]).map((t) => t.name).sort();
       expect(tableNames).toEqual([
-        'canvases', 'connections', 'global_settings', 'jira_apps', 'mcp_servers', 'messages', 'notes',
+        'canvases', 'connections', 'global_settings', 'integration_apps', 'integration_bindings',
+        'mcp_servers', 'messages', 'notes',
         'pod_manifests', 'pod_mcp_server_ids', 'pod_skill_ids', 'pod_sub_agent_ids',
-        'pods', 'repository_metadata', 'slack_app_channels', 'slack_apps',
-        'telegram_bot_chats', 'telegram_bots',
+        'pods', 'repository_metadata',
       ]);
     });
 
@@ -41,13 +41,13 @@ describe('Database', () => {
   describe('resetDb', () => {
     it('應該清空所有表資料', () => {
       db.exec("INSERT INTO canvases (id, name, sort_index) VALUES ('c1', 'test', 0)");
-      db.exec("INSERT INTO slack_apps (id, name, bot_token, signing_secret) VALUES ('sa1', 'app', 'token', 'secret')");
+      db.exec("INSERT INTO integration_apps (id, provider, name, config_json) VALUES ('ia1', 'slack', 'app', '{}')");
       db.exec("INSERT INTO repository_metadata (id, name, path) VALUES ('r1', 'repo', '/path')");
 
       resetDb();
 
       expect((db.prepare('SELECT COUNT(*) as count FROM canvases').get() as { count: number }).count).toBe(0);
-      expect((db.prepare('SELECT COUNT(*) as count FROM slack_apps').get() as { count: number }).count).toBe(0);
+      expect((db.prepare('SELECT COUNT(*) as count FROM integration_apps').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM repository_metadata').get() as { count: number }).count).toBe(0);
     });
   });
@@ -56,6 +56,8 @@ describe('Database', () => {
     it('刪除 canvas 時應連帶刪除所有子資料', () => {
       db.exec("INSERT INTO canvases (id, name, sort_index) VALUES ('c1', 'test', 0)");
       db.exec("INSERT INTO pods (id, canvas_id, name, workspace_path) VALUES ('p1', 'c1', 'pod1', '/ws')");
+      db.exec("INSERT INTO integration_apps (id, provider, name, config_json) VALUES ('ia1', 'slack', 'app', '{}')");
+      db.exec("INSERT INTO integration_bindings (id, pod_id, canvas_id, provider, app_id, resource_id) VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')");
       db.exec("INSERT INTO connections (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor) VALUES ('conn1', 'c1', 'p1', 'bottom', 'p1', 'top')");
       db.exec("INSERT INTO notes (id, canvas_id, type, name) VALUES ('n1', 'c1', 'outputStyle', 'note1')");
       db.exec("INSERT INTO messages (id, pod_id, canvas_id, role, content, timestamp) VALUES ('m1', 'p1', 'c1', 'user', 'hello', '2024-01-01')");
@@ -66,6 +68,7 @@ describe('Database', () => {
       db.exec("DELETE FROM canvases WHERE id = 'c1'");
 
       expect((db.prepare('SELECT COUNT(*) as count FROM pods').get() as { count: number }).count).toBe(0);
+      expect((db.prepare('SELECT COUNT(*) as count FROM integration_bindings').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM connections').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM notes').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM pod_skill_ids').get() as { count: number }).count).toBe(0);
@@ -73,9 +76,11 @@ describe('Database', () => {
       expect((db.prepare('SELECT COUNT(*) as count FROM pod_mcp_server_ids').get() as { count: number }).count).toBe(0);
     });
 
-    it('刪除 pod 時應連帶刪除多對多關聯', () => {
+    it('刪除 pod 時應連帶刪除多對多關聯及 integration_bindings', () => {
       db.exec("INSERT INTO canvases (id, name, sort_index) VALUES ('c1', 'test', 0)");
       db.exec("INSERT INTO pods (id, canvas_id, name, workspace_path) VALUES ('p1', 'c1', 'pod1', '/ws')");
+      db.exec("INSERT INTO integration_apps (id, provider, name, config_json) VALUES ('ia1', 'slack', 'app', '{}')");
+      db.exec("INSERT INTO integration_bindings (id, pod_id, canvas_id, provider, app_id, resource_id) VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')");
       db.exec("INSERT INTO pod_skill_ids (pod_id, skill_id) VALUES ('p1', 's1')");
       db.exec("INSERT INTO pod_skill_ids (pod_id, skill_id) VALUES ('p1', 's2')");
       db.exec("INSERT INTO pod_sub_agent_ids (pod_id, sub_agent_id) VALUES ('p1', 'sa1')");
@@ -83,20 +88,12 @@ describe('Database', () => {
 
       db.exec("DELETE FROM pods WHERE id = 'p1'");
 
+      expect((db.prepare('SELECT COUNT(*) as count FROM integration_bindings').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM pod_skill_ids').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM pod_sub_agent_ids').get() as { count: number }).count).toBe(0);
       expect((db.prepare('SELECT COUNT(*) as count FROM pod_mcp_server_ids').get() as { count: number }).count).toBe(0);
     });
 
-    it('刪除 slack_app 時應連帶刪除 channels', () => {
-      db.exec("INSERT INTO slack_apps (id, name, bot_token, signing_secret) VALUES ('sa1', 'app', 'token', 'secret')");
-      db.exec("INSERT INTO slack_app_channels (slack_app_id, channel_id, channel_name) VALUES ('sa1', 'ch1', 'general')");
-      db.exec("INSERT INTO slack_app_channels (slack_app_id, channel_id, channel_name) VALUES ('sa1', 'ch2', 'random')");
-
-      db.exec("DELETE FROM slack_apps WHERE id = 'sa1'");
-
-      expect((db.prepare('SELECT COUNT(*) as count FROM slack_app_channels').get() as { count: number }).count).toBe(0);
-    });
   });
 
   describe('Prepared Statements', () => {
@@ -143,9 +140,6 @@ describe('Database', () => {
         $commandId: null,
         $autoClear: 0,
         $scheduleJson: null,
-        $slackBindingJson: null,
-        $telegramBindingJson: null,
-        $jiraBindingJson: null,
       });
 
       stmts.podSkillIds.insert.run({ $podId: 'p1', $skillId: 'skill-1' });

@@ -12,11 +12,8 @@ import { logger } from './utils/logger.js';
 import { WebSocketResponseEvents } from './schemas/index.js';
 import { isStaticFilesAvailable, serveStaticFile } from './utils/staticFileServer.js';
 import { handleApiRequest } from './api/apiRouter.js';
-import { slackClientManager } from './services/slack/slackClientManager.js';
-import { handleSlackWebhook } from './services/slack/slackWebhookHandler.js';
-import { telegramClientManager } from './services/telegram/telegramClientManager.js';
-import { jiraClientManager } from './services/jira/jiraClientManager.js';
-import { handleJiraWebhook } from './services/jira/jiraWebhookHandler.js';
+import { handleIntegrationWebhook } from './services/integration/integrationWebhookRouter.js';
+import { integrationRegistry } from './services/integration/index.js';
 import { scheduleService } from './services/scheduleService.js';
 
 function handleWebSocketUpgrade(req: Request, server: Server<{ connectionId: string }>): Response | undefined {
@@ -49,14 +46,10 @@ async function startServer(): Promise<void> {
 		async fetch(req, server) {
 			const url = new URL(req.url);
 
-			// /slack/events 路由來自 Slack 伺服器，不需要 CORS origin 驗證
-			if (req.method === 'POST' && url.pathname === '/slack/events') {
-				return handleSlackWebhook(req);
-			}
-
-			// /jira/events 路由來自 Jira Cloud，不需要 CORS origin 驗證
-			if (req.method === 'POST' && url.pathname === '/jira/events') {
-				return handleJiraWebhook(req);
+			// integration webhook 路由來自外部服務，不需要 CORS origin 驗證
+			if (req.method === 'POST') {
+				const webhookResponse = await handleIntegrationWebhook(req, url.pathname);
+				if (webhookResponse) return webhookResponse;
 			}
 
 			const origin = req.headers.get('origin');
@@ -149,9 +142,9 @@ startServer();
 const shutdown = async (signal: string): Promise<void> => {
 	logger.log('Shutdown', 'Complete', `收到 ${signal}，正在優雅關閉`);
 
-	slackClientManager.destroyAll();
-	telegramClientManager.destroyAll();
-	jiraClientManager.destroyAll();
+	for (const provider of integrationRegistry.list()) {
+		provider.destroyAll();
+	}
 	scheduleService.stop();
 	socketService.stopHeartbeat();
 

@@ -37,6 +37,7 @@ export type LogCategory =
   | 'Slack'
   | 'Telegram'
   | 'Jira'
+  | 'Integration'
   | 'Shutdown';
 
 /**
@@ -65,6 +66,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Slack: ANSI_COLORS.BLUE,
   Telegram: ANSI_COLORS.BLUE,
   Jira: ANSI_COLORS.BLUE,
+  Integration: ANSI_COLORS.BLUE,
   Shutdown: ANSI_COLORS.GRAY,
 };
 

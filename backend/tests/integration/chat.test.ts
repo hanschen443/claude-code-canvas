@@ -10,6 +10,8 @@ import {
   type TestServerInstance,
 } from '../setup';
 import { createPod, FAKE_UUID, getCanvasId } from '../helpers';
+import { getDb } from '../../src/database/index.js';
+import { getStatements } from '../../src/database/statements.js';
 
 // Mock Claude Agent SDK 的實作
 async function* mockQuery(): AsyncGenerator<any> {
@@ -106,12 +108,21 @@ describe('Chat 管理', () => {
       expect(errorEvent.error).toContain('找不到');
     });
 
-    it('Pod 已連接 Slack 時發送失敗並回傳 SLACK_BOUND', async () => {
+    it('Pod 已連接外部服務時發送失敗並回傳 INTEGRATION_BOUND', async () => {
       const canvasId = await getCanvasId(client);
-      const pod = await createPod(client, { name: 'Slack Pod' });
+      const pod = await createPod(client, { name: 'Integration Pod' });
+
+      const testAppId = 'chat-test-slack-app-1';
+      getStatements(getDb()).integrationApp.insert.run({
+        $id: testAppId,
+        $provider: 'slack',
+        $name: 'Chat Test Slack App',
+        $configJson: '{}',
+        $extraJson: null,
+      });
 
       const { podStore } = await import('../../src/services/podStore.js');
-      podStore.setSlackBinding(canvasId, pod.id, { slackAppId: 'app-1', slackChannelId: 'C123' });
+      podStore.addIntegrationBinding(canvasId, pod.id, { provider: 'slack', appId: testAppId, resourceId: 'C123' });
 
       const errorPromise = waitForEvent<PodErrorPayload>(
         client,
@@ -126,10 +137,10 @@ describe('Chat 管理', () => {
       } satisfies PodChatSendPayload);
 
       const errorEvent = await errorPromise;
-      expect(errorEvent.code).toBe('SLACK_BOUND');
-      expect(errorEvent.error).toContain('Slack');
+      expect(errorEvent.code).toBe('INTEGRATION_BOUND');
+      expect(errorEvent.error).toContain('外部服務');
 
-      podStore.setSlackBinding(canvasId, pod.id, null);
+      await podStore.removeIntegrationBinding(canvasId, pod.id, 'slack');
     });
 
     it('Pod 總結中時發送失敗', async () => {

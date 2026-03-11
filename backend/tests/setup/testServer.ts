@@ -29,8 +29,7 @@ export async function createTestServer(): Promise<TestServerInstance> {
   const { eventRouter } = await import('../../src/services/eventRouter.js');
   const { deserialize } = await import('../../src/utils/messageSerializer.js');
   const { handleApiRequest } = await import('../../src/api/apiRouter.js');
-  const { handleSlackWebhook } = await import('../../src/services/slack/slackWebhookHandler.js');
-  const { handleJiraWebhook } = await import('../../src/services/jira/jiraWebhookHandler.js');
+  const { handleIntegrationWebhook } = await import('../../src/services/integration/integrationWebhookRouter.js');
   const { logger } = await import('../../src/utils/logger.js');
   const { WebSocketResponseEvents } = await import('../../src/schemas/index.js');
 
@@ -56,19 +55,10 @@ export async function createTestServer(): Promise<TestServerInstance> {
     async fetch(req, server) {
       const url = new URL(req.url);
 
-      // /slack/events 路由來自 Slack 伺服器，不需要 CORS origin 驗證
-      if (req.method === 'POST' && url.pathname === '/slack/events') {
-        return handleSlackWebhook(req);
-      }
-
-      // /jira/events 路由來自 Jira Cloud，不需要 CORS origin 驗證
-      if (req.method === 'POST' && url.pathname === '/jira/events') {
-        try {
-          return await handleJiraWebhook(req);
-        } catch (error) {
-          logger.error('WebSocket', 'Error', `handleJiraWebhook 失敗: ${error}`, error);
-          return new Response('Internal Server Error', { status: 500 });
-        }
+      // integration webhook 路由來自外部服務，不需要 CORS origin 驗證
+      if (req.method === 'POST') {
+        const webhookResponse = await handleIntegrationWebhook(req, url.pathname);
+        if (webhookResponse) return webhookResponse;
       }
 
       // 檢查 CORS Origin
@@ -170,9 +160,6 @@ export async function createTestServer(): Promise<TestServerInstance> {
  * 處理優雅關閉
  */
 export async function closeTestServer(server: TestServerInstance): Promise<void> {
-  const { telegramClientManager } = await import('../../src/services/telegram/telegramClientManager.js');
-  telegramClientManager.destroyAll();
-
   const { scheduleService } = await import('../../src/services/scheduleService.js');
   scheduleService.stop();
 

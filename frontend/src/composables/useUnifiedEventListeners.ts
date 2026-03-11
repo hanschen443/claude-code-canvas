@@ -11,16 +11,10 @@ import { useCommandStore } from '@/stores/note/commandStore'
 import { useMcpServerStore } from '@/stores/note/mcpServerStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useChatStore } from '@/stores/chat/chatStore'
-import { useSlackStore } from '@/stores/slackStore'
-import { useTelegramStore } from '@/stores/telegramStore'
-import { useJiraStore } from '@/stores/jiraStore'
+import { useIntegrationStore } from '@/stores/integrationStore'
 import { useToast } from '@/composables/useToast'
-import { truncateContent } from '@/stores/chat/chatUtils'
-import { CONTENT_PREVIEW_LENGTH } from '@/lib/constants'
 import type { Pod, Connection, OutputStyleNote, SkillNote, RepositoryNote, SubAgentNote, CommandNote, Canvas, McpServer, McpServerNote } from '@/types'
-import type { SlackApp, SlackAppConnectionStatus, SlackChannel } from '@/types/slack'
-import type { TelegramBot, TelegramBotConnectionStatus, TelegramChat } from '@/types/telegram'
-import type { JiraApp, JiraAppConnectionStatus, JiraProject } from '@/types/jira'
+import type { IntegrationConnectionStatus } from '@/types/integration'
 
 const isListenerRegistered = ref(false)
 
@@ -483,25 +477,25 @@ const handleWorkflowClearResult = createUnifiedHandler<BasePayload & { canvasId:
   { toastMessage: '已清空訊息' }
 )
 
-const handleSlackAppCreated = createUnifiedHandler<BasePayload & { slackApp?: SlackApp }>(
+const handleIntegrationAppCreated = createUnifiedHandler<BasePayload & { app?: Record<string, unknown>; provider?: string }>(
   (payload) => {
-    if (payload.slackApp) {
-      useSlackStore().addSlackAppFromEvent(payload.slackApp)
+    if (payload.app && payload.provider) {
+      useIntegrationStore().addAppFromEvent(payload.provider, payload.app)
     }
   },
   { skipCanvasCheck: true }
 )
 
-const handleSlackAppDeleted = createUnifiedHandler<BasePayload & { slackAppId?: string }>(
+const handleIntegrationAppDeleted = createUnifiedHandler<BasePayload & { appId?: string; provider?: string }>(
   (payload) => {
-    if (payload.slackAppId) {
-      useSlackStore().removeSlackAppFromEvent(payload.slackAppId)
+    if (payload.appId && payload.provider) {
+      useIntegrationStore().removeAppFromEvent(payload.provider, payload.appId)
     }
   },
   { skipCanvasCheck: true }
 )
 
-const handlePodSlackBound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
+const handlePodIntegrationBound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
   (payload) => {
     if (payload.pod) {
       usePodStore().updatePod(payload.pod)
@@ -509,7 +503,7 @@ const handlePodSlackBound = createUnifiedHandler<BasePayload & { pod?: Pod; canv
   }
 )
 
-const handlePodSlackUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
+const handlePodIntegrationUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
   (payload) => {
     if (payload.pod) {
       usePodStore().updatePod(payload.pod)
@@ -517,135 +511,8 @@ const handlePodSlackUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; ca
   }
 )
 
-const handleSlackConnectionStatusChanged = (payload: { slackAppId: string; connectionStatus: SlackAppConnectionStatus; channels?: SlackChannel[] }): void => {
-  useSlackStore().updateSlackAppStatus(payload.slackAppId, payload.connectionStatus, payload.channels)
-}
-
-const handleSlackMessageReceived = (payload: { podId: string; userName: string; text: string }): void => {
-  const { toast } = useToast()
-  const truncatedText = truncateContent(payload.text, CONTENT_PREVIEW_LENGTH)
-  toast({ title: `Slack 訊息`, description: `來自 ${payload.userName}：${truncatedText}` })
-}
-
-const validateTelegramBot = (telegramBot: TelegramBot): boolean => {
-  if (!validateIdAndName(telegramBot.id, telegramBot.name, 'telegramBot')) return false
-
-  if (containsXssPattern(telegramBot.name)) {
-    console.warn('[Security] 潛在惡意的 telegramBot.name:', telegramBot.name)
-    return false
-  }
-
-  return true
-}
-
-const validateTelegramConnectionStatusPayload = (payload: unknown): payload is { telegramBotId: string; connectionStatus: TelegramBotConnectionStatus; chats?: TelegramChat[] } => {
-  if (typeof payload !== 'object' || payload === null) {
-    console.warn('[Security] Telegram 連線狀態 payload 格式無效')
-    return false
-  }
-
-  const { telegramBotId, connectionStatus } = payload as Record<string, unknown>
-
-  if (!isValidStringField(telegramBotId)) {
-    console.warn('[Security] 無效的 telegramBotId 格式')
-    return false
-  }
-
-  if (!isValidStringField(connectionStatus)) {
-    console.warn('[Security] 無效的 connectionStatus 格式')
-    return false
-  }
-
-  return true
-}
-
-const handleTelegramBotCreated = createUnifiedHandler<BasePayload & { telegramBot?: TelegramBot }>(
-  (payload) => {
-    if (payload.telegramBot && validateTelegramBot(payload.telegramBot)) {
-      useTelegramStore().addTelegramBotFromEvent(payload.telegramBot)
-    }
-  },
-  { skipCanvasCheck: true }
-)
-
-const handleTelegramBotDeleted = createUnifiedHandler<BasePayload & { telegramBotId?: string }>(
-  (payload) => {
-    if (payload.telegramBotId) {
-      useTelegramStore().removeTelegramBotFromEvent(payload.telegramBotId)
-    }
-  },
-  { skipCanvasCheck: true }
-)
-
-const handlePodTelegramBound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
-  (payload) => {
-    if (payload.pod) {
-      usePodStore().updatePod(payload.pod)
-    }
-  }
-)
-
-const handlePodTelegramUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
-  (payload) => {
-    if (payload.pod) {
-      usePodStore().updatePod(payload.pod)
-    }
-  }
-)
-
-const handleTelegramConnectionStatusChanged = (payload: unknown): void => {
-  if (!validateTelegramConnectionStatusPayload(payload)) return
-  useTelegramStore().updateTelegramBotStatus(payload.telegramBotId, payload.connectionStatus, payload.chats)
-}
-
-const handleTelegramMessageReceived = (payload: { podId: string; userName: string; text: string }): void => {
-  const { toast } = useToast()
-  const truncatedText = truncateContent(payload.text, CONTENT_PREVIEW_LENGTH)
-  toast({ title: `Telegram 訊息`, description: `來自 ${payload.userName}：${truncatedText}` })
-}
-
-const handleJiraAppCreated = createUnifiedHandler<BasePayload & { jiraApp?: JiraApp }>(
-  (payload) => {
-    if (payload.jiraApp) {
-      useJiraStore().addJiraAppFromEvent(payload.jiraApp)
-    }
-  },
-  { skipCanvasCheck: true }
-)
-
-const handleJiraAppDeleted = createUnifiedHandler<BasePayload & { jiraAppId?: string }>(
-  (payload) => {
-    if (payload.jiraAppId) {
-      useJiraStore().removeJiraAppFromEvent(payload.jiraAppId)
-    }
-  },
-  { skipCanvasCheck: true }
-)
-
-const handlePodJiraBound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
-  (payload) => {
-    if (payload.pod) {
-      usePodStore().updatePod(payload.pod)
-    }
-  }
-)
-
-const handlePodJiraUnbound = createUnifiedHandler<BasePayload & { pod?: Pod; canvasId: string }>(
-  (payload) => {
-    if (payload.pod) {
-      usePodStore().updatePod(payload.pod)
-    }
-  }
-)
-
-const handleJiraConnectionStatusChanged = (payload: { jiraAppId: string; connectionStatus: JiraAppConnectionStatus; projects?: JiraProject[] }): void => {
-  useJiraStore().updateJiraAppStatus(payload.jiraAppId, payload.connectionStatus, payload.projects)
-}
-
-const handleJiraMessageReceived = (payload: { podId: string; userName: string; text: string }): void => {
-  const { toast } = useToast()
-  const truncatedText = truncateContent(payload.text, CONTENT_PREVIEW_LENGTH)
-  toast({ title: `Jira 訊息`, description: `來自 ${payload.userName}：${truncatedText}` })
+const handleIntegrationConnectionStatusChanged = (payload: { provider: string; appId: string; connectionStatus: IntegrationConnectionStatus; resources?: Array<{ id: string; name: string }> }): void => {
+  useIntegrationStore().updateAppStatus(payload.provider, payload.appId, payload.connectionStatus, payload.resources)
 }
 
 const handlePodChatUserMessage = (payload: { podId: string; messageId: string; content: string; timestamp: string }): void => {
@@ -708,18 +575,10 @@ export const listeners = [
   { event: WebSocketResponseEvents.CANVAS_REORDERED, handler: handleCanvasReordered },
   { event: WebSocketResponseEvents.CANVAS_PASTE_RESULT, handler: handleCanvasPasted },
   { event: WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT, handler: handleWorkflowClearResult },
-  { event: WebSocketResponseEvents.SLACK_APP_CREATED, handler: handleSlackAppCreated },
-  { event: WebSocketResponseEvents.SLACK_APP_DELETED, handler: handleSlackAppDeleted },
-  { event: WebSocketResponseEvents.POD_SLACK_BOUND, handler: handlePodSlackBound },
-  { event: WebSocketResponseEvents.POD_SLACK_UNBOUND, handler: handlePodSlackUnbound },
-  { event: WebSocketResponseEvents.TELEGRAM_BOT_CREATED, handler: handleTelegramBotCreated },
-  { event: WebSocketResponseEvents.TELEGRAM_BOT_DELETED, handler: handleTelegramBotDeleted },
-  { event: WebSocketResponseEvents.POD_TELEGRAM_BOUND, handler: handlePodTelegramBound },
-  { event: WebSocketResponseEvents.POD_TELEGRAM_UNBOUND, handler: handlePodTelegramUnbound },
-  { event: WebSocketResponseEvents.JIRA_APP_CREATED, handler: handleJiraAppCreated },
-  { event: WebSocketResponseEvents.JIRA_APP_DELETED, handler: handleJiraAppDeleted },
-  { event: WebSocketResponseEvents.POD_JIRA_BOUND, handler: handlePodJiraBound },
-  { event: WebSocketResponseEvents.POD_JIRA_UNBOUND, handler: handlePodJiraUnbound },
+  { event: WebSocketResponseEvents.INTEGRATION_APP_CREATED, handler: handleIntegrationAppCreated },
+  { event: WebSocketResponseEvents.INTEGRATION_APP_DELETED, handler: handleIntegrationAppDeleted },
+  { event: WebSocketResponseEvents.POD_INTEGRATION_BOUND, handler: handlePodIntegrationBound },
+  { event: WebSocketResponseEvents.POD_INTEGRATION_UNBOUND, handler: handlePodIntegrationUnbound },
 ] as const
 
 export function registerUnifiedListeners(): void {
@@ -731,12 +590,7 @@ export function registerUnifiedListeners(): void {
   }
 
   websocketClient.on(WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, handlePodChatUserMessage as (payload: unknown) => void)
-  websocketClient.on(WebSocketResponseEvents.SLACK_CONNECTION_STATUS_CHANGED, handleSlackConnectionStatusChanged as (payload: unknown) => void)
-  websocketClient.on(WebSocketResponseEvents.SLACK_MESSAGE_RECEIVED, handleSlackMessageReceived as (payload: unknown) => void)
-  websocketClient.on(WebSocketResponseEvents.TELEGRAM_CONNECTION_STATUS_CHANGED, handleTelegramConnectionStatusChanged)
-  websocketClient.on(WebSocketResponseEvents.TELEGRAM_MESSAGE_RECEIVED, handleTelegramMessageReceived as (payload: unknown) => void)
-  websocketClient.on(WebSocketResponseEvents.JIRA_CONNECTION_STATUS_CHANGED, handleJiraConnectionStatusChanged as (payload: unknown) => void)
-  websocketClient.on(WebSocketResponseEvents.JIRA_MESSAGE_RECEIVED, handleJiraMessageReceived as (payload: unknown) => void)
+  websocketClient.on(WebSocketResponseEvents.INTEGRATION_CONNECTION_STATUS_CHANGED, handleIntegrationConnectionStatusChanged as (payload: unknown) => void)
 }
 
 export function unregisterUnifiedListeners(): void {
@@ -748,12 +602,7 @@ export function unregisterUnifiedListeners(): void {
   }
 
   websocketClient.off(WebSocketResponseEvents.POD_CHAT_USER_MESSAGE, handlePodChatUserMessage as (payload: unknown) => void)
-  websocketClient.off(WebSocketResponseEvents.SLACK_CONNECTION_STATUS_CHANGED, handleSlackConnectionStatusChanged as (payload: unknown) => void)
-  websocketClient.off(WebSocketResponseEvents.SLACK_MESSAGE_RECEIVED, handleSlackMessageReceived as (payload: unknown) => void)
-  websocketClient.off(WebSocketResponseEvents.TELEGRAM_CONNECTION_STATUS_CHANGED, handleTelegramConnectionStatusChanged)
-  websocketClient.off(WebSocketResponseEvents.TELEGRAM_MESSAGE_RECEIVED, handleTelegramMessageReceived as (payload: unknown) => void)
-  websocketClient.off(WebSocketResponseEvents.JIRA_CONNECTION_STATUS_CHANGED, handleJiraConnectionStatusChanged as (payload: unknown) => void)
-  websocketClient.off(WebSocketResponseEvents.JIRA_MESSAGE_RECEIVED, handleJiraMessageReceived as (payload: unknown) => void)
+  websocketClient.off(WebSocketResponseEvents.INTEGRATION_CONNECTION_STATUS_CHANGED, handleIntegrationConnectionStatusChanged as (payload: unknown) => void)
 }
 
 export const useUnifiedEventListeners = (): {

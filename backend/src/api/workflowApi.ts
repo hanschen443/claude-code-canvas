@@ -63,7 +63,7 @@ export function buildWorkflows(canvasId: string): WorkflowInfo[] {
 		inboundSet.add(connection.targetPodId);
 	}
 
-	const entryPods = pods.filter(p => !inboundSet.has(p.id) && !p.slackBinding && !p.telegramBinding);
+	const entryPods = pods.filter(p => !inboundSet.has(p.id) && !p.integrationBindings?.length);
 
 	return entryPods.map(entryPod => {
 		const visited = new Set<string>();
@@ -123,12 +123,8 @@ export async function handleWorkflowChat(req: Request, params: Record<string, st
 		return jsonResponse({ error: '此 Pod 不是 Workflow 入口，無法直接發送訊息' }, HTTP_STATUS.BAD_REQUEST);
 	}
 
-	if (pod.slackBinding) {
-		return jsonResponse({ error: 'Pod 已連接 Slack，無法手動發送訊息' }, HTTP_STATUS.BAD_REQUEST);
-	}
-
-	if (pod.telegramBinding) {
-		return jsonResponse({ error: 'Pod 已連接 Telegram，無法手動發送訊息' }, HTTP_STATUS.BAD_REQUEST);
+	if (pod.integrationBindings?.length) {
+		return jsonResponse({ error: 'Pod 已連接外部服務，無法手動發送訊息' }, HTTP_STATUS.BAD_REQUEST);
 	}
 
 	if (pod.status === 'chatting' || pod.status === 'summarizing') {
