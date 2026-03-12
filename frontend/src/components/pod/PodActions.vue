@@ -50,9 +50,9 @@ const SCHEDULE_FIRED_ANIMATION_DURATION_MS = 1800
 const TOGGLE_DEBOUNCE_GUARD_MS = 5000
 
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const isLongPress = ref(false)
+let isLongPress = false
 const isToggling = ref(false)
-const LONG_PRESS_DURATION = 500
+const LONG_PRESS_DURATION_MS = 500
 
 const isLongPressing = ref(false)
 const longPressProgress = ref(0)
@@ -79,7 +79,7 @@ const cleanupLongPress = (): void => {
 
 const handleEraserMouseDown = (event: MouseEvent): void => {
   event.stopPropagation()
-  isLongPress.value = false
+  isLongPress = false
   isLongPressing.value = true
   longPressProgress.value = 0
   longPressStartTime = performance.now()
@@ -90,7 +90,7 @@ const handleEraserMouseDown = (event: MouseEvent): void => {
     if (!longPressStartTime || !isLongPressing.value) return
 
     const elapsed = performance.now() - longPressStartTime
-    longPressProgress.value = Math.min(elapsed / LONG_PRESS_DURATION, 1)
+    longPressProgress.value = Math.min(elapsed / LONG_PRESS_DURATION_MS, 1)
 
     if (longPressProgress.value < 1) {
       progressAnimationFrame = requestAnimationFrame(updateProgress)
@@ -99,7 +99,7 @@ const handleEraserMouseDown = (event: MouseEvent): void => {
   progressAnimationFrame = requestAnimationFrame(updateProgress)
 
   longPressTimer.value = setTimeout(() => {
-    isLongPress.value = true
+    isLongPress = true
     isLongPressing.value = false
     longPressProgress.value = 0
     isToggling.value = true
@@ -107,12 +107,12 @@ const handleEraserMouseDown = (event: MouseEvent): void => {
     setTimeout(() => {
       isToggling.value = false
     }, TOGGLE_DEBOUNCE_GUARD_MS)
-  }, LONG_PRESS_DURATION)
+  }, LONG_PRESS_DURATION_MS)
 }
 
 const handleEraserMouseUp = (): void => {
   cleanupLongPress()
-  if (!isLongPress.value) {
+  if (!isLongPress) {
     emit('clear-workflow')
   }
 }
@@ -168,10 +168,7 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
 </script>
 
 <template>
-  <div
-    v-if="isSourcePod"
-    class="pod-action-buttons-group"
-  >
+  <div class="pod-action-buttons-group">
     <button
       v-if="showScheduleButton"
       class="pod-action-button-base schedule-button"
@@ -188,6 +185,7 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
       <Trash2 :size="16" />
     </button>
     <button
+      v-if="isSourcePod"
       class="pod-action-button-base workflow-clear-button-in-group"
       :class="{ 'multi-instance-enabled': isMultiInstanceEnabled }"
       :disabled="isEraserDisabled"
@@ -195,32 +193,14 @@ watch(() => props.isScheduleFiredAnimating, (newValue) => {
       @mouseup="handleEraserMouseUp"
       @mouseleave="handleEraserMouseLeave"
     >
-      <Eraser :size="16" />
       <span
-        v-show="isMultiInstanceEnabled"
-        class="multi-instance-badge"
+        v-if="isMultiInstanceEnabled"
+        class="multi-instance-icon-m"
       >M</span>
-    </button>
-  </div>
-
-  <div
-    v-else
-    class="pod-action-buttons-group"
-  >
-    <button
-      v-if="showScheduleButton"
-      class="pod-action-button-base schedule-button"
-      :class="{ 'schedule-enabled': scheduleEnabled, 'schedule-fired-animating': isScheduleFiredAnimating }"
-      :title="hasSchedule ? scheduleTooltip : undefined"
-      @click.stop="$emit('open-schedule-modal')"
-    >
-      <Timer :size="16" />
-    </button>
-    <button
-      class="pod-action-button-base pod-delete-button"
-      @click.stop="handleDelete"
-    >
-      <Trash2 :size="16" />
+      <Eraser
+        v-else
+        :size="16"
+      />
     </button>
   </div>
 

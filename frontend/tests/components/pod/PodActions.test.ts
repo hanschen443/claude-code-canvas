@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
+import { Eraser } from 'lucide-vue-next'
 import PodActions from '@/components/pod/PodActions.vue'
 
 vi.mock('@/components/ui/dialog', () => ({
@@ -48,6 +49,56 @@ function mountPodActions(propsOverrides: Partial<typeof defaultProps> = {}) {
 function findEraserButton(wrapper: ReturnType<typeof mountPodActions>) {
   return wrapper.find('.workflow-clear-button-in-group')
 }
+
+describe('PodActions Eraser 按鈕顯示邏輯', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('isMultiInstanceEnabled=false + isSourcePod=true 時顯示 Eraser 圖標', () => {
+    const wrapper = mountPodActions({ isMultiInstanceEnabled: false, isSourcePod: true })
+    const eraser = findEraserButton(wrapper)
+
+    expect(eraser.exists()).toBe(true)
+    expect(wrapper.findComponent(Eraser).exists()).toBe(true)
+    expect(wrapper.find('.multi-instance-icon-m').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('isMultiInstanceEnabled=true + isSourcePod=true 時顯示 M 字母', () => {
+    const wrapper = mountPodActions({ isMultiInstanceEnabled: true, isSourcePod: true })
+    const iconM = wrapper.find('.multi-instance-icon-m')
+
+    expect(iconM.exists()).toBe(true)
+    expect(iconM.text()).toBe('M')
+    expect(wrapper.findComponent(Eraser).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('isMultiInstanceEnabled=true 時 eraser 按鈕應帶有 multi-instance-enabled class', () => {
+    const wrapper = mountPodActions({ isMultiInstanceEnabled: true, isSourcePod: true })
+    const eraser = findEraserButton(wrapper)
+
+    expect(eraser.classes()).toContain('multi-instance-enabled')
+    wrapper.unmount()
+  })
+
+  it('isMultiInstanceEnabled=false 時 eraser 按鈕不應帶有 multi-instance-enabled class', () => {
+    const wrapper = mountPodActions({ isMultiInstanceEnabled: false, isSourcePod: true })
+    const eraser = findEraserButton(wrapper)
+
+    expect(eraser.classes()).not.toContain('multi-instance-enabled')
+    wrapper.unmount()
+  })
+
+  it('isSourcePod=false 時不應出現 .workflow-clear-button-in-group 按鈕', () => {
+    const wrapper = mountPodActions({ isSourcePod: false })
+    const eraser = findEraserButton(wrapper)
+
+    expect(eraser.exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
 
 describe('PodActions 橡皮擦按鈕 isWorkflowRunning 行為', () => {
   beforeEach(() => {
