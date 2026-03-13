@@ -66,6 +66,22 @@ describe('runFormatUtils', () => {
 
       expect(formatRelativeTime(threeDaysAgo)).toBe('3 天前')
     })
+
+    it('null 輸入應回傳「尚未開始」', () => {
+      expect(formatRelativeTime(null)).toBe('尚未開始')
+    })
+
+    it('undefined 輸入應回傳「尚未開始」', () => {
+      expect(formatRelativeTime(undefined)).toBe('尚未開始')
+    })
+
+    it('空字串輸入應回傳「尚未開始」', () => {
+      expect(formatRelativeTime('')).toBe('尚未開始')
+    })
+
+    it('無效格式字串應回傳「時間未知」', () => {
+      expect(formatRelativeTime('not-a-date')).toBe('時間未知')
+    })
   })
 
   describe('truncateMessage', () => {

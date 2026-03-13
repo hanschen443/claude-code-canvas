@@ -15,11 +15,13 @@ import { aiDecideService } from '../../src/services/workflow';
 import { claudeService } from '../../src/services/claude/claudeService.js';
 import { podStore } from '../../src/services/podStore.js';
 import { messageStore } from '../../src/services/messageStore.js';
+import { runStore } from '../../src/services/runStore.js';
 import { outputStyleService } from '../../src/services/outputStyleService.js';
 import { commandService } from '../../src/services/commandService.js';
 import { summaryPromptBuilder } from '../../src/services/summaryPromptBuilder.js';
 import { logger } from '../../src/utils/logger.js';
 import type { Connection } from '../../src/types';
+import type { RunContext } from '../../src/types/run.js';
 import { configStore } from '../../src/services/configStore.js';
 
 describe('AiDecideService', () => {
@@ -88,6 +90,9 @@ describe('AiDecideService', () => {
 
     // messageStore
     vi.spyOn(messageStore, 'getMessages').mockReturnValue(mockMessages);
+
+    // runStore
+    vi.spyOn(runStore, 'getRunMessages').mockReturnValue(mockMessages);
 
     // outputStyleService
     vi.spyOn(outputStyleService, 'getContent').mockResolvedValue(null);
@@ -456,6 +461,118 @@ describe('AiDecideService', () => {
       expect(claudeService.executeDisposableChat).toHaveBeenCalledWith(
         expect.objectContaining({ model: 'opus' })
       );
+    });
+  });
+
+  describe('run 模式：generateSourceSummary 從 runStore 讀取訊息', () => {
+    const mockRunContext: RunContext = {
+      runId: 'run-1',
+      canvasId: 'canvas-1',
+      sourcePodId: 'source-pod',
+    };
+
+    it('有 runContext 時從 runStore 讀取訊息，不呼叫 messageStore', async () => {
+      vi.spyOn(claudeService, 'executeMcpChat').mockImplementation((options: any) => {
+        return (async function* () {
+          const mcpServer = options.mcpServers['ai-decide'];
+          const decideTool = mcpServer.tools[0];
+
+          await decideTool.handler({
+            decisions: [{ connectionId: 'conn-1', shouldTrigger: true, reason: '相關' }],
+          });
+
+          yield { type: 'result', subtype: 'success' };
+        })() as any;
+      });
+
+      await aiDecideService.decideConnections('canvas-1', 'source-pod', [mockConnection], mockRunContext);
+
+      expect(runStore.getRunMessages).toHaveBeenCalledWith('run-1', 'source-pod');
+      expect(messageStore.getMessages).not.toHaveBeenCalled();
+    });
+
+    it('沒有 runContext 時從 messageStore 讀取訊息，不呼叫 runStore', async () => {
+      vi.spyOn(claudeService, 'executeMcpChat').mockImplementation((options: any) => {
+        return (async function* () {
+          const mcpServer = options.mcpServers['ai-decide'];
+          const decideTool = mcpServer.tools[0];
+
+          await decideTool.handler({
+            decisions: [{ connectionId: 'conn-1', shouldTrigger: true, reason: '相關' }],
+          });
+
+          yield { type: 'result', subtype: 'success' };
+        })() as any;
+      });
+
+      await aiDecideService.decideConnections('canvas-1', 'source-pod', [mockConnection]);
+
+      expect(messageStore.getMessages).toHaveBeenCalledWith('source-pod');
+      expect(runStore.getRunMessages).not.toHaveBeenCalled();
+    });
+
+    it('run 模式摘要失敗時，fallback 從 runStore 讀取最後一則 assistant 訊息', async () => {
+      const runMessages = [
+        { id: 'rm-1', role: 'user' as const, content: '請分析', timestamp: new Date().toISOString() },
+        { id: 'rm-2', role: 'assistant' as const, content: 'run 模式分析結果', timestamp: new Date().toISOString() },
+      ];
+      (runStore.getRunMessages as any).mockReturnValue(runMessages);
+
+      vi.spyOn(claudeService, 'executeDisposableChat').mockResolvedValue({
+        success: false,
+        content: '',
+        error: '摘要失敗',
+      });
+
+      vi.spyOn(claudeService, 'executeMcpChat').mockImplementation((options: any) => {
+        return (async function* () {
+          const mcpServer = options.mcpServers['ai-decide'];
+          const decideTool = mcpServer.tools[0];
+
+          await decideTool.handler({
+            decisions: [{ connectionId: 'conn-1', shouldTrigger: true, reason: '備用摘要判斷' }],
+          });
+
+          yield { type: 'result', subtype: 'success' };
+        })() as any;
+      });
+
+      const result = await aiDecideService.decideConnections('canvas-1', 'source-pod', [mockConnection], mockRunContext);
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.results[0].shouldTrigger).toBe(true);
+
+      const callOptions = (claudeService.executeMcpChat as any).mock.calls[0][0];
+      expect(callOptions.prompt).toContain('run 模式分析結果');
+    });
+
+    it('run 模式下 runStore 回傳空訊息時應回傳錯誤', async () => {
+      (runStore.getRunMessages as any).mockReturnValue([]);
+
+      const result = await aiDecideService.decideConnections('canvas-1', 'source-pod', [mockConnection], mockRunContext);
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].connectionId).toBe('conn-1');
+      expect(claudeService.executeMcpChat).not.toHaveBeenCalled();
+    });
+
+    it('run 模式摘要失敗且無 assistant 訊息時應回傳錯誤', async () => {
+      const runMessages = [
+        { id: 'rm-1', role: 'user' as const, content: '請分析', timestamp: new Date().toISOString() },
+      ];
+      (runStore.getRunMessages as any).mockReturnValue(runMessages);
+
+      vi.spyOn(claudeService, 'executeDisposableChat').mockResolvedValue({
+        success: false,
+        content: '',
+        error: '摘要失敗',
+      });
+
+      const result = await aiDecideService.decideConnections('canvas-1', 'source-pod', [mockConnection], mockRunContext);
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].connectionId).toBe('conn-1');
+      expect(claudeService.executeMcpChat).not.toHaveBeenCalled();
     });
   });
 });

@@ -5,6 +5,7 @@ export interface TriggerDecideContext {
   canvasId: string;
   sourcePodId: string;
   connections: Connection[];
+  runContext?: RunContext;
 }
 
 export interface TriggerDecideResult {

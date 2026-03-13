@@ -82,13 +82,14 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
 
   async decide(context: TriggerDecideContext): Promise<TriggerDecideResult[]> {
     const deps = this.deps;
-    const { canvasId, sourcePodId, connections } = context;
+    const { canvasId, sourcePodId, connections, runContext } = context;
 
     try {
       const batchResult = await deps.aiDecideService.decideConnections(
         canvasId,
         sourcePodId,
-        connections
+        connections,
+        runContext
       );
 
       const successResults: TriggerDecideResult[] = batchResult.results.map(result => ({
@@ -166,7 +167,7 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
 
     this.setConnectionsToDeciding(canvasId, connections, runContext);
 
-    const decideResults = await this.decide({ canvasId, sourcePodId, connections });
+    const decideResults = await this.decide({ canvasId, sourcePodId, connections, runContext });
 
     for (const decideResult of decideResults) {
       await this.processDecideResult(canvasId, sourcePodId, connections, decideResult, runContext);
@@ -184,8 +185,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     if (!runContext) {
       this.deps.connectionStore.updateDecideStatus(canvasId, connection.id, 'error', errorMessage);
       this.deps.connectionStore.updateConnectionStatus(canvasId, connection.id, 'ai-error');
-    }
-    if (!runContext) {
       this.deps.eventEmitter.emitAiDecideError({
         canvasId,
         connectionId: connection.id,
@@ -194,10 +193,10 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
         error: errorMessage,
       });
     }
-    const sourcePodErr = this.deps.podStore.getById(canvasId, sourcePodId);
-    const targetPodErr = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    const connLogErr = formatConnectionLog({connectionId: connection.id, sourceName: sourcePodErr?.name, sourcePodId, targetName: targetPodErr?.name, targetPodId: connection.targetPodId});
-    logger.error('Workflow', 'Error', `AI Decide 發生錯誤，${connLogErr}：${errorMessage}`);
+    const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
+    const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
+    const connLog = formatConnectionLog({connectionId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId});
+    logger.error('Workflow', 'Error', `AI Decide 發生錯誤，${connLog}：${errorMessage}`);
   }
 
   private handleApprovedConnection(
@@ -210,8 +209,6 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
     if (!runContext) {
       this.deps.connectionStore.updateDecideStatus(canvasId, connection.id, 'approved', decideResult.reason);
       this.deps.connectionStore.updateConnectionStatus(canvasId, connection.id, 'ai-approved');
-    }
-    if (!runContext) {
       this.deps.eventEmitter.emitAiDecideResult({
         canvasId,
         connectionId: connection.id,
@@ -221,11 +218,11 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
         reason: decideResult.reason ?? '',
       });
     }
-    const sourcePodApprove = this.deps.podStore.getById(canvasId, sourcePodId);
-    const targetPodApprove = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    const connLogApprove = formatConnectionLog({connectionId: connection.id, sourceName: sourcePodApprove?.name, sourcePodId, targetName: targetPodApprove?.name, targetPodId: connection.targetPodId});
-    const reasonApprove = decideResult.reason;
-    logger.log('Workflow', 'Create', reasonApprove ? `AI Decide 核准${connLogApprove}：${reasonApprove}` : `AI Decide 核准${connLogApprove}`);
+    const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
+    const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
+    const connLog = formatConnectionLog({connectionId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId});
+    const reason = decideResult.reason;
+    logger.log('Workflow', 'Create', reason ? `AI Decide 核准${connLog}：${reason}` : `AI Decide 核准${connLog}`);
   }
 
   private triggerApprovedPipeline(
@@ -276,10 +273,10 @@ class WorkflowAiDecideTriggerService extends LazyInitializable<AiDecideTriggerDe
       shouldTrigger: false,
       reason,
     });
-    const sourcePodReject = this.deps.podStore.getById(canvasId, sourcePodId);
-    const targetPodReject = this.deps.podStore.getById(canvasId, connection.targetPodId);
-    const connLogReject = formatConnectionLog({connectionId: connection.id, sourceName: sourcePodReject?.name, sourcePodId, targetName: targetPodReject?.name, targetPodId: connection.targetPodId});
-    logger.log('Workflow', 'Update', reason ? `AI Decide 拒絕${connLogReject}：${reason}` : `AI Decide 拒絕${connLogReject}`);
+    const sourcePod = this.deps.podStore.getById(canvasId, sourcePodId);
+    const targetPod = this.deps.podStore.getById(canvasId, connection.targetPodId);
+    const connLog = formatConnectionLog({connectionId: connection.id, sourceName: sourcePod?.name, sourcePodId, targetName: targetPod?.name, targetPodId: connection.targetPodId});
+    logger.log('Workflow', 'Update', reason ? `AI Decide 拒絕${connLog}：${reason}` : `AI Decide 拒絕${connLog}`);
   }
 
   private shouldDeferToMultiInput(canvasId: string, targetPodId: string, runContext?: RunContext): boolean {

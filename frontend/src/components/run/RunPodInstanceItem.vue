@@ -34,7 +34,7 @@ const emit = defineEmits<{
       </p>
     </div>
     <span class="text-xs text-muted-foreground shrink-0 mt-0.5">
-      {{ formatRelativeTime(instance.triggeredAt ?? instance.completedAt ?? '') }}
+      {{ formatRelativeTime(instance.triggeredAt ?? instance.completedAt) }}
     </span>
   </div>
 </template>

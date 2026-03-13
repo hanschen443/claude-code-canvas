@@ -4,8 +4,10 @@ const SECONDS_PER_MINUTE = 60
 const MINUTES_PER_HOUR = 60
 const HOURS_PER_DAY = 24
 
-export function formatRelativeTime(isoString: string): string {
+export function formatRelativeTime(isoString: string | null | undefined): string {
+  if (!isoString) return '尚未開始'
   const diffMs = Date.now() - new Date(isoString).getTime()
+  if (Number.isNaN(diffMs)) return '時間未知'
   const diffSeconds = Math.floor(diffMs / MS_PER_SECOND)
 
   if (diffSeconds < SECONDS_PER_MINUTE) return '剛剛'

@@ -3,12 +3,14 @@ import { z } from 'zod';
 import { aiDecidePromptBuilder, type AiDecideTargetInfo } from './aiDecidePromptBuilder.js';
 import { podStore } from '../podStore.js';
 import { messageStore } from '../messageStore.js';
+import { runStore } from '../runStore.js';
 import { outputStyleService } from '../outputStyleService.js';
 import { commandService } from '../commandService.js';
 import { claudeService } from '../claude/claudeService.js';
 import { configStore } from '../configStore.js';
 import { summaryPromptBuilder } from '../summaryPromptBuilder.js';
 import type { Connection } from '../../types/index.js';
+import type { RunContext } from '../../types/run.js';
 import { logger } from '../../utils/logger.js';
 import { getErrorMessage } from '../../utils/errorHelpers.js';
 import { getLastAssistantMessage } from '../../utils/messageHelper.js';
@@ -131,12 +133,13 @@ class AiDecideService {
   private async validateDecisionInput(
     canvasId: string,
     sourcePodId: string,
-    connections: Connection[]
+    connections: Connection[],
+    runContext?: RunContext
   ): Promise<
     | { valid: true; sourcePod: NonNullable<ReturnType<typeof podStore.getById>>; sourceSummary: string; targets: AiDecideTargetInfo[] }
     | { valid: false; error: AiDecideBatchResult }
   > {
-    const sourceSummary = await this.generateSourceSummary(canvasId, sourcePodId);
+    const sourceSummary = await this.generateSourceSummary(canvasId, sourcePodId, runContext);
     if (!sourceSummary) {
       return { valid: false, error: this.buildDecisionErrors(connections, '無法生成來源 Pod 摘要') };
     }
@@ -174,13 +177,14 @@ class AiDecideService {
   async decideConnections(
     canvasId: string,
     sourcePodId: string,
-    connections: Connection[]
+    connections: Connection[],
+    runContext?: RunContext
   ): Promise<AiDecideBatchResult> {
     if (connections.length === 0) {
       return { results: [], errors: [] };
     }
 
-    const inputValidation = await this.validateDecisionInput(canvasId, sourcePodId, connections);
+    const inputValidation = await this.validateDecisionInput(canvasId, sourcePodId, connections, runContext);
     if (!inputValidation.valid) {
       return inputValidation.error;
     }
@@ -243,11 +247,13 @@ class AiDecideService {
     return targets;
   }
 
-  private async generateSourceSummary(canvasId: string, sourcePodId: string): Promise<string | null> {
+  private async generateSourceSummary(canvasId: string, sourcePodId: string, runContext?: RunContext): Promise<string | null> {
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) return null;
 
-    const messages = messageStore.getMessages(sourcePodId);
+    const messages = runContext
+      ? runStore.getRunMessages(runContext.runId, sourcePodId)
+      : messageStore.getMessages(sourcePodId);
     if (messages.length === 0) return null;
 
     const conversationHistory = summaryPromptBuilder.formatConversationHistory(messages);
@@ -271,6 +277,10 @@ class AiDecideService {
 
     if (!result.success) {
       logger.log('Workflow', 'Update', `[AiDecideService] 生成摘要失敗，使用備用內容`);
+      if (runContext) {
+        const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+        return lastAssistant?.content ?? null;
+      }
       return getLastAssistantMessage(sourcePodId);
     }
 
