@@ -65,7 +65,8 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     const summaryResult = await summaryService.generateSummaryForTarget(
       canvasId,
       sourcePodId,
-      targetPodId
+      targetPodId,
+      runContext
     );
 
     if (summaryResult.success) {
@@ -81,7 +82,16 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     if (!runContext) {
       podStore.setStatus(canvasId, sourcePodId, 'idle');
     }
-    return this.getLastAssistantFallback(sourcePodId, runContext);
+
+    const fallback = this.getLastAssistantFallback(sourcePodId, runContext);
+    if (runContext) {
+      if (fallback) {
+        runExecutionService.completePodInstance(runContext, sourcePodId);
+      } else {
+        runExecutionService.errorPodInstance(runContext, sourcePodId, '無法生成摘要');
+      }
+    }
+    return fallback;
   }
 
   private triggerAutoConnections(canvasId: string, sourcePodId: string, connections: Connection[], runContext?: RunContext): Promise<unknown>[] {
@@ -221,6 +231,9 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
       { canvasId, connectionId, sourcePodId, targetPodId, triggerMode: strategy.mode, participatingConnectionIds, runContext },
       true
     );
+    if (runContext) {
+      runExecutionService.completePodInstance(runContext, targetPodId);
+    }
     // 刻意不 await：下游 workflow 觸發獨立於當前查詢完成流程
     fireAndForget(
       this.checkAndTriggerWorkflows(canvasId, targetPodId, runContext),

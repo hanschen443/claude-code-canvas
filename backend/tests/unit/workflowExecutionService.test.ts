@@ -29,6 +29,13 @@ vi.mock('../../src/services/claude/queryService.js', () => createClaudeQueryServ
 vi.mock('../../src/services/commandService.js', () => createCommandServiceMock());
 vi.mock('../../src/services/workflow/workflowMultiInputService.js', () => createWorkflowMultiInputServiceMock());
 vi.mock('../../src/services/directTriggerStore.js', () => createDirectTriggerStoreMock());
+vi.mock('../../src/services/workflow/runExecutionService.js', () => ({
+  runExecutionService: {
+    summarizingPodInstance: vi.fn(),
+    completePodInstance: vi.fn(),
+    errorPodInstance: vi.fn(),
+  },
+}));
 
 import { workflowExecutionService } from '../../src/services/workflow';
 import { connectionStore } from '../../src/services/connectionStore.js';
@@ -785,5 +792,87 @@ describe('WorkflowExecutionService', () => {
 
       expect(pendingTargetStore.clearPendingTarget).toHaveBeenCalledWith(multiInputTargetPodId);
     });
+  });
+});
+
+// generateSummaryWithFallback 中的 runContext pod instance 狀態管理
+// 從 workflowExecutionService 單獨抽出，因為需要 mock runExecutionService
+import { runExecutionService } from '../../src/services/workflow/runExecutionService.js';
+import { createMockRunContext } from '../mocks/workflowTestFactories.js';
+
+describe('WorkflowExecutionService.generateSummaryWithFallback runContext 狀態管理', () => {
+  const { canvasId, sourcePodId, targetPodId } = TEST_IDS;
+  const mockRunContext = createMockRunContext();
+
+  const mockAutoTriggerServiceForFallback = {
+    processAutoTriggerConnection: vi.fn(),
+    getLastAssistantMessage: vi.fn(),
+    init: vi.fn(),
+  };
+
+  const mockPipelineForFallback = {
+    execute: vi.fn(),
+    init: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    workflowExecutionService.init({
+      pipeline: mockPipelineForFallback as any,
+      aiDecideTriggerService: { processAiDecideConnections: vi.fn() } as any,
+      autoTriggerService: mockAutoTriggerServiceForFallback as any,
+      directTriggerService: createMockStrategy('direct'),
+    });
+
+    (podStore.getById as any).mockReturnValue(
+      createMockPod({ id: sourcePodId, name: 'Source Pod', status: 'idle' })
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('摘要成功時呼叫 completePodInstance', async () => {
+    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
+      success: true,
+      summary: '摘要內容',
+    });
+
+    await workflowExecutionService.generateSummaryWithFallback(canvasId, sourcePodId, targetPodId, mockRunContext);
+
+    expect(runExecutionService.summarizingPodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId);
+    expect(runExecutionService.completePodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId);
+    expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
+  });
+
+  it('摘要失敗但 fallback 有值時呼叫 completePodInstance', async () => {
+    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
+      success: false,
+      summary: '',
+      error: '摘要失敗',
+    });
+    (mockAutoTriggerServiceForFallback.getLastAssistantMessage as any).mockReturnValue('fallback 內容');
+
+    await workflowExecutionService.generateSummaryWithFallback(canvasId, sourcePodId, targetPodId, mockRunContext);
+
+    expect(runExecutionService.completePodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId);
+    expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
+  });
+
+  it('摘要失敗且 fallback 為 null 時呼叫 errorPodInstance', async () => {
+    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
+      success: false,
+      summary: '',
+      error: '摘要失敗',
+    });
+    (mockAutoTriggerServiceForFallback.getLastAssistantMessage as any).mockReturnValue(null);
+
+    const result = await workflowExecutionService.generateSummaryWithFallback(canvasId, sourcePodId, targetPodId, mockRunContext);
+
+    expect(result).toBeNull();
+    expect(runExecutionService.errorPodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId, '無法生成摘要');
+    expect(runExecutionService.completePodInstance).not.toHaveBeenCalled();
   });
 });

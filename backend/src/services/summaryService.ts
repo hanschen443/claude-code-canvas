@@ -3,11 +3,13 @@ import { summaryPromptBuilder } from './summaryPromptBuilder.js';
 import { configStore } from './configStore.js';
 import { podStore } from './podStore.js';
 import { messageStore } from './messageStore.js';
+import { runStore } from './runStore.js';
 import { outputStyleService } from './outputStyleService.js';
 import { commandService } from './commandService.js';
 import { logger } from '../utils/logger.js';
 import { getLastAssistantMessage } from '../utils/messageHelper.js';
 import type { Pod, PersistedMessage } from '../types/index.js';
+import type { RunContext } from '../types/run.js';
 
 interface TargetSummaryResult {
   targetPodId: string;
@@ -49,7 +51,7 @@ async function buildSummaryContext(sourcePod: Pod, targetPod: Pod, messages: Per
 }
 
 class SummaryService {
-  async generateSummaryForTarget(canvasId: string, sourcePodId: string, targetPodId: string): Promise<TargetSummaryResult> {
+  async generateSummaryForTarget(canvasId: string, sourcePodId: string, targetPodId: string, runContext?: RunContext): Promise<TargetSummaryResult> {
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) {
       return { targetPodId, summary: '', success: false, error: `找不到來源 Pod：${sourcePodId}` };
@@ -60,7 +62,9 @@ class SummaryService {
       return { targetPodId, summary: '', success: false, error: `找不到目標 Pod：${targetPodId}` };
     }
 
-    const messages = messageStore.getMessages(sourcePodId);
+    const messages = runContext
+      ? runStore.getRunMessages(runContext.runId, sourcePodId)
+      : messageStore.getMessages(sourcePodId);
     if (messages.length === 0) {
       return { targetPodId, summary: '', success: false, error: `來源 Pod ${sourcePodId} 沒有訊息記錄` };
     }

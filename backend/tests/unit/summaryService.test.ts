@@ -4,10 +4,12 @@ import { commandService } from '../../src/services/commandService.js';
 import { outputStyleService } from '../../src/services/outputStyleService.js';
 import { podStore } from '../../src/services/podStore.js';
 import { messageStore } from '../../src/services/messageStore.js';
+import { runStore } from '../../src/services/runStore.js';
 import { claudeService } from '../../src/services/claude/claudeService.js';
 import { summaryPromptBuilder } from '../../src/services/summaryPromptBuilder.js';
 import { logger } from '../../src/utils/logger.js';
 import { configStore } from '../../src/services/configStore.js';
+import type { RunContext } from '../../src/types/run.js';
 
 describe('SummaryService', () => {
   const mockSourcePod = {
@@ -65,6 +67,9 @@ describe('SummaryService', () => {
 
     // messageStore
     vi.spyOn(messageStore, 'getMessages').mockReturnValue(mockMessages);
+
+    // runStore
+    vi.spyOn(runStore, 'getRunMessages').mockReturnValue(mockMessages);
 
     // claudeService
     vi.spyOn(claudeService, 'executeDisposableChat').mockResolvedValue({
@@ -175,6 +180,37 @@ describe('SummaryService', () => {
         targetPodCommand: 'Analyze the performance.',
         conversationHistory: '[User]: Hello\n\n[Assistant]: Hi',
       });
+    });
+  });
+
+  describe('generateSummaryForTarget runContext 訊息來源選擇', () => {
+    const mockRunContext: RunContext = {
+      runId: 'run-1',
+      canvasId: 'canvas-1',
+      sourcePodId: 'source-pod',
+    };
+
+    it('有 runContext 時從 runStore 讀取訊息', async () => {
+      await summaryService.generateSummaryForTarget('canvas-1', 'source-pod', 'target-pod', mockRunContext);
+
+      expect(runStore.getRunMessages).toHaveBeenCalledWith('run-1', 'source-pod');
+      expect(messageStore.getMessages).not.toHaveBeenCalled();
+    });
+
+    it('沒有 runContext 時從 messageStore 讀取訊息', async () => {
+      await summaryService.generateSummaryForTarget('canvas-1', 'source-pod', 'target-pod');
+
+      expect(messageStore.getMessages).toHaveBeenCalledWith('source-pod');
+      expect(runStore.getRunMessages).not.toHaveBeenCalled();
+    });
+
+    it('有 runContext 但 run 內無訊息時回傳錯誤', async () => {
+      (runStore.getRunMessages as any).mockReturnValue([]);
+
+      const result = await summaryService.generateSummaryForTarget('canvas-1', 'source-pod', 'target-pod', mockRunContext);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('沒有訊息記錄');
     });
   });
 
