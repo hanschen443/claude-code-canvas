@@ -340,6 +340,64 @@ describe('settleAndSkipPath', () => {
     expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(afterSettle.id, 'skipped');
   });
 
+  it('settle auto，direct 也已結算，status=queued → skipped（排隊中視為未觸發）', () => {
+    const instance = makeInstance({ status: 'queued', autoPathwaySettled: false, directPathwaySettled: true });
+    const afterSettle = makeInstance({ status: 'queued', autoPathwaySettled: true, directPathwaySettled: true });
+    vi.spyOn(runStore, 'getPodInstance')
+      .mockReturnValueOnce(instance)
+      .mockReturnValueOnce(afterSettle)
+      .mockReturnValueOnce(afterSettle);
+    vi.spyOn(runStore, 'settleAutoPathway').mockImplementation(() => {});
+    vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([
+      makeInstance({ status: 'skipped', autoPathwaySettled: true, directPathwaySettled: true }),
+    ]);
+    vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'getRun').mockReturnValue({
+      id: RUN_ID,
+      canvasId: CANVAS_ID,
+      sourcePodId: SOURCE_POD_ID,
+      triggerMessage: '',
+      status: 'completed',
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+    vi.spyOn(connectionStore, 'list').mockReturnValue([]);
+
+    runExecutionService.settleAndSkipPath(makeRunContext(), 'pod-a', 'auto');
+
+    expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(afterSettle.id, 'skipped');
+  });
+
+  it('settle auto，direct 也已結算，status=waiting → skipped（等待中視為未觸發）', () => {
+    const instance = makeInstance({ status: 'waiting', autoPathwaySettled: false, directPathwaySettled: true });
+    const afterSettle = makeInstance({ status: 'waiting', autoPathwaySettled: true, directPathwaySettled: true });
+    vi.spyOn(runStore, 'getPodInstance')
+      .mockReturnValueOnce(instance)
+      .mockReturnValueOnce(afterSettle)
+      .mockReturnValueOnce(afterSettle);
+    vi.spyOn(runStore, 'settleAutoPathway').mockImplementation(() => {});
+    vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([
+      makeInstance({ status: 'skipped', autoPathwaySettled: true, directPathwaySettled: true }),
+    ]);
+    vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'getRun').mockReturnValue({
+      id: RUN_ID,
+      canvasId: CANVAS_ID,
+      sourcePodId: SOURCE_POD_ID,
+      triggerMessage: '',
+      status: 'completed',
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+    vi.spyOn(connectionStore, 'list').mockReturnValue([]);
+
+    runExecutionService.settleAndSkipPath(makeRunContext(), 'pod-a', 'auto');
+
+    expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(afterSettle.id, 'skipped');
+  });
+
   it('settle auto，direct 也已結算，status=deciding → skipped（AI 判斷中視為未觸發）', () => {
     const instance = makeInstance({ status: 'deciding', autoPathwaySettled: false, directPathwaySettled: true });
     const afterSettle = makeInstance({ status: 'deciding', autoPathwaySettled: true, directPathwaySettled: true });
@@ -657,6 +715,52 @@ describe('settleUnreachablePaths（透過 evaluateRunStatus 觸發）', () => {
 
     expect(runStore.settleDirectPathway).toHaveBeenCalledWith('i-d');
     expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith('i-d', 'skipped');
+  });
+
+  it('queued 狀態 pod 被偵測為不可達時，應標記為 skipped', () => {
+    const instanceA = makeInstance({ id: 'i-a', podId: 'pod-a', status: 'skipped', autoPathwaySettled: true });
+    const instanceB = makeInstance({ id: 'i-b', podId: 'pod-b', status: 'queued', autoPathwaySettled: false });
+    vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([instanceA, instanceB]);
+    vi.spyOn(connectionStore, 'list').mockReturnValue([
+      makeConnection({ id: 'c1', sourcePodId: 'pod-a', targetPodId: 'pod-b', triggerMode: 'auto' }),
+    ]);
+    vi.spyOn(runStore, 'settleAutoPathway').mockImplementation(() => {});
+    vi.spyOn(runStore, 'settleDirectPathway').mockImplementation(() => {});
+    vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'getRun').mockReturnValue({
+      id: RUN_ID, canvasId: CANVAS_ID, sourcePodId: SOURCE_POD_ID, triggerMessage: '',
+      status: 'completed', createdAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+    });
+    vi.spyOn(runStore, 'getPodInstance').mockReturnValue(instanceA);
+
+    runExecutionService.errorPodInstance(makeRunContext(), 'pod-a', 'test error');
+
+    expect(runStore.settleAutoPathway).toHaveBeenCalledWith('i-b');
+    expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith('i-b', 'skipped');
+  });
+
+  it('waiting 狀態 pod 被偵測為不可達時，應標記為 skipped', () => {
+    const instanceA = makeInstance({ id: 'i-a', podId: 'pod-a', status: 'skipped', autoPathwaySettled: true });
+    const instanceB = makeInstance({ id: 'i-b', podId: 'pod-b', status: 'waiting', autoPathwaySettled: false });
+    vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([instanceA, instanceB]);
+    vi.spyOn(connectionStore, 'list').mockReturnValue([
+      makeConnection({ id: 'c1', sourcePodId: 'pod-a', targetPodId: 'pod-b', triggerMode: 'auto' }),
+    ]);
+    vi.spyOn(runStore, 'settleAutoPathway').mockImplementation(() => {});
+    vi.spyOn(runStore, 'settleDirectPathway').mockImplementation(() => {});
+    vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+    vi.spyOn(runStore, 'getRun').mockReturnValue({
+      id: RUN_ID, canvasId: CANVAS_ID, sourcePodId: SOURCE_POD_ID, triggerMessage: '',
+      status: 'completed', createdAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+    });
+    vi.spyOn(runStore, 'getPodInstance').mockReturnValue(instanceA);
+
+    runExecutionService.errorPodInstance(makeRunContext(), 'pod-a', 'test error');
+
+    expect(runStore.settleAutoPathway).toHaveBeenCalledWith('i-b');
+    expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith('i-b', 'skipped');
   });
 
   it('source 為 deciding 狀態時不應觸發下游 auto skip', () => {

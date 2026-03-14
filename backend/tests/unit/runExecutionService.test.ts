@@ -286,6 +286,54 @@ describe('RunExecutionService', () => {
     });
   });
 
+  describe('queuedPodInstance', () => {
+    it('更新 status 為 queued 並發送 WebSocket 事件', () => {
+      const instance = createMockInstance({ status: 'pending' });
+      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+
+      runExecutionService.queuedPodInstance(makeRunContext(), sourcePodId);
+
+      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(instance.id, 'queued');
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
+        expect.objectContaining({ podId: sourcePodId, status: 'queued' }),
+      );
+    });
+
+    it('找不到 instance 時 log warning 不拋錯', () => {
+      vi.spyOn(runStore, 'getPodInstance').mockReturnValue(undefined);
+
+      expect(() => runExecutionService.queuedPodInstance(makeRunContext(), sourcePodId)).not.toThrow();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+  });
+
+  describe('waitingPodInstance', () => {
+    it('更新 status 為 waiting 並發送 WebSocket 事件', () => {
+      const instance = createMockInstance({ status: 'pending' });
+      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+
+      runExecutionService.waitingPodInstance(makeRunContext(), sourcePodId);
+
+      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(instance.id, 'waiting');
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
+        expect.objectContaining({ podId: sourcePodId, status: 'waiting' }),
+      );
+    });
+
+    it('找不到 instance 時 log warning 不拋錯', () => {
+      vi.spyOn(runStore, 'getPodInstance').mockReturnValue(undefined);
+
+      expect(() => runExecutionService.waitingPodInstance(makeRunContext(), sourcePodId)).not.toThrow();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+  });
+
   describe('summarizingPodInstance', () => {
     it('更新 status 為 summarizing 並發送事件，不評估 run 狀態', () => {
       const instance = createMockInstance({ status: 'running' });
@@ -394,6 +442,36 @@ describe('RunExecutionService', () => {
       runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId);
 
       expect(runStore.updateRunStatus).toHaveBeenCalledWith('run-1', 'completed');
+    });
+
+    it('有 queued instance 時不更新 run 狀態', () => {
+      const errorInstance = createMockInstance({ status: 'error', errorMessage: '失敗' });
+      const queuedInstance = createMockInstance({ id: 'instance-2', podId: targetPodId, status: 'queued' });
+      const instance = createMockInstance({ status: 'running' });
+      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+      vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([errorInstance, queuedInstance]);
+      vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
+
+      runExecutionService.errorPodInstance(makeRunContext(), sourcePodId, '失敗');
+
+      expect(runStore.updateRunStatus).not.toHaveBeenCalled();
+    });
+
+    it('有 waiting instance 時不更新 run 狀態', () => {
+      const errorInstance = createMockInstance({ status: 'error', errorMessage: '失敗' });
+      const waitingInstance = createMockInstance({ id: 'instance-2', podId: targetPodId, status: 'waiting' });
+      const instance = createMockInstance({ status: 'running' });
+      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
+      vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([errorInstance, waitingInstance]);
+      vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
+
+      runExecutionService.errorPodInstance(makeRunContext(), sourcePodId, '失敗');
+
+      expect(runStore.updateRunStatus).not.toHaveBeenCalled();
     });
 
     it('errorPodInstance 後有 error 且無進行中 → run 最終狀態更新為 error 並發送 RUN_STATUS_CHANGED', () => {

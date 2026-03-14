@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CheckCircle, Loader2, Clock, XCircle, SkipForward, FileText, Brain } from 'lucide-vue-next'
+import { CheckCircle, Loader2, Clock, XCircle, SkipForward, FileText, Brain, ListOrdered, Timer } from 'lucide-vue-next'
 import type { RunStatus, RunPodStatus } from '@/types/run'
 
 const props = defineProps<{
@@ -23,6 +23,10 @@ const iconConfig = computed(() => {
       return { component: FileText, class: 'animate-pulse text-doodle-orange' }
     case 'deciding':
       return { component: Brain, class: 'animate-pulse text-violet-500' }
+    case 'queued':
+      return { component: ListOrdered, class: 'text-muted-foreground' }
+    case 'waiting':
+      return { component: Timer, class: 'animate-pulse text-doodle-blue' }
     default:
       return { component: Clock, class: 'text-muted-foreground' }
   }

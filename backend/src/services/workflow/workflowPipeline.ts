@@ -34,7 +34,7 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
 
     if (runContext) {
       const targetInstance = runStore.getPodInstance(runContext.runId, targetPodId);
-      const TRIGGERABLE_STATUSES = new Set(['pending', 'deciding', 'running']);
+      const TRIGGERABLE_STATUSES = new Set(['pending', 'deciding', 'queued', 'waiting', 'running']);
       if (targetInstance && !TRIGGERABLE_STATUSES.has(targetInstance.status)) {
         logger.log('Workflow', 'Pipeline', `目標 Pod「${targetPod.name}」已為 ${targetInstance.status} 狀態，跳過觸發`);
         return;

@@ -21,6 +21,7 @@ import {workflowEventEmitter} from './workflowEventEmitter.js';
 import {logger} from '../../utils/logger.js';
 import {formatMergedSummaries, buildQueuedPayload, buildQueueProcessedPayload} from './workflowHelpers.js';
 import {connectionStore} from '../connectionStore.js';
+import {runExecutionService} from './runExecutionService.js';
 import {MERGED_CONTENT_PREVIEW_MAX_LENGTH} from './constants.js';
 
 // 等待 10 秒讓多個 direct 輸入合併為一次觸發，避免重複執行
@@ -73,7 +74,9 @@ class WorkflowDirectTriggerService implements TriggerStrategy {
 
         directTriggerStore.recordDirectReady(storeKey, sourcePodId, summary);
 
-        if (!runContext) {
+        if (runContext) {
+            runExecutionService.waitingPodInstance(runContext, targetPodId);
+        } else {
             connectionStore.updateConnectionStatus(canvasId, connection.id, 'waiting');
         }
 

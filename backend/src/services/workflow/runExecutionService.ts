@@ -153,8 +153,8 @@ class RunExecutionService {
     const updated = runStore.getPodInstance(runContext.runId, podId);
     if (!updated || !this.isAllPathwaysSettled(updated)) return;
 
-    // deciding 表示 AI 判斷中但 pod 本身從未真正執行，與 pending 同等視為「未觸發」
-    const wasNeverTriggered = updated.status === 'pending' || updated.status === 'deciding';
+    // deciding/queued/waiting 與 pending 同等視為「未觸發」
+    const wasNeverTriggered = updated.status === 'pending' || updated.status === 'deciding' || updated.status === 'queued' || updated.status === 'waiting';
     if (wasNeverTriggered) {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'skipped', { evaluateRun: true });
     } else {
@@ -179,7 +179,7 @@ class RunExecutionService {
       let changed = false;
 
       for (const instance of instances) {
-        if (instance.status !== 'pending' && instance.status !== 'deciding') continue;
+        if (instance.status !== 'pending' && instance.status !== 'deciding' && instance.status !== 'queued' && instance.status !== 'waiting') continue;
 
         const incomingConns = connections.filter(
           (c) => c.targetPodId === instance.podId && instancePodIds.has(c.sourcePodId),
@@ -215,8 +215,8 @@ class RunExecutionService {
 
         if (autoUnreachable || directUnreachable) {
           if (this.isAllPathwaysSettled(instance)) {
-            // deciding 同 pending，視為「未觸發」
-            const wasNeverTriggered = instance.status === 'pending' || instance.status === 'deciding';
+            // deciding/queued/waiting 同 pending，視為「未觸發」
+            const wasNeverTriggered = instance.status === 'pending' || instance.status === 'deciding' || instance.status === 'queued' || instance.status === 'waiting';
             const newStatus = wasNeverTriggered ? 'skipped' : 'completed';
             runStore.updatePodInstanceStatus(instance.id, newStatus);
             instance.status = newStatus;
@@ -253,6 +253,14 @@ class RunExecutionService {
 
   decidingPodInstance(runContext: RunContext, podId: string): void {
     this.updateAndEmitPodInstanceStatus(runContext, podId, 'deciding');
+  }
+
+  queuedPodInstance(runContext: RunContext, podId: string): void {
+    this.updateAndEmitPodInstanceStatus(runContext, podId, 'queued');
+  }
+
+  waitingPodInstance(runContext: RunContext, podId: string): void {
+    this.updateAndEmitPodInstanceStatus(runContext, podId, 'waiting');
   }
 
   private updateAndEmitPodInstanceStatus(
@@ -310,7 +318,7 @@ class RunExecutionService {
 
     const hasError = instances.some((i) => i.status === 'error');
     const hasInProgress = instances.some(
-      (i) => i.status === 'running' || i.status === 'pending' || i.status === 'summarizing' || i.status === 'deciding',
+      (i) => i.status === 'running' || i.status === 'pending' || i.status === 'summarizing' || i.status === 'deciding' || i.status === 'queued' || i.status === 'waiting',
     );
     const allDone = instances.every((i) => i.status === 'completed' || i.status === 'skipped');
 
