@@ -99,6 +99,10 @@ class RunExecutionService {
     };
   }
 
+  private isNeverTriggeredStatus(status: RunPodInstanceStatus): boolean {
+    return status === 'pending' || status === 'deciding' || status === 'queued' || status === 'waiting';
+  }
+
   private isAllPathwaysSettled(instance: RunPodInstance): boolean {
     return (
       (instance.autoPathwaySettled === null || instance.autoPathwaySettled === true) &&
@@ -137,8 +141,7 @@ class RunExecutionService {
     const updated = runStore.getPodInstance(runContext.runId, podId);
     if (!updated) return;
 
-    const wasNeverTriggered = updated.status === 'pending' || updated.status === 'deciding' || updated.status === 'queued' || updated.status === 'waiting';
-    if (this.isAllPathwaysSettled(updated) && !wasNeverTriggered) {
+    if (this.isAllPathwaysSettled(updated) && !this.isNeverTriggeredStatus(updated.status)) {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
     }
   }
@@ -159,9 +162,7 @@ class RunExecutionService {
     const updated = runStore.getPodInstance(runContext.runId, podId);
     if (!updated || !this.isAllPathwaysSettled(updated)) return;
 
-    // deciding/queued/waiting 與 pending 同等視為「未觸發」
-    const wasNeverTriggered = updated.status === 'pending' || updated.status === 'deciding' || updated.status === 'queued' || updated.status === 'waiting';
-    if (wasNeverTriggered) {
+    if (this.isNeverTriggeredStatus(updated.status)) {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'skipped', { evaluateRun: true });
     } else {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
@@ -185,7 +186,7 @@ class RunExecutionService {
       let changed = false;
 
       for (const instance of instances) {
-        if (instance.status !== 'pending' && instance.status !== 'deciding' && instance.status !== 'queued' && instance.status !== 'waiting') continue;
+        if (!this.isNeverTriggeredStatus(instance.status)) continue;
 
         const incomingConns = connections.filter(
           (c) => c.targetPodId === instance.podId && instancePodIds.has(c.sourcePodId),
@@ -221,9 +222,7 @@ class RunExecutionService {
 
         if (autoUnreachable || directUnreachable) {
           if (this.isAllPathwaysSettled(instance)) {
-            // deciding/queued/waiting 同 pending，視為「未觸發」
-            const wasNeverTriggered = instance.status === 'pending' || instance.status === 'deciding' || instance.status === 'queued' || instance.status === 'waiting';
-            const newStatus = wasNeverTriggered ? 'skipped' : 'completed';
+            const newStatus = this.isNeverTriggeredStatus(instance.status) ? 'skipped' : 'completed';
             runStore.updatePodInstanceStatus(instance.id, newStatus);
             instance.status = newStatus;
 

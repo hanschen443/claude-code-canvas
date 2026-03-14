@@ -418,7 +418,7 @@ function buildStatements(db: Database): {
         'UPDATE run_pod_instances SET claude_session_id = $claudeSessionId WHERE id = $id',
       ),
       selectRunningByRunId: db.prepare(
-        "SELECT * FROM run_pod_instances WHERE run_id = ? AND status IN ('pending', 'running', 'summarizing', 'deciding')",
+        "SELECT * FROM run_pod_instances WHERE run_id = ? AND status IN ('pending', 'running', 'summarizing', 'deciding', 'queued', 'waiting')",
       ),
       deleteByRunId: db.prepare('DELETE FROM run_pod_instances WHERE run_id = ?'),
       settleAutoPathway: db.prepare('UPDATE run_pod_instances SET auto_pathway_settled = 1 WHERE id = $id'),

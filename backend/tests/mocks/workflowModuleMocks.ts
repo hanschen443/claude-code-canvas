@@ -177,7 +177,6 @@ export function createRunStoreMock() {
       getPodInstance: vi.fn().mockReturnValue(undefined),
       settleAutoPathway: vi.fn(),
       settleDirectPathway: vi.fn(),
-      settleAllPathways: vi.fn(),
       updatePodInstanceStatus: vi.fn(),
     },
   };

@@ -436,6 +436,24 @@ describe('WorkflowPipeline', () => {
       expect(mockExecutionService.generateSummaryWithFallback).toHaveBeenCalled();
     });
 
+    it('target instance 為 queued 時應繼續執行（不 early return）', async () => {
+      const mockStrategy = createMockStrategy('auto');
+      (runStore.getPodInstance as any).mockReturnValue(makeRunInstance('queued'));
+
+      await workflowPipeline.execute(runContextPipelineBase, mockStrategy);
+
+      expect(mockExecutionService.generateSummaryWithFallback).toHaveBeenCalled();
+    });
+
+    it('target instance 為 waiting 時應繼續執行（不 early return）', async () => {
+      const mockStrategy = createMockStrategy('auto');
+      (runStore.getPodInstance as any).mockReturnValue(makeRunInstance('waiting'));
+
+      await workflowPipeline.execute(runContextPipelineBase, mockStrategy);
+
+      expect(mockExecutionService.generateSummaryWithFallback).toHaveBeenCalled();
+    });
+
     it('非 run 模式（無 runContext）時不觸發 guard，照常執行', async () => {
       const mockStrategy = createMockStrategy('auto');
       (runStore.getPodInstance as any).mockReturnValue(undefined);

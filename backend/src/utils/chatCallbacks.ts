@@ -13,6 +13,7 @@ export const onChatComplete = async (canvasId: string, podId: string): Promise<v
 };
 
 export const onRunChatComplete = async (runContext: RunContext, canvasId: string, podId: string): Promise<void> => {
+  // source pod 在 calculatePathways 中固定只有 auto pathway（directPathwaySettled 為 null），因此固定傳 'auto'
   runExecutionService.settlePodTrigger(runContext, podId, 'auto');
   workflowExecutionService.checkAndTriggerWorkflows(canvasId, podId, runContext).catch((error) => {
     logger.error('Workflow', 'Error', `檢查 Pod「${podId}」自動觸發 Workflow 失敗 (Run: ${runContext.runId})`, error);
