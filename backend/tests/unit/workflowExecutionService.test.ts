@@ -32,7 +32,7 @@ vi.mock('../../src/services/directTriggerStore.js', () => createDirectTriggerSto
 vi.mock('../../src/services/workflow/runExecutionService.js', () => ({
   runExecutionService: {
     summarizingPodInstance: vi.fn(),
-    completePodInstance: vi.fn(),
+    settlePodTrigger: vi.fn(),
     errorPodInstance: vi.fn(),
   },
 }));
@@ -834,7 +834,7 @@ describe('WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
     vi.restoreAllMocks();
   });
 
-  it('摘要成功時呼叫 completePodInstance', async () => {
+  it('摘要成功時呼叫 settlePodTrigger', async () => {
     (summaryService.generateSummaryForTarget as any).mockResolvedValue({
       success: true,
       summary: '摘要內容',
@@ -843,11 +843,11 @@ describe('WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
     await workflowExecutionService.generateSummaryWithFallback(canvasId, sourcePodId, targetPodId, mockRunContext);
 
     expect(runExecutionService.summarizingPodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId);
-    expect(runExecutionService.completePodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId);
+    expect(runExecutionService.settlePodTrigger).toHaveBeenCalledWith(mockRunContext, sourcePodId);
     expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
   });
 
-  it('摘要失敗但 fallback 有值時呼叫 completePodInstance', async () => {
+  it('摘要失敗但 fallback 有值時呼叫 settlePodTrigger', async () => {
     (summaryService.generateSummaryForTarget as any).mockResolvedValue({
       success: false,
       summary: '',
@@ -857,7 +857,7 @@ describe('WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
 
     await workflowExecutionService.generateSummaryWithFallback(canvasId, sourcePodId, targetPodId, mockRunContext);
 
-    expect(runExecutionService.completePodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId);
+    expect(runExecutionService.settlePodTrigger).toHaveBeenCalledWith(mockRunContext, sourcePodId);
     expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
   });
 
@@ -873,6 +873,6 @@ describe('WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
 
     expect(result).toBeNull();
     expect(runExecutionService.errorPodInstance).toHaveBeenCalledWith(mockRunContext, sourcePodId, '無法生成摘要');
-    expect(runExecutionService.completePodInstance).not.toHaveBeenCalled();
+    expect(runExecutionService.settlePodTrigger).not.toHaveBeenCalled();
   });
 });

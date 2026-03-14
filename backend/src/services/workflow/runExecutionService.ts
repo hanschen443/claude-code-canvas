@@ -1,11 +1,12 @@
 import { runStore } from '../runStore.js';
-import type { RunPodInstanceStatus } from '../runStore.js';
+import type { RunPodInstance, RunPodInstanceStatus } from '../runStore.js';
 import { connectionStore } from '../connectionStore.js';
 import { podStore } from '../podStore.js';
 import { socketService } from '../socketService.js';
 import { claudeService } from '../claude/claudeService.js';
 import { logger } from '../../utils/logger.js';
 import { WebSocketResponseEvents } from '../../schemas/events.js';
+import { isAutoTriggerable } from './workflowHelpers.js';
 import type {
   RunContext,
   RunCreatedPayload,
@@ -24,7 +25,10 @@ class RunExecutionService {
     const workflowRun = runStore.createRun(canvasId, sourcePodId, triggerMessage);
 
     const chainPodIds = this.collectChainPodIds(canvasId, sourcePodId);
-    const instances = chainPodIds.map((podId) => runStore.createPodInstance(workflowRun.id, podId));
+    const instances = chainPodIds.map((podId) => {
+      const pathways = this.calculatePathways(canvasId, podId, sourcePodId, chainPodIds);
+      return runStore.createPodInstance(workflowRun.id, podId, pathways.autoPathwaySettled, pathways.directPathwaySettled);
+    });
 
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     const sourcePodName = sourcePod?.name ?? sourcePodId;
@@ -62,6 +66,39 @@ class RunExecutionService {
     return [...visited];
   }
 
+  private calculatePathways(
+    canvasId: string,
+    podId: string,
+    sourcePodId: string,
+    chainPodIds: string[],
+  ): { autoPathwaySettled: boolean | null; directPathwaySettled: boolean | null } {
+    if (podId === sourcePodId) {
+      return { autoPathwaySettled: false, directPathwaySettled: null };
+    }
+
+    const connections = connectionStore.findByTargetPodId(canvasId, podId);
+    const chainConnections = connections.filter((c) => chainPodIds.includes(c.sourcePodId));
+
+    if (chainConnections.length === 0) {
+      return { autoPathwaySettled: false, directPathwaySettled: null };
+    }
+
+    const hasAutoTriggerable = chainConnections.some((c) => isAutoTriggerable(c.triggerMode));
+    const hasDirect = chainConnections.some((c) => c.triggerMode === 'direct');
+
+    return {
+      autoPathwaySettled: hasAutoTriggerable ? false : null,
+      directPathwaySettled: hasDirect ? false : null,
+    };
+  }
+
+  private isAllPathwaysSettled(instance: RunPodInstance): boolean {
+    return (
+      (instance.autoPathwaySettled === null || instance.autoPathwaySettled === true) &&
+      (instance.directPathwaySettled === null || instance.directPathwaySettled === true)
+    );
+  }
+
   private enforceRunLimit(canvasId: string): void {
     const count = runStore.countRunsByCanvasId(canvasId);
     if (count <= MAX_RUNS_PER_CANVAS) return;
@@ -77,8 +114,126 @@ class RunExecutionService {
     this.updateAndEmitPodInstanceStatus(runContext, podId, 'running');
   }
 
-  completePodInstance(runContext: RunContext, podId: string): void {
-    this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
+  settlePodTrigger(runContext: RunContext, podId: string): void {
+    const instance = runStore.getPodInstance(runContext.runId, podId);
+    if (!instance) {
+      logger.warn('Run', 'Warn', `settlePodTrigger：找不到 instance (runId=${runContext.runId}, podId=${podId})`);
+      return;
+    }
+
+    runStore.settleAllPathways(instance.id);
+    const updated = runStore.getPodInstance(runContext.runId, podId);
+    if (!updated) return;
+
+    if (this.isAllPathwaysSettled(updated) && updated.status !== 'pending') {
+      this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
+    }
+  }
+
+  settleAndSkipPath(runContext: RunContext, podId: string, pathway: 'auto' | 'direct'): void {
+    const instance = runStore.getPodInstance(runContext.runId, podId);
+    if (!instance) {
+      logger.warn('Run', 'Warn', `settleAndSkipPath：找不到 instance (runId=${runContext.runId}, podId=${podId})`);
+      return;
+    }
+
+    if (pathway === 'auto') {
+      runStore.settleAutoPathway(instance.id);
+    } else {
+      runStore.settleDirectPathway(instance.id);
+    }
+
+    const updated = runStore.getPodInstance(runContext.runId, podId);
+    if (!updated || !this.isAllPathwaysSettled(updated)) return;
+
+    // deciding 表示 AI 判斷中但 pod 本身從未真正執行，與 pending 同等視為「未觸發」
+    const wasNeverTriggered = updated.status === 'pending' || updated.status === 'deciding';
+    if (wasNeverTriggered) {
+      this.updateAndEmitPodInstanceStatus(runContext, podId, 'skipped', { evaluateRun: true });
+    } else {
+      this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
+    }
+  }
+
+  /**
+   * 在 evaluateRunStatus 前呼叫，偵測不可達路徑並直接更新 DB + emit WebSocket。
+   * 不呼叫 settleAndSkipPath，避免遞迴觸發 evaluateRunStatus。
+   * while 迴圈確保多層級聯 skip 能完整處理。
+   * Auto 路徑：ANY auto-triggerable source skipped/error → 不可達
+   * Direct 路徑：ALL direct sources skipped/error → 不可達
+   */
+  private settleUnreachablePaths(runId: string, canvasId: string): void {
+    let instances = runStore.getPodInstancesByRunId(runId);
+    const connections = connectionStore.list(canvasId);
+    const instancePodIds = new Set(instances.map((i) => i.podId));
+    let safetyLimit = instances.length;
+
+    while (safetyLimit-- > 0) {
+      let changed = false;
+
+      for (const instance of instances) {
+        if (instance.status !== 'pending' && instance.status !== 'deciding') continue;
+
+        const incomingConns = connections.filter(
+          (c) => c.targetPodId === instance.podId && instancePodIds.has(c.sourcePodId),
+        );
+        const autoConns = incomingConns.filter((c) => isAutoTriggerable(c.triggerMode));
+        const directConns = incomingConns.filter((c) => c.triggerMode === 'direct');
+
+        const autoUnreachable =
+          instance.autoPathwaySettled === false &&
+          autoConns.length > 0 &&
+          autoConns.some((c) => {
+            const src = instances.find((i) => i.podId === c.sourcePodId);
+            return src && (src.status === 'skipped' || src.status === 'error');
+          });
+
+        const directUnreachable =
+          instance.directPathwaySettled === false &&
+          directConns.length > 0 &&
+          directConns.every((c) => {
+            const src = instances.find((i) => i.podId === c.sourcePodId);
+            return src && (src.status === 'skipped' || src.status === 'error');
+          });
+
+        if (autoUnreachable) {
+          runStore.settleAutoPathway(instance.id);
+          instance.autoPathwaySettled = true;
+        }
+
+        if (directUnreachable) {
+          runStore.settleDirectPathway(instance.id);
+          instance.directPathwaySettled = true;
+        }
+
+        if (autoUnreachable || directUnreachable) {
+          if (this.isAllPathwaysSettled(instance)) {
+            // deciding 同 pending，視為「未觸發」
+            const wasNeverTriggered = instance.status === 'pending' || instance.status === 'deciding';
+            const newStatus = wasNeverTriggered ? 'skipped' : 'completed';
+            runStore.updatePodInstanceStatus(instance.id, newStatus);
+            instance.status = newStatus;
+
+            socketService.emitToCanvas(canvasId, WebSocketResponseEvents.RUN_POD_STATUS_CHANGED, {
+              runId,
+              canvasId,
+              podId: instance.podId,
+              status: newStatus,
+              completedAt: new Date().toISOString(),
+              autoPathwaySettled: instance.autoPathwaySettled,
+              directPathwaySettled: instance.directPathwaySettled,
+            } satisfies RunPodStatusChangedPayload);
+          }
+          changed = true;
+        }
+      }
+
+      if (!changed) break;
+    }
+
+    if (safetyLimit <= 0) {
+      logger.warn('Run', 'Warn', `settleUnreachablePaths 達到迭代上限 (runId: ${runId})`);
+    }
   }
 
   errorPodInstance(runContext: RunContext, podId: string, errorMessage: string): void {
@@ -128,6 +283,8 @@ class RunExecutionService {
       errorMessage: options?.errorMessage ?? instance.errorMessage ?? undefined,
       triggeredAt,
       completedAt,
+      autoPathwaySettled: instance.autoPathwaySettled,
+      directPathwaySettled: instance.directPathwaySettled,
     } satisfies RunPodStatusChangedPayload);
 
     if (options?.evaluateRun) {
@@ -143,6 +300,8 @@ class RunExecutionService {
    * 巢狀條件超過閾值，加此說明
    */
   private evaluateRunStatus(runId: string, canvasId: string): void {
+    this.settleUnreachablePaths(runId, canvasId);
+
     const instances = runStore.getPodInstancesByRunId(runId);
     if (instances.length === 0) return;
 

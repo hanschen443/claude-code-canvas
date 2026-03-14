@@ -26,6 +26,8 @@ export interface RunPodInstance {
   errorMessage: string | null;
   triggeredAt: string | null;
   completedAt: string | null;
+  autoPathwaySettled: boolean | null;
+  directPathwaySettled: boolean | null;
 }
 
 export interface RunMessage {
@@ -57,6 +59,8 @@ interface RunPodInstanceRow {
   error_message: string | null;
   triggered_at: string | null;
   completed_at: string | null;
+  auto_pathway_settled: number | null;
+  direct_pathway_settled: number | null;
 }
 
 interface RunMessageRow {
@@ -91,6 +95,8 @@ function rowToRunPodInstance(row: RunPodInstanceRow): RunPodInstance {
     errorMessage: row.error_message,
     triggeredAt: row.triggered_at,
     completedAt: row.completed_at,
+    autoPathwaySettled: row.auto_pathway_settled === null ? null : row.auto_pathway_settled === 1,
+    directPathwaySettled: row.direct_pathway_settled === null ? null : row.direct_pathway_settled === 1,
   };
 }
 
@@ -171,7 +177,12 @@ class RunStore {
     return rows.map(r => r.id);
   }
 
-  createPodInstance(runId: string, podId: string): RunPodInstance {
+  createPodInstance(
+    runId: string,
+    podId: string,
+    autoPathwaySettled: boolean | null = null,
+    directPathwaySettled: boolean | null = null,
+  ): RunPodInstance {
     const instance: RunPodInstance = {
       id: randomUUID(),
       runId,
@@ -181,7 +192,11 @@ class RunStore {
       errorMessage: null,
       triggeredAt: null,
       completedAt: null,
+      autoPathwaySettled,
+      directPathwaySettled,
     };
+
+    const toSqlite = (v: boolean | null): number | null => (v === null ? null : v ? 1 : 0);
 
     this.stmts.runPodInstance.insert.run({
       $id: instance.id,
@@ -192,9 +207,23 @@ class RunStore {
       $errorMessage: instance.errorMessage,
       $triggeredAt: instance.triggeredAt,
       $completedAt: instance.completedAt,
+      $autoPathwaySettled: toSqlite(autoPathwaySettled),
+      $directPathwaySettled: toSqlite(directPathwaySettled),
     });
 
     return instance;
+  }
+
+  settleAutoPathway(instanceId: string): void {
+    this.stmts.runPodInstance.settleAutoPathway.run({ $id: instanceId });
+  }
+
+  settleDirectPathway(instanceId: string): void {
+    this.stmts.runPodInstance.settleDirectPathway.run({ $id: instanceId });
+  }
+
+  settleAllPathways(instanceId: string): void {
+    this.stmts.runPodInstance.settleAllPathways.run({ $id: instanceId });
   }
 
   getPodInstance(runId: string, podId: string): RunPodInstance | undefined {

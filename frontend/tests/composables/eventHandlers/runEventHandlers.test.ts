@@ -43,6 +43,8 @@ function createMockRun(overrides?: Partial<WorkflowRun>): WorkflowRun {
         podId: 'pod-1',
         podName: 'Pod 1',
         status: 'pending',
+        autoPathwaySettled: null,
+        directPathwaySettled: null,
       },
     ],
     createdAt: new Date().toISOString(),

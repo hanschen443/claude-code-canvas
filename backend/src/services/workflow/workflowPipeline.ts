@@ -7,6 +7,7 @@ import type {
   QueueServiceMethods,
 } from './types.js';
 import { podStore } from '../podStore.js';
+import { runStore } from '../runStore.js';
 import { logger } from '../../utils/logger.js';
 import { LazyInitializable } from './lazyInitializable.js';
 import { fireAndForget } from '../../utils/operationHelpers.js';
@@ -29,6 +30,15 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
     if (!targetPod) {
       logger.error('Workflow', 'Pipeline', `[checkQueue] 找不到目標 Pod: ${targetPodId}`);
       return;
+    }
+
+    if (runContext) {
+      const targetInstance = runStore.getPodInstance(runContext.runId, targetPodId);
+      const TRIGGERABLE_STATUSES = new Set(['pending', 'deciding', 'running']);
+      if (targetInstance && !TRIGGERABLE_STATUSES.has(targetInstance.status)) {
+        logger.log('Workflow', 'Pipeline', `目標 Pod「${targetPod.name}」已為 ${targetInstance.status} 狀態，跳過觸發`);
+        return;
+      }
     }
 
     const sourcePodName = podStore.getById(canvasId, sourcePodId)?.name ?? sourcePodId;

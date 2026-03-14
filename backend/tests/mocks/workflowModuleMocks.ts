@@ -175,6 +175,10 @@ export function createRunStoreMock() {
     runStore: {
       getPodInstancesByRunId: vi.fn().mockReturnValue([]),
       getPodInstance: vi.fn().mockReturnValue(undefined),
+      settleAutoPathway: vi.fn(),
+      settleDirectPathway: vi.fn(),
+      settleAllPathways: vi.fn(),
+      updatePodInstanceStatus: vi.fn(),
     },
   };
 }
@@ -184,7 +188,8 @@ export function createRunExecutionServiceMock() {
     runExecutionService: {
       skipPodInstance: vi.fn(),
       errorPodInstance: vi.fn(),
-      completePodInstance: vi.fn(),
+      settlePodTrigger: vi.fn(),
+      settleAndSkipPath: vi.fn(),
       summarizingPodInstance: vi.fn(),
       decidingPodInstance: vi.fn(),
       startPodInstance: vi.fn(),

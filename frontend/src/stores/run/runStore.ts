@@ -151,6 +151,8 @@ export const useRunStore = defineStore('run', {
             errorMessage?: string
             triggeredAt?: string
             completedAt?: string
+            autoPathwaySettled?: boolean | null
+            directPathwaySettled?: boolean | null
         }): void {
             const run = this.runs.find(r => r.id === payload.runId)
             if (!run) return
@@ -170,6 +172,12 @@ export const useRunStore = defineStore('run', {
             }
             if (payload.completedAt !== undefined) {
                 podInstance.completedAt = payload.completedAt
+            }
+            if (payload.autoPathwaySettled !== undefined) {
+                podInstance.autoPathwaySettled = payload.autoPathwaySettled
+            }
+            if (payload.directPathwaySettled !== undefined) {
+                podInstance.directPathwaySettled = payload.directPathwaySettled
             }
         },
 

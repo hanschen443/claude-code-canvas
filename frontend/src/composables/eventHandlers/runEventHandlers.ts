@@ -37,6 +37,8 @@ const handleRunPodStatusChanged = createUnifiedHandler<BasePayload & RunPodStatu
       errorMessage: payload.errorMessage,
       triggeredAt: payload.triggeredAt,
       completedAt: payload.completedAt,
+      autoPathwaySettled: payload.autoPathwaySettled,
+      directPathwaySettled: payload.directPathwaySettled,
     })
   }
 )

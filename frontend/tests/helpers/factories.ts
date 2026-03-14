@@ -267,6 +267,8 @@ export function createMockRunPodInstance(overrides?: Partial<RunPodInstance>): R
     podId: `pod-1`,
     podName: `Pod 1`,
     status: 'pending',
+    autoPathwaySettled: null,
+    directPathwaySettled: null,
     ...overrides,
   }
 }

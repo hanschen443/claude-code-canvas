@@ -34,6 +34,8 @@ function createMockPodInstance(overrides?: Partial<RunPodInstance>): RunPodInsta
         podId: 'pod-1',
         podName: 'Pod 1',
         status: 'pending',
+        autoPathwaySettled: null,
+        directPathwaySettled: null,
         ...overrides,
     }
 }
@@ -360,6 +362,40 @@ describe('runStore', () => {
             })
 
             expect(store.runs[0]?.podInstances[0]?.lastResponseSummary).toBe('完成了')
+        })
+
+        it('應更新 autoPathwaySettled', () => {
+            const store = useRunStore()
+            store.runs = [createMockRun({
+                id: 'run-1',
+                podInstances: [createMockPodInstance({ podId: 'pod-1', autoPathwaySettled: null })],
+            })]
+
+            store.updatePodInstanceStatus({
+                runId: 'run-1',
+                podId: 'pod-1',
+                status: 'completed',
+                autoPathwaySettled: true,
+            })
+
+            expect(store.runs[0]?.podInstances[0]?.autoPathwaySettled).toBe(true)
+        })
+
+        it('應更新 directPathwaySettled', () => {
+            const store = useRunStore()
+            store.runs = [createMockRun({
+                id: 'run-1',
+                podInstances: [createMockPodInstance({ podId: 'pod-1', directPathwaySettled: null })],
+            })]
+
+            store.updatePodInstanceStatus({
+                runId: 'run-1',
+                podId: 'pod-1',
+                status: 'completed',
+                directPathwaySettled: false,
+            })
+
+            expect(store.runs[0]?.podInstances[0]?.directPathwaySettled).toBe(false)
         })
 
         it('run 不存在時不應有任何變化', () => {

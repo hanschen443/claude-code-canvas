@@ -19,6 +19,8 @@ function createRun(overrides?: Partial<WorkflowRun>): WorkflowRun {
         podId: 'pod-1',
         podName: 'Pod 1',
         status: 'completed',
+        autoPathwaySettled: null,
+        directPathwaySettled: null,
       },
     ],
     createdAt: new Date().toISOString(),

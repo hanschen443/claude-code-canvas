@@ -33,6 +33,8 @@ function createMockInstance(overrides?: Partial<RunPodInstance>): RunPodInstance
     errorMessage: null,
     triggeredAt: null,
     completedAt: null,
+    autoPathwaySettled: null,
+    directPathwaySettled: null,
     ...overrides,
   };
 }
@@ -155,19 +157,26 @@ describe('RunExecutionService', () => {
     });
   });
 
-  describe('completePodInstance', () => {
-    it('更新 status 為 completed 並評估 run 狀態', () => {
+  describe('settlePodTrigger', () => {
+    it('settle pathways 後狀態非 pending → 更新 status 為 completed 並評估 run 狀態', () => {
       const instance = createMockInstance({ status: 'running' });
+      const settledInstance = createMockInstance({ status: 'running', autoPathwaySettled: true });
       const completedInstance = createMockInstance({ status: 'completed', completedAt: new Date().toISOString() });
-      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      vi.spyOn(runStore, 'getPodInstance')
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(settledInstance)
+        .mockReturnValueOnce(settledInstance);
+      vi.spyOn(runStore, 'settleAllPathways').mockImplementation(() => {});
       vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([completedInstance]);
       vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getRun').mockReturnValue(createMockRun({ status: 'completed', completedAt: new Date().toISOString() }));
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
 
-      runExecutionService.completePodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId);
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(instance.id, 'completed');
+      expect(runStore.settleAllPathways).toHaveBeenCalledWith(instance.id);
+      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(settledInstance.id, 'completed');
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
         canvasId,
         WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
@@ -184,7 +193,7 @@ describe('RunExecutionService', () => {
     it('找不到 instance 時 log warning 不拋錯', () => {
       vi.spyOn(runStore, 'getPodInstance').mockReturnValue(undefined);
 
-      expect(() => runExecutionService.completePodInstance(makeRunContext(), sourcePodId)).not.toThrow();
+      expect(() => runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId)).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
   });
@@ -271,18 +280,24 @@ describe('RunExecutionService', () => {
     });
   });
 
-  describe('evaluateRunStatus（透過 completePodInstance 觸發）', () => {
+  describe('evaluateRunStatus（透過 settlePodTrigger 觸發）', () => {
     it('有 error 且無進行中的 instance → run 狀態變為 error', () => {
       const errorInstance = createMockInstance({ status: 'error', errorMessage: '失敗' });
       const skippedInstance = createMockInstance({ id: 'instance-2', podId: targetPodId, status: 'skipped' });
       const instance = createMockInstance({ status: 'running' });
-      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      const settledInstance = createMockInstance({ status: 'running', autoPathwaySettled: true });
+      vi.spyOn(runStore, 'getPodInstance')
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(settledInstance)
+        .mockReturnValueOnce(settledInstance);
+      vi.spyOn(runStore, 'settleAllPathways').mockImplementation(() => {});
       vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([errorInstance, skippedInstance]);
       vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getRun').mockReturnValue(createMockRun({ status: 'error', completedAt: new Date().toISOString() }));
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
 
-      runExecutionService.completePodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId);
 
       expect(runStore.updateRunStatus).toHaveBeenCalledWith('run-1', 'error');
     });
@@ -291,12 +306,18 @@ describe('RunExecutionService', () => {
       const runningInstance = createMockInstance({ status: 'running' });
       const pendingInstance = createMockInstance({ id: 'instance-2', podId: targetPodId, status: 'pending' });
       const instance = createMockInstance({ status: 'running' });
-      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      const settledInstance = createMockInstance({ status: 'running', autoPathwaySettled: true });
+      vi.spyOn(runStore, 'getPodInstance')
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(settledInstance)
+        .mockReturnValueOnce(settledInstance);
+      vi.spyOn(runStore, 'settleAllPathways').mockImplementation(() => {});
       vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([runningInstance, pendingInstance]);
       vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
 
-      runExecutionService.completePodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId);
 
       expect(runStore.updateRunStatus).not.toHaveBeenCalled();
     });
@@ -305,13 +326,19 @@ describe('RunExecutionService', () => {
       const completedInstance1 = createMockInstance({ status: 'completed' });
       const completedInstance2 = createMockInstance({ id: 'instance-2', podId: targetPodId, status: 'completed' });
       const instance = createMockInstance({ status: 'running' });
-      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      const settledInstance = createMockInstance({ status: 'running', autoPathwaySettled: true });
+      vi.spyOn(runStore, 'getPodInstance')
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(settledInstance)
+        .mockReturnValueOnce(settledInstance);
+      vi.spyOn(runStore, 'settleAllPathways').mockImplementation(() => {});
       vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([completedInstance1, completedInstance2]);
       vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getRun').mockReturnValue(createMockRun({ status: 'completed', completedAt: new Date().toISOString() }));
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
 
-      runExecutionService.completePodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId);
 
       expect(runStore.updateRunStatus).toHaveBeenCalledWith('run-1', 'completed');
     });
@@ -320,13 +347,19 @@ describe('RunExecutionService', () => {
       const completedInstance = createMockInstance({ status: 'completed' });
       const skippedInstance = createMockInstance({ id: 'instance-2', podId: targetPodId, status: 'skipped' });
       const instance = createMockInstance({ status: 'running' });
-      vi.spyOn(runStore, 'getPodInstance').mockReturnValueOnce(instance);
+      const settledInstance = createMockInstance({ status: 'running', autoPathwaySettled: true });
+      vi.spyOn(runStore, 'getPodInstance')
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(settledInstance)
+        .mockReturnValueOnce(settledInstance);
+      vi.spyOn(runStore, 'settleAllPathways').mockImplementation(() => {});
       vi.spyOn(runStore, 'updatePodInstanceStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([completedInstance, skippedInstance]);
       vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getRun').mockReturnValue(createMockRun({ status: 'completed', completedAt: new Date().toISOString() }));
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
 
-      runExecutionService.completePodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.settlePodTrigger(makeRunContext(), sourcePodId);
 
       expect(runStore.updateRunStatus).toHaveBeenCalledWith('run-1', 'completed');
     });
@@ -340,6 +373,7 @@ describe('RunExecutionService', () => {
       vi.spyOn(runStore, 'getPodInstancesByRunId').mockReturnValue([errorInstance, completedInstance]);
       vi.spyOn(runStore, 'updateRunStatus').mockImplementation(() => {});
       vi.spyOn(runStore, 'getRun').mockReturnValue(createMockRun({ status: 'error', completedAt: new Date().toISOString() }));
+      vi.spyOn(connectionStore, 'list').mockReturnValue([]);
 
       runExecutionService.errorPodInstance(makeRunContext(), sourcePodId, '執行錯誤');
 

@@ -185,7 +185,9 @@ export function createTables(db: Database): void {
       'claude_session_id TEXT,' +
       'error_message TEXT,' +
       'triggered_at TEXT,' +
-      'completed_at TEXT' +
+      'completed_at TEXT,' +
+      'auto_pathway_settled INTEGER,' +
+      'direct_pathway_settled INTEGER' +
       ')'
   );
   db.exec('CREATE INDEX IF NOT EXISTS idx_run_pod_instances_run_id ON run_pod_instances(run_id)');

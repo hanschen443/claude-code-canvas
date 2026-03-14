@@ -37,6 +37,8 @@ export interface RunPodStatusChangedPayload {
   lastResponseSummary?: string;
   triggeredAt?: string;
   completedAt?: string;
+  autoPathwaySettled?: boolean | null;
+  directPathwaySettled?: boolean | null;
 }
 
 export interface RunMessagePayload {

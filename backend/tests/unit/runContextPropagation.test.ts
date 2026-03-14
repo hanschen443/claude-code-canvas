@@ -47,7 +47,8 @@ vi.mock('../../src/services/workflow/runExecutionService.js', () => ({
   runExecutionService: {
     createRun: vi.fn(),
     startPodInstance: vi.fn(),
-    completePodInstance: vi.fn(),
+    settlePodTrigger: vi.fn(),
+    settleAndSkipPath: vi.fn(),
     errorPodInstance: vi.fn(),
     summarizingPodInstance: vi.fn(),
     skipPodInstance: vi.fn(),
@@ -201,7 +202,7 @@ describe('RunContext 傳遞驗證', () => {
 
     asMock(runExecutionService.createRun).mockResolvedValue(TEST_RUN_CONTEXT);
     asMock(runExecutionService.startPodInstance).mockImplementation(() => {});
-    asMock(runExecutionService.completePodInstance).mockImplementation(() => {});
+    asMock(runExecutionService.settlePodTrigger).mockImplementation(() => {});
     asMock(executeStreamingChat).mockResolvedValue({ messageId: 'msg-1', content: '回覆', hasContent: true, aborted: false });
     asMock(injectUserMessage).mockResolvedValue(undefined);
     asMock(injectRunUserMessage).mockResolvedValue(undefined);
@@ -377,12 +378,12 @@ describe('RunContext 傳遞驗證', () => {
       // 驗證 onComplete callback 已被設定（來自 onRunChatComplete 的閉包）
       expect(capturedOnComplete).toBeDefined();
 
-      // 呼叫 callback，驗證它會觸發 runExecutionService.completePodInstance
+      // 呼叫 callback，驗證它會觸發 runExecutionService.settlePodTrigger
       if (capturedOnComplete) {
         await capturedOnComplete(CANVAS_ID, SOURCE_POD_ID);
       }
 
-      // onRunChatComplete 本體呼叫 runExecutionService.completePodInstance 和 checkAndTriggerWorkflows
+      // onRunChatComplete 本體呼叫 runExecutionService.settlePodTrigger 和 checkAndTriggerWorkflows
       // 但 onRunChatComplete 被 mock 了，所以驗證 onRunChatComplete mock 有被呼叫
       const { onRunChatComplete } = await import('../../src/utils/chatCallbacks.js');
       expect(onRunChatComplete).toHaveBeenCalledWith(

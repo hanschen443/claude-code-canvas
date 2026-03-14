@@ -11,6 +11,8 @@ function createInstance(overrides?: Partial<RunPodInstance>): RunPodInstance {
     podId: 'pod-1',
     podName: '測試 Pod',
     status: 'completed',
+    autoPathwaySettled: null,
+    directPathwaySettled: null,
     ...overrides,
   }
 }

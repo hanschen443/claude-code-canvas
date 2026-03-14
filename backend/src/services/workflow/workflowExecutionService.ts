@@ -53,7 +53,7 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
   private updateSummaryStatus(canvasId: string, sourcePodId: string, success: boolean, runContext?: RunContext, fallbackAvailable?: boolean): void {
     if (runContext) {
       if (success || fallbackAvailable) {
-        runExecutionService.completePodInstance(runContext, sourcePodId);
+        runExecutionService.settlePodTrigger(runContext, sourcePodId);
       } else {
         runExecutionService.errorPodInstance(runContext, sourcePodId, '無法生成摘要');
       }
@@ -230,7 +230,7 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
       true
     );
     if (runContext) {
-      runExecutionService.completePodInstance(runContext, targetPodId);
+      runExecutionService.settlePodTrigger(runContext, targetPodId);
     }
     // 刻意不 await：下游 workflow 觸發獨立於當前查詢完成流程
     fireAndForget(
