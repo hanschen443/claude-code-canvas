@@ -99,10 +99,6 @@ class RunExecutionService {
     };
   }
 
-  private isNeverTriggeredStatus(status: RunPodInstanceStatus): boolean {
-    return NEVER_TRIGGERED_STATUSES.has(status);
-  }
-
   private isAllPathwaysSettled(instance: RunPodInstance): boolean {
     return (
       (instance.autoPathwaySettled === null || instance.autoPathwaySettled === true) &&
@@ -156,7 +152,7 @@ class RunExecutionService {
     const updated = this.settlePathwayAndRefresh(runContext, podId, pathway, 'settlePodTrigger');
     if (!updated) return;
 
-    if (this.isAllPathwaysSettled(updated) && !this.isNeverTriggeredStatus(updated.status)) {
+    if (this.isAllPathwaysSettled(updated) && !NEVER_TRIGGERED_STATUSES.has(updated.status)) {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
     }
   }
@@ -165,7 +161,7 @@ class RunExecutionService {
     const updated = this.settlePathwayAndRefresh(runContext, podId, pathway, 'settleAndSkipPath');
     if (!updated || !this.isAllPathwaysSettled(updated)) return;
 
-    if (this.isNeverTriggeredStatus(updated.status)) {
+    if (NEVER_TRIGGERED_STATUSES.has(updated.status)) {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'skipped', { evaluateRun: true });
     } else {
       this.updateAndEmitPodInstanceStatus(runContext, podId, 'completed', { evaluateRun: true });
@@ -189,7 +185,7 @@ class RunExecutionService {
       let changed = false;
 
       for (const instance of instances) {
-        if (!this.isNeverTriggeredStatus(instance.status)) continue;
+        if (!NEVER_TRIGGERED_STATUSES.has(instance.status)) continue;
 
         const incomingConns = connections.filter(
           (c) => c.targetPodId === instance.podId && instancePodIds.has(c.sourcePodId),
@@ -225,7 +221,7 @@ class RunExecutionService {
 
         if (autoUnreachable || directUnreachable) {
           if (this.isAllPathwaysSettled(instance)) {
-            const newStatus = this.isNeverTriggeredStatus(instance.status) ? 'skipped' : 'completed';
+            const newStatus = NEVER_TRIGGERED_STATUSES.has(instance.status) ? 'skipped' : 'completed';
             runStore.updatePodInstanceStatus(instance.id, newStatus);
             instance.status = newStatus;
 

@@ -11,7 +11,7 @@ export const IN_PROGRESS_STATUSES = new Set<RunPodInstanceStatus>(['running', 'p
 export const TRIGGERABLE_STATUSES = new Set<RunPodInstanceStatus>(['pending', 'deciding', 'queued', 'waiting', 'running']);
 export const TERMINAL_POD_STATUSES = new Set<RunPodInstanceStatus>(['completed', 'error', 'skipped']);
 // Run 層級終態（不含 skipped，skipped 只存在於 pod 層級）
-export const RUN_TERMINAL_STATUSES = ['completed', 'error'] as const;
+export const RUN_TERMINAL_STATUSES = new Set<RunStatus>(['completed', 'error']);
 
 export interface WorkflowRun {
   id: string;
@@ -170,7 +170,7 @@ class RunStore {
   }
 
   updateRunStatus(runId: string, status: RunStatus): void {
-    const completedAt = (RUN_TERMINAL_STATUSES as readonly string[]).includes(status) ? new Date().toISOString() : null;
+    const completedAt = RUN_TERMINAL_STATUSES.has(status) ? new Date().toISOString() : null;
     this.stmts.workflowRun.updateStatus.run({
       $id: runId,
       $status: status,

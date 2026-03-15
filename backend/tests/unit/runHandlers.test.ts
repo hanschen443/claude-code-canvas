@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockDeleteRun = vi.fn();
+const mockGetRun = vi.fn();
 const mockGetRunsByCanvasId = vi.fn();
 const mockGetPodInstancesByRunId = vi.fn();
 const mockGetById = vi.fn();
 const mockGetRunMessages = vi.fn();
 const mockEmitSuccess = vi.fn();
+const mockEmitError = vi.fn();
 
 vi.mock('../../src/utils/handlerHelpers.js', () => ({
     withCanvasId: (_event: unknown, handler: (connectionId: string, canvasId: string, payload: unknown, requestId: string) => Promise<void>) =>
@@ -21,6 +23,7 @@ vi.mock('../../src/services/workflow/runExecutionService.js', () => ({
 
 vi.mock('../../src/services/runStore.js', () => ({
     runStore: {
+        getRun: mockGetRun,
         getRunsByCanvasId: mockGetRunsByCanvasId,
         getPodInstancesByRunId: mockGetPodInstancesByRunId,
         getRunMessages: mockGetRunMessages,
@@ -35,6 +38,7 @@ vi.mock('../../src/services/podStore.js', () => ({
 
 vi.mock('../../src/utils/websocketResponse.js', () => ({
     emitSuccess: mockEmitSuccess,
+    emitError: mockEmitError,
 }));
 
 vi.mock('../../src/schemas/index.js', () => ({
@@ -60,15 +64,51 @@ beforeEach(() => {
 
 describe('handleRunDelete', () => {
     it('應呼叫 runExecutionService.deleteRun 傳入 runId', async () => {
+        mockGetRun.mockReturnValue({ id: RUN_ID, canvasId: CANVAS_ID });
+
         await handleRunDelete(CONNECTION_ID, { runId: RUN_ID }, REQUEST_ID);
 
         expect(mockDeleteRun).toHaveBeenCalledWith(RUN_ID);
     });
 
     it('不應自行發送 WebSocket 事件（由 deleteRun 內部處理）', async () => {
+        mockGetRun.mockReturnValue({ id: RUN_ID, canvasId: CANVAS_ID });
+
         await handleRunDelete(CONNECTION_ID, { runId: RUN_ID }, REQUEST_ID);
 
         expect(mockEmitSuccess).not.toHaveBeenCalled();
+    });
+
+    it('runId 不存在時應回傳 NOT_FOUND 錯誤，不執行刪除', async () => {
+        mockGetRun.mockReturnValue(undefined);
+
+        await handleRunDelete(CONNECTION_ID, { runId: RUN_ID }, REQUEST_ID);
+
+        expect(mockDeleteRun).not.toHaveBeenCalled();
+        expect(mockEmitError).toHaveBeenCalledWith(
+            CONNECTION_ID,
+            'run:deleted',
+            '找不到指定的 Run',
+            REQUEST_ID,
+            undefined,
+            'NOT_FOUND'
+        );
+    });
+
+    it('runId 屬於其他 canvas 時應回傳 NOT_FOUND 錯誤，不執行刪除', async () => {
+        mockGetRun.mockReturnValue({ id: RUN_ID, canvasId: 'other-canvas' });
+
+        await handleRunDelete(CONNECTION_ID, { runId: RUN_ID }, REQUEST_ID);
+
+        expect(mockDeleteRun).not.toHaveBeenCalled();
+        expect(mockEmitError).toHaveBeenCalledWith(
+            CONNECTION_ID,
+            'run:deleted',
+            '找不到指定的 Run',
+            REQUEST_ID,
+            undefined,
+            'NOT_FOUND'
+        );
     });
 });
 
@@ -211,6 +251,7 @@ describe('handleRunLoadPodMessages', () => {
             { id: 'msg-2', role: 'assistant', content: '哈囉', timestamp: '2024-01-01T00:00:01.000Z' },
         ];
 
+        mockGetRun.mockReturnValue({ id: RUN_ID, canvasId: CANVAS_ID });
         mockGetRunMessages.mockReturnValue(mockMessages);
 
         await handleRunLoadPodMessages(CONNECTION_ID, { runId: RUN_ID, podId: POD_ID }, REQUEST_ID);
@@ -228,6 +269,7 @@ describe('handleRunLoadPodMessages', () => {
     });
 
     it('無訊息時應回傳空陣列', async () => {
+        mockGetRun.mockReturnValue({ id: RUN_ID, canvasId: CANVAS_ID });
         mockGetRunMessages.mockReturnValue([]);
 
         await handleRunLoadPodMessages(CONNECTION_ID, { runId: RUN_ID, podId: POD_ID }, REQUEST_ID);
@@ -239,6 +281,38 @@ describe('handleRunLoadPodMessages', () => {
                 success: true,
                 messages: [],
             })
+        );
+    });
+
+    it('runId 不存在時應回傳 NOT_FOUND 錯誤，不載入訊息', async () => {
+        mockGetRun.mockReturnValue(undefined);
+
+        await handleRunLoadPodMessages(CONNECTION_ID, { runId: RUN_ID, podId: POD_ID }, REQUEST_ID);
+
+        expect(mockGetRunMessages).not.toHaveBeenCalled();
+        expect(mockEmitError).toHaveBeenCalledWith(
+            CONNECTION_ID,
+            'run:pod-messages:result',
+            '找不到指定的 Run',
+            REQUEST_ID,
+            undefined,
+            'NOT_FOUND'
+        );
+    });
+
+    it('runId 屬於其他 canvas 時應回傳 NOT_FOUND 錯誤，不載入訊息', async () => {
+        mockGetRun.mockReturnValue({ id: RUN_ID, canvasId: 'other-canvas' });
+
+        await handleRunLoadPodMessages(CONNECTION_ID, { runId: RUN_ID, podId: POD_ID }, REQUEST_ID);
+
+        expect(mockGetRunMessages).not.toHaveBeenCalled();
+        expect(mockEmitError).toHaveBeenCalledWith(
+            CONNECTION_ID,
+            'run:pod-messages:result',
+            '找不到指定的 Run',
+            REQUEST_ID,
+            undefined,
+            'NOT_FOUND'
         );
     });
 });

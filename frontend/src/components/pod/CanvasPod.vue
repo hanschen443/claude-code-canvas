@@ -45,6 +45,7 @@ const {
 } = useCanvasContext()
 const {startBatchDrag, isElementSelected, isBatchDragging} = useBatchDrag()
 const {toast} = useToast()
+const {sendCanvasAction} = useSendCanvasAction()
 
 const isActive = computed(() => props.pod.id === podStore.activePodId)
 const boundNote = computed(() => outputStyleStore.getNotesByPodId(props.pod.id)[0])
@@ -220,8 +221,6 @@ const handleDblClick = (e: MouseEvent): void => {
 }
 
 const handleModelChange = async (model: ModelType): Promise<void> => {
-  const {sendCanvasAction} = useSendCanvasAction()
-
   const response = await sendCanvasAction<PodSetModelPayload, PodModelSetPayload>({
     requestEvent: WebSocketRequestEvents.POD_SET_MODEL,
     responseEvent: WebSocketResponseEvents.POD_MODEL_SET,

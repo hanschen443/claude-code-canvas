@@ -3,13 +3,20 @@ import type {RunDeletePayload, RunLoadHistoryPayload, RunLoadPodMessagesPayload}
 import {runExecutionService} from '../services/workflow/runExecutionService.js';
 import {runStore} from '../services/runStore.js';
 import {podStore} from '../services/podStore.js';
-import {emitSuccess} from '../utils/websocketResponse.js';
+import {emitSuccess, emitError} from '../utils/websocketResponse.js';
 import {withCanvasId} from '../utils/handlerHelpers.js';
 
 export const handleRunDelete = withCanvasId<RunDeletePayload>(
     WebSocketResponseEvents.RUN_DELETED,
-    async (_connectionId: string, _canvasId: string, payload: RunDeletePayload, _requestId: string): Promise<void> => {
+    async (connectionId: string, canvasId: string, payload: RunDeletePayload, requestId: string): Promise<void> => {
         const {runId} = payload;
+
+        const run = runStore.getRun(runId);
+        if (!run || run.canvasId !== canvasId) {
+            emitError(connectionId, WebSocketResponseEvents.RUN_DELETED, '找不到指定的 Run', requestId, undefined, 'NOT_FOUND');
+            return;
+        }
+
         runExecutionService.deleteRun(runId);
     }
 );
@@ -45,8 +52,15 @@ export const handleRunLoadHistory = withCanvasId<RunLoadHistoryPayload>(
 
 export const handleRunLoadPodMessages = withCanvasId<RunLoadPodMessagesPayload>(
     WebSocketResponseEvents.RUN_POD_MESSAGES_LOADED,
-    async (connectionId: string, _canvasId: string, payload: RunLoadPodMessagesPayload, requestId: string): Promise<void> => {
+    async (connectionId: string, canvasId: string, payload: RunLoadPodMessagesPayload, requestId: string): Promise<void> => {
         const {runId, podId} = payload;
+
+        const run = runStore.getRun(runId);
+        if (!run || run.canvasId !== canvasId) {
+            emitError(connectionId, WebSocketResponseEvents.RUN_POD_MESSAGES_LOADED, '找不到指定的 Run', requestId, undefined, 'NOT_FOUND');
+            return;
+        }
+
         const messages = runStore.getRunMessages(runId, podId);
 
         emitSuccess(connectionId, WebSocketResponseEvents.RUN_POD_MESSAGES_LOADED, {

@@ -5,10 +5,11 @@ vi.mock('../../src/services/workflow/workflowEventEmitter.js', () => createWorkf
 vi.mock('../../src/services/connectionStore.js', () => createConnectionStoreMock());
 vi.mock('../../src/utils/logger.js', () => createLoggerMock());
 
-import { buildTransferMessage, isAutoTriggerable, buildQueueProcessedPayload, emitQueueProcessed, createMultiInputCompletionHandlers, formatMergedSummaries, buildMessageWithCommand, formatConnectionLog } from '../../src/services/workflow/workflowHelpers.js';
+import { buildTransferMessage, isAutoTriggerable, buildQueueProcessedPayload, emitQueueProcessed, createMultiInputCompletionHandlers, formatMergedSummaries, buildMessageWithCommand, formatConnectionLog, resolvePendingKey } from '../../src/services/workflow/workflowHelpers.js';
 import { workflowEventEmitter } from '../../src/services/workflow/workflowEventEmitter.js';
 import { connectionStore } from '../../src/services/connectionStore.js';
 import type { QueueProcessedContext, CompletionContext } from '../../src/services/workflow/types.js';
+import type { RunContext } from '../../src/types/run.js';
 import type { Pod } from '../../src/types/pod.js';
 import type { Command } from '../../src/types/command.js';
 
@@ -311,6 +312,22 @@ describe('workflowHelpers', () => {
       });
 
       expect(result).toContain('「pod-b」');
+    });
+  });
+
+  describe('resolvePendingKey', () => {
+    it('有 runContext 時回傳 runId:targetPodId 格式', () => {
+      const runContext: RunContext = {runId: 'run-1', canvasId: 'canvas-1', sourcePodId: 'source-pod'};
+
+      const result = resolvePendingKey('target-pod', runContext);
+
+      expect(result).toBe('run-1:target-pod');
+    });
+
+    it('無 runContext（undefined）時直接回傳 targetPodId', () => {
+      const result = resolvePendingKey('target-pod', undefined);
+
+      expect(result).toBe('target-pod');
     });
   });
 

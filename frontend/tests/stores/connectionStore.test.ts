@@ -202,40 +202,6 @@ describe('connectionStore', () => {
       })
     })
 
-    describe('getAiDecideConnections', () => {
-      it('應僅回傳 triggerMode 為 ai-decide 的 Connection', () => {
-        const store = useConnectionStore()
-        const conn1 = createMockConnection({ id: 'conn-1', triggerMode: 'auto' })
-        const conn2 = createMockConnection({ id: 'conn-2', triggerMode: 'ai-decide' })
-        const conn3 = createMockConnection({ id: 'conn-3', triggerMode: 'direct' })
-        const conn4 = createMockConnection({ id: 'conn-4', triggerMode: 'ai-decide' })
-        store.connections = [conn1, conn2, conn3, conn4]
-
-        const result = store.getAiDecideConnections
-
-        expect(result).toHaveLength(2)
-        expect(result).toContainEqual(conn2)
-        expect(result).toContainEqual(conn4)
-      })
-    })
-
-    describe('getDirectConnections', () => {
-      it('應僅回傳 triggerMode 為 direct 的 Connection', () => {
-        const store = useConnectionStore()
-        const conn1 = createMockConnection({ id: 'conn-1', triggerMode: 'auto' })
-        const conn2 = createMockConnection({ id: 'conn-2', triggerMode: 'direct' })
-        const conn3 = createMockConnection({ id: 'conn-3', triggerMode: 'ai-decide' })
-        const conn4 = createMockConnection({ id: 'conn-4', triggerMode: 'direct' })
-        store.connections = [conn1, conn2, conn3, conn4]
-
-        const result = store.getDirectConnections
-
-        expect(result).toHaveLength(2)
-        expect(result).toContainEqual(conn2)
-        expect(result).toContainEqual(conn4)
-      })
-    })
-
     describe('getAiDecideConnectionsBySourcePodId', () => {
       it('應篩選 sourcePodId + ai-decide', () => {
         const store = useConnectionStore()
@@ -253,22 +219,6 @@ describe('connectionStore', () => {
       })
     })
 
-    describe('getDirectConnectionsBySourcePodId', () => {
-      it('應篩選 sourcePodId + direct', () => {
-        const store = useConnectionStore()
-        const conn1 = createMockConnection({ id: 'conn-1', sourcePodId: 'pod-a', triggerMode: 'direct' })
-        const conn2 = createMockConnection({ id: 'conn-2', sourcePodId: 'pod-a', triggerMode: 'auto' })
-        const conn3 = createMockConnection({ id: 'conn-3', sourcePodId: 'pod-b', triggerMode: 'direct' })
-        const conn4 = createMockConnection({ id: 'conn-4', sourcePodId: 'pod-a', triggerMode: 'direct' })
-        store.connections = [conn1, conn2, conn3, conn4]
-
-        const result = store.getDirectConnectionsBySourcePodId('pod-a')
-
-        expect(result).toHaveLength(2)
-        expect(result).toContainEqual(conn1)
-        expect(result).toContainEqual(conn4)
-      })
-    })
   })
 
   describe('createConnection', () => {
@@ -1005,55 +955,6 @@ describe('connectionStore', () => {
       })
     })
   })
-
-  describe('updateConnectionStatusByTargetPod', () => {
-    it('應更新所有 targetPodId 匹配的 Connection 狀態', () => {
-      const store = useConnectionStore()
-      const conn1 = createMockConnection({ id: 'conn-1', targetPodId: 'pod-target', status: 'idle' })
-      const conn2 = createMockConnection({ id: 'conn-2', targetPodId: 'pod-target', status: 'idle' })
-      const conn3 = createMockConnection({ id: 'conn-3', targetPodId: 'pod-other', status: 'idle' })
-      store.connections = [conn1, conn2, conn3]
-
-      store.updateConnectionStatusByTargetPod('pod-target', 'active')
-
-      expect(conn1.status).toBe('active')
-      expect(conn2.status).toBe('active')
-      expect(conn3.status).toBe('idle')
-    })
-
-    it('應將 ai-approved 的 Connection 更新為 active', () => {
-      const store = useConnectionStore()
-      const conn1 = createMockConnection({ id: 'conn-1', targetPodId: 'pod-target', triggerMode: 'ai-decide', status: 'ai-approved' })
-      const conn2 = createMockConnection({ id: 'conn-2', targetPodId: 'pod-target', triggerMode: 'auto', status: 'idle' })
-      store.connections = [conn1, conn2]
-
-      store.updateConnectionStatusByTargetPod('pod-target', 'active')
-
-      expect(conn1.status).toBe('active')
-      expect(conn2.status).toBe('active')
-    })
-
-    it('queued -> active 應允許覆蓋', () => {
-      const store = useConnectionStore()
-      const conn = createMockConnection({ id: 'conn-1', targetPodId: 'pod-target', status: 'queued' })
-      store.connections = [conn]
-
-      store.updateConnectionStatusByTargetPod('pod-target', 'active')
-
-      expect(conn.status).toBe('active')
-    })
-
-    it('ai-decide + ai-approved 設為 idle 時應允許更新', () => {
-      const store = useConnectionStore()
-      const conn = createMockConnection({ id: 'conn-1', targetPodId: 'pod-target', triggerMode: 'ai-decide', status: 'ai-approved' })
-      store.connections = [conn]
-
-      store.updateConnectionStatusByTargetPod('pod-target', 'idle')
-
-      expect(conn.status).toBe('idle')
-    })
-  })
-
 
   describe('事件處理', () => {
     describe('addConnectionFromEvent', () => {

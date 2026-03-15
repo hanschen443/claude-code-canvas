@@ -178,6 +178,58 @@ describe('RunStore', () => {
       expect(updated?.claudeSessionId).toBe('session-abc');
     });
 
+    it('createPodInstance 帶入 false 後 getPodInstance 讀回應為 false', () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      runStore.createPodInstance(run.id, 'pod-1', false, false);
+
+      const instance = runStore.getPodInstance(run.id, 'pod-1');
+
+      expect(instance?.autoPathwaySettled).toBe(false);
+      expect(instance?.directPathwaySettled).toBe(false);
+    });
+
+    it('createPodInstance 帶入 null 後 getPodInstance 讀回應為 null', () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      runStore.createPodInstance(run.id, 'pod-1', null, null);
+
+      const instance = runStore.getPodInstance(run.id, 'pod-1');
+
+      expect(instance?.autoPathwaySettled).toBeNull();
+      expect(instance?.directPathwaySettled).toBeNull();
+    });
+
+    it('createPodInstance 帶入 true 後 getPodInstance 讀回應為 true', () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      runStore.createPodInstance(run.id, 'pod-1', true, true);
+
+      const instance = runStore.getPodInstance(run.id, 'pod-1');
+
+      expect(instance?.autoPathwaySettled).toBe(true);
+      expect(instance?.directPathwaySettled).toBe(true);
+    });
+
+    it('settleAutoPathway 呼叫後 autoPathwaySettled 應從 false 變為 true', () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      const instance = runStore.createPodInstance(run.id, 'pod-1', false, false);
+
+      runStore.settleAutoPathway(instance.id);
+
+      const updated = runStore.getPodInstance(run.id, 'pod-1');
+      expect(updated?.autoPathwaySettled).toBe(true);
+      expect(updated?.directPathwaySettled).toBe(false);
+    });
+
+    it('settleDirectPathway 呼叫後 directPathwaySettled 應從 false 變為 true', () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      const instance = runStore.createPodInstance(run.id, 'pod-1', false, false);
+
+      runStore.settleDirectPathway(instance.id);
+
+      const updated = runStore.getPodInstance(run.id, 'pod-1');
+      expect(updated?.autoPathwaySettled).toBe(false);
+      expect(updated?.directPathwaySettled).toBe(true);
+    });
+
     it('getRunningPodInstances 只回傳 pending/running/summarizing 狀態', () => {
       const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
       const i1 = runStore.createPodInstance(run.id, 'pod-1');

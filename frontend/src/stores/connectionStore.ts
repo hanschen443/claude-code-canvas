@@ -158,23 +158,9 @@ export const useConnectionStore = defineStore('connection', {
             return state.connections.some(connection => connection.targetPodId === podId)
         },
 
-        getAiDecideConnections: (state): Connection[] => {
-            return state.connections.filter(connection => connection.triggerMode === 'ai-decide')
-        },
-
         getAiDecideConnectionsBySourcePodId: (state) => (sourcePodId: string): Connection[] => {
             return state.connections.filter(
                 connection => connection.sourcePodId === sourcePodId && connection.triggerMode === 'ai-decide'
-            )
-        },
-
-        getDirectConnections: (state): Connection[] => {
-            return state.connections.filter(connection => connection.triggerMode === 'direct')
-        },
-
-        getDirectConnectionsBySourcePodId: (state) => (sourcePodId: string): Connection[] => {
-            return state.connections.filter(
-                connection => connection.sourcePodId === sourcePodId && connection.triggerMode === 'direct'
             )
         },
 
@@ -393,10 +379,6 @@ export const useConnectionStore = defineStore('connection', {
                     connection.status = status
                 }
             })
-        },
-
-        updateConnectionStatusByTargetPod(targetPodId: string, status: ConnectionStatus): void {
-            this.updateAutoGroupStatus(targetPodId, status)
         },
 
         setConnectionStatus(connectionId: string, status: ConnectionStatus): void {

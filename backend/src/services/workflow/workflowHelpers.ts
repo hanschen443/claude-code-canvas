@@ -1,13 +1,13 @@
 import type {Pod, Command, Connection} from '../../types/index.js';
-
-const WORKFLOW_SOURCE_HEADING = '## Source:';
-const WORKFLOW_SECTION_SEPARATOR = '---';
 import type {WorkflowQueuedPayload, WorkflowQueueProcessedPayload} from '../../types/responses/workflow.js';
 import type { RunContext } from '../../types/run.js';
 import {connectionStore} from '../connectionStore.js';
 import {workflowEventEmitter} from './workflowEventEmitter.js';
 import {logger} from '../../utils/logger.js';
 import type {CompletionContext, QueuedContext, QueueProcessedContext} from './types.js';
+
+const WORKFLOW_SOURCE_HEADING = '## Source:';
+const WORKFLOW_SECTION_SEPARATOR = '---';
 
 export function resolvePendingKey(targetPodId: string, runContext?: RunContext): string {
     return runContext ? `${runContext.runId}:${targetPodId}` : targetPodId;
@@ -53,10 +53,7 @@ export function formatMergedSummaries(
         formatted.push(`${WORKFLOW_SOURCE_HEADING} ${podName}\n${content}\n\n${WORKFLOW_SECTION_SEPARATOR}`);
     }
 
-    let result = formatted.join('\n\n');
-    result = result.replace(/\n\n---$/, '');
-
-    return result;
+    return formatted.join('\n\n').replace(/\n\n---$/, '');
 }
 
 function escapeXmlTags(content: string): string {
