@@ -9,11 +9,10 @@ import { isWorkflowChainBusy } from '../../utils/workflowChainTraversal.js';
 import { integrationRegistry } from './integrationRegistry.js';
 import type { NormalizedEvent } from './types.js';
 import { isPodBusy } from '../../types/index.js';
-import { injectUserMessage, extractDisplayContent } from '../../utils/chatHelpers.js';
-import { runExecutionService } from '../workflow/runExecutionService.js';
-import { injectRunUserMessage } from '../../utils/runChatHelpers.js';
+import { injectUserMessage } from '../../utils/chatHelpers.js';
+import { launchMultiInstanceRun } from '../../utils/runChatHelpers.js';
 import { onRunChatComplete } from '../../utils/chatCallbacks.js';
-import { replyContextStore, buildReplyContextKey } from './replyContextStore.js';
+import { replyContextStore, buildReplyContextKey, setReplyContextIfPresent } from './replyContextStore.js';
 
 class IntegrationEventPipeline {
   private busyReplyCooldowns = new Map<string, number>();
@@ -37,27 +36,39 @@ class IntegrationEventPipeline {
     const multiInstancePods = boundPods.filter(({ pod }) => pod.multiInstance === true);
     const normalPods = boundPods.filter(({ pod }) => pod.multiInstance !== true);
 
-    // 只有 normal pods 需要檢查忙碌狀態
-    if (normalPods.length > 0 && this.isResourceBusy(appId, event.resourceId, normalPods)) {
-      const cooldownKey = `${appId}:${event.resourceId}`;
-      if (shouldSendBusyReply(this.busyReplyCooldowns, cooldownKey)) {
-        const integrationProvider = integrationRegistry.get(provider);
-        if (integrationProvider?.sendMessage) {
-          await integrationProvider.sendMessage(appId, event.resourceId, '目前忙碌中，請稍後再試');
-        }
-      }
-      return;
-    }
-
-    const allPods = [...multiInstancePods, ...normalPods];
-    const results = await Promise.allSettled(
-      allPods.map(({ canvasId, pod }) => this.processBoundPod(canvasId, pod, event))
+    // multiInstance pods 先獨立處理，不受忙碌狀態影響
+    const multiInstancePromises = multiInstancePods.map(({ canvasId, pod }) =>
+      this.processBoundPod(canvasId, pod, event)
     );
 
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
+    if (normalPods.length > 0) {
+      if (this.isResourceBusy(appId, event.resourceId, normalPods)) {
+        const cooldownKey = `${appId}:${event.resourceId}`;
+        if (shouldSendBusyReply(this.busyReplyCooldowns, cooldownKey)) {
+          const integrationProvider = integrationRegistry.get(provider);
+          if (integrationProvider?.sendMessage) {
+            await integrationProvider.sendMessage(appId, event.resourceId, '目前忙碌中，請稍後再試');
+          }
+        }
+      } else {
+        const normalResults = await Promise.allSettled(
+          normalPods.map(({ canvasId, pod }) => this.processBoundPod(canvasId, pod, event))
+        );
+        for (let i = 0; i < normalResults.length; i++) {
+          const result = normalResults[i];
+          if (result.status === 'rejected') {
+            const pod = normalPods[i].pod;
+            logger.error('Integration', 'Error', `[IntegrationEventPipeline] Pod「${pod.name}」處理 Integration 訊息失敗`, result.reason);
+          }
+        }
+      }
+    }
+
+    const multiInstanceResults = await Promise.allSettled(multiInstancePromises);
+    for (let i = 0; i < multiInstanceResults.length; i++) {
+      const result = multiInstanceResults[i];
       if (result.status === 'rejected') {
-        const pod = allPods[i].pod;
+        const pod = multiInstancePods[i].pod;
         logger.error('Integration', 'Error', `[IntegrationEventPipeline] Pod「${pod.name}」處理 Integration 訊息失敗`, result.reason);
       }
     }
@@ -100,13 +111,7 @@ class IntegrationEventPipeline {
     logger.log('Integration', 'Complete', `[IntegrationEventPipeline] 注入 ${event.provider} 訊息至 Pod「${podName}」`);
 
     const replyKey = buildReplyContextKey(undefined, podId);
-    if (event.senderId || event.messageTs || event.threadTs) {
-      replyContextStore.set(replyKey, {
-        senderId: event.senderId,
-        messageTs: event.messageTs,
-        threadTs: event.threadTs,
-      });
-    }
+    setReplyContextIfPresent(replyKey, event);
 
     const onComplete = async (canvasId: string, podId: string): Promise<void> => {
       fireAndForget(
@@ -131,34 +136,28 @@ class IntegrationEventPipeline {
   }
 
   private async injectMessageAsRun(canvasId: string, podId: string, event: NormalizedEvent): Promise<void> {
-    const triggerMessage = extractDisplayContent(event.text);
-    const runContext = await runExecutionService.createRun(canvasId, podId, triggerMessage);
-    runExecutionService.startPodInstance(runContext, podId);
-    await injectRunUserMessage(runContext, podId, event.text);
-
-    const replyKey = buildReplyContextKey(runContext, podId);
-    if (event.senderId || event.messageTs || event.threadTs) {
-      replyContextStore.set(replyKey, {
-        senderId: event.senderId,
-        messageTs: event.messageTs,
-        threadTs: event.threadTs,
-      });
-    }
-
-    const onComplete = (): void => {
-      onRunChatComplete(runContext, canvasId, podId);
-      replyContextStore.delete(replyKey);
-    };
+    let replyKey: string | undefined;
 
     try {
-      await executeStreamingChat(
-        { canvasId, podId, message: event.text, abortable: false, runContext },
-        { onComplete: (_cid, _pid) => onComplete() }
-      );
+      await launchMultiInstanceRun({
+        canvasId,
+        podId,
+        message: event.text,
+        abortable: false,
+        onRunContextCreated: (runContext) => {
+          replyKey = buildReplyContextKey(runContext, podId);
+          setReplyContextIfPresent(replyKey, event);
+        },
+        onComplete: (runContext) => {
+          onRunChatComplete(runContext, canvasId, podId);
+        },
+      });
     } catch (error) {
       logger.error('Integration', 'Error', `[IntegrationEventPipeline] Pod「${podId}」multiInstance Run 執行失敗`, error);
     } finally {
-      replyContextStore.delete(replyKey);
+      if (replyKey) {
+        replyContextStore.delete(replyKey);
+      }
     }
   }
 }

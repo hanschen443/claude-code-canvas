@@ -8,6 +8,7 @@ const mockGetOrThrow = vi.fn();
 const mockCreate = vi.fn();
 const mockGetById = vi.fn();
 const mockLoggerLog = vi.fn();
+const mockLoggerError = vi.fn();
 const mockHandleResultError = vi.fn().mockReturnValue(false);
 const mockInitialize = vi.fn();
 const mockSanitizeConfig = vi.fn().mockReturnValue({});
@@ -39,7 +40,7 @@ vi.mock('../../src/services/integration/integrationAppStore.js', () => ({
 }));
 
 vi.mock('../../src/utils/logger.js', () => ({
-    logger: { log: mockLoggerLog, warn: vi.fn(), error: vi.fn() },
+    logger: { log: mockLoggerLog, warn: vi.fn(), error: mockLoggerError },
 }));
 
 vi.mock('../../src/utils/handlerHelpers.js', () => ({
@@ -163,6 +164,6 @@ describe('handleIntegrationAppCreate', () => {
         await handleIntegrationAppCreate(CONNECTION_ID, { provider: 'slack', name: 'Test Slack App', config: {} }, REQUEST_ID);
 
         expect(mockEmitError).not.toHaveBeenCalled();
-        expect(mockLoggerLog).toHaveBeenCalledWith('Integration', 'Error', expect.stringContaining('初始化失敗'));
+        expect(mockLoggerError).toHaveBeenCalledWith('Integration', 'Error', expect.stringContaining('初始化失敗或逾時'));
     });
 });

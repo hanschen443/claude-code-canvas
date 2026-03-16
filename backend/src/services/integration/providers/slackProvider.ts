@@ -16,6 +16,7 @@ const SLACK_CHANNEL_LIST_PAGE_SIZE = 200;
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const MAX_BODY_SIZE = 1_000_000;
 const MAX_SLACK_MESSAGE_LENGTH = 4000;
+const SLACK_USER_ID_REGEX = /^[A-Z0-9]{6,12}$/;
 
 const dedupTracker = createDedupTracker();
 
@@ -260,7 +261,7 @@ class SlackProvider implements IntegrationProvider {
         const messageTs = typeof extra?.['messageTs'] === 'string' ? extra['messageTs'] : undefined;
         const threadTs = typeof extra?.['threadTs'] === 'string' ? extra['threadTs'] : undefined;
 
-        const finalText = senderId ? `<@${senderId}> ${text}` : text;
+        const finalText = senderId && SLACK_USER_ID_REGEX.test(senderId) ? `<@${senderId}> ${text}` : text;
         const finalThreadTs = threadTs ?? messageTs;
 
         try {

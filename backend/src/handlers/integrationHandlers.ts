@@ -85,10 +85,14 @@ export async function handleIntegrationAppCreate(
 
     logger.log('Integration', 'Create', `建立 Integration App「${app.name}」（${provider.displayName}）`);
 
+    const INIT_TIMEOUT_MS = 30_000;
     try {
-        await provider.initialize(app);
+        await Promise.race([
+            provider.initialize(app),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('初始化逾時')), INIT_TIMEOUT_MS)),
+        ]);
     } catch (error) {
-        logger.log('Integration', 'Error', `Integration App「${app.name}」初始化失敗：${getErrorMessage(error)}`);
+        logger.error('Integration', 'Error', `Integration App「${app.name}」初始化失敗或逾時：${getErrorMessage(error)}`);
     }
 
     socketService.emitToAll(WebSocketResponseEvents.INTEGRATION_APP_CREATED, {

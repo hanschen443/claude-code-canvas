@@ -57,13 +57,18 @@ vi.mock('../../src/services/workflow/runExecutionService.js', () => ({
 }));
 
 vi.mock('../../src/utils/runChatHelpers.js', () => ({
-  injectRunUserMessage: vi.fn(() => Promise.resolve()),
+  launchMultiInstanceRun: vi.fn(() => Promise.resolve({ runId: 'run-1', canvasId: 'canvas-1' })),
 }));
 
 vi.mock('../../src/utils/chatCallbacks.js', () => ({
   onRunChatComplete: vi.fn(),
   onChatComplete: vi.fn(),
   onChatAborted: vi.fn(),
+}));
+
+vi.mock('../../src/utils/chatHelpers.js', () => ({
+  injectUserMessage: vi.fn(() => Promise.resolve()),
+  extractDisplayContent: vi.fn((text: string) => text),
 }));
 
 vi.mock('../../src/services/integration/replyContextStore.js', () => ({
@@ -78,21 +83,20 @@ vi.mock('../../src/services/integration/replyContextStore.js', () => ({
     }
     return `pod:${podId}`;
   }),
+  setReplyContextIfPresent: vi.fn(),
 }));
 
 import { integrationEventPipeline } from '../../src/services/integration/integrationEventPipeline.js';
 import { podStore } from '../../src/services/podStore.js';
-import { messageStore } from '../../src/services/messageStore.js';
-import { socketService } from '../../src/services/socketService.js';
 import { executeStreamingChat } from '../../src/services/claude/streamingChatExecutor.js';
 import { workflowExecutionService } from '../../src/services/workflow/index.js';
 import { isWorkflowChainBusy } from '../../src/utils/workflowChainTraversal.js';
 import { integrationRegistry } from '../../src/services/integration/integrationRegistry.js';
 import { runExecutionService } from '../../src/services/workflow/runExecutionService.js';
-import { injectRunUserMessage } from '../../src/utils/runChatHelpers.js';
+import { launchMultiInstanceRun } from '../../src/utils/runChatHelpers.js';
 import { onRunChatComplete } from '../../src/utils/chatCallbacks.js';
-import { replyContextStore } from '../../src/services/integration/replyContextStore.js';
-import { WebSocketResponseEvents } from '../../src/schemas/events.js';
+import { injectUserMessage } from '../../src/utils/chatHelpers.js';
+import { replyContextStore, setReplyContextIfPresent } from '../../src/services/integration/replyContextStore.js';
 import type { Pod } from '../../src/types/index.js';
 import type { NormalizedEvent } from '../../src/services/integration/types.js';
 import type { RunContext } from '../../src/types/run.js';
@@ -145,15 +149,15 @@ describe('IntegrationEventPipeline', () => {
     vi.resetAllMocks();
     asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([]);
     asMock(podStore.getById).mockReturnValue(undefined);
-    asMock(messageStore.addMessage).mockResolvedValue({ success: true, data: { id: 'msg-1' } });
     asMock(executeStreamingChat).mockResolvedValue({ messageId: 'stream-1', content: '回覆', hasContent: true, aborted: false });
     asMock(workflowExecutionService.checkAndTriggerWorkflows).mockResolvedValue(undefined);
     asMock(isWorkflowChainBusy).mockReturnValue(false);
     asMock(integrationRegistry.get).mockReturnValue(undefined);
     asMock(runExecutionService.createRun).mockResolvedValue(mockRunContext);
     asMock(runExecutionService.startPodInstance).mockReturnValue(undefined);
-    asMock(injectRunUserMessage).mockResolvedValue(undefined);
+    asMock(launchMultiInstanceRun).mockResolvedValue(mockRunContext);
     asMock(onRunChatComplete).mockReturnValue(undefined);
+    asMock(injectUserMessage).mockResolvedValue(undefined);
     asMock(replyContextStore.set).mockReturnValue(undefined);
     asMock(replyContextStore.get).mockReturnValue(undefined);
     asMock(replyContextStore.delete).mockReturnValue(undefined);
@@ -175,12 +179,12 @@ describe('IntegrationEventPipeline', () => {
 
       await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
 
-      expect(podStore.setStatus).toHaveBeenCalledWith(canvasId, podId, 'chatting');
-      expect(messageStore.addMessage).toHaveBeenCalledWith(
-        canvasId,
-        podId,
-        'user',
-        '[Slack: @testuser] <user_data>測試訊息</user_data>'
+      expect(injectUserMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          canvasId,
+          podId,
+          content: '[Slack: @testuser] <user_data>測試訊息</user_data>',
+        })
       );
       expect(executeStreamingChat).toHaveBeenCalledWith(
         expect.objectContaining({ canvasId, podId, abortable: false }),
@@ -188,21 +192,15 @@ describe('IntegrationEventPipeline', () => {
       );
     });
 
-    it('廣播 POD_CHAT_USER_MESSAGE 事件至前端', async () => {
+    it('廣播 POD_CHAT_USER_MESSAGE 事件至前端（由 injectUserMessage 負責）', async () => {
       const pod = makePod();
       asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([{ canvasId, pod }]);
       asMock(podStore.getById).mockReturnValue(pod);
 
       await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
 
-      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
-        WebSocketResponseEvents.POD_CHAT_USER_MESSAGE,
-        expect.objectContaining({
-          canvasId,
-          podId,
-          content: '[Slack: @testuser] <user_data>測試訊息</user_data>',
-        })
+      expect(injectUserMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ canvasId, podId })
       );
     });
 
@@ -410,18 +408,14 @@ describe('IntegrationEventPipeline', () => {
     });
 
     describe('multiInstance Pod', () => {
-      it('應建立 Run 並使用 injectRunUserMessage', async () => {
+      it('應呼叫 launchMultiInstanceRun 啟動 Run', async () => {
         const pod = makePod({ multiInstance: true });
         asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([{ canvasId, pod }]);
 
         await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
 
-        expect(runExecutionService.createRun).toHaveBeenCalledWith(canvasId, podId, expect.any(String));
-        expect(runExecutionService.startPodInstance).toHaveBeenCalledWith(mockRunContext, podId);
-        expect(injectRunUserMessage).toHaveBeenCalledWith(mockRunContext, podId, expect.any(String));
-        expect(executeStreamingChat).toHaveBeenCalledWith(
-          expect.objectContaining({ canvasId, podId, abortable: false, runContext: mockRunContext }),
-          expect.any(Object)
+        expect(launchMultiInstanceRun).toHaveBeenCalledWith(
+          expect.objectContaining({ canvasId, podId, abortable: false })
         );
       });
 
@@ -431,8 +425,7 @@ describe('IntegrationEventPipeline', () => {
 
         await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
 
-        expect(runExecutionService.createRun).toHaveBeenCalled();
-        expect(executeStreamingChat).toHaveBeenCalled();
+        expect(launchMultiInstanceRun).toHaveBeenCalled();
       });
 
       it('processEvent 層級：所有 Pod 皆為 multiInstance 時不發送忙碌回覆', async () => {
@@ -451,11 +444,9 @@ describe('IntegrationEventPipeline', () => {
         const pod = makePod({ multiInstance: true });
         asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([{ canvasId, pod }]);
 
-        asMock(executeStreamingChat).mockImplementationOnce(async (_params: unknown, options: { onComplete?: (cId: string, pId: string) => void }) => {
-          if (options?.onComplete) {
-            options.onComplete(canvasId, podId);
-          }
-          return { messageId: 'stream-1', content: '回覆', hasContent: true, aborted: false };
+        asMock(launchMultiInstanceRun).mockImplementationOnce(async (params: { onComplete: (runContext: RunContext) => void }) => {
+          params.onComplete(mockRunContext);
+          return mockRunContext;
         });
 
         await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
@@ -466,7 +457,7 @@ describe('IntegrationEventPipeline', () => {
       it('執行失敗時不設定 Pod 全域狀態為 error', async () => {
         const pod = makePod({ multiInstance: true });
         asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([{ canvasId, pod }]);
-        asMock(executeStreamingChat).mockRejectedValueOnce(new Error('串流失敗'));
+        asMock(launchMultiInstanceRun).mockRejectedValueOnce(new Error('串流失敗'));
 
         await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
 
@@ -480,9 +471,8 @@ describe('IntegrationEventPipeline', () => {
 
         await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
 
-        expect(runExecutionService.createRun).not.toHaveBeenCalled();
-        expect(injectRunUserMessage).not.toHaveBeenCalled();
-        expect(messageStore.addMessage).toHaveBeenCalled();
+        expect(launchMultiInstanceRun).not.toHaveBeenCalled();
+        expect(injectUserMessage).toHaveBeenCalled();
       });
 
       it('event 有 senderId/threadTs 時應設定 replyContextStore', async () => {
@@ -491,20 +481,39 @@ describe('IntegrationEventPipeline', () => {
 
         const event = makeEvent({ senderId: 'U123', messageTs: '1234.5678', threadTs: '1111.2222' });
 
-        asMock(executeStreamingChat).mockImplementationOnce(async (_params: unknown, options: { onComplete?: (cId: string, pId: string) => void }) => {
-          if (options?.onComplete) {
-            options.onComplete(canvasId, podId);
-          }
-          return { messageId: 'stream-1', content: '回覆', hasContent: true, aborted: false };
+        asMock(launchMultiInstanceRun).mockImplementationOnce(async (params: { onRunContextCreated?: (runContext: RunContext) => void; onComplete: (runContext: RunContext) => void }) => {
+          params.onRunContextCreated?.(mockRunContext);
+          params.onComplete(mockRunContext);
+          return mockRunContext;
         });
 
         await integrationEventPipeline.processEvent('slack', 'app-1', event);
 
-        expect(replyContextStore.set).toHaveBeenCalledWith(
-          'run-1:pod-1',
-          { senderId: 'U123', messageTs: '1234.5678', threadTs: '1111.2222' }
-        );
+        expect(setReplyContextIfPresent).toHaveBeenCalledWith('run-1:pod-1', event);
         expect(replyContextStore.delete).toHaveBeenCalledWith('run-1:pod-1');
+      });
+
+      it('launchMultiInstanceRun 失敗時不設定 Pod 全域狀態為 error', async () => {
+        const pod = makePod({ multiInstance: true });
+        asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([{ canvasId, pod }]);
+        asMock(launchMultiInstanceRun).mockRejectedValueOnce(new Error('建立 Run 失敗'));
+
+        await integrationEventPipeline.processEvent('slack', 'app-1', makeEvent());
+
+        expect(podStore.setStatus).not.toHaveBeenCalledWith(canvasId, podId, 'error');
+      });
+
+      it('launchMultiInstanceRun 失敗且未設定 replyContext 時不拋出錯誤', async () => {
+        const pod = makePod({ multiInstance: true });
+        asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([{ canvasId, pod }]);
+        asMock(launchMultiInstanceRun).mockRejectedValueOnce(new Error('建立 Run 失敗'));
+
+        await expect(
+          integrationEventPipeline.processEvent('slack', 'app-1', makeEvent())
+        ).resolves.not.toThrow();
+
+        // onRunContextCreated 未被呼叫，故 setReplyContextIfPresent 不應有呼叫
+        expect(setReplyContextIfPresent).not.toHaveBeenCalled();
       });
 
       it('非 multiInstance event 有 senderId 時應設定 replyContextStore', async () => {
@@ -516,10 +525,7 @@ describe('IntegrationEventPipeline', () => {
 
         await integrationEventPipeline.processEvent('slack', 'app-1', event);
 
-        expect(replyContextStore.set).toHaveBeenCalledWith(
-          'pod:pod-1',
-          { senderId: 'U456', messageTs: '9999.0000', threadTs: undefined }
-        );
+        expect(setReplyContextIfPresent).toHaveBeenCalledWith('pod:pod-1', event);
         expect(replyContextStore.delete).toHaveBeenCalledWith('pod:pod-1');
       });
     });

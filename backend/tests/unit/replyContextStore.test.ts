@@ -36,6 +36,19 @@ describe('replyContextStore', () => {
     it('get 不存在的 key 應回傳 undefined', () => {
         expect(replyContextStore.get('non-existent-key')).toBeUndefined();
     });
+
+    it('覆寫同一個 key 後 get 應回傳最新值', () => {
+        replyContextStore.set('test-key-1', { senderId: 'U111' });
+        replyContextStore.set('test-key-1', { senderId: 'U999', messageTs: '9999.0000' });
+
+        expect(replyContextStore.get('test-key-1')).toEqual({ senderId: 'U999', messageTs: '9999.0000' });
+    });
+
+    it('delete 不存在的 key 不應拋出例外', () => {
+        expect(() => {
+            replyContextStore.delete('non-existent-key');
+        }).not.toThrow();
+    });
 });
 
 describe('buildReplyContextKey', () => {

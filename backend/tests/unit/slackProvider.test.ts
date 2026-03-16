@@ -458,11 +458,19 @@ describe('SlackProvider - sendMessage', () => {
         mockPostMessage.mockResolvedValue({ ok: true });
     });
 
-    it('有 senderId 時在 text 前加上 <@senderId>', async () => {
+    it('有 senderId 且格式合法時在 text 前加上 <@senderId>', async () => {
+        await slackProvider.sendMessage(APP_ID, 'C123', 'hello', { senderId: 'U123456' });
+
+        expect(mockPostMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ text: '<@U123456> hello' })
+        );
+    });
+
+    it('senderId 格式不合法時不加上 mention', async () => {
         await slackProvider.sendMessage(APP_ID, 'C123', 'hello', { senderId: 'U123' });
 
         expect(mockPostMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ text: '<@U123> hello' })
+            expect.objectContaining({ text: 'hello' })
         );
     });
 

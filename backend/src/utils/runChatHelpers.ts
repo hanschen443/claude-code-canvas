@@ -5,6 +5,39 @@ import { WebSocketResponseEvents } from '../schemas/index.js';
 import { runStore } from '../services/runStore.js';
 import { socketService } from '../services/socketService.js';
 import { extractDisplayContent } from './chatHelpers.js';
+import { runExecutionService } from '../services/workflow/runExecutionService.js';
+import { executeStreamingChat } from '../services/claude/streamingChatExecutor.js';
+
+export interface LaunchMultiInstanceRunParams {
+    canvasId: string;
+    podId: string;
+    message: string | ContentBlock[];
+    abortable: boolean;
+    onComplete: (runContext: RunContext) => void;
+    onAborted?: (canvasId: string, podId: string, messageId: string) => void;
+    onRunContextCreated?: (runContext: RunContext) => void;
+}
+
+export async function launchMultiInstanceRun(params: LaunchMultiInstanceRunParams): Promise<RunContext> {
+    const { canvasId, podId, message, abortable, onComplete, onAborted, onRunContextCreated } = params;
+
+    const triggerMessage = extractDisplayContent(message);
+    const runContext = await runExecutionService.createRun(canvasId, podId, triggerMessage);
+    runExecutionService.startPodInstance(runContext, podId);
+    await injectRunUserMessage(runContext, podId, message);
+
+    onRunContextCreated?.(runContext);
+
+    await executeStreamingChat(
+        { canvasId, podId, message, abortable, runContext },
+        {
+            onComplete: () => onComplete(runContext),
+            ...(onAborted ? { onAborted } : {}),
+        }
+    );
+
+    return runContext;
+}
 
 export async function injectRunUserMessage(
     runContext: RunContext,

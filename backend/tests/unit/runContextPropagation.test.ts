@@ -64,7 +64,7 @@ vi.mock('../../src/services/claude/streamingChatExecutor.js', () => ({
 }));
 
 vi.mock('../../src/utils/runChatHelpers.js', () => ({
-  injectRunUserMessage: vi.fn(() => Promise.resolve()),
+  launchMultiInstanceRun: vi.fn(() => Promise.resolve({ runId: 'test-run-id', canvasId: 'canvas-1', sourcePodId: 'source-pod' })),
 }));
 
 vi.mock('../../src/utils/chatHelpers.js', () => ({
@@ -145,7 +145,7 @@ import { messageStore } from '../../src/services/messageStore.js';
 import { runExecutionService } from '../../src/services/workflow/runExecutionService.js';
 import { executeStreamingChat } from '../../src/services/claude/streamingChatExecutor.js';
 import { injectUserMessage } from '../../src/utils/chatHelpers.js';
-import { injectRunUserMessage } from '../../src/utils/runChatHelpers.js';
+import { launchMultiInstanceRun } from '../../src/utils/runChatHelpers.js';
 import { runStore } from '../../src/services/runStore.js';
 import type { Pod } from '../../src/types/index.js';
 import type { RunContext } from '../../src/types/run.js';
@@ -204,79 +204,55 @@ describe('RunContext 傳遞驗證', () => {
     asMock(runExecutionService.settlePodTrigger).mockImplementation(() => {});
     asMock(executeStreamingChat).mockResolvedValue({ messageId: 'msg-1', content: '回覆', hasContent: true, aborted: false });
     asMock(injectUserMessage).mockResolvedValue(undefined);
-    asMock(injectRunUserMessage).mockResolvedValue(undefined);
+    asMock(launchMultiInstanceRun).mockResolvedValue(TEST_RUN_CONTEXT);
   });
 
-  describe('1. RunContext 從 chatHandlers 傳入 runExecutionService', () => {
-    it('multiInstance pod 時呼叫 runExecutionService.createRun 並傳入 canvasId 與 podId', async () => {
+  describe('1. RunContext 從 chatHandlers 傳入 launchMultiInstanceRun', () => {
+    it('multiInstance pod 時呼叫 launchMultiInstanceRun 並傳入 canvasId 與 podId', async () => {
       asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
 
-      expect(runExecutionService.createRun).toHaveBeenCalledWith(
-        CANVAS_ID,
-        SOURCE_POD_ID,
-        expect.any(String)
-      );
-    });
-
-    it('multiInstance pod 時 executeStreamingChat 收到包含 runContext 的 options', async () => {
-      asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
-
-      await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
-
-      expect(executeStreamingChat).toHaveBeenCalledWith(
+      expect(launchMultiInstanceRun).toHaveBeenCalledWith(
         expect.objectContaining({
           canvasId: CANVAS_ID,
           podId: SOURCE_POD_ID,
-          runContext: TEST_RUN_CONTEXT,
-        }),
-        expect.any(Object)
+          message: '測試訊息',
+          abortable: true,
+        })
+      );
+    });
+
+    it('multiInstance pod 時 launchMultiInstanceRun 收到 onComplete callback', async () => {
+      asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
+
+      await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
+
+      expect(launchMultiInstanceRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          onComplete: expect.any(Function),
+        })
       );
     });
   });
 
   describe('2. 有 RunContext 時 message 寫入 run_messages 而非 messages', () => {
-    it('multiInstance 時呼叫 injectRunUserMessage 而非 injectUserMessage', async () => {
+    it('multiInstance 時呼叫 launchMultiInstanceRun 而非 injectUserMessage', async () => {
       asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
 
-      expect(injectRunUserMessage).toHaveBeenCalledWith(
-        TEST_RUN_CONTEXT,
-        SOURCE_POD_ID,
-        '測試訊息'
-      );
+      expect(launchMultiInstanceRun).toHaveBeenCalled();
       expect(injectUserMessage).not.toHaveBeenCalled();
     });
 
-    it('有 RunContext 時 streaming 過程呼叫 runStore.upsertRunMessage 而非 messageStore.upsertMessage', async () => {
-      asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
-
-      // 模擬 executeStreamingChat 過程中呼叫 runStore.upsertRunMessage
-      asMock(executeStreamingChat).mockImplementation(async (options: { runContext?: RunContext }) => {
-        if (options.runContext) {
-          runStore.upsertRunMessage(options.runContext.runId, SOURCE_POD_ID, {
-            id: 'msg-1',
-            role: 'assistant',
-            content: '回覆',
-            timestamp: new Date().toISOString(),
-          });
-        } else {
-          messageStore.upsertMessage(CANVAS_ID, SOURCE_POD_ID, {
-            id: 'msg-1',
-            role: 'assistant',
-            content: '回覆',
-            timestamp: new Date().toISOString(),
-          });
-        }
-        return { messageId: 'msg-1', content: '回覆', hasContent: true, aborted: false };
-      });
+    it('非 multiInstance 時不呼叫 launchMultiInstanceRun，改走 injectUserMessage', async () => {
+      asMock(podStore.getById).mockReturnValue(makeNormalPod());
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
 
-      expect(runStore.upsertRunMessage).toHaveBeenCalled();
-      expect(messageStore.upsertMessage).not.toHaveBeenCalled();
+      expect(launchMultiInstanceRun).not.toHaveBeenCalled();
+      expect(injectUserMessage).toHaveBeenCalled();
     });
   });
 
@@ -289,20 +265,19 @@ describe('RunContext 傳遞驗證', () => {
       expect(podStore.setStatus).not.toHaveBeenCalled();
     });
 
-    it('multiInstance 時呼叫 runExecutionService.startPodInstance', async () => {
+    it('multiInstance 時透過 launchMultiInstanceRun 啟動流程，不直接呼叫 startPodInstance', async () => {
       asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
 
-      expect(runExecutionService.startPodInstance).toHaveBeenCalledWith(
-        TEST_RUN_CONTEXT,
-        SOURCE_POD_ID
-      );
+      expect(launchMultiInstanceRun).toHaveBeenCalled();
+      // startPodInstance 由 launchMultiInstanceRun 內部負責，不在 chatHandlers 直接呼叫
+      expect(runExecutionService.startPodInstance).not.toHaveBeenCalled();
     });
   });
 
   describe('4. 無 RunContext 時完全向後相容', () => {
-    it('非 multiInstance pod 時呼叫 injectUserMessage 而非 injectRunUserMessage', async () => {
+    it('非 multiInstance pod 時呼叫 injectUserMessage 而非 launchMultiInstanceRun', async () => {
       asMock(podStore.getById).mockReturnValue(makeNormalPod());
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
@@ -312,7 +287,7 @@ describe('RunContext 傳遞驗證', () => {
         podId: SOURCE_POD_ID,
         content: '測試訊息',
       });
-      expect(injectRunUserMessage).not.toHaveBeenCalled();
+      expect(launchMultiInstanceRun).not.toHaveBeenCalled();
     });
 
     it('非 multiInstance 時不呼叫 runExecutionService.createRun', async () => {
@@ -362,28 +337,16 @@ describe('RunContext 傳遞驗證', () => {
   });
 
   describe('5. checkAndTriggerWorkflows RunContext 傳遞', () => {
-    it('multiInstance 時傳給 executeStreamingChat 的 onComplete 為 onRunChatComplete 的呼叫', async () => {
+    it('multiInstance 時 launchMultiInstanceRun 的 onComplete 會呼叫 onRunChatComplete', async () => {
       asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
 
-      let capturedOnComplete: ((cId: string, pId: string) => void | Promise<void>) | undefined;
-
-      asMock(executeStreamingChat).mockImplementation(async (_opts: unknown, callbacks: { onComplete?: (cId: string, pId: string) => Promise<void> }) => {
-        capturedOnComplete = callbacks?.onComplete;
-        return { messageId: 'msg-1', content: '回覆', hasContent: true, aborted: false };
+      asMock(launchMultiInstanceRun).mockImplementationOnce(async (params: { onComplete: (runContext: RunContext) => void }) => {
+        params.onComplete(TEST_RUN_CONTEXT);
+        return TEST_RUN_CONTEXT;
       });
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
 
-      // 驗證 onComplete callback 已被設定（來自 onRunChatComplete 的閉包）
-      expect(capturedOnComplete).toBeDefined();
-
-      // 呼叫 callback，驗證它會觸發 runExecutionService.settlePodTrigger
-      if (capturedOnComplete) {
-        await capturedOnComplete(CANVAS_ID, SOURCE_POD_ID);
-      }
-
-      // onRunChatComplete 本體呼叫 runExecutionService.settlePodTrigger 和 checkAndTriggerWorkflows
-      // 但 onRunChatComplete 被 mock 了，所以驗證 onRunChatComplete mock 有被呼叫
       const { onRunChatComplete } = await import('../../src/utils/chatCallbacks.js');
       expect(onRunChatComplete).toHaveBeenCalledWith(
         TEST_RUN_CONTEXT,
@@ -394,21 +357,21 @@ describe('RunContext 傳遞驗證', () => {
   });
 
   describe('6. error 與 abort 路徑', () => {
-    it('executeStreamingChat 拋出錯誤時 handleChatSend 不會吞掉例外', async () => {
+    it('launchMultiInstanceRun 拋出錯誤時 handleChatSend 不會吞掉例外', async () => {
       asMock(podStore.getById).mockReturnValue(makeMultiInstancePod());
-      asMock(executeStreamingChat).mockRejectedValue(new Error('串流錯誤'));
+      asMock(launchMultiInstanceRun).mockRejectedValue(new Error('串流錯誤'));
 
       await expect(
         handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID)
       ).rejects.toThrow('串流錯誤');
     });
 
-    it('multiInstance pod 找不到時 handleChatSend 不呼叫 runExecutionService.createRun', async () => {
+    it('multiInstance pod 找不到時 handleChatSend 不呼叫 launchMultiInstanceRun', async () => {
       asMock(podStore.getById).mockReturnValue(undefined);
 
       await handleChatSend(CONNECTION_ID, { podId: SOURCE_POD_ID, message: '測試訊息' }, REQUEST_ID);
 
-      expect(runExecutionService.createRun).not.toHaveBeenCalled();
+      expect(launchMultiInstanceRun).not.toHaveBeenCalled();
       expect(executeStreamingChat).not.toHaveBeenCalled();
     });
   });
