@@ -227,7 +227,7 @@ describe('IntegrationConnectModal', () => {
       integrationStore.apps['jira'] = [
         {
           id: 'jira-1',
-          name: 'dcm',
+          name: 'my-project',
           connectionStatus: 'connected',
           provider: 'jira',
           resources: [],
@@ -276,7 +276,7 @@ describe('IntegrationConnectModal', () => {
       integrationStore.apps['jira'] = [
         {
           id: 'jira-1',
-          name: 'dcm',
+          name: 'my-project',
           connectionStatus: 'connected',
           provider: 'jira',
           resources: [],
@@ -307,7 +307,7 @@ describe('IntegrationConnectModal', () => {
       integrationStore.apps['jira'] = [
         {
           id: 'jira-1',
-          name: 'dcm',
+          name: 'my-project',
           connectionStatus: 'connected',
           provider: 'jira',
           resources: [],
@@ -333,7 +333,7 @@ describe('IntegrationConnectModal', () => {
       integrationStore.apps['jira'] = [
         {
           id: 'jira-1',
-          name: 'dcm',
+          name: 'my-project',
           connectionStatus: 'connected',
           provider: 'jira',
           resources: [],

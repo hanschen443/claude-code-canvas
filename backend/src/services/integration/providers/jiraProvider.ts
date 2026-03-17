@@ -103,7 +103,7 @@ class JiraProvider implements IntegrationProvider {
       .url('siteUrl 必須為合法 URL')
       .refine((url) => url.startsWith('https://'), 'siteUrl 必須使用 https://')
       .transform((url) => url.replace(/\/$/, '')),
-    webhookSecret: z.string().min(1),
+    webhookSecret: z.string().min(16, 'Webhook Secret 至少需要 16 個字元'),
   });
 
   readonly bindSchema = z.object({});

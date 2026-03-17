@@ -101,7 +101,7 @@ describe('JiraProvider - createAppSchema', () => {
   it('應接受公開 https siteUrl + webhookSecret', () => {
     const result = jiraProvider.createAppSchema.safeParse({
       siteUrl: 'https://mysite.atlassian.net',
-      webhookSecret: 'secret',
+      webhookSecret: 'webhook-secret-1234',
     });
     expect(result.success).toBe(true);
   });
@@ -129,10 +129,18 @@ describe('JiraProvider - createAppSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('應拒絕不足 16 字元的 webhookSecret', () => {
+    const result = jiraProvider.createAppSchema.safeParse({
+      siteUrl: 'https://mysite.atlassian.net',
+      webhookSecret: 'short',
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('應移除 siteUrl 尾部斜線', () => {
     const result = jiraProvider.createAppSchema.safeParse({
       siteUrl: 'https://mysite.atlassian.net/',
-      webhookSecret: 'secret',
+      webhookSecret: 'webhook-secret-1234',
     });
     expect(result.success).toBe(true);
     if (result.success) {

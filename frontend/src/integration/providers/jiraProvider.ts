@@ -28,7 +28,7 @@ export const jiraProviderConfig: IntegrationProviderConfig = {
     {
       key: 'name',
       label: '名稱',
-      placeholder: '例如：dcm',
+      placeholder: '例如：my-project',
       type: 'text',
       validate: (v): string => {
         if (v === '') return '名稱不可為空'
@@ -68,8 +68,6 @@ export const jiraProviderConfig: IntegrationProviderConfig = {
   connectionStatusConfig: CONNECTION_STATUS_CONFIG,
 
   hasNoResource: true,
-
-  getWebhookUrl: (app) => window.location.origin + '/jira/events/' + app.name,
 
   transformApp,
 

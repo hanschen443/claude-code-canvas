@@ -145,7 +145,7 @@ describe('IntegrationAppsModal', () => {
       integrationStore.apps['jira'] = [
         {
           id: 'jira-1',
-          name: 'dcm',
+          name: 'my-project',
           connectionStatus: 'connected',
           provider: 'jira',
           resources: [],
@@ -160,76 +160,6 @@ describe('IntegrationAppsModal', () => {
       expect(badges).toHaveLength(0)
     })
 
-    it('Jira App 卡片應顯示 Webhook URL', async () => {
-      const wrapper = await mountComponent({ open: true, provider: 'jira' })
-      const integrationStore = (await import('@/stores/integrationStore')).useIntegrationStore()
-      integrationStore.apps['jira'] = [
-        {
-          id: 'jira-1',
-          name: 'dcm',
-          connectionStatus: 'connected',
-          provider: 'jira',
-          resources: [],
-          raw: {},
-        },
-      ]
-
-      await wrapper.vm.$nextTick()
-
-      expect(wrapper.text()).toContain('/jira/events/dcm')
-    })
-
-    it('Webhook URL 旁有複製按鈕', async () => {
-      const wrapper = await mountComponent({ open: true, provider: 'jira' })
-      const integrationStore = (await import('@/stores/integrationStore')).useIntegrationStore()
-      integrationStore.apps['jira'] = [
-        {
-          id: 'jira-1',
-          name: 'dcm',
-          connectionStatus: 'connected',
-          provider: 'jira',
-          resources: [],
-          raw: {},
-        },
-      ]
-
-      await wrapper.vm.$nextTick()
-
-      const copyIcon = wrapper.find('[data-icon="copy"]')
-      expect(copyIcon.exists()).toBe(true)
-    })
-
-    it('點擊複製按鈕應呼叫 clipboard API', async () => {
-      const writeTextMock = vi.fn().mockResolvedValue(undefined)
-      Object.defineProperty(navigator, 'clipboard', {
-        value: { writeText: writeTextMock },
-        writable: true,
-      })
-
-      const wrapper = await mountComponent({ open: true, provider: 'jira' })
-      const integrationStore = (await import('@/stores/integrationStore')).useIntegrationStore()
-      integrationStore.apps['jira'] = [
-        {
-          id: 'jira-1',
-          name: 'dcm',
-          connectionStatus: 'connected',
-          provider: 'jira',
-          resources: [],
-          raw: {},
-        },
-      ]
-
-      await wrapper.vm.$nextTick()
-
-      // 找到含 copy icon 的按鈕並點擊
-      const buttons = wrapper.findAll('button')
-      const copyButton = buttons.find((b) => b.find('[data-icon="copy"]').exists())
-      await copyButton?.trigger('click')
-
-      expect(writeTextMock).toHaveBeenCalledWith(
-        expect.stringContaining('/jira/events/dcm')
-      )
-    })
   })
 
   describe('App 列表', () => {
@@ -311,7 +241,7 @@ describe('IntegrationAppsModal', () => {
       integrationStore.apps['jira'] = [
         {
           id: 'jira-1',
-          name: 'dcm',
+          name: 'my-project',
           connectionStatus: 'connected',
           provider: 'jira',
           resources: [],

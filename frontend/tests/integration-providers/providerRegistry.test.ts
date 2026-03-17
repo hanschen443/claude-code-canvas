@@ -278,13 +278,13 @@ describe('providerRegistry', () => {
       const payload = config.buildCreatePayload({
         name: 'Test',
         siteUrl: 'https://test.atlassian.net',
-        webhookSecret: 'secret123',
+        webhookSecret: 'webhook-secret-1234',
       })
       expect(payload).toEqual({
         name: 'Test',
         config: {
           siteUrl: 'https://test.atlassian.net',
-          webhookSecret: 'secret123',
+          webhookSecret: 'webhook-secret-1234',
         },
       })
     })
@@ -299,15 +299,24 @@ describe('providerRegistry', () => {
       expect(payload).toEqual({ appId: 'app-1', resourceId: '*' })
     })
 
+    it('webhookSecret 驗證：空值回傳錯誤', () => {
+      const field = getProvider('jira').createFormFields.find((f) => f.key === 'webhookSecret')!
+      expect(field.validate('')).toBe('Webhook Secret 不可為空')
+    })
+
+    it('webhookSecret 驗證：不足 16 字元回傳錯誤', () => {
+      const field = getProvider('jira').createFormFields.find((f) => f.key === 'webhookSecret')!
+      expect(field.validate('short')).toBe('Webhook Secret 至少需要 16 個字元')
+    })
+
+    it('webhookSecret 驗證：恰好 16 字元回傳空字串', () => {
+      const field = getProvider('jira').createFormFields.find((f) => f.key === 'webhookSecret')!
+      expect(field.validate('1234567890123456')).toBe('')
+    })
+
     it('hasNoResource 為 true', () => {
       expect(getProvider('jira').hasNoResource).toBe(true)
     })
 
-    it('getWebhookUrl 組合 window.location.origin 和 app.name', () => {
-      const config = getProvider('jira')
-      const app = config.transformApp({ id: 'app-1', name: 'dcm', connectionStatus: 'connected' })
-      const url = config.getWebhookUrl!(app)
-      expect(url).toBe(window.location.origin + '/jira/events/dcm')
-    })
   })
 })
