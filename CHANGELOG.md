@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.1] - 2026-03-17
+
+### 新增
+- Jira Webhook 改造：從 API 連線模式改為純 Webhook 被動接收模式，支援動態子路徑 `/jira/events/{appName}`
+- Jira App 配置簡化：移除 email/apiToken 欄位，僅需 App 名稱、Site URL 與 Webhook Secret
+- Jira Pod 綁定簡化：不再需要選擇 Project，直接綁定 App 即可
+- Webhook URL 一鍵複製：建立 Jira App 後直接顯示完整 Webhook URL 供使用者複製
+- IntegrationWebhookRouter 支援前綴匹配路由模式
+
 ## [0.7.0] - 2026-03-17
 
 ### 新增
