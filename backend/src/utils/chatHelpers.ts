@@ -5,6 +5,10 @@ import { podStore } from '../services/podStore.js';
 import { messageStore } from '../services/messageStore.js';
 import { socketService } from '../services/socketService.js';
 
+export function buildDisplayContentWithCommand(content: string, commandId: string | null): string {
+    return commandId ? `/${commandId} ${content}` : content;
+}
+
 export function extractDisplayContent(message: string | ContentBlock[]): string {
     if (typeof message === 'string') return message;
 

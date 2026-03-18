@@ -12,6 +12,7 @@ export interface LaunchMultiInstanceRunParams {
     canvasId: string;
     podId: string;
     message: string | ContentBlock[];
+    displayMessage?: string;
     abortable: boolean;
     onComplete: (runContext: RunContext) => void;
     onAborted?: (canvasId: string, podId: string, messageId: string) => void;
@@ -19,12 +20,14 @@ export interface LaunchMultiInstanceRunParams {
 }
 
 export async function launchMultiInstanceRun(params: LaunchMultiInstanceRunParams): Promise<RunContext> {
-    const { canvasId, podId, message, abortable, onComplete, onAborted, onRunContextCreated } = params;
+    const { canvasId, podId, message, displayMessage, abortable, onComplete, onAborted, onRunContextCreated } = params;
 
-    const triggerMessage = extractDisplayContent(message);
+    // triggerMessage 僅用於 Run 標題顯示，固定使用純文字（displayMessage 或從 ContentBlock[] 提取文字）
+    // injectRunUserMessage 第三個參數用於存 DB 和廣播給前端，保留原始格式（displayMessage 優先，否則傳入原始 message 可能含 ContentBlock[]）
+    const triggerMessage = displayMessage ?? extractDisplayContent(message);
     const runContext = await runExecutionService.createRun(canvasId, podId, triggerMessage);
     runExecutionService.startPodInstance(runContext, podId);
-    await injectRunUserMessage(runContext, podId, message);
+    await injectRunUserMessage(runContext, podId, displayMessage ?? message);
 
     onRunContextCreated?.(runContext);
 

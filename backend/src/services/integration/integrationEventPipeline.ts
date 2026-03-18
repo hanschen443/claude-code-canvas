@@ -9,7 +9,7 @@ import { isWorkflowChainBusy } from '../../utils/workflowChainTraversal.js';
 import { integrationRegistry } from './integrationRegistry.js';
 import type { NormalizedEvent } from './types.js';
 import { isPodBusy } from '../../types/index.js';
-import { injectUserMessage } from '../../utils/chatHelpers.js';
+import { injectUserMessage, buildDisplayContentWithCommand } from '../../utils/chatHelpers.js';
 import { launchMultiInstanceRun } from '../../utils/runChatHelpers.js';
 import { onRunChatComplete } from '../../utils/chatCallbacks.js';
 import { replyContextStore, buildReplyContextKey, setReplyContextIfPresent } from './replyContextStore.js';
@@ -106,9 +106,12 @@ class IntegrationEventPipeline {
       return;
     }
 
-    const podName = currentPod?.name ?? podId;
+    if (!currentPod) return;
 
-    await injectUserMessage({ canvasId, podId, content: event.text });
+    const podName = currentPod.name;
+    const displayText = buildDisplayContentWithCommand(event.text, currentPod.commandId ?? null);
+
+    await injectUserMessage({ canvasId, podId, content: displayText });
 
     logger.log('Integration', 'Complete', `[IntegrationEventPipeline] 注入 ${event.provider} 訊息至 Pod「${podName}」`);
 
@@ -139,12 +142,15 @@ class IntegrationEventPipeline {
 
   private async injectMessageAsRun(canvasId: string, podId: string, event: NormalizedEvent): Promise<void> {
     let replyKey: string | undefined;
+    const currentPod = podStore.getById(canvasId, podId);
+    const displayMessage = buildDisplayContentWithCommand(event.text, currentPod?.commandId ?? null);
 
     try {
       await launchMultiInstanceRun({
         canvasId,
         podId,
         message: event.text,
+        displayMessage,
         abortable: false,
         onRunContextCreated: (runContext) => {
           replyKey = buildReplyContextKey(runContext, podId);

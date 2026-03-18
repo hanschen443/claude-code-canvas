@@ -22,6 +22,7 @@ import {
     applyToolResultToMessage,
     upsertMessage,
 } from '@/stores/chat/messageHelpers'
+import { finalizeSubMessages } from '@/stores/chat/subMessageHelpers'
 
 interface RunState {
     runs: WorkflowRun[]
@@ -307,6 +308,7 @@ export const useRunStore = defineStore('run', {
             const message = messages.find(m => m.id === messageId)
             if (!message) return
 
+            message.subMessages = finalizeSubMessages(message.subMessages) ?? message.subMessages
             message.isPartial = false
             message.content = fullContent
         },

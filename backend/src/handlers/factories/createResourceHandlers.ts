@@ -187,7 +187,7 @@ export function createResourceHandlers<T extends { id: string; name: string }, T
     const resourceId = payload[idField];
 
     const content = await service.getContent(resourceId);
-    if (!content) {
+    if (content === null) {
       emitNotFound(connectionId, events.readResult, resourceName, resourceId, requestId);
       return;
     }

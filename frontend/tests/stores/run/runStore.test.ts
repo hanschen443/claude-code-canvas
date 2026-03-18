@@ -705,6 +705,62 @@ describe('runStore', () => {
             const messages = store.runChatMessages.get('run-1:pod-1')
             expect(messages).toHaveLength(0)
         })
+
+        it('complete 時應對 subMessages 做 finalizeSubMessages 合併', () => {
+            const store = useRunStore()
+            store.runChatMessages.set('run-1:pod-1', [{
+                id: 'msg-1',
+                role: 'assistant',
+                content: '',
+                isPartial: true,
+                subMessages: [
+                    {
+                        id: 'sub-1',
+                        content: '',
+                        toolUse: [{ toolUseId: 'tool-1', toolName: 'Bash', input: {}, status: 'running' }],
+                    },
+                    {
+                        id: 'sub-2',
+                        content: '',
+                        toolUse: [{ toolUseId: 'tool-2', toolName: 'Read', input: {}, status: 'running' }],
+                    },
+                ],
+            }])
+
+            store.handleRunChatComplete('run-1', 'pod-1', 'msg-1', '完成')
+
+            const message = store.runChatMessages.get('run-1:pod-1')?.[0]
+            expect(message?.subMessages).toHaveLength(1)
+            expect(message?.subMessages?.[0]?.toolUse).toHaveLength(2)
+            expect(message?.subMessages?.[0]?.toolUse?.every(t => t.status === 'completed')).toBe(true)
+        })
+
+        it('complete 時應正確設定 fullContent 和 isPartial', () => {
+            const store = useRunStore()
+            store.runChatMessages.set('run-1:pod-1', [
+                { id: 'msg-1', role: 'assistant', content: 'streaming...', isPartial: true },
+            ])
+
+            store.handleRunChatComplete('run-1', 'pod-1', 'msg-1', '最終完整內容')
+
+            const message = store.runChatMessages.get('run-1:pod-1')?.[0]
+            expect(message?.content).toBe('最終完整內容')
+            expect(message?.isPartial).toBe(false)
+        })
+
+        it('subMessages 為 undefined 時不應產生副作用', () => {
+            const store = useRunStore()
+            store.runChatMessages.set('run-1:pod-1', [
+                { id: 'msg-1', role: 'assistant', content: '純文字回覆', isPartial: true },
+            ])
+
+            store.handleRunChatComplete('run-1', 'pod-1', 'msg-1', '最終純文字內容')
+
+            const message = store.runChatMessages.get('run-1:pod-1')?.[0]
+            expect(message?.subMessages).toBeUndefined()
+            expect(message?.content).toBe('最終純文字內容')
+            expect(message?.isPartial).toBe(false)
+        })
     })
 
     describe('resetOnCanvasSwitch', () => {

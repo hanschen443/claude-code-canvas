@@ -44,12 +44,12 @@ describe('messageHelpers', () => {
             expect(message.subMessages?.[0]?.toolUse?.[0]?.status).toBe('running')
         })
 
-        it('已有 subMessages 時應繼續追加', () => {
+        it('已有 subMessages 且最後一個 content 不為空時，應建立新的 subMessage', () => {
             const message: Message = {
                 id: 'msg-1',
                 role: 'assistant',
                 content: '',
-                subMessages: [{ id: 'existing', content: '' }],
+                subMessages: [{ id: 'existing', content: '有內容的 subMessage' }],
             }
 
             applyToolUseToMessage(message, {
@@ -59,7 +59,7 @@ describe('messageHelpers', () => {
             })
 
             expect(message.subMessages).toHaveLength(2)
-            expect(message.subMessages?.[1]?.id).toBe('tool-2')
+            expect(message.subMessages?.[1]?.toolUse?.[0]?.toolName).toBe('Read')
         })
 
         it('新加入的 toolUse input 應與 payload 相同', () => {
@@ -69,6 +69,72 @@ describe('messageHelpers', () => {
             applyToolUseToMessage(message, { toolUseId: 'tool-1', toolName: 'Bash', input })
 
             expect(message.subMessages?.[0]?.toolUse?.[0]?.input).toEqual(input)
+        })
+
+        it('連續 tool use 且前一個 subMessage content 為空時，應合併到同一個 subMessage', () => {
+            const message: Message = { id: 'msg-1', role: 'assistant', content: '' }
+
+            applyToolUseToMessage(message, {
+                toolUseId: 'tool-1',
+                toolName: 'Bash',
+                input: { command: 'ls' },
+            })
+
+            applyToolUseToMessage(message, {
+                toolUseId: 'tool-2',
+                toolName: 'Read',
+                input: { path: '/tmp' },
+            })
+
+            expect(message.subMessages).toHaveLength(1)
+            expect(message.subMessages?.[0]?.toolUse).toHaveLength(2)
+            expect(message.subMessages?.[0]?.toolUse?.[0]?.toolName).toBe('Bash')
+            expect(message.subMessages?.[0]?.toolUse?.[1]?.toolName).toBe('Read')
+        })
+
+        it('最後一個 subMessage content 為純空白字元時，應合併到同一個 subMessage', () => {
+            const message: Message = {
+                id: 'msg-1',
+                role: 'assistant',
+                content: '',
+                subMessages: [{
+                    id: 'sub-1',
+                    content: '  ',
+                    toolUse: [{ toolUseId: 'tool-1', toolName: 'Bash', input: {}, status: 'running' }],
+                }],
+            }
+
+            applyToolUseToMessage(message, {
+                toolUseId: 'tool-2',
+                toolName: 'Read',
+                input: { path: '/tmp' },
+            })
+
+            expect(message.subMessages).toHaveLength(1)
+            expect(message.subMessages?.[0]?.toolUse).toHaveLength(2)
+        })
+
+        it('前一個 subMessage 有 content 時，應建立新 subMessage', () => {
+            const message: Message = {
+                id: 'msg-1',
+                role: 'assistant',
+                content: '',
+                subMessages: [{
+                    id: 'sub-1',
+                    content: '思考中...',
+                    toolUse: [{ toolUseId: 'tool-1', toolName: 'Bash', input: {}, status: 'running' }],
+                }],
+            }
+
+            applyToolUseToMessage(message, {
+                toolUseId: 'tool-2',
+                toolName: 'Read',
+                input: { path: '/tmp' },
+            })
+
+            expect(message.subMessages).toHaveLength(2)
+            expect(message.subMessages?.[0]?.content).toBe('思考中...')
+            expect(message.subMessages?.[1]?.toolUse?.[0]?.toolUseId).toBe('tool-2')
         })
     })
 
