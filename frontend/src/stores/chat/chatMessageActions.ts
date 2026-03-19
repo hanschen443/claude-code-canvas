@@ -1,280 +1,378 @@
-import {generateRequestId} from '@/services/utils'
-import {usePodStore} from '../pod/podStore'
-import type {Pod} from '@/types/pod'
-import type {Message, SubMessage, ToolUseInfo} from '@/types/chat'
-import {isValidToolUseStatus} from '@/types/chat'
+import { generateRequestId } from "@/services/utils";
+import { usePodStore } from "../pod/podStore";
+import type { Pod } from "@/types/pod";
+import type { Message, SubMessage } from "@/types/chat";
+import { isValidToolUseStatus } from "@/types/chat";
 import type {
-    PersistedMessage,
-    PodChatAbortedPayload,
-    PodChatCompletePayload,
-    PodChatMessagePayload,
-    PodChatToolResultPayload,
-    PodChatToolUsePayload,
-    PodMessagesClearedPayload,
-} from '@/types/websocket'
-import {CONTENT_PREVIEW_LENGTH} from '@/lib/constants'
-import {truncateContent} from './chatUtils'
-import type {ChatStoreInstance} from './chatStore'
-import {updateAssistantSubMessages} from './subMessageHelpers'
-import {createToolTrackingActions} from './toolTrackingActions'
-import {createMessageCompletionActions} from './messageCompletionActions'
-import {getMessages, findMessageIndex, setTyping} from './chatStoreHelpers'
-
-function collectToolUseFromSubMessages(subMessages: PersistedMessage['subMessages']): ToolUseInfo[] {
-    if (!subMessages) return []
-    return subMessages.flatMap(sub =>
-        (sub.toolUse ?? []).map(tool => ({
-            toolUseId: tool.toolUseId,
-            toolName: tool.toolName,
-            input: tool.input,
-            output: tool.output,
-            status: isValidToolUseStatus(tool.status) ? tool.status : 'completed',
-        }))
-    )
-}
+  PersistedMessage,
+  PodChatAbortedPayload,
+  PodChatCompletePayload,
+  PodChatMessagePayload,
+  PodChatToolResultPayload,
+  PodChatToolUsePayload,
+  PodMessagesClearedPayload,
+} from "@/types/websocket";
+import { CONTENT_PREVIEW_LENGTH } from "@/lib/constants";
+import { truncateContent } from "./chatUtils";
+import type { ChatStoreInstance } from "./chatStore";
+import {
+  updateAssistantSubMessages,
+  collectToolUseFromSubMessages,
+} from "./subMessageHelpers";
+import { createToolTrackingActions } from "./toolTrackingActions";
+import { createMessageCompletionActions } from "./messageCompletionActions";
+import { getMessages, findMessageIndex, setTyping } from "./chatStoreHelpers";
 
 function appendUserOutputToPod(pod: Pod, content: string): void {
-    const podStore = usePodStore()
-    const truncatedContent = `> ${truncateContent(content, CONTENT_PREVIEW_LENGTH)}`
-    const lastOutput = pod.output[pod.output.length - 1]
-    if (lastOutput === truncatedContent) return
+  const podStore = usePodStore();
+  const truncatedContent = `> ${truncateContent(content, CONTENT_PREVIEW_LENGTH)}`;
+  const lastOutput = pod.output[pod.output.length - 1];
+  if (lastOutput === truncatedContent) return;
 
-    podStore.updatePod({
-        ...pod,
-        output: [...pod.output, truncatedContent]
-    })
+  podStore.updatePod({
+    ...pod,
+    output: [...pod.output, truncatedContent],
+  });
 }
 
-export function createAssistantMessageShape(messageId: string, content: string, isPartial: boolean, delta?: string): Partial<Message> {
-    const firstSubMessage: SubMessage = {
-        id: `${messageId}-sub-0`,
-        content: delta ?? content,
-        isPartial
-    }
-    return {
-        subMessages: [firstSubMessage],
-    }
+export function createAssistantMessageShape(
+  messageId: string,
+  content: string,
+  isPartial: boolean,
+  delta?: string,
+): Partial<Message> {
+  const firstSubMessage: SubMessage = {
+    id: `${messageId}-sub-0`,
+    content: delta ?? content,
+    isPartial,
+  };
+  return {
+    subMessages: [firstSubMessage],
+  };
 }
 
 export interface ChatMessageActions {
-    addUserMessage: (podId: string, content: string) => void
-    addRemoteUserMessage: (podId: string, messageId: string, content: string, timestamp: string) => void
-    handleChatMessage: (payload: PodChatMessagePayload) => void
-    addNewChatMessage: (podId: string, messageId: string, content: string, isPartial: boolean, role?: 'user' | 'assistant', delta?: string) => void
-    updateExistingChatMessage: (podId: string, messages: Message[], messageIndex: number, content: string, isPartial: boolean, delta: string) => void
-    handleChatToolUse: (payload: PodChatToolUsePayload) => void
-    createMessageWithToolUse: (podId: string, messageId: string, toolUseId: string, toolName: string, input: Record<string, unknown>) => void
-    addToolUseToMessage: (podId: string, messages: Message[], messageIndex: number, toolUseId: string, toolName: string, input: Record<string, unknown>) => void
-    handleChatToolResult: (payload: PodChatToolResultPayload) => void
-    updateToolUseResult: (podId: string, messages: Message[], messageIndex: number, toolUseId: string, output: string) => void
-    handleChatComplete: (payload: PodChatCompletePayload) => void
-    handleChatAborted: (payload: PodChatAbortedPayload) => void
-    finalizeStreaming: (podId: string, messageId: string) => void
-    completeMessage: (podId: string, messages: Message[], messageIndex: number, fullContent: string, messageId: string) => void
-    updatePodOutput: (podId: string) => void
-    convertPersistedToMessage: (persistedMessage: PersistedMessage) => Message
-    setPodMessages: (podId: string, messages: Message[]) => void
-    setTyping: (podId: string, isTyping: boolean) => void
-    clearMessagesByPodIds: (podIds: string[]) => void
-    handleMessagesClearedEvent: (payload: PodMessagesClearedPayload) => void
+  addUserMessage: (podId: string, content: string) => void;
+  addRemoteUserMessage: (
+    podId: string,
+    messageId: string,
+    content: string,
+    timestamp: string,
+  ) => void;
+  handleChatMessage: (payload: PodChatMessagePayload) => void;
+  addNewChatMessage: (
+    podId: string,
+    messageId: string,
+    content: string,
+    isPartial: boolean,
+    role?: "user" | "assistant",
+    delta?: string,
+  ) => void;
+  updateExistingChatMessage: (
+    podId: string,
+    messages: Message[],
+    messageIndex: number,
+    content: string,
+    isPartial: boolean,
+    delta: string,
+  ) => void;
+  handleChatToolUse: (payload: PodChatToolUsePayload) => void;
+  createMessageWithToolUse: (
+    podId: string,
+    messageId: string,
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+  ) => void;
+  addToolUseToMessage: (
+    podId: string,
+    messages: Message[],
+    messageIndex: number,
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+  ) => void;
+  handleChatToolResult: (payload: PodChatToolResultPayload) => void;
+  updateToolUseResult: (
+    podId: string,
+    messages: Message[],
+    messageIndex: number,
+    toolUseId: string,
+    output: string,
+  ) => void;
+  handleChatComplete: (payload: PodChatCompletePayload) => void;
+  handleChatAborted: (payload: PodChatAbortedPayload) => void;
+  finalizeStreaming: (podId: string, messageId: string) => void;
+  completeMessage: (
+    podId: string,
+    messages: Message[],
+    messageIndex: number,
+    fullContent: string,
+    messageId: string,
+  ) => void;
+  updatePodOutput: (podId: string) => void;
+  convertPersistedToMessage: (persistedMessage: PersistedMessage) => Message;
+  setPodMessages: (podId: string, messages: Message[]) => void;
+  setTyping: (podId: string, isTyping: boolean) => void;
+  clearMessagesByPodIds: (podIds: string[]) => void;
+  handleMessagesClearedEvent: (payload: PodMessagesClearedPayload) => void;
 }
 
-export function createMessageActions(store: ChatStoreInstance): ChatMessageActions {
-    const toolTrackingActions = createToolTrackingActions(store)
-    const messageCompletionActions = createMessageCompletionActions(store, (podId, isTyping) => setTyping(store, podId, isTyping))
+export function createMessageActions(
+  store: ChatStoreInstance,
+): ChatMessageActions {
+  const toolTrackingActions = createToolTrackingActions(store);
+  const messageCompletionActions = createMessageCompletionActions(
+    store,
+    (podId, isTyping) => setTyping(store, podId, isTyping),
+  );
 
-    function appendUserMessageToStore(podId: string, message: Message): void {
-        const podStore = usePodStore()
-        const pod = podStore.pods.find(p => p.id === podId)
-        if (!pod) return
+  function appendUserMessageToStore(podId: string, message: Message): void {
+    const podStore = usePodStore();
+    const pod = podStore.pods.find((p) => p.id === podId);
+    if (!pod) return;
 
-        const messages = getMessages(store, podId)
-        store.messagesByPodId.set(podId, [...messages, message])
+    const messages = getMessages(store, podId);
+    store.messagesByPodId.set(podId, [...messages, message]);
 
-        appendUserOutputToPod(pod, message.content)
+    appendUserOutputToPod(pod, message.content);
+  }
+
+  const addUserMessage = (podId: string, content: string): void => {
+    const userMessage: Message = {
+      id: generateRequestId(),
+      role: "user",
+      content,
+      timestamp: new Date().toISOString(),
+    };
+
+    appendUserMessageToStore(podId, userMessage);
+  };
+
+  const addRemoteUserMessage = (
+    podId: string,
+    messageId: string,
+    content: string,
+    timestamp: string,
+  ): void => {
+    const userMessage: Message = {
+      id: messageId,
+      role: "user",
+      content,
+      timestamp,
+    };
+
+    appendUserMessageToStore(podId, userMessage);
+  };
+
+  const handleChatMessage = (payload: PodChatMessagePayload): void => {
+    const { podId, messageId, content, isPartial, role } = payload;
+    const messages = getMessages(store, podId);
+    const messageIndex = findMessageIndex(messages, messageId);
+
+    const lastLength = store.accumulatedLengthByMessageId.get(messageId) ?? 0;
+    const delta = content.slice(lastLength);
+    store.accumulatedLengthByMessageId.set(messageId, content.length);
+
+    if (messageIndex === -1) {
+      addNewChatMessage(podId, messageId, content, isPartial, role, delta);
+      return;
     }
 
-    const addUserMessage = (podId: string, content: string): void => {
-        const userMessage: Message = {
-            id: generateRequestId(),
-            role: 'user',
-            content,
-            timestamp: new Date().toISOString()
-        }
+    updateExistingChatMessage(
+      podId,
+      messages,
+      messageIndex,
+      content,
+      isPartial,
+      delta,
+    );
+  };
 
-        appendUserMessageToStore(podId, userMessage)
+  function buildNewMessage(
+    messageId: string,
+    effectiveRole: "user" | "assistant",
+    content: string,
+    isPartial: boolean,
+    delta?: string,
+  ): Message {
+    const baseMessage: Message = {
+      id: messageId,
+      role: effectiveRole,
+      content,
+      isPartial,
+      timestamp: new Date().toISOString(),
+    };
+
+    const shape =
+      effectiveRole === "assistant"
+        ? createAssistantMessageShape(messageId, content, isPartial, delta)
+        : {};
+
+    return { ...baseMessage, ...shape };
+  }
+
+  const addNewChatMessage = (
+    podId: string,
+    messageId: string,
+    content: string,
+    isPartial: boolean,
+    role?: "user" | "assistant",
+    delta?: string,
+  ): void => {
+    const messages = getMessages(store, podId);
+    const effectiveRole = role ?? "assistant";
+    const newMessage = buildNewMessage(
+      messageId,
+      effectiveRole,
+      content,
+      isPartial,
+      delta,
+    );
+
+    store.messagesByPodId.set(podId, [...messages, newMessage]);
+    store.currentStreamingMessageId = messageId;
+
+    if (isPartial) {
+      setTyping(store, podId, true);
     }
 
-    const addRemoteUserMessage = (podId: string, messageId: string, content: string, timestamp: string): void => {
-        const userMessage: Message = {
-            id: messageId,
-            role: 'user',
-            content,
-            timestamp
-        }
-
-        appendUserMessageToStore(podId, userMessage)
+    if (effectiveRole === "user") {
+      const podStore = usePodStore();
+      const pod = podStore.pods.find((p) => p.id === podId);
+      if (pod) {
+        appendUserOutputToPod(pod, content);
+      }
     }
+  };
 
-    const handleChatMessage = (payload: PodChatMessagePayload): void => {
-        const {podId, messageId, content, isPartial, role} = payload
-        const messages = getMessages(store, podId)
-        const messageIndex = findMessageIndex(messages, messageId)
+  const updateExistingChatMessage = (
+    podId: string,
+    messages: Message[],
+    messageIndex: number,
+    content: string,
+    isPartial: boolean,
+    delta: string,
+  ): void => {
+    const updatedMessages = [...messages];
+    const existingMessage = updatedMessages[messageIndex];
 
-        const lastLength = store.accumulatedLengthByMessageId.get(messageId) ?? 0
-        const delta = content.slice(lastLength)
-        store.accumulatedLengthByMessageId.set(messageId, content.length)
+    if (!existingMessage) return;
 
-        if (messageIndex === -1) {
-            addNewChatMessage(podId, messageId, content, isPartial, role, delta)
-            return
-        }
+    const subMessageUpdates =
+      existingMessage.role === "assistant" && existingMessage.subMessages
+        ? updateAssistantSubMessages(existingMessage, delta, isPartial)
+        : {};
 
-        updateExistingChatMessage(podId, messages, messageIndex, content, isPartial, delta)
+    updatedMessages[messageIndex] = {
+      ...existingMessage,
+      content,
+      isPartial,
+      ...subMessageUpdates,
+    };
+
+    store.messagesByPodId.set(podId, updatedMessages);
+
+    if (isPartial) {
+      setTyping(store, podId, true);
     }
+  };
 
-    function buildNewMessage(messageId: string, effectiveRole: 'user' | 'assistant', content: string, isPartial: boolean, delta?: string): Message {
-        const baseMessage: Message = {
-            id: messageId,
-            role: effectiveRole,
-            content,
-            isPartial,
-            timestamp: new Date().toISOString()
-        }
-
-        const shape = effectiveRole === 'assistant'
-            ? createAssistantMessageShape(messageId, content, isPartial, delta)
-            : {}
-
-        return { ...baseMessage, ...shape }
-    }
-
-    const addNewChatMessage = (podId: string, messageId: string, content: string, isPartial: boolean, role?: 'user' | 'assistant', delta?: string): void => {
-        const messages = getMessages(store, podId)
-        const effectiveRole = role ?? 'assistant'
-        const newMessage = buildNewMessage(messageId, effectiveRole, content, isPartial, delta)
-
-        store.messagesByPodId.set(podId, [...messages, newMessage])
-        store.currentStreamingMessageId = messageId
-
-        if (isPartial) {
-            setTyping(store, podId, true)
-        }
-
-        if (effectiveRole === 'user') {
-            const podStore = usePodStore()
-            const pod = podStore.pods.find(p => p.id === podId)
-            if (pod) {
-                appendUserOutputToPod(pod, content)
-            }
-        }
-    }
-
-    const updateExistingChatMessage = (podId: string, messages: Message[], messageIndex: number, content: string, isPartial: boolean, delta: string): void => {
-        const updatedMessages = [...messages]
-        const existingMessage = updatedMessages[messageIndex]
-
-        if (!existingMessage) return
-
-        const subMessageUpdates = existingMessage.role === 'assistant' && existingMessage.subMessages
-            ? updateAssistantSubMessages(existingMessage, delta, isPartial)
-            : {}
-
-        updatedMessages[messageIndex] = {
-            ...existingMessage,
-            content,
-            isPartial,
-            ...subMessageUpdates
-        }
-
-        store.messagesByPodId.set(podId, updatedMessages)
-
-        if (isPartial) {
-            setTyping(store, podId, true)
-        }
-    }
-
-    const convertSubMessages = (persistedMessage: PersistedMessage): Pick<Message, 'subMessages' | 'toolUse'> => {
-        if (!persistedMessage.subMessages || persistedMessage.subMessages.length === 0) {
-            return {
-                subMessages: [{
-                    id: `${persistedMessage.id}-sub-0`,
-                    content: persistedMessage.content,
-                    isPartial: false
-                }]
-            }
-        }
-
-        const allToolUse = collectToolUseFromSubMessages(persistedMessage.subMessages)
-
-        const result: Pick<Message, 'subMessages' | 'toolUse'> = {
-            subMessages: persistedMessage.subMessages.map((sub) => ({
-                id: sub.id,
-                content: sub.content,
-                isPartial: false,
-                toolUse: sub.toolUse?.map(t => ({
-                    toolUseId: t.toolUseId,
-                    toolName: t.toolName,
-                    input: t.input,
-                    output: t.output,
-                    status: isValidToolUseStatus(t.status) ? t.status : 'completed',
-                })),
-            })),
-        }
-
-        if (allToolUse.length > 0) {
-            result.toolUse = allToolUse
-        }
-
-        return result
-    }
-
-    const convertPersistedToMessage = (persistedMessage: PersistedMessage): Message => {
-        const message: Message = {
-            id: persistedMessage.id,
-            role: persistedMessage.role,
+  const convertSubMessages = (
+    persistedMessage: PersistedMessage,
+  ): Pick<Message, "subMessages" | "toolUse"> => {
+    if (
+      !persistedMessage.subMessages ||
+      persistedMessage.subMessages.length === 0
+    ) {
+      return {
+        subMessages: [
+          {
+            id: `${persistedMessage.id}-sub-0`,
             content: persistedMessage.content,
-            timestamp: persistedMessage.timestamp,
-            isPartial: false
-        }
-
-        if (persistedMessage.role !== 'assistant') return message
-
-        return { ...message, ...convertSubMessages(persistedMessage) }
+            isPartial: false,
+          },
+        ],
+      };
     }
 
-    const setPodMessages = (podId: string, messages: Message[]): void => {
-        store.messagesByPodId.set(podId, messages)
+    const allToolUse = collectToolUseFromSubMessages(
+      persistedMessage.subMessages,
+    );
+
+    const result: Pick<Message, "subMessages" | "toolUse"> = {
+      subMessages: persistedMessage.subMessages.map((sub) => ({
+        id: sub.id,
+        content: sub.content,
+        isPartial: false,
+        toolUse: sub.toolUse?.map((t) => ({
+          toolUseId: t.toolUseId,
+          toolName: t.toolName,
+          input: t.input,
+          output: t.output,
+          status: isValidToolUseStatus(t.status) ? t.status : "completed",
+        })),
+      })),
+    };
+
+    if (allToolUse.length > 0) {
+      result.toolUse = allToolUse;
     }
 
-    const clearMessagesByPodIds = (podIds: string[]): void => {
-        podIds.forEach(podId => {
-            store.messagesByPodId.delete(podId)
-            store.isTypingByPodId.delete(podId)
-        })
-    }
+    return result;
+  };
 
-    const handleMessagesClearedEvent = (payload: PodMessagesClearedPayload): void => {
-        clearMessagesByPodIds([payload.podId])
+  const convertPersistedToMessage = (
+    persistedMessage: PersistedMessage,
+  ): Message => {
+    const message: Message = {
+      id: persistedMessage.id,
+      role: persistedMessage.role,
+      content: persistedMessage.content,
+      timestamp: persistedMessage.timestamp,
+      isPartial: false,
+    };
 
-        const podStore = usePodStore()
-        podStore.clearPodOutputsByIds([payload.podId])
-    }
+    if (persistedMessage.role !== "assistant") return message;
 
-    const boundSetTyping = (podId: string, isTyping: boolean): void => setTyping(store, podId, isTyping)
+    return { ...message, ...convertSubMessages(persistedMessage) };
+  };
 
-    return {
-        addUserMessage,
-        addRemoteUserMessage,
-        handleChatMessage,
-        addNewChatMessage,
-        updateExistingChatMessage,
-        ...toolTrackingActions,
-        ...messageCompletionActions,
-        convertPersistedToMessage,
-        setPodMessages,
-        setTyping: boundSetTyping,
-        clearMessagesByPodIds,
-        handleMessagesClearedEvent,
-    }
+  const setPodMessages = (podId: string, messages: Message[]): void => {
+    store.messagesByPodId.set(podId, messages);
+  };
+
+  const clearMessagesByPodIds = (podIds: string[]): void => {
+    podIds.forEach((podId) => {
+      store.messagesByPodId.delete(podId);
+      store.isTypingByPodId.delete(podId);
+    });
+  };
+
+  const handleMessagesClearedEvent = (
+    payload: PodMessagesClearedPayload,
+  ): void => {
+    clearMessagesByPodIds([payload.podId]);
+
+    const podStore = usePodStore();
+    podStore.clearPodOutputsByIds([payload.podId]);
+  };
+
+  const boundSetTyping = (podId: string, isTyping: boolean): void =>
+    setTyping(store, podId, isTyping);
+
+  return {
+    addUserMessage,
+    addRemoteUserMessage,
+    handleChatMessage,
+    addNewChatMessage,
+    updateExistingChatMessage,
+    ...toolTrackingActions,
+    ...messageCompletionActions,
+    convertPersistedToMessage,
+    setPodMessages,
+    setTyping: boundSetTyping,
+    clearMessagesByPodIds,
+    handleMessagesClearedEvent,
+  };
 }

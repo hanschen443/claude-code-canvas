@@ -1,8 +1,10 @@
-import type { Message, SubMessage, ToolUseInfo } from "@/types/chat";
+import type { Message, ToolUseInfo } from "@/types/chat";
 import {
   appendToolToLastSubMessage,
   flushAndCreateNewSubMessage,
+  markToolWithOutput,
   updateAssistantSubMessages,
+  updateSubMessagesToolUseResult,
 } from "./subMessageHelpers";
 import { createAssistantMessageShape } from "./chatMessageActions";
 
@@ -17,81 +19,105 @@ export function buildSubMessageId(
   return `${parentMessageId}-${toolUseId ?? "no-tool"}`;
 }
 
-export function applyToolUseToMessage(
+/**
+ * 不可變地將 toolUseInfo 加入 message 的 toolUse 和 subMessages。
+ * 呼叫前需自行處理 dedup（檢查 toolUseId 是否已存在）。
+ */
+export function mergeToolUseIntoMessage(
   message: Message,
-  payload: {
-    toolUseId: string;
-    toolName: string;
-    input: Record<string, unknown>;
-  },
-): void {
-  const toolUseInfo: ToolUseInfo = {
-    toolUseId: payload.toolUseId,
-    toolName: payload.toolName,
-    input: payload.input,
-    status: "running",
+  toolUseInfo: ToolUseInfo,
+): Message {
+  const existingToolUse = message.toolUse ?? [];
+
+  const updatedMessage: Message = {
+    ...message,
+    toolUse: [...existingToolUse, toolUseInfo],
   };
 
-  const subMessages = message.subMessages;
-
-  // 尚無 subMessages 時，建立初始 subMessages
-  if (!subMessages || subMessages.length === 0) {
-    const newSubMessages: SubMessage[] = [];
-
-    // 若主訊息已有文字內容，先保留到第一個 subMessage，避免切換到 subMessages 渲染後文字消失
-    if (message.content.trim() !== "") {
-      newSubMessages.push({
-        id: `${message.id}-sub-0`,
-        content: message.content,
-        isPartial: false,
-      });
+  if (message.subMessages !== undefined && message.subMessages.length > 0) {
+    const lastSub = message.subMessages[message.subMessages.length - 1];
+    if (lastSub && lastSub.content.trim() === "") {
+      updatedMessage.subMessages = appendToolToLastSubMessage(
+        message.subMessages,
+        toolUseInfo,
+      );
+    } else {
+      updatedMessage.subMessages = flushAndCreateNewSubMessage(
+        message.subMessages,
+        message.id,
+        toolUseInfo,
+      );
     }
-
-    newSubMessages.push({
-      id: payload.toolUseId,
-      content: "",
-      toolUse: [toolUseInfo],
-    });
-
-    message.subMessages = newSubMessages;
-    return;
   }
 
-  const lastSub = subMessages[subMessages.length - 1];
-
-  if (lastSub && lastSub.content.trim() === "") {
-    // 最後一個 subMessage content 為空，合併到同一個
-    message.subMessages = appendToolToLastSubMessage(subMessages, toolUseInfo);
-  } else {
-    // 最後一個 subMessage 有 content，建立新的 subMessage
-    message.subMessages = flushAndCreateNewSubMessage(
-      subMessages,
-      message.id,
-      toolUseInfo,
-    );
-  }
+  return updatedMessage;
 }
 
+/**
+ * 不可變地將 tool result（output）合併到 message 的 toolUse 和 subMessages。
+ * 若 message 無 toolUse 則回傳原始 message。
+ */
+export function mergeToolResultIntoMessage(
+  message: Message,
+  toolUseId: string,
+  output: string,
+): Message {
+  if (!message.toolUse) return message;
+
+  const updatedToolUse = markToolWithOutput(message.toolUse, toolUseId, output);
+
+  const updatedMessage: Message = {
+    ...message,
+    toolUse: updatedToolUse,
+  };
+
+  if (message.subMessages) {
+    updatedMessage.subMessages = updateSubMessagesToolUseResult(
+      message.subMessages,
+      toolUseId,
+      output,
+    );
+  }
+
+  return updatedMessage;
+}
+
+/**
+ * 不可變地將 tool result 套用到 message 中對應的 toolUse entry。
+ * 回傳新的 Message 物件；若找不到對應 toolUseId 或無 subMessages，回傳原始 message。
+ */
 export function applyToolResultToMessage(
   message: Message,
   payload: {
     toolUseId: string;
     output: string;
   },
-): void {
-  if (!message.subMessages) return;
+): Message {
+  if (!message.subMessages) return message;
 
-  for (const subMessage of message.subMessages) {
+  for (let i = 0; i < message.subMessages.length; i++) {
+    const subMessage = message.subMessages[i]!;
     if (!subMessage.toolUse) continue;
-    const toolUseEntry = subMessage.toolUse.find(
+
+    const toolIndex = subMessage.toolUse.findIndex(
       (t) => t.toolUseId === payload.toolUseId,
     );
-    if (toolUseEntry) {
-      toolUseEntry.output = payload.output;
-      toolUseEntry.status = "completed";
-      return;
-    }
+    if (toolIndex === -1) continue;
+
+    const updatedToolUse = subMessage.toolUse.map((t, idx) =>
+      idx === toolIndex
+        ? { ...t, output: payload.output, status: "completed" as const }
+        : t,
+    );
+
+    const updatedSubMessages = message.subMessages.map((sub, idx) =>
+      idx === i ? { ...sub, toolUse: updatedToolUse } : sub,
+    );
+
+    return { ...message, subMessages: updatedSubMessages };
   }
+
+  return message;
 }
 
 export function upsertMessage(

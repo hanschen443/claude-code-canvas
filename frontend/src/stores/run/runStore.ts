@@ -15,7 +15,6 @@ import type {
   PathwayState,
 } from "@/types/run";
 import type { Message, ToolUseInfo } from "@/types/chat";
-import { isValidToolUseStatus } from "@/types/chat";
 import type {
   RunDeletePayload,
   RunLoadHistoryPayload,
@@ -24,22 +23,23 @@ import type {
 import type {
   RunHistoryResultPayload,
   RunPodMessagesResultPayload,
-  PersistedMessage,
 } from "@/types/websocket/responses";
 import {
   buildRunPodCacheKey,
-  buildSubMessageId,
+  mergeToolResultIntoMessage,
+  mergeToolUseIntoMessage,
   upsertMessage,
 } from "@/stores/chat/messageHelpers";
 import {
-  appendToolToLastSubMessage,
-  flushAndCreateNewSubMessage,
-  markToolWithOutput,
-  updateSubMessagesToolUseResult,
   finalizeSubMessages,
   finalizeToolUse,
   updateMainMessageState,
 } from "@/stores/chat/subMessageHelpers";
+import {
+  createAssistantMessageWithTool,
+  toMessage,
+} from "@/stores/run/runStoreHelpers";
+import { logger } from "@/utils/logger";
 
 interface RunState {
   runs: WorkflowRun[];
@@ -49,96 +49,6 @@ interface RunState {
   runChatMessages: Map<string, Message[]>;
   isLoadingPodMessages: boolean;
   accumulatedLengthByMessageId: Map<string, number>;
-}
-
-function collectToolUseFromSubMessages(
-  subMessages: PersistedMessage["subMessages"],
-): ToolUseInfo[] {
-  if (!subMessages) return [];
-  return subMessages.flatMap((sub) =>
-    (sub.toolUse ?? []).map((tool) => ({
-      toolUseId: tool.toolUseId,
-      toolName: tool.toolName,
-      input: tool.input,
-      output: tool.output,
-      status: isValidToolUseStatus(tool.status) ? tool.status : "completed",
-    })),
-  );
-}
-
-function convertSubMessages(
-  pm: PersistedMessage,
-): Pick<Message, "subMessages" | "toolUse"> {
-  if (!pm.subMessages || pm.subMessages.length === 0) {
-    return {
-      subMessages: [
-        {
-          id: `${pm.id}-sub-0`,
-          content: pm.content,
-          isPartial: false,
-        },
-      ],
-    };
-  }
-
-  const allToolUse = collectToolUseFromSubMessages(pm.subMessages);
-
-  const result: Pick<Message, "subMessages" | "toolUse"> = {
-    subMessages: pm.subMessages.map((sub, index) => ({
-      id:
-        sub.id ??
-        buildSubMessageId(pm.id, sub.toolUse?.[0]?.toolUseId ?? `sub-${index}`),
-      content: sub.content,
-      isPartial: false,
-      toolUse: sub.toolUse?.map((t) => ({
-        toolUseId: t.toolUseId,
-        toolName: t.toolName,
-        input: t.input,
-        output: t.output,
-        status: isValidToolUseStatus(t.status) ? t.status : "completed",
-      })),
-    })),
-  };
-
-  if (allToolUse.length > 0) {
-    result.toolUse = allToolUse;
-  }
-
-  return result;
-}
-
-function createAssistantMessageWithTool(
-  messageId: string,
-  toolUseInfo: ToolUseInfo,
-): Message {
-  return {
-    id: messageId,
-    role: "assistant",
-    content: "",
-    isPartial: true,
-    toolUse: [toolUseInfo],
-    subMessages: [
-      {
-        id: `${messageId}-sub-0`,
-        content: "",
-        isPartial: true,
-        toolUse: [toolUseInfo],
-      },
-    ],
-  };
-}
-
-function toMessage(pm: PersistedMessage): Message {
-  const message: Message = {
-    id: pm.id,
-    role: pm.role,
-    content: pm.content,
-    isPartial: false,
-  };
-
-  if (pm.role !== "assistant") return message;
-
-  return { ...message, ...convertSubMessages(pm) };
 }
 
 export const useRunStore = defineStore("run", {
@@ -197,8 +107,8 @@ export const useRunStore = defineStore("run", {
         if (response.success && response.runs) {
           this.runs = response.runs;
         }
-      } catch {
-        // WebSocket 請求超時或失敗，靜默處理
+      } catch (error) {
+        logger.warn("[RunStore] loadRuns 失敗：", error);
       }
     },
 
@@ -402,39 +312,19 @@ export const useRunStore = defineStore("run", {
         return;
       }
 
-      const updatedMessages = [...messages];
-      const message = updatedMessages[messageIndex];
+      const message = messages[messageIndex];
       if (!message) return;
 
-      // 與一般模式 addToolUseToMessage 完全一致：維護 message.toolUse + 不可變更新 subMessages
-      const existingToolUse = message.toolUse ?? [];
-      const toolAlreadyExists = existingToolUse.some(
+      const toolAlreadyExists = message.toolUse?.some(
         (t) => t.toolUseId === payload.toolUseId,
       );
       if (toolAlreadyExists) return;
 
-      const updatedMessage: Message = {
-        ...message,
-        toolUse: [...existingToolUse, toolUseInfo],
-      };
-
-      if (message.subMessages !== undefined && message.subMessages.length > 0) {
-        const lastSub = message.subMessages[message.subMessages.length - 1];
-        if (lastSub && lastSub.content.trim() === "") {
-          updatedMessage.subMessages = appendToolToLastSubMessage(
-            message.subMessages,
-            toolUseInfo,
-          );
-        } else {
-          updatedMessage.subMessages = flushAndCreateNewSubMessage(
-            message.subMessages,
-            message.id,
-            toolUseInfo,
-          );
-        }
-      }
-
-      updatedMessages[messageIndex] = updatedMessage;
+      const updatedMessages = [...messages];
+      updatedMessages[messageIndex] = mergeToolUseIntoMessage(
+        message,
+        toolUseInfo,
+      );
       this.runChatMessages.set(key, updatedMessages);
     },
 
@@ -459,27 +349,11 @@ export const useRunStore = defineStore("run", {
       const message = updatedMessages[messageIndex];
       if (!message?.toolUse) return;
 
-      // 與一般模式 updateToolUseResult 完全一致：不可變更新 toolUse + subMessages
-      const updatedToolUse = markToolWithOutput(
-        message.toolUse,
+      updatedMessages[messageIndex] = mergeToolResultIntoMessage(
+        message,
         payload.toolUseId,
         payload.output,
       );
-
-      const updatedMessage: Message = {
-        ...message,
-        toolUse: updatedToolUse,
-      };
-
-      if (message.subMessages) {
-        updatedMessage.subMessages = updateSubMessagesToolUseResult(
-          message.subMessages,
-          payload.toolUseId,
-          payload.output,
-        );
-      }
-
-      updatedMessages[messageIndex] = updatedMessage;
       this.runChatMessages.set(key, updatedMessages);
     },
 

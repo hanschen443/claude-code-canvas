@@ -1,0 +1,455 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// --- mock 函式 ---
+const mockGetById = vi.fn();
+const mockSetStatus = vi.fn();
+const mockGetMessages = vi.fn();
+const mockAbortQuery = vi.fn();
+const mockEmitSuccess = vi.fn();
+const mockEmitError = vi.fn();
+const mockValidatePod = vi.fn();
+const mockExecuteStreamingChat = vi.fn();
+const mockInjectUserMessage = vi.fn();
+const mockLaunchMultiInstanceRun = vi.fn();
+
+// --- vi.mock ---
+
+vi.mock("../../src/utils/handlerHelpers.js", () => ({
+  withCanvasId:
+    (
+      _event: unknown,
+      handler: (
+        connectionId: string,
+        canvasId: string,
+        payload: unknown,
+        requestId: string,
+      ) => Promise<void>,
+    ) =>
+    (connectionId: string, payload: unknown, requestId: string) =>
+      handler(connectionId, "canvas-1", payload, requestId),
+  validatePod: (...args: unknown[]) => mockValidatePod(...args),
+}));
+
+vi.mock("../../src/services/podStore.js", () => ({
+  podStore: {
+    getById: mockGetById,
+    setStatus: mockSetStatus,
+  },
+}));
+
+vi.mock("../../src/services/messageStore.js", () => ({
+  messageStore: {
+    getMessages: mockGetMessages,
+  },
+}));
+
+vi.mock("../../src/services/claude/claudeService.js", () => ({
+  claudeService: {
+    abortQuery: mockAbortQuery,
+  },
+}));
+
+vi.mock("../../src/utils/websocketResponse.js", () => ({
+  emitSuccess: mockEmitSuccess,
+  emitError: mockEmitError,
+}));
+
+vi.mock("../../src/services/claude/streamingChatExecutor.js", () => ({
+  executeStreamingChat: mockExecuteStreamingChat,
+}));
+
+vi.mock("../../src/utils/chatHelpers.js", () => ({
+  injectUserMessage: mockInjectUserMessage,
+}));
+
+vi.mock("../../src/utils/runChatHelpers.js", () => ({
+  launchMultiInstanceRun: mockLaunchMultiInstanceRun,
+}));
+
+vi.mock("../../src/utils/chatCallbacks.js", () => ({
+  onChatComplete: vi.fn(),
+  onChatAborted: vi.fn(),
+  onRunChatComplete: vi.fn(),
+}));
+
+vi.mock("../../src/schemas/index.js", () => ({
+  WebSocketResponseEvents: {
+    POD_ERROR: "pod:error",
+    POD_CHAT_HISTORY_RESULT: "pod:chat:history:result",
+  },
+}));
+
+const { handleChatSend, handleChatAbort, handleChatHistory } =
+  await import("../../src/handlers/chatHandlers.js");
+
+const CONNECTION_ID = "conn-1";
+const CANVAS_ID = "canvas-1";
+const POD_ID = "pod-uuid-1";
+const REQUEST_ID = "req-1";
+
+function makePod(overrides: Record<string, unknown> = {}) {
+  return {
+    id: POD_ID,
+    name: "測試 Pod",
+    status: "idle" as const,
+    multiInstance: false,
+    integrationBindings: [],
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ================================================================
+// handleChatSend
+// ================================================================
+describe("handleChatSend", () => {
+  it("Pod 不存在時應提早返回，不執行後續邏輯", async () => {
+    mockValidatePod.mockReturnValue(undefined);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "你好" },
+      REQUEST_ID,
+    );
+
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+  });
+
+  it("Pod 有 integrationBindings 時應回傳 INTEGRATION_BOUND 錯誤", async () => {
+    const pod = makePod({ integrationBindings: [{ id: "bind-1" }] });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "你好" },
+      REQUEST_ID,
+    );
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.stringContaining("已連接外部服務"),
+      REQUEST_ID,
+      POD_ID,
+      "INTEGRATION_BOUND",
+    );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+  });
+
+  it("multiInstance 模式應呼叫 launchMultiInstanceRun 而非 executeStreamingChat", async () => {
+    const pod = makePod({ multiInstance: true });
+    mockValidatePod.mockReturnValue(pod);
+    mockLaunchMultiInstanceRun.mockResolvedValue(undefined);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "開始 run" },
+      REQUEST_ID,
+    );
+
+    expect(mockLaunchMultiInstanceRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canvasId: CANVAS_ID,
+        podId: POD_ID,
+        message: "開始 run",
+        abortable: true,
+      }),
+    );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+    expect(mockInjectUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("一般模式但 Pod busy（chatting）時應回傳 POD_BUSY 錯誤", async () => {
+    const pod = makePod({ status: "chatting" });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "你好" },
+      REQUEST_ID,
+    );
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.stringContaining("目前正在"),
+      REQUEST_ID,
+      POD_ID,
+      "POD_BUSY",
+    );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+  });
+
+  it("一般模式但 Pod busy（summarizing）時應回傳 POD_BUSY 錯誤", async () => {
+    const pod = makePod({ status: "summarizing" });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "你好" },
+      REQUEST_ID,
+    );
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.stringContaining("目前正在"),
+      REQUEST_ID,
+      POD_ID,
+      "POD_BUSY",
+    );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+  });
+
+  it("一般模式 idle Pod 應注入使用者訊息並執行串流對話", async () => {
+    const pod = makePod({ status: "idle" });
+    mockValidatePod.mockReturnValue(pod);
+    mockInjectUserMessage.mockResolvedValue(undefined);
+    mockExecuteStreamingChat.mockResolvedValue(undefined);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "你好" },
+      REQUEST_ID,
+    );
+
+    expect(mockInjectUserMessage).toHaveBeenCalledWith({
+      canvasId: CANVAS_ID,
+      podId: POD_ID,
+      content: "你好",
+    });
+    expect(mockExecuteStreamingChat).toHaveBeenCalledWith(
+      { canvasId: CANVAS_ID, podId: POD_ID, message: "你好", abortable: true },
+      expect.objectContaining({
+        onComplete: expect.any(Function),
+        onAborted: expect.any(Function),
+      }),
+    );
+    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+  });
+
+  it("multiInstance 模式不應檢查 Pod busy 狀態", async () => {
+    const pod = makePod({ multiInstance: true, status: "chatting" });
+    mockValidatePod.mockReturnValue(pod);
+    mockLaunchMultiInstanceRun.mockResolvedValue(undefined);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "你好" },
+      REQUEST_ID,
+    );
+
+    // 不應觸發 POD_BUSY 錯誤
+    expect(mockEmitError).not.toHaveBeenCalled();
+    expect(mockLaunchMultiInstanceRun).toHaveBeenCalled();
+  });
+});
+
+// ================================================================
+// handleChatAbort
+// ================================================================
+describe("handleChatAbort", () => {
+  it("Pod 不存在時應提早返回", async () => {
+    mockValidatePod.mockReturnValue(undefined);
+
+    await handleChatAbort(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockAbortQuery).not.toHaveBeenCalled();
+  });
+
+  it("Pod 狀態非 chatting 時應回傳 POD_NOT_CHATTING 錯誤", async () => {
+    const pod = makePod({ status: "idle" });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatAbort(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.stringContaining("目前不在對話中"),
+      REQUEST_ID,
+      POD_ID,
+      "POD_NOT_CHATTING",
+    );
+    expect(mockAbortQuery).not.toHaveBeenCalled();
+  });
+
+  it("Pod 狀態為 summarizing 時也應回傳 POD_NOT_CHATTING 錯誤", async () => {
+    const pod = makePod({ status: "summarizing" });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatAbort(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.stringContaining("目前不在對話中"),
+      REQUEST_ID,
+      POD_ID,
+      "POD_NOT_CHATTING",
+    );
+    expect(mockAbortQuery).not.toHaveBeenCalled();
+  });
+
+  it("Pod 狀態為 chatting 且 abortQuery 成功時不應發送錯誤", async () => {
+    const pod = makePod({ status: "chatting" });
+    mockValidatePod.mockReturnValue(pod);
+    mockAbortQuery.mockReturnValue(true);
+
+    await handleChatAbort(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockAbortQuery).toHaveBeenCalledWith(POD_ID);
+    expect(mockEmitError).not.toHaveBeenCalled();
+    expect(mockSetStatus).not.toHaveBeenCalled();
+  });
+
+  it("Pod 狀態為 chatting 但 abortQuery 失敗時應重設狀態為 idle 並回傳 NO_ACTIVE_QUERY 錯誤", async () => {
+    const pod = makePod({ status: "chatting" });
+    mockValidatePod.mockReturnValue(pod);
+    mockAbortQuery.mockReturnValue(false);
+
+    await handleChatAbort(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockAbortQuery).toHaveBeenCalledWith(POD_ID);
+    expect(mockSetStatus).toHaveBeenCalledWith(CANVAS_ID, POD_ID, "idle");
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.stringContaining("找不到"),
+      REQUEST_ID,
+      POD_ID,
+      "NO_ACTIVE_QUERY",
+    );
+  });
+});
+
+// ================================================================
+// handleChatHistory
+// ================================================================
+describe("handleChatHistory", () => {
+  it("Pod 不存在時應回傳 success: false 及錯誤訊息", async () => {
+    mockGetById.mockReturnValue(undefined);
+
+    await handleChatHistory(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockEmitSuccess).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:chat:history:result",
+      {
+        requestId: REQUEST_ID,
+        success: false,
+        error: expect.stringContaining(POD_ID),
+      },
+    );
+    expect(mockGetMessages).not.toHaveBeenCalled();
+  });
+
+  it("Pod 存在時應回傳歷史訊息清單", async () => {
+    const pod = makePod();
+    mockGetById.mockReturnValue(pod);
+
+    const mockMessages = [
+      {
+        id: "msg-1",
+        role: "user",
+        content: "你好",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        subMessages: undefined,
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: "哈囉！有什麼我可以幫你的？",
+        timestamp: "2024-01-01T00:00:01.000Z",
+        subMessages: [{ id: "sub-1", type: "text", content: "哈囉！" }],
+      },
+    ];
+    mockGetMessages.mockReturnValue(mockMessages);
+
+    await handleChatHistory(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockGetMessages).toHaveBeenCalledWith(POD_ID);
+    expect(mockEmitSuccess).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:chat:history:result",
+      {
+        requestId: REQUEST_ID,
+        success: true,
+        messages: [
+          {
+            id: "msg-1",
+            role: "user",
+            content: "你好",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            subMessages: undefined,
+          },
+          {
+            id: "msg-2",
+            role: "assistant",
+            content: "哈囉！有什麼我可以幫你的？",
+            timestamp: "2024-01-01T00:00:01.000Z",
+            subMessages: [{ id: "sub-1", type: "text", content: "哈囉！" }],
+          },
+        ],
+      },
+    );
+  });
+
+  it("Pod 存在但無歷史訊息時應回傳空陣列", async () => {
+    const pod = makePod();
+    mockGetById.mockReturnValue(pod);
+    mockGetMessages.mockReturnValue([]);
+
+    await handleChatHistory(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    expect(mockEmitSuccess).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:chat:history:result",
+      {
+        requestId: REQUEST_ID,
+        success: true,
+        messages: [],
+      },
+    );
+  });
+
+  it("回傳的訊息不應包含原始 message 物件的額外欄位", async () => {
+    const pod = makePod();
+    mockGetById.mockReturnValue(pod);
+
+    const mockMessages = [
+      {
+        id: "msg-1",
+        role: "user",
+        content: "你好",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        subMessages: undefined,
+        // 這些額外欄位不應出現在回傳結果中
+        internalField: "should-not-appear",
+        tokens: 100,
+      },
+    ];
+    mockGetMessages.mockReturnValue(mockMessages);
+
+    await handleChatHistory(CONNECTION_ID, { podId: POD_ID }, REQUEST_ID);
+
+    const callArg = mockEmitSuccess.mock.calls[0][2];
+    const returnedMsg = callArg.messages[0];
+    expect(returnedMsg).not.toHaveProperty("internalField");
+    expect(returnedMsg).not.toHaveProperty("tokens");
+    expect(Object.keys(returnedMsg)).toEqual(
+      expect.arrayContaining([
+        "id",
+        "role",
+        "content",
+        "timestamp",
+        "subMessages",
+      ]),
+    );
+  });
+});
