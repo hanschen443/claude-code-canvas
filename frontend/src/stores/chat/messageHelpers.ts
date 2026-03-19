@@ -106,15 +106,17 @@ export function upsertMessage(
   if (existingIndex !== -1) {
     const existing = messages[existingIndex];
     if (existing) {
-      const subMessageUpdates =
+      const shouldUpdateSub =
         existing.role === "assistant" &&
         existing.subMessages &&
-        delta !== undefined
-          ? updateAssistantSubMessages(existing, delta, isPartial)
-          : {};
+        delta !== undefined;
+      const subMessageUpdates = shouldUpdateSub
+        ? updateAssistantSubMessages(existing, delta, isPartial)
+        : {};
       messages[existingIndex] = {
         ...existing,
-        content,
+        // 有 subMessages 但 delta 不可用時，不更新 content，避免 content 與 subMessages 不同步
+        ...(existing.subMessages && !shouldUpdateSub ? {} : { content }),
         isPartial,
         ...subMessageUpdates,
       };

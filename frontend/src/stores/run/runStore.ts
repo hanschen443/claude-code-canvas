@@ -84,8 +84,10 @@ function convertSubMessages(
   const allToolUse = collectToolUseFromSubMessages(pm.subMessages);
 
   const result: Pick<Message, "subMessages" | "toolUse"> = {
-    subMessages: pm.subMessages.map((sub) => ({
-      id: sub.id ?? buildSubMessageId(pm.id, sub.toolUse?.[0]?.toolUseId),
+    subMessages: pm.subMessages.map((sub, index) => ({
+      id:
+        sub.id ??
+        buildSubMessageId(pm.id, sub.toolUse?.[0]?.toolUseId ?? `sub-${index}`),
       content: sub.content,
       isPartial: false,
       toolUse: sub.toolUse?.map((t) => ({
@@ -103,6 +105,27 @@ function convertSubMessages(
   }
 
   return result;
+}
+
+function createAssistantMessageWithTool(
+  messageId: string,
+  toolUseInfo: ToolUseInfo,
+): Message {
+  return {
+    id: messageId,
+    role: "assistant",
+    content: "",
+    isPartial: true,
+    toolUse: [toolUseInfo],
+    subMessages: [
+      {
+        id: `${messageId}-sub-0`,
+        content: "",
+        isPartial: true,
+        toolUse: [toolUseInfo],
+      },
+    ],
+  };
 }
 
 function toMessage(pm: PersistedMessage): Message {
@@ -338,7 +361,9 @@ export const useRunStore = defineStore("run", {
       const messages = this.runChatMessages.get(key) ?? [];
 
       const lastLength = this.accumulatedLengthByMessageId.get(messageId) ?? 0;
-      const delta = content.slice(lastLength);
+      // 後端重傳導致 content 長度倒退時，重置累積長度並以整段 content 作為 delta
+      const delta =
+        content.length < lastLength ? content : content.slice(lastLength);
       this.accumulatedLengthByMessageId.set(messageId, content.length);
 
       upsertMessage(messages, messageId, content, isPartial, role, delta);
@@ -370,22 +395,10 @@ export const useRunStore = defineStore("run", {
 
       // 訊息尚不存在時（tool use 先於 text 到達），建立新 assistant 訊息
       if (messageIndex === -1) {
-        const newMessage: Message = {
-          id: payload.messageId,
-          role: "assistant",
-          content: "",
-          isPartial: true,
-          toolUse: [toolUseInfo],
-          subMessages: [
-            {
-              id: `${payload.messageId}-sub-0`,
-              content: "",
-              isPartial: true,
-              toolUse: [toolUseInfo],
-            },
-          ],
-        };
-        this.runChatMessages.set(key, [...messages, newMessage]);
+        this.runChatMessages.set(key, [
+          ...messages,
+          createAssistantMessageWithTool(payload.messageId, toolUseInfo),
+        ]);
         return;
       }
 

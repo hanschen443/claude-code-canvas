@@ -770,6 +770,59 @@ describe("runStore", () => {
       const refAfter = store.runChatMessages.get("run-1:pod-1");
       expect(refBefore).not.toBe(refAfter);
     });
+
+    it("串流過程中 delta 應只傳入新增片段", () => {
+      const store = useRunStore();
+
+      store.appendRunChatMessage(
+        "run-1",
+        "pod-1",
+        "msg-1",
+        "Hello",
+        true,
+        "assistant",
+      );
+
+      store.appendRunChatMessage(
+        "run-1",
+        "pod-1",
+        "msg-1",
+        "Hello world",
+        true,
+        "assistant",
+      );
+
+      const messages = store.runChatMessages.get("run-1:pod-1");
+      // subMessages 最後一個 sub 的 content 應逐步累積
+      const lastSub = messages?.[0]?.subMessages?.[0];
+      expect(lastSub?.content).toBe("Hello world");
+    });
+
+    it("content 長度倒退時應以整段 content 作為 delta", () => {
+      const store = useRunStore();
+
+      store.appendRunChatMessage(
+        "run-1",
+        "pod-1",
+        "msg-1",
+        "Hello world",
+        true,
+        "assistant",
+      );
+
+      // 模擬後端重傳導致 content 較短
+      store.appendRunChatMessage(
+        "run-1",
+        "pod-1",
+        "msg-1",
+        "Hi",
+        true,
+        "assistant",
+      );
+
+      const messages = store.runChatMessages.get("run-1:pod-1");
+      expect(messages?.[0]?.content).toBe("Hi");
+    });
   });
 
   describe("handleRunChatToolUse", () => {
@@ -795,6 +848,7 @@ describe("runStore", () => {
 
       const messages = store.runChatMessages.get("run-1:pod-1");
       // 空 content 的 sub 應被合併，tool 附加到同一個 sub
+      expect(messages?.[0]?.subMessages).toHaveLength(1);
       expect(messages?.[0]?.subMessages?.[0]?.toolUse?.[0]?.toolName).toBe(
         "Bash",
       );
@@ -1241,16 +1295,141 @@ describe("runStore", () => {
       // 陣列中的 message 應為新物件，而非原本的引用
       expect(messages?.[0]).not.toBe(originalMessage);
     });
+
+    it("complete 後應清除對應 messageId 的 accumulatedLength", () => {
+      const store = useRunStore();
+
+      // 先透過 appendRunChatMessage 累積長度
+      store.appendRunChatMessage(
+        "run-1",
+        "pod-1",
+        "msg-1",
+        "Hello",
+        true,
+        "assistant",
+      );
+      expect(store.accumulatedLengthByMessageId.has("msg-1")).toBe(true);
+
+      store.handleRunChatComplete("run-1", "pod-1", "msg-1", "Hello");
+
+      expect(store.accumulatedLengthByMessageId.has("msg-1")).toBe(false);
+    });
+  });
+
+  describe("openRunChatModal — toMessage 轉換", () => {
+    it("assistant 訊息無 subMessages 時應自動補一個帶 content 的預設 sub", async () => {
+      const store = useRunStore();
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        success: true,
+        messages: [
+          {
+            id: "msg-1",
+            role: "assistant",
+            content: "純文字回覆",
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      });
+
+      await store.openRunChatModal("run-1", "pod-1");
+
+      const stored = store.runChatMessages.get("run-1:pod-1");
+      expect(stored?.[0]?.subMessages).toHaveLength(1);
+      expect(stored?.[0]?.subMessages?.[0]?.content).toBe("純文字回覆");
+      expect(stored?.[0]?.subMessages?.[0]?.isPartial).toBe(false);
+    });
+
+    it("assistant 訊息有 subMessages 時應展平 toolUse 到 message 層級", async () => {
+      const store = useRunStore();
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        success: true,
+        messages: [
+          {
+            id: "msg-1",
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toISOString(),
+            subMessages: [
+              {
+                id: "sub-1",
+                content: "",
+                toolUse: [
+                  {
+                    toolUseId: "tool-1",
+                    toolName: "Bash",
+                    input: {},
+                    output: "ok",
+                    status: "completed",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      await store.openRunChatModal("run-1", "pod-1");
+
+      const stored = store.runChatMessages.get("run-1:pod-1");
+      expect(stored?.[0]?.toolUse).toHaveLength(1);
+      expect(stored?.[0]?.toolUse?.[0]?.toolName).toBe("Bash");
+    });
+
+    it("toolUse status 無效時應 fallback 為 completed", async () => {
+      const store = useRunStore();
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        success: true,
+        messages: [
+          {
+            id: "msg-1",
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toISOString(),
+            subMessages: [
+              {
+                id: "sub-1",
+                content: "",
+                toolUse: [
+                  {
+                    toolUseId: "tool-1",
+                    toolName: "Bash",
+                    input: {},
+                    status: "invalid-status",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      await store.openRunChatModal("run-1", "pod-1");
+
+      const stored = store.runChatMessages.get("run-1:pod-1");
+      expect(stored?.[0]?.subMessages?.[0]?.toolUse?.[0]?.status).toBe(
+        "completed",
+      );
+    });
   });
 
   describe("resetOnCanvasSwitch", () => {
-    it("應清空所有狀態", () => {
+    it("應清空所有狀態（含 accumulatedLengthByMessageId）", () => {
       const store = useRunStore();
       store.runs = [createMockRun({ id: "run-1" })];
       store.expandedRunIds.add("run-1");
       store.activeRunChatModal = { runId: "run-1", podId: "pod-1" };
       store.runChatMessages.set("run-1:pod-1", []);
       store.isHistoryPanelOpen = true;
+      store.accumulatedLengthByMessageId.set("msg-1", 10);
 
       store.resetOnCanvasSwitch();
 
@@ -1259,6 +1438,7 @@ describe("runStore", () => {
       expect(store.activeRunChatModal).toBeNull();
       expect(store.runChatMessages.size).toBe(0);
       expect(store.isHistoryPanelOpen).toBe(false);
+      expect(store.accumulatedLengthByMessageId.size).toBe(0);
     });
   });
 });
