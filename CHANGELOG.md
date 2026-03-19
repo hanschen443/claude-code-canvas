@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.6] - 2026-03-19
+
+### 修正
+- Run 聊天串流中 content 與 subMessages 不同步
+- Run 歷程 Claude 使用工具時 tool badge 不即時顯示
+- 後端重傳導致串流文字 delta 計算錯誤
+- 歷史訊息載入時多個 subMessage 產生重複 id
+- Run 歷程重新載入訊息時 tool 與文字合併成單一氣泡
+- Run 歷程中 Claude 回覆文字後使用工具時文字泡泡消失
+
 ## [0.7.5] - 2026-03-18
 
 ### 修正
