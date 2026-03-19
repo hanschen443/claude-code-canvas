@@ -2,7 +2,9 @@ import type { Message, SubMessage, ToolUseInfo } from "@/types/chat";
 import {
   appendToolToLastSubMessage,
   flushAndCreateNewSubMessage,
+  updateAssistantSubMessages,
 } from "./subMessageHelpers";
+import { createAssistantMessageShape } from "./chatMessageActions";
 
 export function buildRunPodCacheKey(runId: string, podId: string): string {
   return `${runId}:${podId}`;
@@ -98,20 +100,40 @@ export function upsertMessage(
   content: string,
   isPartial: boolean,
   role: string,
+  delta?: string,
 ): void {
   const existingIndex = messages.findIndex((m) => m.id === messageId);
   if (existingIndex !== -1) {
     const existing = messages[existingIndex];
     if (existing) {
-      messages[existingIndex] = { ...existing, content, isPartial };
+      const subMessageUpdates =
+        existing.role === "assistant" &&
+        existing.subMessages &&
+        delta !== undefined
+          ? updateAssistantSubMessages(existing, delta, isPartial)
+          : {};
+      messages[existingIndex] = {
+        ...existing,
+        content,
+        isPartial,
+        ...subMessageUpdates,
+      };
     }
     return;
   }
 
-  messages.push({
+  const effectiveRole = role as "user" | "assistant";
+  const baseMessage: Message = {
     id: messageId,
-    role: role as "user" | "assistant",
+    role: effectiveRole,
     content,
     isPartial,
-  });
+  };
+
+  const shape =
+    effectiveRole === "assistant"
+      ? createAssistantMessageShape(messageId, content, isPartial, delta)
+      : {};
+
+  messages.push({ ...baseMessage, ...shape });
 }

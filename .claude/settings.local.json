@@ -42,7 +42,8 @@
       "Bash(tail:*)",
       "Bash(cd:*)",
       "Bash(git stash:*)",
-      "Read(~/.claude/*)"
+      "Read(~/.claude/*)",
+      "Bash(git:*)"
     ]
   }
 }

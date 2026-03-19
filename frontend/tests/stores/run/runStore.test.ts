@@ -773,10 +773,15 @@ describe("runStore", () => {
   });
 
   describe("handleRunChatToolUse", () => {
-    it("應追加 subMessage 到對應訊息", () => {
+    it("應追加 tool use 到對應訊息的 subMessage", () => {
       const store = useRunStore();
       store.runChatMessages.set("run-1:pod-1", [
-        { id: "msg-1", role: "assistant", content: "" },
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: "",
+          subMessages: [{ id: "msg-1-sub-0", content: "", isPartial: true }],
+        },
       ]);
 
       store.handleRunChatToolUse({
@@ -789,27 +794,35 @@ describe("runStore", () => {
       });
 
       const messages = store.runChatMessages.get("run-1:pod-1");
-      expect(messages?.[0]?.subMessages).toHaveLength(1);
+      // 空 content 的 sub 應被合併，tool 附加到同一個 sub
       expect(messages?.[0]?.subMessages?.[0]?.toolUse?.[0]?.toolName).toBe(
         "Bash",
       );
+      // message 層級也應有 toolUse
+      expect(messages?.[0]?.toolUse?.[0]?.toolName).toBe("Bash");
     });
 
-    it("訊息不存在時不應有任何變化", () => {
+    it("訊息尚不存在時應建立新的 assistant 訊息", () => {
       const store = useRunStore();
       store.runChatMessages.set("run-1:pod-1", []);
 
       store.handleRunChatToolUse({
         runId: "run-1",
         podId: "pod-1",
-        messageId: "non-existent",
+        messageId: "msg-new",
         toolUseId: "tool-1",
         toolName: "Bash",
-        input: {},
+        input: { command: "ls" },
       });
 
       const messages = store.runChatMessages.get("run-1:pod-1");
-      expect(messages).toHaveLength(0);
+      expect(messages).toHaveLength(1);
+      expect(messages?.[0]?.id).toBe("msg-new");
+      expect(messages?.[0]?.role).toBe("assistant");
+      expect(messages?.[0]?.toolUse?.[0]?.toolName).toBe("Bash");
+      expect(messages?.[0]?.subMessages?.[0]?.toolUse?.[0]?.toolName).toBe(
+        "Bash",
+      );
     });
 
     it("應以新物件取代陣列中的 message 以觸發 Vue 響應性", () => {
@@ -818,6 +831,7 @@ describe("runStore", () => {
         id: "msg-1",
         role: "assistant" as const,
         content: "",
+        subMessages: [{ id: "msg-1-sub-0", content: "", isPartial: true }],
       };
       store.runChatMessages.set("run-1:pod-1", [originalMessage]);
 
@@ -843,6 +857,9 @@ describe("runStore", () => {
           role: "assistant",
           content: "我來幫你處理",
           isPartial: true,
+          subMessages: [
+            { id: "msg-1-sub-0", content: "我來幫你處理", isPartial: true },
+          ],
         },
       ]);
 
@@ -868,7 +885,12 @@ describe("runStore", () => {
     it("message content 為空時首次 tool use 不應產生額外的文字 subMessage", () => {
       const store = useRunStore();
       store.runChatMessages.set("run-1:pod-1", [
-        { id: "msg-1", role: "assistant", content: "" },
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: "",
+          subMessages: [{ id: "msg-1-sub-0", content: "", isPartial: true }],
+        },
       ]);
 
       store.handleRunChatToolUse({
@@ -881,10 +903,58 @@ describe("runStore", () => {
       });
 
       const messages = store.runChatMessages.get("run-1:pod-1");
+      // 空 content 的 sub 與 tool 合併到同一個 sub
       expect(messages?.[0]?.subMessages).toHaveLength(1);
       expect(messages?.[0]?.subMessages?.[0]?.toolUse?.[0]?.toolName).toBe(
         "Bash",
       );
+    });
+
+    it("重複的 toolUseId 應被忽略", () => {
+      const store = useRunStore();
+      store.runChatMessages.set("run-1:pod-1", [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: "",
+          toolUse: [
+            {
+              toolUseId: "tool-1",
+              toolName: "Bash",
+              input: {},
+              status: "running",
+            },
+          ],
+          subMessages: [
+            {
+              id: "msg-1-sub-0",
+              content: "",
+              isPartial: true,
+              toolUse: [
+                {
+                  toolUseId: "tool-1",
+                  toolName: "Bash",
+                  input: {},
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      store.handleRunChatToolUse({
+        runId: "run-1",
+        podId: "pod-1",
+        messageId: "msg-1",
+        toolUseId: "tool-1",
+        toolName: "Bash",
+        input: {},
+      });
+
+      // toolUse 數量不應增加
+      const messages = store.runChatMessages.get("run-1:pod-1");
+      expect(messages?.[0]?.toolUse).toHaveLength(1);
     });
   });
 
@@ -896,6 +966,14 @@ describe("runStore", () => {
           id: "msg-1",
           role: "assistant",
           content: "",
+          toolUse: [
+            {
+              toolUseId: "tool-1",
+              toolName: "Bash",
+              input: {},
+              status: "running",
+            },
+          ],
           subMessages: [
             {
               id: "tool-1",
@@ -935,6 +1013,14 @@ describe("runStore", () => {
         id: "msg-1",
         role: "assistant" as const,
         content: "",
+        toolUse: [
+          {
+            toolUseId: "tool-1",
+            toolName: "Bash",
+            input: {},
+            status: "running" as const,
+          },
+        ],
         subMessages: [
           {
             id: "tool-1",
@@ -988,6 +1074,14 @@ describe("runStore", () => {
           id: "msg-1",
           role: "assistant",
           content: "",
+          toolUse: [
+            {
+              toolUseId: "tool-1",
+              toolName: "Bash",
+              input: {},
+              status: "running",
+            },
+          ],
           subMessages: [
             {
               id: "tool-1",
