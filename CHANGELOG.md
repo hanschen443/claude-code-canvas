@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2] - 2026-03-20
+
+### 新增
+- Plugin 列表改為按 repo 分組並支援 collapse/expand
+- Plugin 子選單 scroll 樣式改為與專案選單風格一致
+- Plugin 列表區域加上邊框提升視覺區隔
+
 ## [0.8.1] - 2026-03-20
 
 ### 新增
