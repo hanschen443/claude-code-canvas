@@ -10,7 +10,8 @@ import {
   podSetScheduleSchema,
   podDeleteSchema,
   podOpenDirectorySchema,
-} from '../../schemas';
+  podSetPluginsSchema,
+} from "../../schemas";
 import {
   handlePodCreate,
   handlePodList,
@@ -21,11 +22,12 @@ import {
   handlePodSetSchedule,
   handlePodDelete,
   handlePodOpenDirectory,
-} from '../podHandlers.js';
-import { createHandlerGroup } from './createHandlerGroup.js';
+  handlePodSetPlugins,
+} from "../podHandlers.js";
+import { createHandlerGroup } from "./createHandlerGroup.js";
 
 export const podHandlerGroup = createHandlerGroup({
-  name: 'pod',
+  name: "pod",
   handlers: [
     {
       event: WebSocketRequestEvents.POD_CREATE,
@@ -80,6 +82,12 @@ export const podHandlerGroup = createHandlerGroup({
       handler: handlePodOpenDirectory,
       schema: podOpenDirectorySchema,
       responseEvent: WebSocketResponseEvents.POD_DIRECTORY_OPENED,
+    },
+    {
+      event: WebSocketRequestEvents.POD_SET_PLUGINS,
+      handler: handlePodSetPlugins,
+      schema: podSetPluginsSchema,
+      responseEvent: WebSocketResponseEvents.POD_PLUGINS_SET,
     },
   ],
 });

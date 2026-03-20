@@ -113,6 +113,7 @@ export const WebSocketRequestEvents = {
   RUN_LOAD_HISTORY: "run:load-history",
   RUN_LOAD_POD_MESSAGES: "run:load-pod-messages",
   PLUGIN_LIST: "plugin:list",
+  POD_SET_PLUGINS: "pod:set-plugins",
 } as const;
 
 export type WebSocketRequestEvents =
@@ -271,6 +272,7 @@ export const WebSocketResponseEvents = {
   RUN_TOOL_USE: "run:tool_use",
   RUN_TOOL_RESULT: "run:tool_result",
   PLUGIN_LIST_RESULT: "plugin:list:result",
+  POD_PLUGINS_SET: "pod:plugins:set",
 } as const;
 
 export type WebSocketResponseEvents =

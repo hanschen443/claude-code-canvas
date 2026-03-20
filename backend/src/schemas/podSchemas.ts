@@ -1,8 +1,13 @@
-import { z } from 'zod';
-import { requestIdSchema, podIdSchema, canvasIdSchema, coordinateSchema } from './base.js';
-import { scheduleConfigSchema } from './scheduleSchemas.js';
+import { z } from "zod";
+import {
+  requestIdSchema,
+  podIdSchema,
+  canvasIdSchema,
+  coordinateSchema,
+} from "./base.js";
+import { scheduleConfigSchema } from "./scheduleSchemas.js";
 
-export const modelTypeSchema = z.enum(['opus', 'sonnet', 'haiku']);
+export const modelTypeSchema = z.enum(["opus", "sonnet", "haiku"]);
 
 export const podCreateSchema = z.object({
   requestId: requestIdSchema,
@@ -65,6 +70,18 @@ export const podOpenDirectorySchema = z.object({
   podId: podIdSchema,
 });
 
+export const podSetPluginsSchema = z.object({
+  requestId: z.string(),
+  canvasId: z.string(),
+  podId: z.string(),
+  pluginIds: z.array(
+    z
+      .string()
+      .regex(/^[a-zA-Z0-9@._-]+$/)
+      .max(100),
+  ),
+});
+
 export type PodCreatePayload = z.infer<typeof podCreateSchema>;
 export type PodListPayload = z.infer<typeof podListSchema>;
 export type PodGetPayload = z.infer<typeof podGetSchema>;
@@ -74,3 +91,4 @@ export type PodSetModelPayload = z.infer<typeof podSetModelSchema>;
 export type PodSetSchedulePayload = z.infer<typeof podSetScheduleSchema>;
 export type PodDeletePayload = z.infer<typeof podDeleteSchema>;
 export type PodOpenDirectoryPayload = z.infer<typeof podOpenDirectorySchema>;
+export type PodSetPluginsPayload = z.infer<typeof podSetPluginsSchema>;

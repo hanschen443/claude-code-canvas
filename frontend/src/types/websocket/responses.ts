@@ -532,13 +532,16 @@ export interface PodDirectoryOpenedPayload extends ResultPayload {
 export interface ConfigGetResultPayload extends ResultPayload {
   summaryModel?: ModelType;
   aiDecideModel?: ModelType;
-  enabledPluginIds?: string[];
 }
 
 export interface ConfigUpdatedPayload extends ResultPayload {
   summaryModel?: ModelType;
   aiDecideModel?: ModelType;
-  enabledPluginIds?: string[];
+}
+
+export interface PodPluginsSetPayload extends ResultPayload {
+  podId: string;
+  pluginIds: string[];
 }
 
 export interface PluginListResultPayload extends ResultPayload {

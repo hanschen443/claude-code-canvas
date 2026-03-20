@@ -380,7 +380,13 @@ export interface ConfigUpdatePayload {
   requestId: string;
   summaryModel?: ModelType;
   aiDecideModel?: ModelType;
-  enabledPluginIds?: string[];
+}
+
+export interface PodSetPluginsPayload {
+  requestId: string;
+  canvasId: string;
+  podId: string;
+  pluginIds: string[];
 }
 
 export interface PluginListPayload {

@@ -1,4 +1,4 @@
-import { Pod, ModelType } from './pod.js';
+import { Pod, ModelType } from "./pod.js";
 
 export interface CreatePodRequest {
   name: string;
@@ -9,6 +9,7 @@ export interface CreatePodRequest {
   skillIds?: string[];
   subAgentIds?: string[];
   mcpServerIds?: string[];
+  pluginIds?: string[];
   model?: ModelType;
   repositoryId?: string | null;
   commandId?: string | null;

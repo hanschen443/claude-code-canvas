@@ -18,7 +18,6 @@ export async function handleConfigGet(
       success: true,
       summaryModel: config.summaryModel,
       aiDecideModel: config.aiDecideModel,
-      enabledPluginIds: config.enabledPluginIds,
     },
   );
 }
@@ -31,7 +30,6 @@ export async function handleConfigUpdate(
   const config = configStore.update({
     summaryModel: payload.summaryModel,
     aiDecideModel: payload.aiDecideModel,
-    enabledPluginIds: payload.enabledPluginIds,
   });
 
   socketService.emitToConnection(
@@ -42,7 +40,6 @@ export async function handleConfigUpdate(
       success: true,
       summaryModel: config.summaryModel,
       aiDecideModel: config.aiDecideModel,
-      enabledPluginIds: config.enabledPluginIds,
     },
   );
 }

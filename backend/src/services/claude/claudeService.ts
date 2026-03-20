@@ -38,7 +38,6 @@ import {
   buildReplyContextKey,
 } from "../integration/replyContextStore.js";
 import type { RunContext } from "../../types/run.js";
-import { configStore } from "../configStore.js";
 import { scanInstalledPlugins } from "../pluginScanner.js";
 
 export type { StreamEvent, StreamCallback } from "./types.js";
@@ -541,11 +540,10 @@ export class ClaudeService {
     queryOptions.mcpServers = mcpServers;
   }
 
-  private applyPlugins(queryOptions: Options): void {
-    const enabledIds = configStore.getEnabledPluginIds();
-    if (enabledIds.length === 0) return;
+  private applyPlugins(pod: Pod, queryOptions: Options): void {
+    if (!pod.pluginIds?.length) return;
 
-    const enabledSet = new Set(enabledIds);
+    const enabledSet = new Set(pod.pluginIds);
     const plugins = scanInstalledPlugins()
       .filter((plugin) => enabledSet.has(plugin.id))
       .map(
@@ -585,7 +583,7 @@ export class ClaudeService {
     await this.applyOutputStyle(pod, queryOptions);
     this.applyMcpServers(pod, queryOptions);
     this.applyIntegrationToolOptions(pod, queryOptions, runOptions?.runContext);
-    this.applyPlugins(queryOptions);
+    this.applyPlugins(pod, queryOptions);
 
     const resumeSessionId = runOptions?.sessionId ?? pod.claudeSessionId;
     if (resumeSessionId) {

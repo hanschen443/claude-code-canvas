@@ -263,7 +263,6 @@ describe("GlobalSettingsModal", () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       summaryModel: "sonnet",
       aiDecideModel: "sonnet",
-      enabledPluginIds: [],
     });
 
     wrapper.unmount();
@@ -414,7 +413,7 @@ describe("GlobalSettingsModal", () => {
     wrapper.unmount();
   });
 
-  it("getConfig 回傳 enabledPluginIds，開關初始狀態應正確", async () => {
+  it("Plugin 列表應以唯讀方式顯示，不顯示開關", async () => {
     mockWithErrorToast.mockImplementation(
       (promise: Promise<unknown>) => promise,
     );
@@ -422,7 +421,6 @@ describe("GlobalSettingsModal", () => {
       success: true,
       summaryModel: "sonnet",
       aiDecideModel: "sonnet",
-      enabledPluginIds: ["plugin-1"],
     });
     mockListPlugins.mockResolvedValue([
       {
@@ -442,17 +440,17 @@ describe("GlobalSettingsModal", () => {
     const wrapper = mountModal(true);
     await flushPromises();
 
+    // Plugin 列表為唯讀，不應有開關
     const switches = wrapper.findAll(".switch-mock");
-    expect(switches[0]?.attributes("data-checked")).toBe("true");
-    expect(switches[1]?.attributes("data-checked")).toBeOneOf([
-      "false",
-      undefined,
-    ]);
+    expect(switches).toHaveLength(0);
+    // 但應顯示 Plugin 名稱
+    expect(wrapper.text()).toContain("Plugin A");
+    expect(wrapper.text()).toContain("Plugin B");
 
     wrapper.unmount();
   });
 
-  it("模擬切換開關，enabledPluginIds 應正確更新", async () => {
+  it("Plugin 列表為唯讀，不應有可操作的開關元件", async () => {
     mockWithErrorToast.mockImplementation(
       (promise: Promise<unknown>) => promise,
     );
@@ -460,7 +458,6 @@ describe("GlobalSettingsModal", () => {
       success: true,
       summaryModel: "sonnet",
       aiDecideModel: "sonnet",
-      enabledPluginIds: [],
     });
     mockListPlugins.mockResolvedValue([
       {
@@ -474,13 +471,9 @@ describe("GlobalSettingsModal", () => {
     const wrapper = mountModal(true);
     await flushPromises();
 
+    // 不應有 Switch 元件
     const switchComp = wrapper.findComponent({ name: "Switch" });
-    expect(switchComp.props("modelValue")).toBe(false);
-
-    await switchComp.vm.$emit("update:modelValue", true);
-    await nextTick();
-
-    expect(switchComp.props("modelValue")).toBe(true);
+    expect(switchComp.exists()).toBe(false);
 
     wrapper.unmount();
   });
@@ -506,7 +499,7 @@ describe("GlobalSettingsModal", () => {
     wrapper.unmount();
   });
 
-  it("點擊儲存時應送出包含正確 enabledPluginIds 的 payload", async () => {
+  it("點擊儲存時不應送出 enabledPluginIds", async () => {
     mockWithErrorToast.mockImplementation(
       (promise: Promise<unknown>) => promise,
     );
@@ -514,7 +507,6 @@ describe("GlobalSettingsModal", () => {
       success: true,
       summaryModel: "sonnet",
       aiDecideModel: "sonnet",
-      enabledPluginIds: ["plugin-1"],
     });
     mockListPlugins.mockResolvedValue([
       {
@@ -523,24 +515,12 @@ describe("GlobalSettingsModal", () => {
         version: "1.0.0",
         description: "",
       },
-      {
-        id: "plugin-2",
-        name: "Plugin B",
-        version: "2.0.0",
-        description: "",
-      },
     ]);
     mockUpdateConfig.mockResolvedValue({ success: true });
 
     const wrapper = mountModal(true);
     await flushPromises();
 
-    // 啟用 plugin-2
-    const switches = wrapper.findAllComponents({ name: "Switch" });
-    await switches[1]?.vm.$emit("update:modelValue", true);
-    await nextTick();
-
-    // 使用 Button 元件找到儲存按鈕（避免與 Switch 按鈕混淆）
     const saveButton = wrapper.findComponent({ name: "Button" });
     await saveButton.trigger("click");
     await nextTick();
@@ -548,8 +528,10 @@ describe("GlobalSettingsModal", () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       summaryModel: "sonnet",
       aiDecideModel: "sonnet",
-      enabledPluginIds: ["plugin-1", "plugin-2"],
     });
+    expect(mockUpdateConfig).not.toHaveBeenCalledWith(
+      expect.objectContaining({ enabledPluginIds: expect.anything() }),
+    );
 
     wrapper.unmount();
   });

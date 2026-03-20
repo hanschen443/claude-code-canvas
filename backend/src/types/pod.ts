@@ -1,13 +1,15 @@
-import type { ScheduleConfig } from './schedule.js';
-import type { IntegrationBinding } from './integration.js';
+import type { ScheduleConfig } from "./schedule.js";
+import type { IntegrationBinding } from "./integration.js";
 
-export type PodStatus = 'idle' | 'chatting' | 'summarizing' | 'error';
+export type PodStatus = "idle" | "chatting" | "summarizing" | "error";
 
-export function isPodBusy(status: PodStatus): status is 'chatting' | 'summarizing' {
-  return status === 'chatting' || status === 'summarizing';
+export function isPodBusy(
+  status: PodStatus,
+): status is "chatting" | "summarizing" {
+  return status === "chatting" || status === "summarizing";
 }
 
-export type ModelType = 'opus' | 'sonnet' | 'haiku';
+export type ModelType = "opus" | "sonnet" | "haiku";
 
 export interface Pod {
   id: string;
@@ -22,6 +24,7 @@ export interface Pod {
   skillIds: string[];
   subAgentIds: string[];
   mcpServerIds: string[];
+  pluginIds: string[];
   model: ModelType;
   repositoryId: string | null;
   commandId: string | null;

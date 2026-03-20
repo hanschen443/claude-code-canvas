@@ -24,7 +24,6 @@ export async function getConfig(): Promise<ConfigGetResultPayload> {
 export async function updateConfig(config: {
   summaryModel: ModelType;
   aiDecideModel: ModelType;
-  enabledPluginIds?: string[];
 }): Promise<ConfigUpdatedPayload> {
   return createWebSocketRequest<ConfigUpdatePayload, ConfigUpdatedPayload>({
     requestEvent: WebSocketRequestEvents.CONFIG_UPDATE,
@@ -32,7 +31,6 @@ export async function updateConfig(config: {
     payload: {
       summaryModel: config.summaryModel,
       aiDecideModel: config.aiDecideModel,
-      enabledPluginIds: config.enabledPluginIds,
     },
   });
 }

@@ -114,6 +114,7 @@ export enum WebSocketRequestEvents {
   RUN_LOAD_HISTORY = "run:load-history",
   RUN_LOAD_POD_MESSAGES = "run:load-pod-messages",
   PLUGIN_LIST = "plugin:list",
+  POD_SET_PLUGINS = "pod:set-plugins",
 }
 
 export enum WebSocketResponseEvents {
@@ -272,4 +273,5 @@ export enum WebSocketResponseEvents {
   RUN_HISTORY_LOADED = "run:history:result",
   RUN_POD_MESSAGES_LOADED = "run:pod-messages:result",
   PLUGIN_LIST_RESULT = "plugin:list:result",
+  POD_PLUGINS_SET = "pod:plugins:set",
 }

@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getConfig, updateConfig } from "@/services/configApi";
 import { listPlugins } from "@/services/pluginApi";
@@ -43,7 +42,6 @@ const { withErrorToast } = useWebSocketErrorHandler();
 const summaryModel = ref<ModelType>("sonnet");
 const aiDecideModel = ref<ModelType>("sonnet");
 const installedPlugins = ref<InstalledPlugin[]>([]);
-const enabledPluginIds = ref<string[]>([]);
 const isLoading = ref<boolean>(false);
 const isSaving = ref<boolean>(false);
 const loadFailed = ref<boolean>(false);
@@ -67,22 +65,8 @@ const loadConfig = async (): Promise<void> => {
     }
     if (result.summaryModel) summaryModel.value = result.summaryModel;
     if (result.aiDecideModel) aiDecideModel.value = result.aiDecideModel;
-    if (result.enabledPluginIds)
-      enabledPluginIds.value = result.enabledPluginIds;
   } finally {
     isLoading.value = false;
-  }
-};
-
-const togglePlugin = (pluginId: string, enabled: boolean): void => {
-  if (enabled) {
-    if (!enabledPluginIds.value.includes(pluginId)) {
-      enabledPluginIds.value = [...enabledPluginIds.value, pluginId];
-    }
-  } else {
-    enabledPluginIds.value = enabledPluginIds.value.filter(
-      (id) => id !== pluginId,
-    );
   }
 };
 
@@ -93,7 +77,6 @@ const handleSave = async (): Promise<void> => {
       updateConfig({
         summaryModel: summaryModel.value,
         aiDecideModel: aiDecideModel.value,
-        enabledPluginIds: enabledPluginIds.value,
       }),
       "Config",
       "儲存失敗",
@@ -174,7 +157,7 @@ watch(
         <div class="space-y-2">
           <Label>Plugin 管理</Label>
           <p class="text-xs text-muted-foreground">
-            啟用的 Plugin 將對所有 Pod 生效
+            已安裝的 Plugin 列表，可在 Pod 右鍵選單中個別啟用
           </p>
           <div
             v-if="installedPlugins.length === 0"
@@ -195,12 +178,6 @@ watch(
                     v{{ plugin.version }}
                   </p>
                 </div>
-                <Switch
-                  :model-value="enabledPluginIds.includes(plugin.id)"
-                  @update:model-value="
-                    (val: boolean) => togglePlugin(plugin.id, val)
-                  "
-                />
               </div>
             </div>
           </ScrollArea>

@@ -8,24 +8,11 @@ interface GlobalSettingRow {
 
 const SUMMARY_MODEL_KEY = "summary_model";
 const AI_DECIDE_MODEL_KEY = "ai_decide_model";
-const ENABLED_PLUGINS_KEY = "enabled_plugins";
 const DEFAULT_MODEL: ModelType = "sonnet";
-
-function parseStringArray(raw: string | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x: unknown) => typeof x === "string");
-  } catch {
-    return [];
-  }
-}
 
 export interface ConfigData {
   summaryModel: ModelType;
   aiDecideModel: ModelType;
-  enabledPluginIds: string[];
 }
 
 export class ConfigStore {
@@ -42,7 +29,6 @@ export class ConfigStore {
       summaryModel: (map.get(SUMMARY_MODEL_KEY) as ModelType) ?? DEFAULT_MODEL,
       aiDecideModel:
         (map.get(AI_DECIDE_MODEL_KEY) as ModelType) ?? DEFAULT_MODEL,
-      enabledPluginIds: parseStringArray(map.get(ENABLED_PLUGINS_KEY)),
     };
   }
 
@@ -61,13 +47,6 @@ export class ConfigStore {
       });
     }
 
-    if (data.enabledPluginIds !== undefined) {
-      this.stmts.globalSettings.upsert.run({
-        $key: ENABLED_PLUGINS_KEY,
-        $value: JSON.stringify(data.enabledPluginIds),
-      });
-    }
-
     return this.getAll();
   }
 
@@ -83,13 +62,6 @@ export class ConfigStore {
       AI_DECIDE_MODEL_KEY,
     ) as GlobalSettingRow | undefined;
     return (row?.value as ModelType) ?? DEFAULT_MODEL;
-  }
-
-  getEnabledPluginIds(): string[] {
-    const row = this.stmts.globalSettings.selectByKey.get(
-      ENABLED_PLUGINS_KEY,
-    ) as GlobalSettingRow | undefined;
-    return parseStringArray(row?.value);
   }
 }
 
