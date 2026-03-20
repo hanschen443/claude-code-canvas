@@ -269,7 +269,7 @@ export const handlePodSetModel = withCanvasId<PodSetModelPayload>(
   },
 );
 
-function buildScheduleUpdates(
+export function buildScheduleUpdates(
   schedule: NonNullable<PodSetSchedulePayload["schedule"]> | null,
   existingSchedule: Pod["schedule"],
 ): { schedule?: ScheduleConfig | null } {
@@ -287,11 +287,31 @@ function buildScheduleUpdates(
     "every-x-minute",
     "every-x-hour",
   ];
-  const lastTriggeredAt = isEnabling
-    ? immediateFrequencies.includes(schedule.frequency)
+
+  const hasScheduleChanged = existingSchedule
+    ? schedule.frequency !== existingSchedule.frequency ||
+      schedule.hour !== existingSchedule.hour ||
+      schedule.minute !== existingSchedule.minute ||
+      schedule.second !== existingSchedule.second ||
+      schedule.intervalMinute !== existingSchedule.intervalMinute ||
+      schedule.intervalHour !== existingSchedule.intervalHour ||
+      [...schedule.weekdays].sort().join() !==
+        [...existingSchedule.weekdays].sort().join()
+    : false;
+
+  let lastTriggeredAt: Date | null;
+
+  if (isEnabling) {
+    lastTriggeredAt = immediateFrequencies.includes(schedule.frequency)
       ? new Date()
-      : null
-    : (existingSchedule?.lastTriggeredAt ?? null);
+      : null;
+  } else if (schedule.enabled && hasScheduleChanged) {
+    lastTriggeredAt = immediateFrequencies.includes(schedule.frequency)
+      ? new Date()
+      : null;
+  } else {
+    lastTriggeredAt = existingSchedule?.lastTriggeredAt ?? null;
+  }
 
   return {
     schedule: {

@@ -613,7 +613,48 @@ describe("Pod 管理", () => {
       expect(secondLastTriggeredAt).not.toEqual(firstLastTriggeredAt);
     });
 
-    it("更新 Pod 排程時保留 lastTriggeredAt", async () => {
+    it("更新 Pod 排程設定有變更時重置 lastTriggeredAt", async () => {
+      const client = getClient();
+      const pod = await createPod(client, {
+        name: "Update Schedule Reset lastTriggeredAt",
+      });
+
+      const beforeEnable = new Date();
+      const firstPod = await setPodSchedule(client, pod.id, {
+        frequency: "every-x-minute",
+        second: 0,
+        intervalMinute: 10,
+        intervalHour: 1,
+        hour: 0,
+        minute: 0,
+        weekdays: [],
+        enabled: true,
+      });
+
+      expect(firstPod.schedule!.lastTriggeredAt).toBeDefined();
+
+      const beforeUpdate = new Date();
+      const updatedPod = await setPodSchedule(client, pod.id, {
+        frequency: "every-x-minute",
+        second: 0,
+        intervalMinute: 20,
+        intervalHour: 1,
+        hour: 0,
+        minute: 0,
+        weekdays: [],
+        enabled: true,
+      });
+
+      expect(updatedPod.schedule!.intervalMinute).toBe(20);
+      // 設定有變更（intervalMinute 10→20），高頻排程的 lastTriggeredAt 應重置為近似 now
+      expect(updatedPod.schedule!.lastTriggeredAt).toBeDefined();
+      const updatedTime = new Date(updatedPod.schedule!.lastTriggeredAt!);
+      expect(updatedTime.getTime()).toBeGreaterThanOrEqual(
+        beforeUpdate.getTime() - 1,
+      );
+    });
+
+    it("更新 Pod 排程設定沒有變更時保留 lastTriggeredAt", async () => {
       const client = getClient();
       const pod = await createPod(client, {
         name: "Update Schedule Preserve lastTriggeredAt",
@@ -632,10 +673,11 @@ describe("Pod 管理", () => {
 
       const firstLastTriggeredAt = firstPod.schedule!.lastTriggeredAt;
 
+      // 相同設定再次送出，lastTriggeredAt 應保留
       const updatedPod = await setPodSchedule(client, pod.id, {
         frequency: "every-x-minute",
         second: 0,
-        intervalMinute: 20,
+        intervalMinute: 10,
         intervalHour: 1,
         hour: 0,
         minute: 0,
@@ -643,7 +685,6 @@ describe("Pod 管理", () => {
         enabled: true,
       });
 
-      expect(updatedPod.schedule!.intervalMinute).toBe(20);
       expect(updatedPod.schedule!.lastTriggeredAt).toEqual(
         firstLastTriggeredAt,
       );
