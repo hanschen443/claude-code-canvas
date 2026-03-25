@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.8] - 2026-03-25
+
+### 修正
+- 修正排程觸發 multi-instance Pod 時 canvas mini screen 的訊息顯示問題
+- 修正排程觸發時 Run 歷程無法正確顯示 /command 的問題
+
 ## [0.8.7] - 2026-03-25
 
 ### 修正
