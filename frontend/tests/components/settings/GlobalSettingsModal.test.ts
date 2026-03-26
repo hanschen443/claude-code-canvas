@@ -776,19 +776,13 @@ describe("GlobalSettingsModal", () => {
       backupGitRemoteUrl: "git@github.com:test/backup.git",
     });
 
-    let resolveBackup!: (value: unknown) => void;
-    const backupPromise = new Promise((resolve) => {
-      resolveBackup = resolve;
-    });
-    mockTriggerBackup.mockReturnValue(backupPromise);
-
     const wrapper = mountModal(true);
     await nextTick();
     await nextTick();
 
-    const buttons = wrapper.findAll("button");
-    const backupBtn = buttons.find((b) => b.text().includes("立即備份"));
-    await backupBtn?.trigger("click");
+    // isBackingUp 是 computed(() => configStore.backupStatus === "running")
+    // 透過設定 store 狀態來驗證 spinner 與按鈕 disabled
+    mockConfigStoreState.backupStatus = "running";
     await nextTick();
 
     const updatedButtons = wrapper.findAll("button");
@@ -798,13 +792,14 @@ describe("GlobalSettingsModal", () => {
     expect(loadingBtn).toBeDefined();
     expect(loadingBtn?.attributes("disabled")).toBeDefined();
 
-    resolveBackup({ success: true });
-    await flushPromises();
+    // 恢復 idle 狀態
+    mockConfigStoreState.backupStatus = "idle";
+    await nextTick();
 
     wrapper.unmount();
   });
 
-  it("立即備份成功時應顯示成功 toast 並更新狀態", async () => {
+  it("立即備份成功時應呼叫 triggerBackup 但不跳 Toast", async () => {
     mockWithErrorToast.mockImplementation(
       (promise: Promise<unknown>) => promise,
     );
@@ -826,7 +821,12 @@ describe("GlobalSettingsModal", () => {
     await backupBtn?.trigger("click");
     await flushPromises();
 
-    expect(mockShowSuccessToast).toHaveBeenCalledWith("Config", "備份已觸發");
+    // 後端會推送 BACKUP_STARTED 事件，不應在前端跳 Toast
+    expect(mockTriggerBackup).toHaveBeenCalled();
+    expect(mockShowSuccessToast).not.toHaveBeenCalledWith(
+      "Config",
+      "備份已觸發",
+    );
 
     wrapper.unmount();
   });
@@ -1051,6 +1051,99 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     expect(wrapper.text()).toContain("新的備份推送失敗");
+
+    wrapper.unmount();
+  });
+
+  it("關閉備份開關並儲存時，送出的 backupGitRemoteUrl 應為空字串", async () => {
+    mockWithErrorToast.mockImplementation(
+      (promise: Promise<unknown>) => promise,
+    );
+    mockGetConfig.mockResolvedValue({
+      success: true,
+      summaryModel: "sonnet",
+      aiDecideModel: "sonnet",
+      backupEnabled: false,
+      backupGitRemoteUrl: "git@github.com:test/backup.git",
+    });
+    mockUpdateConfig.mockResolvedValue({ success: true });
+
+    const wrapper = mountModal(true);
+    await nextTick();
+    await nextTick();
+
+    const saveButton = wrapper
+      .findAll("button")
+      .find((b) => b.text().includes("儲存"))!;
+    await saveButton.trigger("click");
+    await nextTick();
+    await nextTick();
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ backupGitRemoteUrl: "" }),
+    );
+
+    wrapper.unmount();
+  });
+
+  it("backupStatus 為 running 時，backupError 應被清除", async () => {
+    mockWithErrorToast.mockImplementation(
+      (promise: Promise<unknown>) => promise,
+    );
+    mockGetConfig.mockResolvedValue({
+      success: true,
+      summaryModel: "sonnet",
+      aiDecideModel: "sonnet",
+      backupEnabled: true,
+      backupGitRemoteUrl: "git@github.com:test/backup.git",
+    });
+
+    const wrapper = mountModal(true);
+    await nextTick();
+    await nextTick();
+
+    // watch 非 immediate，需在掛載後觸發狀態變化才能讓 backupError 更新
+    mockConfigStoreState.setBackupStatus("failed", "舊的錯誤訊息");
+    await nextTick();
+    await nextTick();
+
+    // 確認錯誤訊息已顯示
+    expect(wrapper.text()).toContain("舊的錯誤訊息");
+
+    // 狀態變成 running 時應清除 backupError
+    mockConfigStoreState.setBackupStatus("running");
+    await nextTick();
+    await nextTick();
+
+    expect(wrapper.text()).not.toContain("舊的錯誤訊息");
+
+    wrapper.unmount();
+  });
+
+  it("backupStatus 為 running 時，按鈕文字應顯示「備份中...」而非「備份進行中...」", async () => {
+    mockWithErrorToast.mockImplementation(
+      (promise: Promise<unknown>) => promise,
+    );
+    mockGetConfig.mockResolvedValue({
+      success: true,
+      summaryModel: "sonnet",
+      aiDecideModel: "sonnet",
+      backupEnabled: true,
+      backupGitRemoteUrl: "git@github.com:test/backup.git",
+    });
+
+    const wrapper = mountModal(true);
+    await nextTick();
+    await nextTick();
+
+    mockConfigStoreState.backupStatus = "running";
+    await nextTick();
+
+    expect(wrapper.text()).not.toContain("備份進行中...");
+    expect(wrapper.text()).toContain("備份中...");
+
+    mockConfigStoreState.backupStatus = "idle";
+    await nextTick();
 
     wrapper.unmount();
   });

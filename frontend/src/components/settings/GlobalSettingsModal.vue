@@ -55,7 +55,9 @@ const backupGitRemoteUrl = ref<string>("");
 const backupHour = ref<string>("03");
 const backupMinute = ref<string>("00");
 const backupEnabled = ref<boolean>(false);
-const isBackingUp = ref<boolean>(false);
+const isBackingUp = computed<boolean>(
+  () => configStore.backupStatus === "running",
+);
 const backupUrlError = ref<boolean>(false);
 const backupError = ref<string | null>(null);
 
@@ -109,6 +111,8 @@ const handleSave = async (): Promise<void> => {
   }
   isSaving.value = true;
   try {
+    // 關閉備份時，送出空字串；但先不修改 UI，等 API 成功後再更新
+    const urlToSend = backupEnabled.value ? backupGitRemoteUrl.value : "";
     const tzOffset = Number(timezoneOffset.value);
     const backupTime = `${backupHour.value}:${backupMinute.value}`;
     const result = await withErrorToast(
@@ -116,7 +120,7 @@ const handleSave = async (): Promise<void> => {
         summaryModel: summaryModel.value,
         aiDecideModel: aiDecideModel.value,
         timezoneOffset: tzOffset,
-        backupGitRemoteUrl: backupGitRemoteUrl.value,
+        backupGitRemoteUrl: urlToSend,
         backupTime,
         backupEnabled: backupEnabled.value,
       }),
@@ -124,9 +128,11 @@ const handleSave = async (): Promise<void> => {
       "儲存失敗",
     );
     if (result) {
+      // API 成功後才更新 UI 狀態，避免失敗時 URL 被錯誤清空
+      backupGitRemoteUrl.value = urlToSend;
       configStore.setTimezoneOffset(tzOffset);
       configStore.setBackupConfig({
-        gitRemoteUrl: backupGitRemoteUrl.value,
+        gitRemoteUrl: urlToSend,
         time: backupTime,
         enabled: backupEnabled.value,
       });
@@ -144,15 +150,12 @@ const handleClose = (): void => {
 
 const handleTriggerBackup = async (): Promise<void> => {
   backupError.value = null;
-  isBackingUp.value = true;
   try {
     await triggerBackup(backupGitRemoteUrl.value);
-    showSuccessToast("Config", "備份已觸發");
+    // 不跳 Toast；後端會推送 BACKUP_STARTED 事件，store 狀態自動更新
   } catch (err) {
     const message = err instanceof Error ? err.message : "備份觸發失敗";
     backupError.value = message;
-  } finally {
-    isBackingUp.value = false;
   }
 };
 
@@ -175,6 +178,8 @@ watch(
   ({ status, error }) => {
     if (status === "failed" && error) {
       backupError.value = error;
+    } else if (status === "running") {
+      backupError.value = null;
     }
   },
 );
@@ -338,13 +343,11 @@ watch(
               </Button>
             </div>
 
-            <div class="text-xs text-muted-foreground">
-              <span v-if="configStore.lastBackupTime">
-                上次備份：{{ configStore.lastBackupTime }}
-              </span>
-              <span v-else-if="configStore.backupStatus === 'running'">
-                備份進行中...
-              </span>
+            <div
+              v-if="configStore.lastBackupTime"
+              class="text-xs text-muted-foreground"
+            >
+              上次備份：{{ configStore.lastBackupTime }}
             </div>
           </div>
         </div>

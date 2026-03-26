@@ -1,8 +1,12 @@
+import { promises as fs } from "fs";
+import path from "path";
 import { WebSocketResponseEvents } from "../schemas";
 import type { ConfigGetPayload, ConfigUpdatePayload } from "../schemas";
 import { configStore } from "../services/configStore.js";
 import { socketService } from "../services/socketService.js";
 import { backupScheduleService } from "../services/backupScheduleService.js";
+import { config } from "../config/index.js";
+import { logger } from "../utils/logger.js";
 
 export async function handleConfigGet(
   connectionId: string,
@@ -37,11 +41,18 @@ export async function handleConfigUpdate(
     payload.backupTime !== undefined ||
     payload.backupEnabled !== undefined;
 
-  const config = configStore.update({
+  // 在更新 DB 之前，先取得目前的 backupEnabled 狀態，用於判斷是否為「從啟用變為停用」
+  const previousBackupEnabled = configStore.getBackupConfig().backupEnabled;
+
+  // 關閉備份時，強制清空 Git Remote URL（不修改 payload，使用 local 變數）
+  const effectiveGitRemoteUrl =
+    payload.backupEnabled === false ? "" : payload.backupGitRemoteUrl;
+
+  const updatedConfig = configStore.update({
     summaryModel: payload.summaryModel,
     aiDecideModel: payload.aiDecideModel,
     timezoneOffset: payload.timezoneOffset,
-    backupGitRemoteUrl: payload.backupGitRemoteUrl,
+    backupGitRemoteUrl: effectiveGitRemoteUrl,
     backupTime: payload.backupTime,
     backupEnabled: payload.backupEnabled,
   });
@@ -52,16 +63,31 @@ export async function handleConfigUpdate(
     {
       requestId,
       success: true,
-      summaryModel: config.summaryModel,
-      aiDecideModel: config.aiDecideModel,
-      timezoneOffset: config.timezoneOffset,
-      backupGitRemoteUrl: config.backupGitRemoteUrl,
-      backupTime: config.backupTime,
-      backupEnabled: config.backupEnabled,
+      summaryModel: updatedConfig.summaryModel,
+      aiDecideModel: updatedConfig.aiDecideModel,
+      timezoneOffset: updatedConfig.timezoneOffset,
+      backupGitRemoteUrl: updatedConfig.backupGitRemoteUrl,
+      backupTime: updatedConfig.backupTime,
+      backupEnabled: updatedConfig.backupEnabled,
     },
   );
 
   if (backupSettingsChanged) {
     backupScheduleService.reload();
+  }
+
+  // 當備份從啟用變為停用時，刪除 .git 目錄
+  const backupJustDisabled =
+    previousBackupEnabled === true && payload.backupEnabled === false;
+
+  if (backupJustDisabled) {
+    const backupGitDir = path.join(config.appDataRoot, ".git");
+    try {
+      await fs.rm(backupGitDir, { recursive: true, force: true });
+      logger.log("Backup", "Delete", "已刪除備份 .git 目錄");
+    } catch (err) {
+      logger.warn("Backup", "Delete", "刪除備份 .git 目錄失敗");
+      logger.error("Backup", "Error", "刪除備份 .git 目錄時發生錯誤", err);
+    }
   }
 }
