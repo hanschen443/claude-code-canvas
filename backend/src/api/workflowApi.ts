@@ -20,6 +20,7 @@ import {
   MAX_MESSAGE_LENGTH,
 } from "../schemas/chatSchemas.js";
 import { z } from "zod";
+import { NormalModeExecutionStrategy } from "../services/normalExecutionStrategy.js";
 
 interface WorkflowNode {
   pod: Pod;
@@ -164,8 +165,10 @@ export async function handleWorkflowChat(
     try {
       await injectUserMessage({ canvasId, podId, content: typedMessage });
 
+      const strategy = new NormalModeExecutionStrategy(canvasId);
+
       await executeStreamingChat(
-        { canvasId, podId, message: typedMessage, abortable: true },
+        { canvasId, podId, message: typedMessage, abortable: true, strategy },
         {
           onComplete: onChatComplete,
           onAborted: (abortedCanvasId, abortedPodId, messageId) =>

@@ -15,6 +15,7 @@ import {
   isSameDayWithOffset,
 } from "../utils/timezoneUtils.js";
 import { configStore } from "./configStore.js";
+import { NormalModeExecutionStrategy } from "./normalExecutionStrategy.js";
 
 const TICK_INTERVAL_MS = 1000;
 const MS_PER_SECOND = 1000;
@@ -217,8 +218,10 @@ class ScheduleService {
       );
     };
 
+    const strategy = new NormalModeExecutionStrategy(canvasId);
+
     await executeStreamingChat(
-      { canvasId, podId, message: "", abortable: false },
+      { canvasId, podId, message: "", abortable: false, strategy },
       { onComplete: onScheduleChatComplete },
     );
   }

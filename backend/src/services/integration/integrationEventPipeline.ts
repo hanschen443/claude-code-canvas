@@ -21,6 +21,7 @@ import {
   buildReplyContextKey,
   setReplyContextIfPresent,
 } from "./replyContextStore.js";
+import { NormalModeExecutionStrategy } from "../normalExecutionStrategy.js";
 
 class IntegrationEventPipeline {
   private busyReplyCooldowns = new Map<string, number>();
@@ -277,9 +278,11 @@ class IntegrationEventPipeline {
       );
     };
 
+    const strategy = new NormalModeExecutionStrategy(canvasId);
+
     try {
       await executeStreamingChat(
-        { canvasId, podId, message: event.text, abortable: false },
+        { canvasId, podId, message: event.text, abortable: false, strategy },
         { onComplete },
       );
     } catch (error) {

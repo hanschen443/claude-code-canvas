@@ -75,7 +75,7 @@ type UserToolResultBlock = {
   content?: string;
 };
 
-export interface RunQueryOptions {
+interface RunQueryOptions {
   /** 覆蓋 pod 全域的 claudeSessionId（來自 run_pod_instances） */
   sessionId?: string;
   /** activeQueries 的 key，預設為 podId。Run 模式使用 `${runId}:${podId}` */

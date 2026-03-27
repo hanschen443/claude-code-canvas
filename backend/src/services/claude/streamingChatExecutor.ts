@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 
-import { WebSocketResponseEvents } from "../../schemas";
 import { isAbortError } from "../../utils/errorHelpers.js";
-import type { ContentBlock, Message, PersistedSubMessage } from "../../types";
+import type { ContentBlock, PersistedSubMessage } from "../../types";
 
 import { claudeService } from "./claudeService.js";
 import type { StreamEvent } from "./types.js";
@@ -14,209 +13,16 @@ import {
   processToolResultEvent,
   processToolUseEvent,
 } from "./streamEventProcessor.js";
-import { messageStore } from "../messageStore.js";
 import { podStore } from "../podStore.js";
-import { runStore } from "../runStore.js";
-import { runExecutionService } from "../workflow/runExecutionService.js";
-import { socketService } from "../socketService.js";
 import { logger } from "../../utils/logger.js";
-import type { RunContext } from "../../types/run.js";
-
-interface TextEmitParams {
-  canvasId: string;
-  podId: string;
-  messageId: string;
-  content: string;
-}
-
-interface ToolUseEmitParams {
-  canvasId: string;
-  podId: string;
-  messageId: string;
-  toolUseId: string;
-  toolName: string;
-  input: Record<string, unknown>;
-}
-
-interface ToolResultEmitParams {
-  canvasId: string;
-  podId: string;
-  messageId: string;
-  toolUseId: string;
-  toolName: string;
-  output: string;
-}
-
-interface CompleteEmitParams {
-  canvasId: string;
-  podId: string;
-  messageId: string;
-  fullContent: string;
-}
-
-interface ChatEmitStrategy {
-  emitText(params: TextEmitParams): void;
-  emitToolUse(params: ToolUseEmitParams): void;
-  emitToolResult(params: ToolResultEmitParams): void;
-  emitComplete(params: CompleteEmitParams): void;
-}
-
-function createNormalEmitStrategy(): ChatEmitStrategy {
-  return {
-    emitText({ canvasId, podId, messageId, content }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.POD_CLAUDE_CHAT_MESSAGE,
-        {
-          canvasId,
-          podId,
-          messageId,
-          content,
-          isPartial: true,
-          role: "assistant",
-        },
-      );
-    },
-    emitToolUse({
-      canvasId,
-      podId,
-      messageId,
-      toolUseId,
-      toolName,
-      input,
-    }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.POD_CHAT_TOOL_USE,
-        {
-          canvasId,
-          podId,
-          messageId,
-          toolUseId,
-          toolName,
-          input,
-        },
-      );
-    },
-    emitToolResult({
-      canvasId,
-      podId,
-      messageId,
-      toolUseId,
-      toolName,
-      output,
-    }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.POD_CHAT_TOOL_RESULT,
-        {
-          canvasId,
-          podId,
-          messageId,
-          toolUseId,
-          toolName,
-          output,
-        },
-      );
-    },
-    emitComplete({ canvasId, podId, messageId, fullContent }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.POD_CHAT_COMPLETE,
-        {
-          canvasId,
-          podId,
-          messageId,
-          fullContent,
-        },
-      );
-    },
-  };
-}
-
-function createRunEmitStrategy(runId: string): ChatEmitStrategy {
-  return {
-    emitText({ canvasId, podId, messageId, content }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.RUN_MESSAGE,
-        {
-          runId,
-          canvasId,
-          podId,
-          messageId,
-          content,
-          isPartial: true,
-          role: "assistant",
-        },
-      );
-    },
-    emitToolUse({
-      canvasId,
-      podId,
-      messageId,
-      toolUseId,
-      toolName,
-      input,
-    }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.RUN_CHAT_TOOL_USE,
-        {
-          runId,
-          canvasId,
-          podId,
-          messageId,
-          toolUseId,
-          toolName,
-          input,
-        },
-      );
-    },
-    emitToolResult({
-      canvasId,
-      podId,
-      messageId,
-      toolUseId,
-      toolName,
-      output,
-    }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.RUN_CHAT_TOOL_RESULT,
-        {
-          runId,
-          canvasId,
-          podId,
-          messageId,
-          toolUseId,
-          toolName,
-          output,
-        },
-      );
-    },
-    emitComplete({ canvasId, podId, messageId, fullContent }): void {
-      socketService.emitToCanvas(
-        canvasId,
-        WebSocketResponseEvents.RUN_CHAT_COMPLETE,
-        {
-          runId,
-          canvasId,
-          podId,
-          messageId,
-          fullContent,
-        },
-      );
-    },
-  };
-}
+import type { ExecutionStrategy } from "../executionStrategy.js";
 
 export interface StreamingChatExecutorOptions {
   canvasId: string;
   podId: string;
   message: string | ContentBlock[];
   abortable: boolean;
-  runContext?: RunContext;
+  strategy: ExecutionStrategy;
 }
 
 export interface StreamingChatExecutorCallbacks {
@@ -253,8 +59,8 @@ interface StreamContext {
   subMessageState: ReturnType<typeof createSubMessageState>;
   flushCurrentSubMessage: () => void;
   persistStreamingMessage: () => void;
-  emitStrategy: ChatEmitStrategy;
-  runContext?: RunContext;
+  emitStrategy: ReturnType<ExecutionStrategy["createEmitStrategy"]>;
+  strategy: ExecutionStrategy;
 }
 
 type TextStreamEvent = Extract<StreamEvent, { type: "text" }>;
@@ -424,7 +230,7 @@ async function handleStreamAbort(
     streamState,
     flushCurrentSubMessage,
     persistStreamingMessage,
-    runContext,
+    strategy,
   } = context;
 
   flushCurrentSubMessage();
@@ -436,12 +242,7 @@ async function handleStreamAbort(
     persistStreamingMessage();
   }
 
-  if (runContext) {
-    runExecutionService.unregisterActiveStream(runContext.runId, podId);
-    runExecutionService.errorPodInstance(runContext, podId, "使用者中斷執行");
-  } else {
-    podStore.setStatus(canvasId, podId, "idle");
-  }
+  strategy.onStreamAbort(podId, "使用者中斷執行");
 
   if (callbacks?.onAborted) {
     await callbacks.onAborted(canvasId, podId, messageId);
@@ -460,11 +261,9 @@ async function handleStreamError(
   error: unknown,
   callbacks?: StreamingChatExecutorCallbacks,
 ): Promise<never> {
-  const { canvasId, podId, runContext } = context;
+  const { canvasId, podId, strategy } = context;
 
-  if (!runContext) {
-    podStore.setStatus(canvasId, podId, "idle");
-  }
+  strategy.onStreamError(podId);
 
   if (callbacks?.onError) {
     await callbacks.onError(canvasId, podId, error as Error);
@@ -476,7 +275,7 @@ async function handleStreamError(
 function setupStreamContext(
   options: StreamingChatExecutorOptions,
 ): StreamContext {
-  const { canvasId, podId, runContext } = options;
+  const { canvasId, podId, strategy } = options;
 
   const messageId = uuidv4();
   const subMessageState = createSubMessageState();
@@ -495,16 +294,10 @@ function setupStreamContext(
       streamState.accumulatedContent,
       subMessageState,
     );
-    if (runContext) {
-      runStore.upsertRunMessage(runContext.runId, podId, persistedMsg);
-    } else {
-      messageStore.upsertMessage(canvasId, podId, persistedMsg);
-    }
+    strategy.persistMessage(podId, persistedMsg);
   };
 
-  const emitStrategy = runContext
-    ? createRunEmitStrategy(runContext.runId)
-    : createNormalEmitStrategy();
+  const emitStrategy = strategy.createEmitStrategy();
 
   return {
     canvasId,
@@ -515,17 +308,15 @@ function setupStreamContext(
     flushCurrentSubMessage,
     persistStreamingMessage,
     emitStrategy,
-    runContext,
+    strategy,
   };
 }
 
 async function finalizeAfterStream(
   context: StreamContext,
-  resultMessage: Message,
-  runInstance: Awaited<ReturnType<typeof runStore.getPodInstance>> | undefined,
+  sessionId: string | undefined,
 ): Promise<void> {
-  const { canvasId, podId, streamState, persistStreamingMessage, runContext } =
-    context;
+  const { streamState, persistStreamingMessage, podId, strategy } = context;
 
   const hasAssistantContent =
     streamState.accumulatedContent.length > 0 ||
@@ -534,57 +325,11 @@ async function finalizeAfterStream(
     persistStreamingMessage();
   }
 
-  if (runContext) {
-    runExecutionService.unregisterActiveStream(runContext.runId, podId);
-    // 串流完成後，將最新的 sessionId 寫回 run instance
-    if (resultMessage.sessionId && runInstance) {
-      runStore.updatePodInstanceClaudeSessionId(
-        runInstance.id,
-        resultMessage.sessionId,
-      );
-    }
-  } else {
-    podStore.setStatus(canvasId, podId, "idle");
-  }
-}
-
-interface RunModeSetup {
-  runInstance: Awaited<ReturnType<typeof runStore.getPodInstance>> | undefined;
-  runOptions:
-    | {
-        sessionId: string | undefined;
-        queryKey: string;
-        runContext: RunContext;
-      }
-    | undefined;
+  strategy.onStreamComplete(podId, sessionId);
 }
 
 /**
- * 初始化 run mode 所需的狀態：取得 pod instance、註冊 active stream、建立 runOptions。
- * 非 run mode 時回傳空值。
- */
-function setupRunModeContext(
-  podId: string,
-  runContext?: RunContext,
-): RunModeSetup {
-  if (!runContext) {
-    return { runInstance: undefined, runOptions: undefined };
-  }
-
-  const runInstance = runStore.getPodInstance(runContext.runId, podId);
-  runExecutionService.registerActiveStream(runContext.runId, podId);
-
-  const runOptions = {
-    sessionId: runInstance?.claudeSessionId ?? undefined,
-    queryKey: `${runContext.runId}:${podId}`,
-    runContext,
-  };
-
-  return { runInstance, runOptions };
-}
-
-/**
- * 統一處理串流執行過程中的錯誤：先清理 run mode 資源，再依錯誤類型分流。
+ * 統一處理串流執行過程中的錯誤：依錯誤類型分流處理。
  */
 async function handleExecutionError(
   error: unknown,
@@ -592,12 +337,6 @@ async function handleExecutionError(
   abortable: boolean,
   callbacks?: StreamingChatExecutorCallbacks,
 ): Promise<StreamingChatExecutorResult> {
-  const { runContext, podId } = streamContext;
-
-  if (runContext) {
-    runExecutionService.unregisterActiveStream(runContext.runId, podId);
-  }
-
   if (isAbortError(error) && abortable) {
     return handleStreamAbort(streamContext, callbacks);
   }
@@ -606,21 +345,26 @@ async function handleExecutionError(
 }
 
 /**
- * run mode 與非 run mode 的差異點超過閾值，加此說明：
- * - 有 runContext → 使用 run-specific session、key、store，不改 pod 全域狀態
- * - 無 runContext → 維持原有行為
+ * 統一的串流聊天執行器，透過 ExecutionStrategy 區分 Normal mode 與 Run mode 的差異。
  */
 export async function executeStreamingChat(
   options: StreamingChatExecutorOptions,
   callbacks?: StreamingChatExecutorCallbacks,
 ): Promise<StreamingChatExecutorResult> {
-  const { podId, message, abortable, runContext } = options;
+  const { podId, message, abortable, strategy } = options;
 
-  // 設定串流上下文與 run mode 資源
+  // 設定串流上下文
   const streamContext = setupStreamContext(options);
   const { canvasId, messageId, streamState } = streamContext;
   const streamingCallback = createStreamingCallback(streamContext);
-  const { runInstance, runOptions } = setupRunModeContext(podId, runContext);
+
+  // 取得 session ID 與 query key
+  const sessionId = strategy.getSessionId(podId);
+  const queryKey = strategy.getQueryKey(podId);
+  const runContext = strategy.getRunContext();
+
+  // 串流開始前置處理（Run mode 需在此註冊 active stream）
+  strategy.onStreamStart(podId);
 
   try {
     // 呼叫 Claude API
@@ -628,11 +372,11 @@ export async function executeStreamingChat(
       podId,
       message,
       streamingCallback,
-      runOptions,
+      { sessionId, queryKey, runContext },
     );
 
     // 完成後續處理
-    await finalizeAfterStream(streamContext, resultMessage, runInstance);
+    await finalizeAfterStream(streamContext, resultMessage.sessionId);
 
     if (callbacks?.onComplete) {
       await callbacks.onComplete(canvasId, podId);

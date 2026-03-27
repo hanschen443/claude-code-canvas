@@ -224,7 +224,12 @@ describe("handleChatSend", () => {
       content: "你好",
     });
     expect(mockExecuteStreamingChat).toHaveBeenCalledWith(
-      { canvasId: CANVAS_ID, podId: POD_ID, message: "你好", abortable: true },
+      expect.objectContaining({
+        canvasId: CANVAS_ID,
+        podId: POD_ID,
+        message: "你好",
+        abortable: true,
+      }),
       expect.objectContaining({
         onComplete: expect.any(Function),
         onAborted: expect.any(Function),
