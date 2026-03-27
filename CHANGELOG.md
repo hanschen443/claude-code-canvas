@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0] - 2026-03-27
+
+### 新增
+- Jira 綁定 Pod 時新增事件過濾模式選項，支持「所有事件」或「僅狀態變更」事件觸發條件
+- Integration App 憑證加密儲存（AES-256-GCM）
+
+### 修正
+- 移除根目錄 package.json 中誤加的 test 和 style 腳本
+- 立即備份後不再跳「備份已觸發」Toast，改為 Input 右側 spinner 顯示
+- 關閉備份並儲存後自動清空 Git Remote URL 及刪除 .git 備份歷史
+- Backup 推送自動排除加密金鑰
+- 啟動時自動遷移明文憑證並清除 DB 殘留資料
+- 備份排程防止同日重複觸發
+- 備份時間格式驗證強化
+- 刪除 Run 時 Claude SDK 內部錯誤不再導致後端 crash
+
 ## [0.8.8] - 2026-03-25
 
 ### 修正
