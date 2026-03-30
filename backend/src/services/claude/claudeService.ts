@@ -475,9 +475,12 @@ export class ClaudeService {
           mergedExtra,
         );
         if (!result.success) {
-          return { success: false, error: result.error };
+          return {
+            content: [{ type: "text" as const, text: `錯誤: ${result.error}` }],
+            isError: true,
+          };
         }
-        return { success: true };
+        return { content: [{ type: "text" as const, text: "success" }] };
       },
     );
 

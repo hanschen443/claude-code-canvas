@@ -82,7 +82,7 @@ class AiDecideService {
       decideTriggersSchema,
       async (params: DecisionResults) => {
         decisionResults = params;
-        return { success: true };
+        return { content: [{ type: "text" as const, text: "success" }] };
       },
     );
 

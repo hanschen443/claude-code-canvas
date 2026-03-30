@@ -1,15 +1,15 @@
-import { ContentBlock } from '../../types';
+import { ContentBlock } from "../../types";
 
 type ClaudeTextContent = {
-  type: 'text';
+  type: "text";
   text: string;
 };
 
 type ClaudeImageContent = {
-  type: 'image';
+  type: "image";
   source: {
-    type: 'base64';
-    media_type: string;
+    type: "base64";
+    media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
     data: string;
   };
 };
@@ -17,12 +17,12 @@ type ClaudeImageContent = {
 export type ClaudeMessageContent = ClaudeTextContent | ClaudeImageContent;
 
 export type SDKUserMessage = {
-  type: 'user';
+  type: "user";
   message: {
-    role: 'user';
+    role: "user";
     content: ClaudeMessageContent[];
   };
-  parent_tool_use_id: null;
+  parent_tool_use_id: string | null;
   session_id: string;
 };
 
@@ -30,14 +30,16 @@ function processTextBlock(text: string): ClaudeTextContent | null {
   if (text.trim().length === 0) {
     return null;
   }
-  return { type: 'text', text };
+  return { type: "text", text };
 }
 
-function processImageBlock(block: Extract<ContentBlock, { type: 'image' }>): ClaudeImageContent {
+function processImageBlock(
+  block: Extract<ContentBlock, { type: "image" }>,
+): ClaudeImageContent {
   return {
-    type: 'image',
+    type: "image",
     source: {
-      type: 'base64',
+      type: "base64",
       media_type: block.mediaType,
       data: block.base64Data,
     },
@@ -47,39 +49,47 @@ function processImageBlock(block: Extract<ContentBlock, { type: 'image' }>): Cla
 function applyCommandPrefix(
   text: string,
   prefix: string,
-  prefixApplied: boolean
-): {text: string; prefixApplied: boolean} {
+  prefixApplied: boolean,
+): { text: string; prefixApplied: boolean } {
   if (!prefix || prefixApplied) {
-    return {text, prefixApplied};
+    return { text, prefixApplied };
   }
-  return {text: `${prefix}${text}`, prefixApplied: true};
+  return { text: `${prefix}${text}`, prefixApplied: true };
 }
 
 function convertBlockToContent(
   block: ContentBlock,
   prefix: string,
-  prefixApplied: boolean
-): {content: ClaudeMessageContent | null; prefixApplied: boolean} {
-  if (block.type === 'text') {
-    const {text, prefixApplied: applied} = applyCommandPrefix(block.text, prefix, prefixApplied);
-    return {content: processTextBlock(text), prefixApplied: applied};
+  prefixApplied: boolean,
+): { content: ClaudeMessageContent | null; prefixApplied: boolean } {
+  if (block.type === "text") {
+    const { text, prefixApplied: applied } = applyCommandPrefix(
+      block.text,
+      prefix,
+      prefixApplied,
+    );
+    return { content: processTextBlock(text), prefixApplied: applied };
   }
-  if (block.type === 'image') {
-    return {content: processImageBlock(block), prefixApplied};
+  if (block.type === "image") {
+    return { content: processImageBlock(block), prefixApplied };
   }
-  return {content: null, prefixApplied};
+  return { content: null, prefixApplied };
 }
 
 export function buildClaudeContentBlocks(
   message: ContentBlock[],
-  commandId: string | null
+  commandId: string | null,
 ): ClaudeMessageContent[] {
-  const prefix = commandId ? `/${commandId} ` : '';
+  const prefix = commandId ? `/${commandId} ` : "";
   let prefixApplied = false;
   const contentArray: ClaudeMessageContent[] = [];
 
   for (const block of message) {
-    const {content, prefixApplied: applied} = convertBlockToContent(block, prefix, prefixApplied);
+    const { content, prefixApplied: applied } = convertBlockToContent(
+      block,
+      prefix,
+      prefixApplied,
+    );
     prefixApplied = applied;
     if (content) {
       contentArray.push(content);
@@ -87,7 +97,7 @@ export function buildClaudeContentBlocks(
   }
 
   if (contentArray.length === 0) {
-    contentArray.push({type: 'text', text: '請開始執行'});
+    contentArray.push({ type: "text", text: "請開始執行" });
   }
 
   return contentArray;
@@ -95,13 +105,13 @@ export function buildClaudeContentBlocks(
 
 export function createUserMessageStream(
   content: ClaudeMessageContent[],
-  sessionId: string
+  sessionId: string,
 ): AsyncIterable<SDKUserMessage> {
   return (async function* (): AsyncGenerator<SDKUserMessage, void, undefined> {
     yield {
-      type: 'user' as const,
+      type: "user" as const,
       message: {
-        role: 'user' as const,
+        role: "user" as const,
         content,
       },
       parent_tool_use_id: null,
