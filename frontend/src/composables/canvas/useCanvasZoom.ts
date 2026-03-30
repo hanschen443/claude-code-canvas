@@ -1,28 +1,52 @@
-import { useCanvasContext } from './useCanvasContext'
+import { isMacOS } from "@/utils/platform";
+import {
+  ZOOM_PINCH_FACTOR_MAC,
+  ZOOM_PINCH_FACTOR_DEFAULT,
+  WHEEL_DELTA_PIXEL_FACTOR,
+  WHEEL_DELTA_LINE_FACTOR,
+  WHEEL_DELTA_PAGE_FACTOR,
+} from "@/lib/constants";
+import { useCanvasContext } from "./useCanvasContext";
 
-const ZOOM_STEP_FACTOR = 0.1
-const ZOOM_OUT_FACTOR = 1 - ZOOM_STEP_FACTOR
-const ZOOM_IN_FACTOR = 1 + ZOOM_STEP_FACTOR
+function wheelDelta(event: WheelEvent): number {
+  const factor =
+    event.ctrlKey && isMacOS
+      ? ZOOM_PINCH_FACTOR_MAC
+      : ZOOM_PINCH_FACTOR_DEFAULT;
+
+  let deltaFactor: number;
+  if (event.deltaMode === 1) {
+    deltaFactor = WHEEL_DELTA_LINE_FACTOR;
+  } else if (event.deltaMode === 2) {
+    deltaFactor = WHEEL_DELTA_PAGE_FACTOR;
+  } else {
+    deltaFactor = WHEEL_DELTA_PIXEL_FACTOR;
+  }
+
+  const raw = -event.deltaY * deltaFactor * factor;
+  // 限制單次 wheel 事件最大縮放量，避免大力滾動時爆衝（2^0.2 ≈ 1.15，最多 15%）
+  return Math.max(-0.2, Math.min(0.2, raw));
+}
 
 export function useCanvasZoom(): {
-  handleWheel: (wheelEvent: WheelEvent) => void
+  handleWheelZoom: (event: WheelEvent) => void;
 } {
-  const { viewportStore } = useCanvasContext()
+  const { viewportStore } = useCanvasContext();
 
-  const handleWheel = (wheelEvent: WheelEvent): void => {
-    wheelEvent.preventDefault()
+  function handleWheelZoom(event: WheelEvent): void {
+    event.preventDefault();
 
-    const rect = (wheelEvent.currentTarget as HTMLElement).getBoundingClientRect()
-    const mouseX = wheelEvent.clientX - rect.left
-    const mouseY = wheelEvent.clientY - rect.top
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
 
-    const delta = wheelEvent.deltaY > 0 ? ZOOM_OUT_FACTOR : ZOOM_IN_FACTOR
-    const newZoom = viewportStore.zoom * delta
+    const delta = wheelDelta(event);
+    const newZoom = viewportStore.zoom * Math.pow(2, delta);
 
-    viewportStore.zoomTo(newZoom, mouseX, mouseY)
+    viewportStore.zoomTo(newZoom, mouseX, mouseY);
   }
 
   return {
-    handleWheel,
-  }
+    handleWheelZoom,
+  };
 }
