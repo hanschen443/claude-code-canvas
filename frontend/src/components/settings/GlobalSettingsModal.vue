@@ -44,7 +44,6 @@ const { withErrorToast } = useWebSocketErrorHandler();
 
 const configStore = useConfigStore();
 
-const summaryModel = ref<ModelType>("sonnet");
 const aiDecideModel = ref<ModelType>("sonnet");
 const timezoneOffset = ref<string>("8");
 const isLoading = ref<boolean>(false);
@@ -80,7 +79,6 @@ const loadConfig = async (): Promise<void> => {
       loadFailed.value = true;
       return;
     }
-    if (result.summaryModel) summaryModel.value = result.summaryModel;
     if (result.aiDecideModel) aiDecideModel.value = result.aiDecideModel;
     if (result.timezoneOffset !== undefined) {
       timezoneOffset.value = String(result.timezoneOffset);
@@ -117,7 +115,6 @@ const handleSave = async (): Promise<void> => {
     const backupTime = `${backupHour.value}:${backupMinute.value}`;
     const result = await withErrorToast(
       updateConfig({
-        summaryModel: summaryModel.value,
         aiDecideModel: aiDecideModel.value,
         timezoneOffset: tzOffset,
         backupGitRemoteUrl: urlToSend,
@@ -195,27 +192,6 @@ watch(
 
       <ScrollArea class="h-[420px] pr-3">
         <div class="space-y-4 py-2">
-          <div class="space-y-2">
-            <Label>總結模型</Label>
-            <p class="text-xs text-muted-foreground">工作流總結時使用的模型</p>
-            <Select v-model="summaryModel">
-              <SelectTrigger>
-                <SelectValue placeholder="選擇模型" />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem
-                  v-for="option in MODEL_OPTIONS"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="border-t border-border" />
-
           <div class="space-y-2">
             <Label>AI 決策模型</Label>
             <p class="text-xs text-muted-foreground">

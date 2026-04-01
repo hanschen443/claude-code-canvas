@@ -45,28 +45,11 @@ describe("Config WebSocket", () => {
 
       expect(response.requestId).toBe(requestId);
       expect(response.success).toBe(true);
-      expect(response.summaryModel).toBe("sonnet");
       expect(response.aiDecideModel).toBe("sonnet");
     });
   });
 
   describe("config:update", () => {
-    it("成功更新 summaryModel", async () => {
-      const client = getClient();
-      const response = await emitAndWaitResponse<
-        ConfigUpdatePayload,
-        ConfigUpdatedPayload
-      >(
-        client,
-        WebSocketRequestEvents.CONFIG_UPDATE,
-        WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), summaryModel: "opus" },
-      );
-
-      expect(response.success).toBe(true);
-      expect(response.summaryModel).toBe("opus");
-    });
-
     it("成功更新 aiDecideModel", async () => {
       const client = getClient();
       const response = await emitAndWaitResponse<
@@ -83,7 +66,7 @@ describe("Config WebSocket", () => {
       expect(response.aiDecideModel).toBe("haiku");
     });
 
-    it("同時更新兩個設定", async () => {
+    it("同時更新多個設定", async () => {
       const client = getClient();
       const response = await emitAndWaitResponse<
         ConfigUpdatePayload,
@@ -92,11 +75,10 @@ describe("Config WebSocket", () => {
         client,
         WebSocketRequestEvents.CONFIG_UPDATE,
         WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), summaryModel: "opus", aiDecideModel: "haiku" },
+        { requestId: uuidv4(), aiDecideModel: "haiku" },
       );
 
       expect(response.success).toBe(true);
-      expect(response.summaryModel).toBe("opus");
       expect(response.aiDecideModel).toBe("haiku");
     });
 
@@ -107,7 +89,7 @@ describe("Config WebSocket", () => {
         client,
         WebSocketRequestEvents.CONFIG_UPDATE,
         WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), summaryModel: "opus", aiDecideModel: "haiku" },
+        { requestId: uuidv4(), aiDecideModel: "haiku" },
       );
 
       const getResponse = await emitAndWaitResponse<
@@ -120,7 +102,6 @@ describe("Config WebSocket", () => {
         { requestId: uuidv4() },
       );
 
-      expect(getResponse.summaryModel).toBe("opus");
       expect(getResponse.aiDecideModel).toBe("haiku");
     });
 
@@ -130,7 +111,7 @@ describe("Config WebSocket", () => {
         client,
         WebSocketRequestEvents.CONFIG_UPDATE,
         WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), summaryModel: "invalid-model" },
+        { requestId: uuidv4(), aiDecideModel: "invalid-model" },
       );
 
       expect(response.success).toBe(false);

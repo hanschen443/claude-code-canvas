@@ -1,15 +1,14 @@
-import { claudeService } from './claude/claudeService.js';
-import { summaryPromptBuilder } from './summaryPromptBuilder.js';
-import { configStore } from './configStore.js';
-import { podStore } from './podStore.js';
-import { messageStore } from './messageStore.js';
-import { runStore } from './runStore.js';
-import { outputStyleService } from './outputStyleService.js';
-import { commandService } from './commandService.js';
-import { logger } from '../utils/logger.js';
-import { getLastAssistantMessage } from '../utils/messageHelper.js';
-import type { Pod, PersistedMessage } from '../types/index.js';
-import type { RunContext } from '../types/run.js';
+import { claudeService } from "./claude/claudeService.js";
+import { summaryPromptBuilder } from "./summaryPromptBuilder.js";
+import { podStore } from "./podStore.js";
+import { messageStore } from "./messageStore.js";
+import { runStore } from "./runStore.js";
+import { outputStyleService } from "./outputStyleService.js";
+import { commandService } from "./commandService.js";
+import { logger } from "../utils/logger.js";
+import { getLastAssistantMessage } from "../utils/messageHelper.js";
+import type { Pod, PersistedMessage, ModelType } from "../types/index.js";
+import type { RunContext } from "../types/run.js";
 
 interface TargetSummaryResult {
   targetPodId: string;
@@ -18,7 +17,11 @@ interface TargetSummaryResult {
   error?: string;
 }
 
-async function buildSummaryContext(sourcePod: Pod, targetPod: Pod, messages: PersistedMessage[]): Promise<{
+async function buildSummaryContext(
+  sourcePod: Pod,
+  targetPod: Pod,
+  messages: PersistedMessage[],
+): Promise<{
   sourcePodName: string;
   sourcePodOutputStyle: string | null;
   targetPodName: string;
@@ -38,7 +41,8 @@ async function buildSummaryContext(sourcePod: Pod, targetPod: Pod, messages: Per
     ? await commandService.getContent(targetPod.commandId)
     : null;
 
-  const conversationHistory = summaryPromptBuilder.formatConversationHistory(messages);
+  const conversationHistory =
+    summaryPromptBuilder.formatConversationHistory(messages);
 
   return {
     sourcePodName: sourcePod.name,
@@ -51,42 +55,74 @@ async function buildSummaryContext(sourcePod: Pod, targetPod: Pod, messages: Per
 }
 
 class SummaryService {
-  async generateSummaryForTarget(canvasId: string, sourcePodId: string, targetPodId: string, runContext?: RunContext): Promise<TargetSummaryResult> {
+  async generateSummaryForTarget(
+    canvasId: string,
+    sourcePodId: string,
+    targetPodId: string,
+    runContext?: RunContext,
+    summaryModel?: ModelType,
+  ): Promise<TargetSummaryResult> {
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) {
-      return { targetPodId, summary: '', success: false, error: `找不到來源 Pod：${sourcePodId}` };
+      return {
+        targetPodId,
+        summary: "",
+        success: false,
+        error: `找不到來源 Pod：${sourcePodId}`,
+      };
     }
 
     const targetPod = podStore.getById(canvasId, targetPodId);
     if (!targetPod) {
-      return { targetPodId, summary: '', success: false, error: `找不到目標 Pod：${targetPodId}` };
+      return {
+        targetPodId,
+        summary: "",
+        success: false,
+        error: `找不到目標 Pod：${targetPodId}`,
+      };
     }
 
     const messages = runContext
       ? runStore.getRunMessages(runContext.runId, sourcePodId)
       : messageStore.getMessages(sourcePodId);
     if (messages.length === 0) {
-      return { targetPodId, summary: '', success: false, error: `來源 Pod ${sourcePodId} 沒有訊息記錄` };
+      return {
+        targetPodId,
+        summary: "",
+        success: false,
+        error: `來源 Pod ${sourcePodId} 沒有訊息記錄`,
+      };
     }
 
     const context = await buildSummaryContext(sourcePod, targetPod, messages);
-    const systemPrompt = summaryPromptBuilder.buildSystemPrompt(context.sourcePodOutputStyle);
+    const systemPrompt = summaryPromptBuilder.buildSystemPrompt(
+      context.sourcePodOutputStyle,
+    );
     const userPrompt = summaryPromptBuilder.buildUserPrompt(context);
 
     const result = await claudeService.executeDisposableChat({
       systemPrompt,
       userMessage: userPrompt,
       workspacePath: sourcePod.workspacePath,
-      model: configStore.getSummaryModel(),
+      model: summaryModel ?? "sonnet",
     });
 
     if (!result.success) {
-      logger.error('Workflow', 'Error', `[SummaryService] 無法為目標 ${targetPodId} 生成摘要：${result.error}`);
+      logger.error(
+        "Workflow",
+        "Error",
+        `[SummaryService] 無法為目標 ${targetPodId} 生成摘要：${result.error}`,
+      );
 
       let fallbackContent: string | null;
       if (runContext) {
-        const runMessages = runStore.getRunMessages(runContext.runId, sourcePodId);
-        const lastAssistant = [...runMessages].reverse().find(message => message.role === 'assistant');
+        const runMessages = runStore.getRunMessages(
+          runContext.runId,
+          sourcePodId,
+        );
+        const lastAssistant = [...runMessages]
+          .reverse()
+          .find((message) => message.role === "assistant");
         fallbackContent = lastAssistant?.content ?? null;
       } else {
         fallbackContent = getLastAssistantMessage(sourcePodId);
@@ -96,7 +132,7 @@ class SummaryService {
         return { targetPodId, summary: fallbackContent, success: true };
       }
 
-      return { targetPodId, summary: '', success: false, error: result.error };
+      return { targetPodId, summary: "", success: false, error: result.error };
     }
 
     return { targetPodId, summary: result.content, success: true };

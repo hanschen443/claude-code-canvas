@@ -4,13 +4,16 @@ import type {
   ExecutionServiceMethods,
   MultiInputServiceMethods,
   QueueServiceMethods,
-} from './types.js';
-import { podStore } from '../podStore.js';
-import { runStore, TRIGGERABLE_STATUSES } from '../runStore.js';
-import { logger } from '../../utils/logger.js';
-import { LazyInitializable } from './lazyInitializable.js';
-import { fireAndForget } from '../../utils/operationHelpers.js';
-import { resolveSettlementPathway, getMultiInputGroupConnections } from './workflowHelpers.js';
+} from "./types.js";
+import { podStore } from "../podStore.js";
+import { runStore, TRIGGERABLE_STATUSES } from "../runStore.js";
+import { logger } from "../../utils/logger.js";
+import { LazyInitializable } from "./lazyInitializable.js";
+import { fireAndForget } from "../../utils/operationHelpers.js";
+import {
+  resolveSettlementPathway,
+  getMultiInputGroupConnections,
+} from "./workflowHelpers.js";
 
 interface PipelineDeps {
   executionService: ExecutionServiceMethods;
@@ -19,53 +22,88 @@ interface PipelineDeps {
 }
 
 class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
-
-  async execute(context: PipelineContext, strategy: TriggerStrategy): Promise<void> {
-    const { canvasId, sourcePodId, connection, triggerMode, runContext } = context;
+  async execute(
+    context: PipelineContext,
+    strategy: TriggerStrategy,
+  ): Promise<void> {
+    const { canvasId, sourcePodId, connection, triggerMode, runContext } =
+      context;
     const { targetPodId, id: connectionId } = connection;
 
     const targetPod = podStore.getById(canvasId, targetPodId);
 
     if (!targetPod) {
-      logger.error('Workflow', 'Pipeline', `[checkQueue] 找不到目標 Pod: ${targetPodId}`);
+      logger.error(
+        "Workflow",
+        "Pipeline",
+        `[checkQueue] 找不到目標 Pod: ${targetPodId}`,
+      );
       return;
     }
 
     if (runContext) {
-      const targetInstance = runStore.getPodInstance(runContext.runId, targetPodId);
+      const targetInstance = runStore.getPodInstance(
+        runContext.runId,
+        targetPodId,
+      );
       if (targetInstance && !TRIGGERABLE_STATUSES.has(targetInstance.status)) {
-        logger.log('Workflow', 'Pipeline', `目標 Pod「${targetPod.name}」已為 ${targetInstance.status} 狀態，跳過觸發`);
+        logger.log(
+          "Workflow",
+          "Pipeline",
+          `目標 Pod「${targetPod.name}」已為 ${targetInstance.status} 狀態，跳過觸發`,
+        );
         return;
       }
     }
 
-    const sourcePodName = podStore.getById(canvasId, sourcePodId)?.name ?? sourcePodId;
+    const sourcePodName =
+      podStore.getById(canvasId, sourcePodId)?.name ?? sourcePodId;
 
-    logger.log('Workflow', 'Pipeline', `開始執行 Pipeline："${sourcePodName}" → "${targetPod.name}" (${triggerMode})`);
+    logger.log(
+      "Workflow",
+      "Pipeline",
+      `開始執行 Pipeline："${sourcePodName}" → "${targetPod.name}" (${triggerMode})`,
+    );
 
     const pathway = resolveSettlementPathway(triggerMode);
     const delegate = context.delegate;
-    const summaryResult = await this.deps.executionService.generateSummaryWithFallback(
-      canvasId,
-      sourcePodId,
-      targetPodId,
-      runContext,
-      pathway,
-      delegate
-    );
+    const summaryResult =
+      await this.deps.executionService.generateSummaryWithFallback(
+        canvasId,
+        sourcePodId,
+        targetPodId,
+        runContext,
+        connection.summaryModel,
+        pathway,
+        delegate,
+      );
 
     if (!summaryResult) {
-      logger.error('Workflow', 'Pipeline', `[generateSummary] 無法生成摘要或取得備用內容`);
+      logger.error(
+        "Workflow",
+        "Pipeline",
+        `[generateSummary] 無法生成摘要或取得備用內容`,
+      );
       return;
     }
 
-    const collectResult = await this.runCollectSourcesStage(context, strategy, summaryResult.content, summaryResult.isSummarized);
+    const collectResult = await this.runCollectSourcesStage(
+      context,
+      strategy,
+      summaryResult.content,
+      summaryResult.isSummarized,
+    );
     if (!collectResult) return;
 
-    const { finalSummary, finalIsSummarized, participatingConnectionIds } = collectResult;
+    const { finalSummary, finalIsSummarized, participatingConnectionIds } =
+      collectResult;
 
     if (delegate?.shouldEnqueue() && delegate.isBusy(canvasId, targetPodId)) {
-      logger.log('Workflow', 'Pipeline', `[checkQueue] 目標 Pod 忙碌中，加入佇列`);
+      logger.log(
+        "Workflow",
+        "Pipeline",
+        `[checkQueue] 目標 Pod 忙碌中，加入佇列`,
+      );
       delegate.enqueue({
         canvasId,
         connectionId,
@@ -82,8 +120,12 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       return;
     }
 
-    if (!delegate && targetPod.status !== 'idle') {
-      logger.log('Workflow', 'Pipeline', `[checkQueue] 目標 Pod 忙碌中 (${targetPod.status})，加入佇列`);
+    if (!delegate && targetPod.status !== "idle") {
+      logger.log(
+        "Workflow",
+        "Pipeline",
+        `[checkQueue] 目標 Pod 忙碌中 (${targetPod.status})，加入佇列`,
+      );
       this.deps.queueService.enqueue({
         canvasId,
         connectionId,
@@ -98,8 +140,8 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       // 安全網：立即嘗試消化佇列，防止 enqueue 發生在最後一次 scheduleNextInQueue 之後導致佇列卡住
       fireAndForget(
         this.deps.queueService.processNextInQueue(canvasId, targetPodId),
-        'Workflow',
-        `[checkQueue] enqueue 後嘗試消化佇列失敗`
+        "Workflow",
+        `[checkQueue] enqueue 後嘗試消化佇列失敗`,
       );
       return;
     }
@@ -120,8 +162,12 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
     context: PipelineContext,
     strategy: TriggerStrategy,
     summaryContent: string,
-    isSummarized: boolean
-  ): Promise<{ finalSummary: string; finalIsSummarized: boolean; participatingConnectionIds?: string[] } | null> {
+    isSummarized: boolean,
+  ): Promise<{
+    finalSummary: string;
+    finalIsSummarized: boolean;
+    participatingConnectionIds?: string[];
+  } | null> {
     const { canvasId, sourcePodId, connection, triggerMode } = context;
     const { targetPodId } = connection;
 
@@ -141,13 +187,22 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       const { participatingConnectionIds } = collectResult;
 
       if (collectResult.mergedContent) {
-        return { finalSummary: collectResult.mergedContent, finalIsSummarized: collectResult.isSummarized ?? true, participatingConnectionIds };
+        return {
+          finalSummary: collectResult.mergedContent,
+          finalIsSummarized: collectResult.isSummarized ?? true,
+          participatingConnectionIds,
+        };
       }
 
-      return { finalSummary: summaryContent, finalIsSummarized: isSummarized, participatingConnectionIds };
+      return {
+        finalSummary: summaryContent,
+        finalIsSummarized: isSummarized,
+        participatingConnectionIds,
+      };
     }
 
-    const isMultiInput = getMultiInputGroupConnections(canvasId, targetPodId).length > 1;
+    const isMultiInput =
+      getMultiInputGroupConnections(canvasId, targetPodId).length > 1;
 
     if (isMultiInput) {
       await this.deps.multiInputService.handleMultiInputForConnection({
@@ -155,7 +210,7 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
         sourcePodId,
         connection,
         summary: summaryContent,
-        triggerMode: triggerMode as 'auto' | 'ai-decide',
+        triggerMode: triggerMode as "auto" | "ai-decide",
         runContext: context.runContext,
       });
       return null;

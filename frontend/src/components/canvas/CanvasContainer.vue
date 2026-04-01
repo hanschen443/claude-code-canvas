@@ -1,43 +1,43 @@
 <script setup lang="ts">
-import {computed, ref} from 'vue'
-import {useCanvasContext} from '@/composables/canvas/useCanvasContext'
-import {useDeleteSelection} from '@/composables/canvas'
-import {useRemoteCursors} from '@/composables/canvas/useRemoteCursors'
-import {useCursorTracker} from '@/composables/canvas/useCursorTracker'
-import {useEditModal} from '@/composables/canvas/useEditModal'
-import {useMcpServerModal} from '@/composables/canvas/useMcpServerModal'
-import {useDeleteResource} from '@/composables/canvas/useDeleteResource'
-import {useCanvasProgressTasks} from '@/composables/canvas/useCanvasProgressTasks'
-import {useCanvasContextMenus} from '@/composables/canvas/useCanvasContextMenus'
-import {useCanvasNoteHandlers} from '@/composables/canvas/useCanvasNoteHandlers'
-import {isCtrlOrCmdPressed} from '@/utils/keyboardHelpers'
-import CanvasViewport from './CanvasViewport.vue'
-import RemoteCursorLayer from './RemoteCursorLayer.vue'
-import EmptyState from './EmptyState.vue'
-import PodTypeMenu from './PodTypeMenu.vue'
-import CanvasPod from '@/components/pod/CanvasPod.vue'
-import GenericNote from './GenericNote.vue'
-import ProgressNote from './ProgressNote.vue'
-import TrashZone from './TrashZone.vue'
-import ConnectionLayer from './ConnectionLayer.vue'
-import SelectionBox from './SelectionBox.vue'
-import RepositoryContextMenu from './RepositoryContextMenu.vue'
-import ConnectionContextMenu from './ConnectionContextMenu.vue'
-import PodContextMenu from './PodContextMenu.vue'
-import CreateRepositoryModal from './CreateRepositoryModal.vue'
-import CloneRepositoryModal from './CloneRepositoryModal.vue'
-import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
-import CreateEditModal from './CreateEditModal.vue'
-import McpServerModal from './McpServerModal.vue'
-import IntegrationConnectModal from '@/components/integration/IntegrationConnectModal.vue'
-import type {Pod, PodTypeConfig, Position, McpServerConfig} from '@/types'
+import { computed, ref } from "vue";
+import { useCanvasContext } from "@/composables/canvas/useCanvasContext";
+import { useDeleteSelection } from "@/composables/canvas";
+import { useRemoteCursors } from "@/composables/canvas/useRemoteCursors";
+import { useCursorTracker } from "@/composables/canvas/useCursorTracker";
+import { useEditModal } from "@/composables/canvas/useEditModal";
+import { useMcpServerModal } from "@/composables/canvas/useMcpServerModal";
+import { useDeleteResource } from "@/composables/canvas/useDeleteResource";
+import { useCanvasProgressTasks } from "@/composables/canvas/useCanvasProgressTasks";
+import { useCanvasContextMenus } from "@/composables/canvas/useCanvasContextMenus";
+import { useCanvasNoteHandlers } from "@/composables/canvas/useCanvasNoteHandlers";
+import { isCtrlOrCmdPressed } from "@/utils/keyboardHelpers";
+import CanvasViewport from "./CanvasViewport.vue";
+import RemoteCursorLayer from "./RemoteCursorLayer.vue";
+import EmptyState from "./EmptyState.vue";
+import PodTypeMenu from "./PodTypeMenu.vue";
+import CanvasPod from "@/components/pod/CanvasPod.vue";
+import GenericNote from "./GenericNote.vue";
+import ProgressNote from "./ProgressNote.vue";
+import TrashZone from "./TrashZone.vue";
+import ConnectionLayer from "./ConnectionLayer.vue";
+import SelectionBox from "./SelectionBox.vue";
+import RepositoryContextMenu from "./RepositoryContextMenu.vue";
+import ConnectionContextMenu from "./ConnectionContextMenu.vue";
+import PodContextMenu from "./PodContextMenu.vue";
+import CreateRepositoryModal from "./CreateRepositoryModal.vue";
+import CloneRepositoryModal from "./CloneRepositoryModal.vue";
+import ConfirmDeleteModal from "./ConfirmDeleteModal.vue";
+import CreateEditModal from "./CreateEditModal.vue";
+import McpServerModal from "./McpServerModal.vue";
+import IntegrationConnectModal from "@/components/integration/IntegrationConnectModal.vue";
+import type { Pod, PodTypeConfig, Position, McpServerConfig } from "@/types";
 import {
   POD_MENU_X_OFFSET,
   POD_MENU_Y_OFFSET,
   DEFAULT_POD_ROTATION_RANGE,
-} from '@/lib/constants'
-import { screenToCanvasPosition } from '@/lib/canvasCoordinateUtils'
-import { useIntegrationStore } from '@/stores/integrationStore'
+} from "@/lib/constants";
+import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
+import { useIntegrationStore } from "@/stores/integrationStore";
 
 const {
   podStore,
@@ -49,27 +49,31 @@ const {
   repositoryStore,
   commandStore,
   mcpServerStore,
-  connectionStore
-} = useCanvasContext()
+  connectionStore,
+} = useCanvasContext();
 
-useDeleteSelection()
-useRemoteCursors()
+useDeleteSelection();
+useRemoteCursors();
 
-const viewportRef = ref<InstanceType<typeof CanvasViewport> | null>(null)
-const viewportContainerRef = computed(() => viewportRef.value?.el ?? null)
-useCursorTracker(viewportContainerRef)
+const viewportRef = ref<InstanceType<typeof CanvasViewport> | null>(null);
+const viewportContainerRef = computed(() => viewportRef.value?.el ?? null);
+useCursorTracker(viewportContainerRef);
 
-const trashZoneRef = ref<InstanceType<typeof TrashZone> | null>(null)
+const trashZoneRef = ref<InstanceType<typeof TrashZone> | null>(null);
 
-const showCreateRepositoryModal = ref(false)
-const showCloneRepositoryModal = ref(false)
-const lastMenuPosition = ref<Position | null>(null)
+const showCreateRepositoryModal = ref(false);
+const showCloneRepositoryModal = ref(false);
+const lastMenuPosition = ref<Position | null>(null);
 
-const integrationConnectModal = ref<{ visible: boolean; podId: string; provider: string }>({
+const integrationConnectModal = ref<{
+  visible: boolean;
+  podId: string;
+  provider: string;
+}>({
   visible: false,
-  podId: '',
-  provider: '',
-})
+  podId: "",
+  provider: "",
+});
 
 const {
   editModal,
@@ -79,14 +83,14 @@ const {
   handleCreateEditSubmit,
 } = useEditModal(
   { outputStyleStore, subAgentStore, commandStore, viewportStore },
-  lastMenuPosition
-)
+  lastMenuPosition,
+);
 
 const {
   mcpServerModal,
   handleOpenMcpServerModal: openMcpServerModal,
   handleMcpServerModalSubmit: submitMcpServerModal,
-} = useMcpServerModal({ viewportStore, lastMenuPosition })
+} = useMcpServerModal({ viewportStore, lastMenuPosition });
 
 const {
   showDeleteModal,
@@ -102,9 +106,10 @@ const {
   repositoryStore,
   commandStore,
   mcpServerStore,
-})
+});
 
-const { allProgressTasks, handleCloneStarted, handlePullStarted } = useCanvasProgressTasks()
+const { allProgressTasks, handleCloneStarted, handlePullStarted } =
+  useCanvasProgressTasks();
 
 const {
   repositoryContextMenu,
@@ -116,7 +121,7 @@ const {
   handleRepositoryContextMenu,
   handleConnectionContextMenu,
   handlePodContextMenu,
-} = useCanvasContextMenus({ repositoryStore, connectionStore, podStore })
+} = useCanvasContextMenus({ repositoryStore, connectionStore, podStore });
 
 const {
   noteHandlerMap,
@@ -143,139 +148,159 @@ const {
   trashZoneRef,
   handleOpenEditModal,
   mcpServerModal,
-})
+});
 
 const handleContextMenu = (e: MouseEvent): void => {
-  e.preventDefault()
-  const target = e.target as HTMLElement
+  e.preventDefault();
+  const target = e.target as HTMLElement;
 
   if (
-      target.classList.contains('viewport') ||
-      target.classList.contains('canvas-content')
+    target.classList.contains("viewport") ||
+    target.classList.contains("canvas-content")
   ) {
-    podStore.showTypeMenu({x: e.clientX, y: e.clientY})
+    podStore.showTypeMenu({ x: e.clientX, y: e.clientY });
   }
-}
+};
 
 const handleCanvasClick = (e: MouseEvent): void => {
   if (selectionStore.boxSelectJustEnded) {
-    return
+    return;
   }
 
-  const target = e.target as HTMLElement
+  const target = e.target as HTMLElement;
 
   const ignoredSelectors = [
-    '.connection-line',
-    '.pod-doodle',
-    '.output-style-note',
-    '.skill-note',
-    '.subagent-note',
-    '.repository-note',
-    '.command-note',
-    '.mcp-server-note'
-  ]
-  if (ignoredSelectors.some(selector => target.closest(selector))) {
-    return
+    ".connection-line",
+    ".pod-doodle",
+    ".output-style-note",
+    ".skill-note",
+    ".subagent-note",
+    ".repository-note",
+    ".command-note",
+    ".mcp-server-note",
+  ];
+  if (ignoredSelectors.some((selector) => target.closest(selector))) {
+    return;
   }
 
   if (isCtrlOrCmdPressed(e)) {
-    return
+    return;
   }
 
-  selectionStore.clearSelection()
-  connectionStore.selectConnection(null)
-}
+  selectionStore.clearSelection();
+  connectionStore.selectConnection(null);
+};
 
 const handleSelectType = async (_config: PodTypeConfig): Promise<void> => {
-  if (!podStore.typeMenu.position) return
+  if (!podStore.typeMenu.position) return;
 
-  const { x: canvasX, y: canvasY } = screenToCanvasPosition(podStore.typeMenu.position, viewportStore)
+  const { x: canvasX, y: canvasY } = screenToCanvasPosition(
+    podStore.typeMenu.position,
+    viewportStore,
+  );
 
-  const rotation = Math.random() * DEFAULT_POD_ROTATION_RANGE - (DEFAULT_POD_ROTATION_RANGE / 2)
+  const rotation =
+    Math.random() * DEFAULT_POD_ROTATION_RANGE - DEFAULT_POD_ROTATION_RANGE / 2;
   const newPod = {
     name: podStore.getNextPodName(),
     x: canvasX - POD_MENU_X_OFFSET,
     y: canvasY - POD_MENU_Y_OFFSET,
     output: [],
     rotation: Math.round(rotation * 10) / 10,
-  }
+  };
 
-  podStore.hideTypeMenu()
+  podStore.hideTypeMenu();
 
-  await podStore.createPodWithBackend(newPod)
-}
+  await podStore.createPodWithBackend(newPod);
+};
 
 const handleSelectPod = (podId: string): void => {
-  podStore.selectPod(podId)
-}
+  podStore.selectPod(podId);
+};
 
 const handleUpdatePod = async (pod: Pod): Promise<void> => {
-  const oldPod = podStore.getPodById(pod.id)
-  if (!oldPod) return
+  const oldPod = podStore.getPodById(pod.id);
+  if (!oldPod) return;
 
-  const oldName = oldPod.name
-  podStore.updatePod(pod)
+  const oldName = oldPod.name;
+  podStore.updatePod(pod);
 
   if (oldName !== pod.name) {
-    const success = await podStore.renamePodWithBackend(pod.id, pod.name)
+    const success = await podStore.renamePodWithBackend(pod.id, pod.name);
     if (!success) {
-      podStore.updatePod({ ...pod, name: oldName })
+      podStore.updatePod({ ...pod, name: oldName });
     }
   }
-}
+};
 
 const handleDeletePod = async (id: string): Promise<void> => {
-  await podStore.deletePodWithBackend(id)
-}
+  await podStore.deletePodWithBackend(id);
+};
 
 const handleDragEnd = (data: { id: string; x: number; y: number }): void => {
-  podStore.movePod(data.id, data.x, data.y)
-}
+  podStore.movePod(data.id, data.x, data.y);
+};
 
 const handlePodDragComplete = (data: { id: string }): void => {
-  podStore.syncPodPosition(data.id)
-}
+  podStore.syncPodPosition(data.id);
+};
 
 const handleConnectIntegration = (podId: string, provider: string): void => {
-  integrationConnectModal.value = { visible: true, podId, provider }
-}
+  integrationConnectModal.value = { visible: true, podId, provider };
+};
 
-const handleDisconnectIntegration = async (podId: string, provider: string): Promise<void> => {
-  await useIntegrationStore().unbindFromPod(provider, podId)
-}
+const handleDisconnectIntegration = async (
+  podId: string,
+  provider: string,
+): Promise<void> => {
+  await useIntegrationStore().unbindFromPod(provider, podId);
+};
 
 const handleOpenCreateRepositoryModal = (): void => {
-  lastMenuPosition.value = podStore.typeMenu.position
-  showCreateRepositoryModal.value = true
-}
+  lastMenuPosition.value = podStore.typeMenu.position;
+  showCreateRepositoryModal.value = true;
+};
 
 const handleOpenCloneRepositoryModal = (): void => {
-  showCloneRepositoryModal.value = true
-}
+  showCloneRepositoryModal.value = true;
+};
 
-const handleRepositoryCreated = (repository: { id: string; name: string }): void => {
-  if (!lastMenuPosition.value) return
+const handleRepositoryCreated = (repository: {
+  id: string;
+  name: string;
+}): void => {
+  if (!lastMenuPosition.value) return;
 
-  const {x, y} = screenToCanvasPosition(lastMenuPosition.value, viewportStore)
+  const { x, y } = screenToCanvasPosition(
+    lastMenuPosition.value,
+    viewportStore,
+  );
 
-  repositoryStore.createNote(repository.id, x, y)
-}
+  repositoryStore.createNote(repository.id, x, y);
+};
 
-const withMenuPosition = <T extends (...args: never[]) => unknown>(fn: T): T => {
+const withMenuPosition = <T extends (...args: never[]) => unknown>(
+  fn: T,
+): T => {
   return ((...args: Parameters<T>) => {
-    lastMenuPosition.value = podStore.typeMenu.position
-    return fn(...args)
-  }) as T
-}
+    lastMenuPosition.value = podStore.typeMenu.position;
+    return fn(...args);
+  }) as T;
+};
 
-const handleMcpServerModalSubmit = async (payload: { name: string; config: McpServerConfig }): Promise<void> => {
-  await submitMcpServerModal(payload, mcpServerStore)
-}
+const handleMcpServerModalSubmit = async (payload: {
+  name: string;
+  config: McpServerConfig;
+}): Promise<void> => {
+  await submitMcpServerModal(payload, mcpServerStore);
+};
 
-const wrappedHandleOpenCreateModal = withMenuPosition(handleOpenCreateModal)
-const wrappedHandleOpenCreateGroupModal = withMenuPosition(handleOpenCreateGroupModal)
-const wrappedHandleOpenEditModal = withMenuPosition(handleOpenEditModal)
-const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
+const wrappedHandleOpenCreateModal = withMenuPosition(handleOpenCreateModal);
+const wrappedHandleOpenCreateGroupModal = withMenuPosition(
+  handleOpenCreateGroupModal,
+);
+const wrappedHandleOpenEditModal = withMenuPosition(handleOpenEditModal);
+const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
 </script>
 
 <template>
@@ -427,6 +452,7 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal)
     :position="connectionContextMenu.position"
     :connection-id="connectionContextMenu.data.connectionId"
     :current-trigger-mode="connectionContextMenu.data.triggerMode"
+    :current-summary-model="connectionContextMenu.data.summaryModel"
     @close="closeConnectionContextMenu"
     @trigger-mode-changed="closeConnectionContextMenu"
   />

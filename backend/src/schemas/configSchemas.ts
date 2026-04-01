@@ -10,7 +10,6 @@ export const configGetSchema = z.object({
 export const configUpdateSchema = z
   .object({
     requestId: z.string(),
-    summaryModel: modelTypeSchema.optional(),
     aiDecideModel: modelTypeSchema.optional(),
     timezoneOffset: z.number().int().min(-12).max(14).optional(),
     backupGitRemoteUrl: z
@@ -32,7 +31,6 @@ export const configUpdateSchema = z
   })
   .refine(
     (data) =>
-      data.summaryModel ||
       data.aiDecideModel ||
       data.timezoneOffset !== undefined ||
       data.backupGitRemoteUrl !== undefined ||
@@ -49,7 +47,6 @@ export type ConfigUpdatePayload = z.infer<typeof configUpdateSchema>;
 export interface ConfigGetResultPayload {
   requestId: string;
   success: boolean;
-  summaryModel?: string;
   aiDecideModel?: string;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;
@@ -61,7 +58,6 @@ export interface ConfigGetResultPayload {
 export interface ConfigUpdatedPayload {
   requestId: string;
   success: boolean;
-  summaryModel?: string;
   aiDecideModel?: string;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;

@@ -21,7 +21,6 @@ export async function handleConfigGet(
     {
       requestId,
       success: true,
-      summaryModel: config.summaryModel,
       aiDecideModel: config.aiDecideModel,
       timezoneOffset: config.timezoneOffset,
       backupGitRemoteUrl: config.backupGitRemoteUrl,
@@ -49,7 +48,6 @@ export async function handleConfigUpdate(
     payload.backupEnabled === false ? "" : payload.backupGitRemoteUrl;
 
   const updatedConfig = configStore.update({
-    summaryModel: payload.summaryModel,
     aiDecideModel: payload.aiDecideModel,
     timezoneOffset: payload.timezoneOffset,
     backupGitRemoteUrl: effectiveGitRemoteUrl,
@@ -63,7 +61,6 @@ export async function handleConfigUpdate(
     {
       requestId,
       success: true,
-      summaryModel: updatedConfig.summaryModel,
       aiDecideModel: updatedConfig.aiDecideModel,
       timezoneOffset: updatedConfig.timezoneOffset,
       backupGitRemoteUrl: updatedConfig.backupGitRemoteUrl,

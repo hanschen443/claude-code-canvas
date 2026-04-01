@@ -201,10 +201,9 @@ describe("GlobalSettingsModal", () => {
     );
   });
 
-  it("應正確渲染 Modal 標題與兩個模型選擇區塊", async () => {
+  it("應正確渲染 Modal 標題與一個模型選擇區塊", async () => {
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     const wrapper = mountModal(true);
@@ -212,7 +211,6 @@ describe("GlobalSettingsModal", () => {
 
     expect(wrapper.text()).toContain("全域設定");
     expect(wrapper.text()).toContain("管理模型與全域參數設定");
-    expect(wrapper.text()).toContain("總結模型");
     expect(wrapper.text()).toContain("AI 決策模型");
 
     wrapper.unmount();
@@ -224,7 +222,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "opus",
       aiDecideModel: "haiku",
     });
 
@@ -243,7 +240,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "opus",
       aiDecideModel: "haiku",
     });
 
@@ -252,31 +248,8 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAll(".select-mock");
-    expect(selects[0]?.attributes("data-value")).toBe("opus");
-    expect(selects[1]?.attributes("data-value")).toBe("haiku");
-
-    wrapper.unmount();
-  });
-
-  it("切換總結模型後應更新本地狀態", async () => {
-    mockWithErrorToast.mockImplementation(
-      (promise: Promise<unknown>) => promise,
-    );
-    mockGetConfig.mockResolvedValue({
-      success: true,
-      summaryModel: "sonnet",
-      aiDecideModel: "sonnet",
-    });
-
-    const wrapper = mountModal(true);
-    await nextTick();
-    await nextTick();
-
-    const selects = wrapper.findAllComponents({ name: "Select" });
-    await selects[0]?.vm.$emit("update:modelValue", "haiku");
-    await nextTick();
-
-    expect(selects[0]?.props("modelValue")).toBe("haiku");
+    // 第一個 Select 是 aiDecideModel（index 0）
+    expect(selects[0]?.attributes("data-value")).toBe("haiku");
 
     wrapper.unmount();
   });
@@ -287,7 +260,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
 
@@ -296,10 +268,11 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    await selects[1]?.vm.$emit("update:modelValue", "opus");
+    // 第一個 Select 是 aiDecideModel（index 0）
+    await selects[0]?.vm.$emit("update:modelValue", "opus");
     await nextTick();
 
-    expect(selects[1]?.props("modelValue")).toBe("opus");
+    expect(selects[0]?.props("modelValue")).toBe("opus");
 
     wrapper.unmount();
   });
@@ -310,7 +283,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     mockUpdateConfig.mockResolvedValue({ success: true });
@@ -327,7 +299,6 @@ describe("GlobalSettingsModal", () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith(
       expect.objectContaining({
-        summaryModel: "sonnet",
         aiDecideModel: "sonnet",
       }),
     );
@@ -341,7 +312,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     mockUpdateConfig.mockResolvedValue({ success: true });
@@ -367,7 +337,6 @@ describe("GlobalSettingsModal", () => {
   it("儲存失敗時不應關閉 Modal 且儲存按鈕可再次點擊", async () => {
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     // 第一次 withErrorToast 是 loadConfig（成功），第二次是 handleSave（失敗回傳 null）
@@ -414,7 +383,6 @@ describe("GlobalSettingsModal", () => {
 
     resolveGetConfig({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     await nextTick();
@@ -429,7 +397,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
 
@@ -462,7 +429,6 @@ describe("GlobalSettingsModal", () => {
   it("開啟時應顯示時區下拉選單，預設為 UTC+8", async () => {
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
 
@@ -471,9 +437,9 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAll(".select-mock");
-    // 第三個 Select 是時區選單（index 2）
-    expect(selects[2]).toBeDefined();
-    expect(selects[2]?.attributes("data-value")).toBe("8");
+    // 第二個 Select 是時區選單（index 1）
+    expect(selects[1]).toBeDefined();
+    expect(selects[1]?.attributes("data-value")).toBe("8");
 
     wrapper.unmount();
   });
@@ -484,7 +450,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       timezoneOffset: -5,
     });
@@ -494,7 +459,8 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAll(".select-mock");
-    expect(selects[2]?.attributes("data-value")).toBe("-5");
+    // 第二個 Select 是時區選單（index 1）
+    expect(selects[1]?.attributes("data-value")).toBe("-5");
 
     wrapper.unmount();
   });
@@ -505,7 +471,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
 
@@ -514,11 +479,11 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    // 第三個 Select 是時區選單（index 2）
-    await selects[2]?.vm.$emit("update:modelValue", "3");
+    // 第二個 Select 是時區選單（index 1）
+    await selects[1]?.vm.$emit("update:modelValue", "3");
     await nextTick();
 
-    expect(selects[2]?.props("modelValue")).toBe("3");
+    expect(selects[1]?.props("modelValue")).toBe("3");
 
     wrapper.unmount();
   });
@@ -529,7 +494,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     mockUpdateConfig.mockResolvedValue({ success: true });
@@ -556,7 +520,6 @@ describe("GlobalSettingsModal", () => {
   it("應渲染備份設定區塊標題與描述文字", async () => {
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
     });
     const wrapper = mountModal(true);
@@ -576,7 +539,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       backupGitRemoteUrl: "git@github.com:test/repo.git",
       backupTime: "04:30",
@@ -602,7 +564,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       backupEnabled: true,
     });
@@ -626,7 +587,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupTime: "03:00",
@@ -637,9 +597,9 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    // 時區在 index 2，backupHour 在 index 3，backupMinute 在 index 4
-    const hourSelect = selects[3];
-    const minuteSelect = selects[4];
+    // 時區在 index 1，backupHour 在 index 2，backupMinute 在 index 3
+    const hourSelect = selects[2];
+    const minuteSelect = selects[3];
 
     await hourSelect?.vm.$emit("update:modelValue", "05");
     await minuteSelect?.vm.$emit("update:modelValue", "30");
@@ -657,7 +617,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       backupEnabled: false,
     });
@@ -681,7 +640,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       backupGitRemoteUrl: "git@github.com:test/backup.git",
       backupTime: "03:00",
@@ -716,7 +674,6 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
       aiDecideModel: "sonnet",
       backupEnabled: false,
     });
@@ -729,10 +686,10 @@ describe("GlobalSettingsModal", () => {
     expect(input.attributes("disabled")).toBeDefined();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    // backupHour select (index 3) 應該 disabled
+    // backupHour select (index 2) 應該 disabled
+    expect(selects[2]?.props("disabled")).toBe(true);
+    // backupMinute select (index 3) 應該 disabled
     expect(selects[3]?.props("disabled")).toBe(true);
-    // backupMinute select (index 4) 應該 disabled
-    expect(selects[4]?.props("disabled")).toBe(true);
 
     wrapper.unmount();
   });
@@ -743,7 +700,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -770,7 +727,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -805,7 +762,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -841,7 +798,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -871,7 +828,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: false,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -895,7 +852,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "",
@@ -919,7 +876,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
     });
     // 設定 configStore 狀態
@@ -943,7 +900,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "",
@@ -973,7 +930,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: false,
       backupGitRemoteUrl: "",
@@ -1004,7 +961,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -1030,7 +987,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -1061,7 +1018,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: false,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -1092,7 +1049,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",
@@ -1126,7 +1083,7 @@ describe("GlobalSettingsModal", () => {
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      summaryModel: "sonnet",
+
       aiDecideModel: "sonnet",
       backupEnabled: true,
       backupGitRemoteUrl: "git@github.com:test/backup.git",

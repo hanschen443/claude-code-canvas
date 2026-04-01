@@ -179,13 +179,15 @@ export interface PasteConnectionItem {
   originalTargetPodId: string;
   targetAnchor: AnchorPosition;
   triggerMode?: "auto" | "ai-decide" | "direct";
+  summaryModel?: ModelType;
 }
 
 export interface ConnectionUpdatePayload {
   requestId: string;
   canvasId: string;
   connectionId: string;
-  triggerMode: "auto" | "ai-decide" | "direct";
+  triggerMode?: "auto" | "ai-decide" | "direct";
+  summaryModel?: ModelType;
 }
 
 export interface CanvasPastePayload {
@@ -378,7 +380,6 @@ export interface ConfigGetPayload {
 
 export interface ConfigUpdatePayload {
   requestId: string;
-  summaryModel?: ModelType;
   aiDecideModel?: ModelType;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;

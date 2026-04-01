@@ -6,7 +6,6 @@ interface GlobalSettingRow {
   value: string;
 }
 
-const SUMMARY_MODEL_KEY = "summary_model";
 const AI_DECIDE_MODEL_KEY = "ai_decide_model";
 const TIMEZONE_OFFSET_KEY = "timezone_offset";
 const BACKUP_GIT_REMOTE_URL_KEY = "backup_git_remote_url";
@@ -20,7 +19,6 @@ const DEFAULT_BACKUP_TIME = "03:00";
 const DEFAULT_BACKUP_ENABLED = false;
 
 export interface ConfigData {
-  summaryModel: ModelType;
   aiDecideModel: ModelType;
   timezoneOffset: number;
   backupGitRemoteUrl: string;
@@ -50,7 +48,6 @@ export class ConfigStore {
     const map = new Map(rows.map((row) => [row.key, row.value]));
 
     return {
-      summaryModel: (map.get(SUMMARY_MODEL_KEY) as ModelType) ?? DEFAULT_MODEL,
       aiDecideModel:
         (map.get(AI_DECIDE_MODEL_KEY) as ModelType) ?? DEFAULT_MODEL,
       timezoneOffset: this.parseTimezoneOffset(map.get(TIMEZONE_OFFSET_KEY)),
@@ -63,13 +60,6 @@ export class ConfigStore {
   }
 
   update(data: Partial<ConfigData>): ConfigData {
-    if (data.summaryModel !== undefined) {
-      this.stmts.globalSettings.upsert.run({
-        $key: SUMMARY_MODEL_KEY,
-        $value: data.summaryModel,
-      });
-    }
-
     if (data.aiDecideModel !== undefined) {
       this.stmts.globalSettings.upsert.run({
         $key: AI_DECIDE_MODEL_KEY,
@@ -106,13 +96,6 @@ export class ConfigStore {
     }
 
     return this.getAll();
-  }
-
-  getSummaryModel(): ModelType {
-    const row = this.stmts.globalSettings.selectByKey.get(SUMMARY_MODEL_KEY) as
-      | GlobalSettingRow
-      | undefined;
-    return (row?.value as ModelType) ?? DEFAULT_MODEL;
   }
 
   getAiDecideModel(): ModelType {

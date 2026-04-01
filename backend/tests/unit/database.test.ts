@@ -370,6 +370,7 @@ describe("Database", () => {
         $decideStatus: "none",
         $decideReason: null,
         $connectionStatus: "idle",
+        $summaryModel: "sonnet",
       });
 
       const conn = stmts.connection.selectById.get("c1", "conn1") as {

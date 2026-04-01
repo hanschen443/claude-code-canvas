@@ -169,6 +169,7 @@ export interface ConnectionCreatedPayload extends ResultPayload {
       | "ai-rejected"
       | "ai-error";
     decideReason?: string | null;
+    summaryModel?: ModelType;
   };
 }
 
@@ -191,6 +192,7 @@ export interface ConnectionListResultPayload extends ResultPayload {
       | "ai-rejected"
       | "ai-error";
     decideReason?: string | null;
+    summaryModel?: ModelType;
   }>;
 }
 
@@ -254,6 +256,7 @@ export interface CanvasPasteResultPayload extends ResultPayload {
     triggerMode?: "auto" | "ai-decide" | "direct";
     decideStatus?: "none" | "pending" | "approved" | "rejected" | "error";
     decideReason?: string | null;
+    summaryModel?: ModelType;
   }>;
   podIdMapping: Record<string, string>;
   errors: PasteError[];
@@ -530,7 +533,6 @@ export interface PodDirectoryOpenedPayload extends ResultPayload {
 }
 
 export interface ConfigGetResultPayload extends ResultPayload {
-  summaryModel?: ModelType;
   aiDecideModel?: ModelType;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;
@@ -539,7 +541,6 @@ export interface ConfigGetResultPayload extends ResultPayload {
 }
 
 export interface ConfigUpdatedPayload extends ResultPayload {
-  summaryModel?: ModelType;
   aiDecideModel?: ModelType;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;

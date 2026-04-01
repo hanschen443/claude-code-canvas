@@ -1,4 +1,4 @@
-import type { TriggerMode, Connection } from "../../types/index.js";
+import type { TriggerMode, Connection, ModelType } from "../../types/index.js";
 import type {
   PipelineContext,
   PipelineMethods,
@@ -66,6 +66,7 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     sourcePodId: string,
     targetPodId: string,
     runContext?: RunContext,
+    summaryModel?: ModelType,
     pathway?: SettlementPathway,
     delegate?: WorkflowStatusDelegate,
   ): Promise<{ content: string; isSummarized: boolean } | null> {
@@ -78,6 +79,7 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
       sourcePodId,
       targetPodId,
       runContext,
+      summaryModel,
     );
 
     if (summaryResult.success) {

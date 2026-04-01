@@ -1,7 +1,8 @@
-import { z } from 'zod';
-import { requestIdSchema, podIdSchema, canvasIdSchema } from './base.js';
+import { z } from "zod";
+import { requestIdSchema, podIdSchema, canvasIdSchema } from "./base.js";
+import { modelTypeSchema } from "./podSchemas.js";
 
-export const anchorPositionSchema = z.enum(['top', 'bottom', 'left', 'right']);
+export const anchorPositionSchema = z.enum(["top", "bottom", "left", "right"]);
 
 export const connectionCreateSchema = z.object({
   requestId: requestIdSchema,
@@ -10,6 +11,7 @@ export const connectionCreateSchema = z.object({
   sourceAnchor: anchorPositionSchema,
   targetPodId: podIdSchema,
   targetAnchor: anchorPositionSchema,
+  summaryModel: modelTypeSchema.optional(),
 });
 
 export const connectionListSchema = z.object({
@@ -27,7 +29,8 @@ export const connectionUpdateSchema = z.object({
   requestId: requestIdSchema,
   canvasId: canvasIdSchema,
   connectionId: z.uuid(),
-  triggerMode: z.enum(['auto', 'ai-decide', 'direct']).optional(),
+  triggerMode: z.enum(["auto", "ai-decide", "direct"]).optional(),
+  summaryModel: modelTypeSchema.optional(),
 });
 
 export type ConnectionCreatePayload = z.infer<typeof connectionCreateSchema>;

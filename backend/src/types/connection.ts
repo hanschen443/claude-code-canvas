@@ -1,12 +1,27 @@
-export type AnchorPosition = 'top' | 'bottom' | 'left' | 'right';
+import type { ModelType } from "./pod.js";
 
-export type TriggerMode = 'auto' | 'ai-decide' | 'direct';
+export type AnchorPosition = "top" | "bottom" | "left" | "right";
 
-export type AutoTriggerMode = Extract<TriggerMode, 'auto' | 'ai-decide'>;
+export type TriggerMode = "auto" | "ai-decide" | "direct";
 
-export type DecideStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'error';
+export type AutoTriggerMode = Extract<TriggerMode, "auto" | "ai-decide">;
 
-export type ConnectionStatus = 'idle' | 'active' | 'queued' | 'waiting' | 'ai-deciding' | 'ai-approved' | 'ai-rejected' | 'ai-error';
+export type DecideStatus =
+  | "none"
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "error";
+
+export type ConnectionStatus =
+  | "idle"
+  | "active"
+  | "queued"
+  | "waiting"
+  | "ai-deciding"
+  | "ai-approved"
+  | "ai-rejected"
+  | "ai-error";
 
 export interface Connection {
   id: string;
@@ -18,4 +33,5 @@ export interface Connection {
   decideStatus: DecideStatus;
   decideReason: string | null;
   connectionStatus: ConnectionStatus;
+  summaryModel: ModelType;
 }

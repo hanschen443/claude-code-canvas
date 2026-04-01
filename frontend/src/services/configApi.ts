@@ -22,7 +22,6 @@ export async function getConfig(): Promise<ConfigGetResultPayload> {
 }
 
 export async function updateConfig(config: {
-  summaryModel: ModelType;
   aiDecideModel: ModelType;
   timezoneOffset: number;
   backupGitRemoteUrl?: string;
@@ -33,7 +32,6 @@ export async function updateConfig(config: {
     requestEvent: WebSocketRequestEvents.CONFIG_UPDATE,
     responseEvent: WebSocketResponseEvents.CONFIG_UPDATED,
     payload: {
-      summaryModel: config.summaryModel,
       aiDecideModel: config.aiDecideModel,
       timezoneOffset: config.timezoneOffset,
       backupGitRemoteUrl: config.backupGitRemoteUrl,

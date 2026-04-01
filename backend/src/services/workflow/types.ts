@@ -1,9 +1,14 @@
-import type { Connection, TriggerMode, AutoTriggerMode } from '../../types/index.js';
-import type { RunContext } from '../../types/run.js';
-import type { WorkflowStatusDelegate } from './workflowStatusDelegate.js';
+import type {
+  Connection,
+  TriggerMode,
+  AutoTriggerMode,
+  ModelType,
+} from "../../types/index.js";
+import type { RunContext } from "../../types/run.js";
+import type { WorkflowStatusDelegate } from "./workflowStatusDelegate.js";
 
 /** settle 階段的路徑類別。ai-decide 在 settle 時歸類為 'auto' */
-export type SettlementPathway = 'auto' | 'direct'
+export type SettlementPathway = "auto" | "direct";
 
 export interface TriggerDecideContext {
   canvasId: string;
@@ -83,10 +88,16 @@ export interface TriggerStrategy {
 
   decide(context: TriggerDecideContext): Promise<TriggerDecideResult[]>;
 
-  collectSources?(context: CollectSourcesContext): Promise<CollectSourcesResult>;
+  collectSources?(
+    context: CollectSourcesContext,
+  ): Promise<CollectSourcesResult>;
 
   onTrigger(context: TriggerLifecycleContext): void;
-  onComplete(context: CompletionContext, success: boolean, error?: string): void;
+  onComplete(
+    context: CompletionContext,
+    success: boolean,
+    error?: string,
+  ): void;
   onError(context: CompletionContext, errorMessage: string): void;
 
   onQueued(context: QueuedContext): void;
@@ -120,15 +131,21 @@ export interface ExecutionServiceMethods {
     sourcePodId: string,
     targetPodId: string,
     runContext?: RunContext,
+    summaryModel?: ModelType,
     pathway?: SettlementPathway,
-    delegate?: WorkflowStatusDelegate
+    delegate?: WorkflowStatusDelegate,
   ): Promise<{ content: string; isSummarized: boolean } | null>;
 
-  triggerWorkflowWithSummary(params: TriggerWorkflowWithSummaryParams): Promise<void>;
+  triggerWorkflowWithSummary(
+    params: TriggerWorkflowWithSummaryParams,
+  ): Promise<void>;
 }
 
 export interface StateServiceMethods {
-  checkMultiInputScenario(canvasId: string, targetPodId: string): {
+  checkMultiInputScenario(
+    canvasId: string,
+    targetPodId: string,
+  ): {
     isMultiInput: boolean;
     requiredSourcePodIds: string[];
   };
@@ -144,7 +161,9 @@ export interface HandleMultiInputForConnectionParams {
 }
 
 export interface MultiInputServiceMethods {
-  handleMultiInputForConnection(params: HandleMultiInputForConnectionParams): Promise<void>;
+  handleMultiInputForConnection(
+    params: HandleMultiInputForConnectionParams,
+  ): Promise<void>;
 }
 
 export interface QueueServiceMethods {
@@ -168,10 +187,23 @@ export interface PipelineMethods {
 }
 
 export interface AiDecideMethods {
-  processAiDecideConnections(canvasId: string, sourcePodId: string, connections: Connection[], runContext?: RunContext): Promise<void>;
+  processAiDecideConnections(
+    canvasId: string,
+    sourcePodId: string,
+    connections: Connection[],
+    runContext?: RunContext,
+  ): Promise<void>;
 }
 
 export interface AutoTriggerMethods {
-  processAutoTriggerConnection(canvasId: string, sourcePodId: string, connection: Connection, runContext?: RunContext): Promise<void>;
-  getLastAssistantMessage(sourcePodId: string, runContext?: RunContext): string | null;
+  processAutoTriggerConnection(
+    canvasId: string,
+    sourcePodId: string,
+    connection: Connection,
+    runContext?: RunContext,
+  ): Promise<void>;
+  getLastAssistantMessage(
+    sourcePodId: string,
+    runContext?: RunContext,
+  ): string | null;
 }

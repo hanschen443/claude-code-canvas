@@ -1,7 +1,6 @@
 import type { ModelType } from "./pod";
 
 export interface GlobalConfig {
-  summaryModel: ModelType;
   aiDecideModel: ModelType;
   timezoneOffset: number;
   backupGitRemoteUrl: string;

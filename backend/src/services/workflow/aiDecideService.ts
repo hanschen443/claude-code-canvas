@@ -13,6 +13,7 @@ import { claudeService } from "../claude/claudeService.js";
 import { configStore } from "../configStore.js";
 import { summaryPromptBuilder } from "../summaryPromptBuilder.js";
 import type { Connection } from "../../types/index.js";
+import type { ModelType } from "../../types/pod.js";
 import type { RunContext } from "../../types/run.js";
 import { logger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/errorHelpers.js";
@@ -153,6 +154,8 @@ class AiDecideService {
       canvasId,
       sourcePodId,
       runContext,
+      // AI 決策時統一使用第一條連線的 summaryModel 作為摘要模型
+      connections[0]?.summaryModel,
     );
     if (!sourceSummary) {
       return {
@@ -307,6 +310,7 @@ class AiDecideService {
     canvasId: string,
     sourcePodId: string,
     runContext?: RunContext,
+    summaryModel?: ModelType,
   ): Promise<string | null> {
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) return null;
@@ -333,7 +337,7 @@ class AiDecideService {
       systemPrompt,
       userMessage: userPrompt,
       workspacePath: sourcePod.workspacePath,
-      model: configStore.getSummaryModel(),
+      model: summaryModel ?? "sonnet",
     });
 
     if (!result.success) {

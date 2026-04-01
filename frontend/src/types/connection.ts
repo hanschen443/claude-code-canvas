@@ -1,32 +1,43 @@
-export type AnchorPosition = 'top' | 'bottom' | 'left' | 'right'
+import type { ModelType } from "@/types/pod";
 
-export type TriggerMode = 'auto' | 'ai-decide' | 'direct'
+export type AnchorPosition = "top" | "bottom" | "left" | "right";
 
-export type WorkflowRole = 'head' | 'tail' | 'middle' | 'independent'
+export type TriggerMode = "auto" | "ai-decide" | "direct";
 
-export type ConnectionStatus = 'idle' | 'active' | 'queued' | 'waiting' | 'ai-deciding' | 'ai-approved' | 'ai-rejected' | 'ai-error'
+export type WorkflowRole = "head" | "tail" | "middle" | "independent";
+
+export type ConnectionStatus =
+  | "idle"
+  | "active"
+  | "queued"
+  | "waiting"
+  | "ai-deciding"
+  | "ai-approved"
+  | "ai-rejected"
+  | "ai-error";
 
 export interface Connection {
-  id: string
-  sourcePodId?: string
-  sourceAnchor: AnchorPosition
-  targetPodId: string
-  targetAnchor: AnchorPosition
-  status?: ConnectionStatus
-  triggerMode: TriggerMode
-  decideReason?: string
+  id: string;
+  sourcePodId?: string;
+  sourceAnchor: AnchorPosition;
+  targetPodId: string;
+  targetAnchor: AnchorPosition;
+  status?: ConnectionStatus;
+  triggerMode: TriggerMode;
+  decideReason?: string;
+  summaryModel?: ModelType;
 }
 
 export interface DraggingConnection {
-  sourcePodId?: string
-  sourceAnchor: AnchorPosition
-  startPoint: { x: number; y: number }
-  currentPoint: { x: number; y: number }
+  sourcePodId?: string;
+  sourceAnchor: AnchorPosition;
+  startPoint: { x: number; y: number };
+  currentPoint: { x: number; y: number };
 }
 
 export interface AnchorPoint {
-  podId: string
-  anchor: AnchorPosition
-  x: number
-  y: number
+  podId: string;
+  anchor: AnchorPosition;
+  x: number;
+  y: number;
 }

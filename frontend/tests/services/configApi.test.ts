@@ -21,7 +21,6 @@ describe("configApi", () => {
       const mockResult = {
         requestId: "req-1",
         success: true,
-        summaryModel: "sonnet",
         aiDecideModel: "haiku",
       };
       mockCreateWebSocketRequest.mockResolvedValueOnce(mockResult);
@@ -42,7 +41,6 @@ describe("configApi", () => {
       const mockResult = {
         requestId: "req-1",
         success: true,
-        summaryModel: "sonnet",
         aiDecideModel: "haiku",
         timezoneOffset: 9,
       };
@@ -67,13 +65,11 @@ describe("configApi", () => {
       const mockResult = {
         requestId: "req-2",
         success: true,
-        summaryModel: "opus",
         aiDecideModel: "sonnet",
       };
       mockCreateWebSocketRequest.mockResolvedValueOnce(mockResult);
 
       const result = await updateConfig({
-        summaryModel: "opus",
         aiDecideModel: "sonnet",
         timezoneOffset: 8,
       });
@@ -83,7 +79,6 @@ describe("configApi", () => {
           requestEvent: "config:update",
           responseEvent: "config:updated",
           payload: {
-            summaryModel: "opus",
             aiDecideModel: "sonnet",
             timezoneOffset: 8,
           },
@@ -96,14 +91,12 @@ describe("configApi", () => {
       const mockResult = {
         requestId: "req-3",
         success: true,
-        summaryModel: "opus",
         aiDecideModel: "sonnet",
         timezoneOffset: -5,
       };
       mockCreateWebSocketRequest.mockResolvedValueOnce(mockResult);
 
       await updateConfig({
-        summaryModel: "opus",
         aiDecideModel: "sonnet",
         timezoneOffset: -5,
       });
@@ -120,7 +113,6 @@ describe("configApi", () => {
 
       await expect(
         updateConfig({
-          summaryModel: "haiku",
           aiDecideModel: "haiku",
           timezoneOffset: 8,
         }),
