@@ -17,6 +17,7 @@ interface CreateConnectionData {
   targetAnchor: AnchorPosition;
   triggerMode?: TriggerMode;
   summaryModel?: ModelType;
+  aiDecideModel?: ModelType;
 }
 
 function shouldResetDecideState(oldMode: string, newMode: string): boolean {
@@ -37,6 +38,7 @@ interface ConnectionRow {
   decide_reason: string | null;
   connection_status: string;
   summary_model: string;
+  ai_decide_model: string;
 }
 
 function rowToConnection(row: ConnectionRow): Connection {
@@ -51,6 +53,7 @@ function rowToConnection(row: ConnectionRow): Connection {
     decideReason: row.decide_reason,
     connectionStatus: row.connection_status as ConnectionStatus,
     summaryModel: row.summary_model as ModelType,
+    aiDecideModel: row.ai_decide_model as ModelType,
   };
 }
 
@@ -74,6 +77,7 @@ class ConnectionStore {
       $decideReason: null,
       $connectionStatus: "idle",
       $summaryModel: data.summaryModel ?? "sonnet",
+      $aiDecideModel: data.aiDecideModel ?? "sonnet",
     });
 
     return this.getById(canvasId, id) as Connection;
@@ -129,6 +133,7 @@ class ConnectionStore {
       decideStatus: DecideStatus;
       decideReason: string | null;
       summaryModel: ModelType;
+      aiDecideModel: ModelType;
     }>,
   ): Connection | undefined {
     const existing = this.getById(canvasId, id);
@@ -139,6 +144,7 @@ class ConnectionStore {
     let newDecideReason = existing.decideReason;
     let newConnectionStatus = existing.connectionStatus;
     let newSummaryModel = existing.summaryModel;
+    let newAiDecideModel = existing.aiDecideModel;
 
     if (updates.triggerMode !== undefined) {
       if (shouldResetDecideState(existing.triggerMode, updates.triggerMode)) {
@@ -161,6 +167,10 @@ class ConnectionStore {
       newSummaryModel = updates.summaryModel;
     }
 
+    if (updates.aiDecideModel !== undefined) {
+      newAiDecideModel = updates.aiDecideModel;
+    }
+
     this.stmts.update.run({
       $canvasId: canvasId,
       $id: id,
@@ -173,6 +183,7 @@ class ConnectionStore {
       $decideReason: newDecideReason,
       $connectionStatus: newConnectionStatus,
       $summaryModel: newSummaryModel,
+      $aiDecideModel: newAiDecideModel,
     });
 
     return this.getById(canvasId, id);

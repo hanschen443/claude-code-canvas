@@ -24,7 +24,6 @@ import { summaryPromptBuilder } from "../../src/services/summaryPromptBuilder.js
 import { logger } from "../../src/utils/logger.js";
 import type { Connection } from "../../src/types";
 import type { RunContext } from "../../src/types/run.js";
-import { configStore } from "../../src/services/configStore.js";
 
 describe("AiDecideService", () => {
   const mockSourcePod = {
@@ -81,6 +80,7 @@ describe("AiDecideService", () => {
     decideReason: null,
     connectionStatus: "idle",
     summaryModel: "sonnet",
+    aiDecideModel: "sonnet",
   };
 
   beforeEach(() => {
@@ -125,9 +125,6 @@ describe("AiDecideService", () => {
         yield { type: "result", subtype: "success" };
       })() as any,
     );
-
-    // configStore
-    vi.spyOn(configStore, "getAiDecideModel").mockReturnValue("sonnet");
   });
 
   afterEach(() => {
@@ -501,9 +498,12 @@ describe("AiDecideService", () => {
     });
   });
 
-  describe("executeDecision 使用 configStore 的 aiDecideModel", () => {
-    it("executeMcpChat 呼叫時帶入 configStore 的 aiDecideModel", async () => {
-      (configStore.getAiDecideModel as any).mockReturnValue("haiku");
+  describe("executeDecision 使用 connection.aiDecideModel", () => {
+    it("executeMcpChat 呼叫時帶入 connection.aiDecideModel", async () => {
+      const connectionWithHaiku: Connection = {
+        ...mockConnection,
+        aiDecideModel: "haiku",
+      };
 
       vi.spyOn(claudeService, "executeMcpChat").mockImplementation(
         (options: any) => {
@@ -523,7 +523,7 @@ describe("AiDecideService", () => {
       );
 
       await aiDecideService.decideConnections("canvas-1", "source-pod", [
-        mockConnection,
+        connectionWithHaiku,
       ]);
 
       expect(claudeService.executeMcpChat).toHaveBeenCalledWith(

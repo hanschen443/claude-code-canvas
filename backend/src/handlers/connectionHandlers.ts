@@ -104,6 +104,7 @@ export const handleConnectionCreate = withCanvasId<ConnectionCreatePayload>(
       targetPodId,
       targetAnchor,
       summaryModel,
+      aiDecideModel,
     } = payload;
 
     const pods = findPodsOrEmitError(
@@ -124,6 +125,7 @@ export const handleConnectionCreate = withCanvasId<ConnectionCreatePayload>(
       targetPodId,
       targetAnchor,
       ...(summaryModel !== undefined && { summaryModel }),
+      ...(aiDecideModel !== undefined && { aiDecideModel }),
     });
 
     const response: ConnectionCreatedPayload = {
@@ -259,7 +261,7 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
     payload: ConnectionUpdatePayload,
     requestId: string,
   ): Promise<void> => {
-    const { connectionId, triggerMode, summaryModel } = payload;
+    const { connectionId, triggerMode, summaryModel, aiDecideModel } = payload;
 
     const connection = findConnectionOrEmitError(
       wsConnectionId,
@@ -273,12 +275,16 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
     const updates: Partial<{
       triggerMode: TriggerMode;
       summaryModel: ModelType;
+      aiDecideModel: ModelType;
     }> = {};
     if (triggerMode !== undefined) {
       updates.triggerMode = triggerMode;
     }
     if (summaryModel !== undefined) {
       updates.summaryModel = summaryModel;
+    }
+    if (aiDecideModel !== undefined) {
+      updates.aiDecideModel = aiDecideModel;
     }
 
     const updatedConnection = connectionStore.update(

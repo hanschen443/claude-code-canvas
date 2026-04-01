@@ -26,6 +26,7 @@ export interface Connection {
   triggerMode: TriggerMode;
   decideReason?: string;
   summaryModel?: ModelType;
+  aiDecideModel?: ModelType;
 }
 
 export interface DraggingConnection {

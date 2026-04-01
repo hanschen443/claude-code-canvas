@@ -23,8 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2 } from "lucide-vue-next";
 import { getConfig, updateConfig } from "@/services/configApi";
 import { triggerBackup } from "@/services/backupApi";
-import { MODEL_OPTIONS, TIMEZONE_OPTIONS } from "@/types";
-import type { ModelType } from "@/types/pod";
+import { TIMEZONE_OPTIONS } from "@/types";
 import { useToast } from "@/composables/useToast";
 import { useWebSocketErrorHandler } from "@/composables/useWebSocketErrorHandler";
 import { useConfigStore } from "@/stores/configStore";
@@ -44,7 +43,6 @@ const { withErrorToast } = useWebSocketErrorHandler();
 
 const configStore = useConfigStore();
 
-const aiDecideModel = ref<ModelType>("sonnet");
 const timezoneOffset = ref<string>("8");
 const isLoading = ref<boolean>(false);
 const isSaving = ref<boolean>(false);
@@ -79,7 +77,6 @@ const loadConfig = async (): Promise<void> => {
       loadFailed.value = true;
       return;
     }
-    if (result.aiDecideModel) aiDecideModel.value = result.aiDecideModel;
     if (result.timezoneOffset !== undefined) {
       timezoneOffset.value = String(result.timezoneOffset);
       configStore.setTimezoneOffset(result.timezoneOffset);
@@ -115,7 +112,6 @@ const handleSave = async (): Promise<void> => {
     const backupTime = `${backupHour.value}:${backupMinute.value}`;
     const result = await withErrorToast(
       updateConfig({
-        aiDecideModel: aiDecideModel.value,
         timezoneOffset: tzOffset,
         backupGitRemoteUrl: urlToSend,
         backupTime,
@@ -192,29 +188,6 @@ watch(
 
       <ScrollArea class="h-[420px] pr-3">
         <div class="space-y-4 py-2">
-          <div class="space-y-2">
-            <Label>AI 決策模型</Label>
-            <p class="text-xs text-muted-foreground">
-              AI Decide 連線判斷時使用的模型
-            </p>
-            <Select v-model="aiDecideModel">
-              <SelectTrigger>
-                <SelectValue placeholder="選擇模型" />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem
-                  v-for="option in MODEL_OPTIONS"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="border-t border-border" />
-
           <div class="space-y-2">
             <Label>時區</Label>
             <p class="text-xs text-muted-foreground">排程觸發時間的時區設定</p>

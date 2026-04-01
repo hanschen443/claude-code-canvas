@@ -340,7 +340,7 @@ function buildStatements(db: Database): {
 
     connection: {
       insert: db.prepare(
-        "INSERT INTO connections (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor, trigger_mode, decide_status, decide_reason, connection_status, summary_model) VALUES ($id, $canvasId, $sourcePodId, $sourceAnchor, $targetPodId, $targetAnchor, $triggerMode, $decideStatus, $decideReason, $connectionStatus, $summaryModel)",
+        "INSERT INTO connections (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor, trigger_mode, decide_status, decide_reason, connection_status, summary_model, ai_decide_model) VALUES ($id, $canvasId, $sourcePodId, $sourceAnchor, $targetPodId, $targetAnchor, $triggerMode, $decideStatus, $decideReason, $connectionStatus, $summaryModel, $aiDecideModel)",
       ),
       selectByCanvasId: db.prepare(
         "SELECT * FROM connections WHERE canvas_id = ?",
@@ -349,7 +349,7 @@ function buildStatements(db: Database): {
         "SELECT * FROM connections WHERE canvas_id = ? AND id = ?",
       ),
       update: db.prepare(
-        "UPDATE connections SET source_pod_id = $sourcePodId, source_anchor = $sourceAnchor, target_pod_id = $targetPodId, target_anchor = $targetAnchor, trigger_mode = $triggerMode, decide_status = $decideStatus, decide_reason = $decideReason, connection_status = $connectionStatus, summary_model = $summaryModel WHERE canvas_id = $canvasId AND id = $id",
+        "UPDATE connections SET source_pod_id = $sourcePodId, source_anchor = $sourceAnchor, target_pod_id = $targetPodId, target_anchor = $targetAnchor, trigger_mode = $triggerMode, decide_status = $decideStatus, decide_reason = $decideReason, connection_status = $connectionStatus, summary_model = $summaryModel, ai_decide_model = $aiDecideModel WHERE canvas_id = $canvasId AND id = $id",
       ),
       updateConnectionStatus: db.prepare(
         "UPDATE connections SET connection_status = $connectionStatus WHERE canvas_id = $canvasId AND id = $id",

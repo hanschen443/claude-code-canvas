@@ -1,6 +1,7 @@
 import { useContextMenu } from "@/composables/canvas/useContextMenu";
 import type { TriggerMode } from "@/types";
 import type { ModelType } from "@/types/pod";
+import { DEFAULT_SUMMARY_MODEL, DEFAULT_AI_DECIDE_MODEL } from "@/types/config";
 
 interface RepositoryContextMenuData {
   repositoryId: string;
@@ -13,6 +14,7 @@ interface ConnectionContextMenuData {
   connectionId: string;
   triggerMode: TriggerMode;
   summaryModel: ModelType;
+  aiDecideModel: ModelType;
 }
 
 interface PodContextMenuData {
@@ -33,6 +35,7 @@ interface ConnectionStore {
     id: string;
     triggerMode: TriggerMode;
     summaryModel?: ModelType;
+    aiDecideModel?: ModelType;
   }>;
 }
 
@@ -89,7 +92,8 @@ export function useCanvasContextMenus(options: UseCanvasContextMenusOptions): {
   } = useContextMenu<ConnectionContextMenuData>({
     connectionId: "",
     triggerMode: "auto" as TriggerMode,
-    summaryModel: "sonnet" as ModelType,
+    summaryModel: DEFAULT_SUMMARY_MODEL,
+    aiDecideModel: DEFAULT_AI_DECIDE_MODEL,
   });
 
   const {
@@ -134,7 +138,8 @@ export function useCanvasContextMenus(options: UseCanvasContextMenusOptions): {
     openConnectionContextMenu(data.event, {
       connectionId: connection.id,
       triggerMode: connection.triggerMode,
-      summaryModel: connection.summaryModel ?? "sonnet",
+      summaryModel: connection.summaryModel ?? DEFAULT_SUMMARY_MODEL,
+      aiDecideModel: connection.aiDecideModel ?? DEFAULT_AI_DECIDE_MODEL,
     });
   };
 

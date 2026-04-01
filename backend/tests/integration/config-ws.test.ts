@@ -45,78 +45,11 @@ describe("Config WebSocket", () => {
 
       expect(response.requestId).toBe(requestId);
       expect(response.success).toBe(true);
-      expect(response.aiDecideModel).toBe("sonnet");
+      expect(response.timezoneOffset).toBe(8);
     });
   });
 
   describe("config:update", () => {
-    it("成功更新 aiDecideModel", async () => {
-      const client = getClient();
-      const response = await emitAndWaitResponse<
-        ConfigUpdatePayload,
-        ConfigUpdatedPayload
-      >(
-        client,
-        WebSocketRequestEvents.CONFIG_UPDATE,
-        WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), aiDecideModel: "haiku" },
-      );
-
-      expect(response.success).toBe(true);
-      expect(response.aiDecideModel).toBe("haiku");
-    });
-
-    it("同時更新多個設定", async () => {
-      const client = getClient();
-      const response = await emitAndWaitResponse<
-        ConfigUpdatePayload,
-        ConfigUpdatedPayload
-      >(
-        client,
-        WebSocketRequestEvents.CONFIG_UPDATE,
-        WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), aiDecideModel: "haiku" },
-      );
-
-      expect(response.success).toBe(true);
-      expect(response.aiDecideModel).toBe("haiku");
-    });
-
-    it("更新後 config:get 能讀取到新值", async () => {
-      const client = getClient();
-
-      await emitAndWaitResponse<ConfigUpdatePayload, ConfigUpdatedPayload>(
-        client,
-        WebSocketRequestEvents.CONFIG_UPDATE,
-        WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), aiDecideModel: "haiku" },
-      );
-
-      const getResponse = await emitAndWaitResponse<
-        ConfigGetPayload,
-        ConfigGetResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.CONFIG_GET,
-        WebSocketResponseEvents.CONFIG_GET_RESULT,
-        { requestId: uuidv4() },
-      );
-
-      expect(getResponse.aiDecideModel).toBe("haiku");
-    });
-
-    it("無效的 model 值回傳驗證錯誤", async () => {
-      const client = getClient();
-      const response = await emitAndWaitResponse<any, ConfigUpdatedPayload>(
-        client,
-        WebSocketRequestEvents.CONFIG_UPDATE,
-        WebSocketResponseEvents.CONFIG_UPDATED,
-        { requestId: uuidv4(), aiDecideModel: "invalid-model" },
-      );
-
-      expect(response.success).toBe(false);
-    });
-
     it("空 payload 回傳驗證錯誤", async () => {
       const client = getClient();
       const response = await emitAndWaitResponse<any, ConfigUpdatedPayload>(

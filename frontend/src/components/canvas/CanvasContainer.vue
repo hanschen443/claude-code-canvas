@@ -453,8 +453,10 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
     :connection-id="connectionContextMenu.data.connectionId"
     :current-trigger-mode="connectionContextMenu.data.triggerMode"
     :current-summary-model="connectionContextMenu.data.summaryModel"
+    :current-ai-decide-model="connectionContextMenu.data.aiDecideModel"
     @close="closeConnectionContextMenu"
     @trigger-mode-changed="closeConnectionContextMenu"
+    @ai-decide-model-changed="closeConnectionContextMenu"
   />
 
   <CreateRepositoryModal

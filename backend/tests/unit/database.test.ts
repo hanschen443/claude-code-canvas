@@ -371,6 +371,7 @@ describe("Database", () => {
         $decideReason: null,
         $connectionStatus: "idle",
         $summaryModel: "sonnet",
+        $aiDecideModel: "sonnet",
       });
 
       const conn = stmts.connection.selectById.get("c1", "conn1") as {

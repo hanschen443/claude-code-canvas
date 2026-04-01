@@ -201,17 +201,17 @@ describe("GlobalSettingsModal", () => {
     );
   });
 
-  it("應正確渲染 Modal 標題與一個模型選擇區塊", async () => {
+  it("應正確渲染 Modal 標題與時區選擇區塊", async () => {
     mockGetConfig.mockResolvedValue({
       success: true,
-      aiDecideModel: "sonnet",
     });
     const wrapper = mountModal(true);
     await nextTick();
 
     expect(wrapper.text()).toContain("全域設定");
     expect(wrapper.text()).toContain("管理模型與全域參數設定");
-    expect(wrapper.text()).toContain("AI 決策模型");
+    expect(wrapper.text()).toContain("時區");
+    expect(wrapper.text()).not.toContain("AI 決策模型");
 
     wrapper.unmount();
   });
@@ -234,13 +234,13 @@ describe("GlobalSettingsModal", () => {
     wrapper.unmount();
   });
 
-  it("載入設定後應正確顯示目前選擇的模型", async () => {
+  it("載入設定後應正確顯示目前選擇的時區", async () => {
     mockWithErrorToast.mockImplementation(
       (promise: Promise<unknown>) => promise,
     );
     mockGetConfig.mockResolvedValue({
       success: true,
-      aiDecideModel: "haiku",
+      timezoneOffset: 9,
     });
 
     const wrapper = mountModal(true);
@@ -248,31 +248,8 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAll(".select-mock");
-    // 第一個 Select 是 aiDecideModel（index 0）
-    expect(selects[0]?.attributes("data-value")).toBe("haiku");
-
-    wrapper.unmount();
-  });
-
-  it("切換 AI 決策模型後應更新本地狀態", async () => {
-    mockWithErrorToast.mockImplementation(
-      (promise: Promise<unknown>) => promise,
-    );
-    mockGetConfig.mockResolvedValue({
-      success: true,
-      aiDecideModel: "sonnet",
-    });
-
-    const wrapper = mountModal(true);
-    await nextTick();
-    await nextTick();
-
-    const selects = wrapper.findAllComponents({ name: "Select" });
-    // 第一個 Select 是 aiDecideModel（index 0）
-    await selects[0]?.vm.$emit("update:modelValue", "opus");
-    await nextTick();
-
-    expect(selects[0]?.props("modelValue")).toBe("opus");
+    // 第一個 Select 是時區（index 0）
+    expect(selects[0]?.attributes("data-value")).toBe("9");
 
     wrapper.unmount();
   });
@@ -299,7 +276,7 @@ describe("GlobalSettingsModal", () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith(
       expect.objectContaining({
-        aiDecideModel: "sonnet",
+        timezoneOffset: 8,
       }),
     );
 
@@ -437,9 +414,9 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAll(".select-mock");
-    // 第二個 Select 是時區選單（index 1）
-    expect(selects[1]).toBeDefined();
-    expect(selects[1]?.attributes("data-value")).toBe("8");
+    // 第一個 Select 是時區選單（index 0）
+    expect(selects[0]).toBeDefined();
+    expect(selects[0]?.attributes("data-value")).toBe("8");
 
     wrapper.unmount();
   });
@@ -459,8 +436,8 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAll(".select-mock");
-    // 第二個 Select 是時區選單（index 1）
-    expect(selects[1]?.attributes("data-value")).toBe("-5");
+    // 第一個 Select 是時區選單（index 0）
+    expect(selects[0]?.attributes("data-value")).toBe("-5");
 
     wrapper.unmount();
   });
@@ -479,11 +456,11 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    // 第二個 Select 是時區選單（index 1）
-    await selects[1]?.vm.$emit("update:modelValue", "3");
+    // 第一個 Select 是時區選單（index 0）
+    await selects[0]?.vm.$emit("update:modelValue", "3");
     await nextTick();
 
-    expect(selects[1]?.props("modelValue")).toBe("3");
+    expect(selects[0]?.props("modelValue")).toBe("3");
 
     wrapper.unmount();
   });
@@ -597,9 +574,9 @@ describe("GlobalSettingsModal", () => {
     await nextTick();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    // 時區在 index 1，backupHour 在 index 2，backupMinute 在 index 3
-    const hourSelect = selects[2];
-    const minuteSelect = selects[3];
+    // 時區在 index 0，backupHour 在 index 1，backupMinute 在 index 2
+    const hourSelect = selects[1];
+    const minuteSelect = selects[2];
 
     await hourSelect?.vm.$emit("update:modelValue", "05");
     await minuteSelect?.vm.$emit("update:modelValue", "30");
@@ -686,10 +663,10 @@ describe("GlobalSettingsModal", () => {
     expect(input.attributes("disabled")).toBeDefined();
 
     const selects = wrapper.findAllComponents({ name: "Select" });
-    // backupHour select (index 2) 應該 disabled
+    // backupHour select (index 1) 應該 disabled
+    expect(selects[1]?.props("disabled")).toBe(true);
+    // backupMinute select (index 2) 應該 disabled
     expect(selects[2]?.props("disabled")).toBe(true);
-    // backupMinute select (index 3) 應該 disabled
-    expect(selects[3]?.props("disabled")).toBe(true);
 
     wrapper.unmount();
   });

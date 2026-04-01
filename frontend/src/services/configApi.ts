@@ -11,8 +11,6 @@ import type {
   ConfigGetResultPayload,
   ConfigUpdatedPayload,
 } from "@/types/websocket/responses";
-import type { ModelType } from "@/types/pod";
-
 export async function getConfig(): Promise<ConfigGetResultPayload> {
   return createWebSocketRequest<ConfigGetPayload, ConfigGetResultPayload>({
     requestEvent: WebSocketRequestEvents.CONFIG_GET,
@@ -22,7 +20,6 @@ export async function getConfig(): Promise<ConfigGetResultPayload> {
 }
 
 export async function updateConfig(config: {
-  aiDecideModel: ModelType;
   timezoneOffset: number;
   backupGitRemoteUrl?: string;
   backupTime?: string;
@@ -32,7 +29,6 @@ export async function updateConfig(config: {
     requestEvent: WebSocketRequestEvents.CONFIG_UPDATE,
     responseEvent: WebSocketResponseEvents.CONFIG_UPDATED,
     payload: {
-      aiDecideModel: config.aiDecideModel,
       timezoneOffset: config.timezoneOffset,
       backupGitRemoteUrl: config.backupGitRemoteUrl,
       backupTime: config.backupTime,

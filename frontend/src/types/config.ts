@@ -1,7 +1,9 @@
 import type { ModelType } from "./pod";
 
+export const DEFAULT_SUMMARY_MODEL = "sonnet" as const satisfies ModelType;
+export const DEFAULT_AI_DECIDE_MODEL = "sonnet" as const satisfies ModelType;
+
 export interface GlobalConfig {
-  aiDecideModel: ModelType;
   timezoneOffset: number;
   backupGitRemoteUrl: string;
   backupTime: string;

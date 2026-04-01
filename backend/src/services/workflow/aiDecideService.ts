@@ -10,7 +10,6 @@ import { runStore } from "../runStore.js";
 import { outputStyleService } from "../outputStyleService.js";
 import { commandService } from "../commandService.js";
 import { claudeService } from "../claude/claudeService.js";
-import { configStore } from "../configStore.js";
 import { summaryPromptBuilder } from "../summaryPromptBuilder.js";
 import type { Connection } from "../../types/index.js";
 import type { ModelType } from "../../types/pod.js";
@@ -56,6 +55,7 @@ class AiDecideService {
     sourcePod: NonNullable<ReturnType<typeof podStore.getById>>,
     sourceSummary: string,
     targets: AiDecideTargetInfo[],
+    model: ModelType,
   ): Promise<DecisionResults | null> {
     const context = {
       sourcePodName: sourcePod.name,
@@ -97,7 +97,7 @@ class AiDecideService {
       systemPrompt,
       mcpServers: { "ai-decide": customServer },
       allowedTools: ["mcp__ai-decide__decide_triggers"],
-      model: configStore.getAiDecideModel(),
+      model,
       cwd: sourcePod.workspacePath,
     });
 
@@ -140,6 +140,7 @@ class AiDecideService {
     canvasId: string,
     sourcePodId: string,
     connections: Connection[],
+    summaryModel: ModelType,
     runContext?: RunContext,
   ): Promise<
     | {
@@ -154,8 +155,7 @@ class AiDecideService {
       canvasId,
       sourcePodId,
       runContext,
-      // AI 決策時統一使用第一條連線的 summaryModel 作為摘要模型
-      connections[0]?.summaryModel,
+      summaryModel,
     );
     if (!sourceSummary) {
       return {
@@ -222,57 +222,87 @@ class AiDecideService {
       return { results: [], errors: [] };
     }
 
-    const inputValidation = await this.validateDecisionInput(
-      canvasId,
-      sourcePodId,
-      connections,
-      runContext,
-    );
-    if (!inputValidation.valid) {
-      return inputValidation.error;
+    // 依 aiDecideModel 分組，每組使用各自的模型進行 AI 決策
+    const groupByModel = new Map<ModelType, Connection[]>();
+    for (const connection of connections) {
+      const model = connection.aiDecideModel;
+      const group = groupByModel.get(model) ?? [];
+      group.push(connection);
+      groupByModel.set(model, group);
     }
 
-    const { sourcePod, sourceSummary, targets } = inputValidation;
+    const allResults: AiDecideResult[] = [];
+    const allErrors: Array<{ connectionId: string; error: string }> = [];
 
-    let decisionResults: DecisionResults | null = null;
-    try {
-      decisionResults = await this.executeDecision(
-        sourcePod,
-        sourceSummary,
-        targets,
+    for (const [model, groupConnections] of groupByModel) {
+      const inputValidation = await this.validateDecisionInput(
+        canvasId,
+        sourcePodId,
+        groupConnections,
+        groupConnections[0]?.summaryModel ?? "sonnet",
+        runContext,
       );
-    } catch (error) {
-      logger.error(
-        "Workflow",
-        "Error",
-        "[AiDecideService] Claude API 請求失敗",
-        error,
+      if (!inputValidation.valid) {
+        allErrors.push(...inputValidation.error.errors);
+        continue;
+      }
+
+      const { sourcePod, sourceSummary, targets } = inputValidation;
+
+      let decisionResults: DecisionResults | null = null;
+      try {
+        decisionResults = await this.executeDecision(
+          sourcePod,
+          sourceSummary,
+          targets,
+          model,
+        );
+      } catch (error) {
+        logger.error(
+          "Workflow",
+          "Error",
+          `[AiDecideService] Claude API 請求失敗（模型：${model}）`,
+          error,
+        );
+        allErrors.push(
+          ...this.buildDecisionErrors(groupConnections, getErrorMessage(error))
+            .errors,
+        );
+        continue;
+      }
+
+      const resultValidation = this.validateDecisionResults(
+        decisionResults,
+        groupConnections,
       );
-      return this.buildDecisionErrors(connections, getErrorMessage(error));
+      if (!resultValidation.valid) {
+        allErrors.push(...resultValidation.error.errors);
+        continue;
+      }
+
+      const groupBatchResult = this.mapDecisionResults(
+        groupConnections,
+        resultValidation.results,
+      );
+      allResults.push(...groupBatchResult.results);
+      allErrors.push(...groupBatchResult.errors);
     }
 
-    const resultValidation = this.validateDecisionResults(
-      decisionResults,
-      connections,
-    );
-    if (!resultValidation.valid) {
-      return resultValidation.error;
-    }
-
-    return this.mapDecisionResults(connections, resultValidation.results);
+    return { results: allResults, errors: allErrors };
   }
 
   private async resolveTargetPodResources(
     targetPod: NonNullable<ReturnType<typeof podStore.getById>>,
     conn: Connection,
   ): Promise<AiDecideTargetInfo> {
-    const targetPodOutputStyle = targetPod.outputStyleId
-      ? await outputStyleService.getContent(targetPod.outputStyleId)
-      : null;
-
-    const targetPodCommand = targetPod.commandId
-      ? await commandService.getContent(targetPod.commandId)
-      : null;
+    const [targetPodOutputStyle, targetPodCommand] = await Promise.all([
+      targetPod.outputStyleId
+        ? outputStyleService.getContent(targetPod.outputStyleId)
+        : Promise.resolve(null),
+      targetPod.commandId
+        ? commandService.getContent(targetPod.commandId)
+        : Promise.resolve(null),
+    ]);
 
     return {
       connectionId: conn.id,
@@ -287,23 +317,25 @@ class AiDecideService {
     canvasId: string,
     connections: Connection[],
   ): Promise<AiDecideTargetInfo[]> {
-    const targets: AiDecideTargetInfo[] = [];
+    const results = await Promise.all(
+      connections.map(async (connection) => {
+        const targetPod = podStore.getById(canvasId, connection.targetPodId);
+        if (!targetPod) {
+          logger.log(
+            "Workflow",
+            "Update",
+            `[AiDecideService] 找不到目標 Pod ${connection.targetPodId}`,
+          );
+          return null;
+        }
 
-    for (const connection of connections) {
-      const targetPod = podStore.getById(canvasId, connection.targetPodId);
-      if (!targetPod) {
-        logger.log(
-          "Workflow",
-          "Update",
-          `[AiDecideService] 找不到目標 Pod ${connection.targetPodId}`,
-        );
-        continue;
-      }
+        return this.resolveTargetPodResources(targetPod, connection);
+      }),
+    );
 
-      targets.push(await this.resolveTargetPodResources(targetPod, connection));
-    }
-
-    return targets;
+    return results.filter(
+      (target): target is AiDecideTargetInfo => target !== null,
+    );
   }
 
   private async generateSourceSummary(

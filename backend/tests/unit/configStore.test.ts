@@ -12,41 +12,6 @@ describe("ConfigStore", () => {
     closeDb();
   });
 
-  describe("取得設定", () => {
-    it("DB 無資料時回傳預設值", () => {
-      const config = configStore.getAll();
-
-      expect(config.aiDecideModel).toBe("sonnet");
-    });
-  });
-
-  describe("更新設定", () => {
-    it("成功寫入並讀取回正確值", () => {
-      const result = configStore.update({
-        aiDecideModel: "haiku",
-      });
-
-      expect(result.aiDecideModel).toBe("haiku");
-    });
-
-    it("只更新 aiDecideModel 不影響其他設定", () => {
-      configStore.update({ aiDecideModel: "opus" });
-      configStore.update({ aiDecideModel: "haiku" });
-
-      const config = configStore.getAll();
-
-      expect(config.aiDecideModel).toBe("haiku");
-    });
-  });
-
-  describe("取得單一設定", () => {
-    it("getAiDecideModel 回傳正確值", () => {
-      configStore.update({ aiDecideModel: "opus" });
-
-      expect(configStore.getAiDecideModel()).toBe("opus");
-    });
-  });
-
   describe("時區設定", () => {
     it("DB 無資料時 timezoneOffset 回傳預設值 8", () => {
       const config = configStore.getAll();
@@ -64,17 +29,15 @@ describe("ConfigStore", () => {
     });
 
     it("只更新 timezoneOffset 不影響其他設定", () => {
-      configStore.update({ aiDecideModel: "opus" });
       configStore.update({ timezoneOffset: 3 });
 
       const config = configStore.getAll();
-      expect(config.aiDecideModel).toBe("opus");
       expect(config.timezoneOffset).toBe(3);
     });
 
     it("更新其他設定不影響 timezoneOffset", () => {
       configStore.update({ timezoneOffset: 5 });
-      configStore.update({ aiDecideModel: "haiku" });
+      configStore.update({ backupEnabled: true });
 
       const config = configStore.getAll();
       expect(config.timezoneOffset).toBe(5);
@@ -140,17 +103,17 @@ describe("ConfigStore", () => {
     });
 
     it("只更新備份設定不影響其他設定", () => {
-      configStore.update({ aiDecideModel: "opus" });
+      configStore.update({ timezoneOffset: 8 });
       configStore.update({ backupEnabled: true });
 
       const config = configStore.getAll();
-      expect(config.aiDecideModel).toBe("opus");
+      expect(config.timezoneOffset).toBe(8);
       expect(config.backupEnabled).toBe(true);
     });
 
     it("更新其他設定不影響備份設定", () => {
       configStore.update({ backupTime: "04:00" });
-      configStore.update({ aiDecideModel: "haiku" });
+      configStore.update({ timezoneOffset: 3 });
 
       const config = configStore.getAll();
       expect(config.backupTime).toBe("04:00");

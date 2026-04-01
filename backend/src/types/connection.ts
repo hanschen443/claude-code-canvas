@@ -34,4 +34,5 @@ export interface Connection {
   decideReason: string | null;
   connectionStatus: ConnectionStatus;
   summaryModel: ModelType;
+  aiDecideModel: ModelType;
 }

@@ -150,50 +150,38 @@ export interface NoteCreatedPayload extends ResultPayload {
   note?: OutputStyleNote;
 }
 
+export interface ConnectionPayloadItem {
+  id: string;
+  sourcePodId?: string;
+  sourceAnchor: AnchorPosition;
+  targetPodId: string;
+  targetAnchor: AnchorPosition;
+  triggerMode?: "auto" | "ai-decide" | "direct";
+  decideStatus?: "none" | "pending" | "approved" | "rejected" | "error";
+  connectionStatus?:
+    | "idle"
+    | "active"
+    | "queued"
+    | "waiting"
+    | "ai-deciding"
+    | "ai-approved"
+    | "ai-rejected"
+    | "ai-error";
+  decideReason?: string | null;
+  summaryModel?: ModelType;
+  aiDecideModel?: ModelType;
+}
+
 export interface ConnectionCreatedPayload extends ResultPayload {
-  connection?: {
-    id: string;
-    sourcePodId?: string;
-    sourceAnchor: AnchorPosition;
-    targetPodId: string;
-    targetAnchor: AnchorPosition;
-    triggerMode?: "auto" | "ai-decide" | "direct";
-    decideStatus?: "none" | "pending" | "approved" | "rejected" | "error";
-    connectionStatus?:
-      | "idle"
-      | "active"
-      | "queued"
-      | "waiting"
-      | "ai-deciding"
-      | "ai-approved"
-      | "ai-rejected"
-      | "ai-error";
-    decideReason?: string | null;
-    summaryModel?: ModelType;
-  };
+  connection?: ConnectionPayloadItem;
+}
+
+export interface ConnectionUpdatedPayload extends ResultPayload {
+  connection?: ConnectionPayloadItem;
 }
 
 export interface ConnectionListResultPayload extends ResultPayload {
-  connections?: Array<{
-    id: string;
-    sourcePodId?: string;
-    sourceAnchor: AnchorPosition;
-    targetPodId: string;
-    targetAnchor: AnchorPosition;
-    triggerMode?: "auto" | "ai-decide" | "direct";
-    decideStatus?: "none" | "pending" | "approved" | "rejected" | "error";
-    connectionStatus?:
-      | "idle"
-      | "active"
-      | "queued"
-      | "waiting"
-      | "ai-deciding"
-      | "ai-approved"
-      | "ai-rejected"
-      | "ai-error";
-    decideReason?: string | null;
-    summaryModel?: ModelType;
-  }>;
+  connections?: ConnectionPayloadItem[];
 }
 
 export interface ConnectionDeletedPayload extends ResultPayload {
@@ -247,17 +235,7 @@ export interface CanvasPasteResultPayload extends ResultPayload {
   createdSubAgentNotes: SubAgentNote[];
   createdCommandNotes: CommandNote[];
   createdMcpServerNotes: McpServerNote[];
-  createdConnections: Array<{
-    id: string;
-    sourcePodId: string;
-    sourceAnchor: AnchorPosition;
-    targetPodId: string;
-    targetAnchor: AnchorPosition;
-    triggerMode?: "auto" | "ai-decide" | "direct";
-    decideStatus?: "none" | "pending" | "approved" | "rejected" | "error";
-    decideReason?: string | null;
-    summaryModel?: ModelType;
-  }>;
+  createdConnections: ConnectionPayloadItem[];
   podIdMapping: Record<string, string>;
   errors: PasteError[];
 }
@@ -533,7 +511,6 @@ export interface PodDirectoryOpenedPayload extends ResultPayload {
 }
 
 export interface ConfigGetResultPayload extends ResultPayload {
-  aiDecideModel?: ModelType;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;
   backupTime?: string;
@@ -541,7 +518,6 @@ export interface ConfigGetResultPayload extends ResultPayload {
 }
 
 export interface ConfigUpdatedPayload extends ResultPayload {
-  aiDecideModel?: ModelType;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;
   backupTime?: string;

@@ -112,6 +112,7 @@ export function createMockConnection(
     triggerMode: "auto" as TriggerMode,
     status: "idle" as ConnectionStatus,
     summaryModel: "sonnet" as ModelType,
+    aiDecideModel: "sonnet" as ModelType,
     ...overrides,
   };
 }

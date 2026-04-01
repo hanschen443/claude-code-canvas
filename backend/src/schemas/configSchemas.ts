@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { modelTypeSchema } from "./podSchemas.js";
 
 const gitRemoteUrlRegex = /^(git@|https?:\/\/)/;
 
@@ -10,7 +9,6 @@ export const configGetSchema = z.object({
 export const configUpdateSchema = z
   .object({
     requestId: z.string(),
-    aiDecideModel: modelTypeSchema.optional(),
     timezoneOffset: z.number().int().min(-12).max(14).optional(),
     backupGitRemoteUrl: z
       .string()
@@ -31,7 +29,6 @@ export const configUpdateSchema = z
   })
   .refine(
     (data) =>
-      data.aiDecideModel ||
       data.timezoneOffset !== undefined ||
       data.backupGitRemoteUrl !== undefined ||
       data.backupTime !== undefined ||
@@ -47,7 +44,6 @@ export type ConfigUpdatePayload = z.infer<typeof configUpdateSchema>;
 export interface ConfigGetResultPayload {
   requestId: string;
   success: boolean;
-  aiDecideModel?: string;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;
   backupTime?: string;
@@ -58,7 +54,6 @@ export interface ConfigGetResultPayload {
 export interface ConfigUpdatedPayload {
   requestId: string;
   success: boolean;
-  aiDecideModel?: string;
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;
   backupTime?: string;

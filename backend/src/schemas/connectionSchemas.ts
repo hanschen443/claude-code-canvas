@@ -12,6 +12,7 @@ export const connectionCreateSchema = z.object({
   targetPodId: podIdSchema,
   targetAnchor: anchorPositionSchema,
   summaryModel: modelTypeSchema.optional(),
+  aiDecideModel: modelTypeSchema.optional(),
 });
 
 export const connectionListSchema = z.object({
@@ -31,6 +32,7 @@ export const connectionUpdateSchema = z.object({
   connectionId: z.uuid(),
   triggerMode: z.enum(["auto", "ai-decide", "direct"]).optional(),
   summaryModel: modelTypeSchema.optional(),
+  aiDecideModel: modelTypeSchema.optional(),
 });
 
 export type ConnectionCreatePayload = z.infer<typeof connectionCreateSchema>;

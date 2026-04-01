@@ -1,25 +1,21 @@
 import { getStmts } from "../database/stmtsHelper.js";
-import type { ModelType } from "../types/pod.js";
 
 interface GlobalSettingRow {
   key: string;
   value: string;
 }
 
-const AI_DECIDE_MODEL_KEY = "ai_decide_model";
 const TIMEZONE_OFFSET_KEY = "timezone_offset";
 const BACKUP_GIT_REMOTE_URL_KEY = "backup_git_remote_url";
 const BACKUP_TIME_KEY = "backup_time";
 const BACKUP_ENABLED_KEY = "backup_enabled";
 
-const DEFAULT_MODEL: ModelType = "sonnet";
 const DEFAULT_TIMEZONE_OFFSET = 8;
 const DEFAULT_BACKUP_GIT_REMOTE_URL = "";
 const DEFAULT_BACKUP_TIME = "03:00";
 const DEFAULT_BACKUP_ENABLED = false;
 
 export interface ConfigData {
-  aiDecideModel: ModelType;
   timezoneOffset: number;
   backupGitRemoteUrl: string;
   backupTime: string;
@@ -48,8 +44,6 @@ export class ConfigStore {
     const map = new Map(rows.map((row) => [row.key, row.value]));
 
     return {
-      aiDecideModel:
-        (map.get(AI_DECIDE_MODEL_KEY) as ModelType) ?? DEFAULT_MODEL,
       timezoneOffset: this.parseTimezoneOffset(map.get(TIMEZONE_OFFSET_KEY)),
       backupGitRemoteUrl:
         map.get(BACKUP_GIT_REMOTE_URL_KEY) ?? DEFAULT_BACKUP_GIT_REMOTE_URL,
@@ -60,13 +54,6 @@ export class ConfigStore {
   }
 
   update(data: Partial<ConfigData>): ConfigData {
-    if (data.aiDecideModel !== undefined) {
-      this.stmts.globalSettings.upsert.run({
-        $key: AI_DECIDE_MODEL_KEY,
-        $value: data.aiDecideModel,
-      });
-    }
-
     if (data.timezoneOffset !== undefined) {
       this.stmts.globalSettings.upsert.run({
         $key: TIMEZONE_OFFSET_KEY,
@@ -96,13 +83,6 @@ export class ConfigStore {
     }
 
     return this.getAll();
-  }
-
-  getAiDecideModel(): ModelType {
-    const row = this.stmts.globalSettings.selectByKey.get(
-      AI_DECIDE_MODEL_KEY,
-    ) as GlobalSettingRow | undefined;
-    return (row?.value as ModelType) ?? DEFAULT_MODEL;
   }
 
   getTimezoneOffset(): number {

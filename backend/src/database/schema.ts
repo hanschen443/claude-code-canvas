@@ -262,4 +262,16 @@ export function createTables(db: Database): void {
       throw e;
     }
   }
+
+  // Migration: connections 新增 ai_decide_model 欄位
+  try {
+    db.exec(
+      "ALTER TABLE connections ADD COLUMN ai_decide_model TEXT NOT NULL DEFAULT 'sonnet'",
+    );
+  } catch (e) {
+    // 欄位已存在時忽略，其他錯誤重新拋出
+    if (!(e instanceof Error && e.message.includes("duplicate column"))) {
+      throw e;
+    }
+  }
 }

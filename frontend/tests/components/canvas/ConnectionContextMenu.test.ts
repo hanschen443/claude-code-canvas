@@ -5,12 +5,14 @@ import ConnectionContextMenu from "@/components/canvas/ConnectionContextMenu.vue
 
 const mockUpdateConnectionTriggerMode = vi.fn();
 const mockUpdateConnectionSummaryModel = vi.fn();
+const mockUpdateConnectionAiDecideModel = vi.fn();
 const mockToast = vi.fn();
 
 vi.mock("@/stores/connectionStore", () => ({
   useConnectionStore: () => ({
     updateConnectionTriggerMode: mockUpdateConnectionTriggerMode,
     updateConnectionSummaryModel: mockUpdateConnectionSummaryModel,
+    updateConnectionAiDecideModel: mockUpdateConnectionAiDecideModel,
   }),
 }));
 
@@ -32,6 +34,7 @@ const defaultProps = {
   connectionId: "conn-123",
   currentTriggerMode: "auto" as const,
   currentSummaryModel: "sonnet" as const,
+  currentAiDecideModel: "sonnet" as const,
 };
 
 function mountMenu(props = {}) {
@@ -46,6 +49,14 @@ async function openSummaryMenu(wrapper: ReturnType<typeof mountMenu>) {
   // 找到 relative wrapper（子選單觸發容器）
   const summaryWrapper = wrapper.find(".relative");
   await summaryWrapper.trigger("mouseenter");
+  await wrapper.vm.$nextTick();
+}
+
+/** 展開 AI Model 子選單（第二個 .relative 容器） */
+async function openAiModelMenu(wrapper: ReturnType<typeof mountMenu>) {
+  const relativeWrappers = wrapper.findAll(".relative");
+  const aiModelWrapper = relativeWrappers[1]!!;
+  await aiModelWrapper.trigger("mouseenter");
   await wrapper.vm.$nextTick();
 }
 
@@ -295,6 +306,293 @@ describe("ConnectionContextMenu", () => {
       await openSummaryMenu(wrapper);
 
       const buttons = wrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.emitted("close")).toBeFalsy();
+    });
+  });
+
+  describe("AI Model 區塊渲染", () => {
+    it("應顯示 AI Model 標題文字", () => {
+      const wrapper = mountMenu();
+      expect(wrapper.text()).toContain("AI Model");
+    });
+
+    it("triggerMode 為 ai-decide 時，hover 後子選單應出現並顯示 Haiku/Sonnet/Opus 選項", async () => {
+      const wrapper = mountMenu({ currentTriggerMode: "ai-decide" });
+      await openAiModelMenu(wrapper);
+
+      const buttons = wrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      const sonnetBtn = buttons.find((b) => b.text().includes("Sonnet"));
+      const opusBtn = buttons.find((b) => b.text().includes("Opus"));
+      expect(haikuBtn?.exists()).toBe(true);
+      expect(sonnetBtn?.exists()).toBe(true);
+      expect(opusBtn?.exists()).toBe(true);
+    });
+
+    it("triggerMode 為 auto 時，AI Model 區塊應有 opacity-50 disabled 樣式", () => {
+      const wrapper = mountMenu({ currentTriggerMode: "auto" });
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      expect(aiModelWrapper.classes()).toContain("opacity-50");
+    });
+
+    it("triggerMode 為 auto 時，hover 後不應出現子選單", async () => {
+      const wrapper = mountMenu({ currentTriggerMode: "auto" });
+      await openAiModelMenu(wrapper);
+      // isAiModelMenuOpen 不會被設為 true，因為條件判斷 currentTriggerMode === 'ai-decide'
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      // 子選單不應存在
+      expect(aiModelWrapper.find(".absolute").exists()).toBe(false);
+    });
+
+    it("triggerMode 為 direct 時，AI Model 區塊應有 opacity-50 disabled 樣式", () => {
+      const wrapper = mountMenu({ currentTriggerMode: "direct" });
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      expect(aiModelWrapper.classes()).toContain("opacity-50");
+    });
+
+    it("triggerMode 為 direct 時，hover 後不應出現子選單", async () => {
+      const wrapper = mountMenu({ currentTriggerMode: "direct" });
+      await openAiModelMenu(wrapper);
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      expect(aiModelWrapper.find(".absolute").exists()).toBe(false);
+    });
+  });
+
+  describe("AI Model 選中狀態標記", () => {
+    it("currentAiDecideModel 為 sonnet 時，Sonnet 按鈕應有選中樣式", async () => {
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const sonnetBtn = buttons.find((b) => b.text().includes("Sonnet"));
+      expect(sonnetBtn?.classes()).toContain("bg-secondary");
+      expect(sonnetBtn?.classes()).toContain("border-l-2");
+    });
+
+    it("currentAiDecideModel 為 haiku 時，Haiku 按鈕應有選中樣式", async () => {
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "haiku",
+      });
+      await openAiModelMenu(wrapper);
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      expect(haikuBtn?.classes()).toContain("bg-secondary");
+      expect(haikuBtn?.classes()).toContain("border-l-2");
+    });
+
+    it("currentAiDecideModel 為 opus 時，Opus 按鈕應有選中樣式", async () => {
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "opus",
+      });
+      await openAiModelMenu(wrapper);
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const opusBtn = buttons.find((b) => b.text().includes("Opus"));
+      expect(opusBtn?.classes()).toContain("bg-secondary");
+      expect(opusBtn?.classes()).toContain("border-l-2");
+    });
+
+    it("currentAiDecideModel 為 sonnet 時，Haiku 按鈕不應有選中樣式", async () => {
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      expect(haikuBtn?.classes()).not.toContain("border-l-2");
+    });
+  });
+
+  describe("AI Model 點擊不同模型 - 成功流程", () => {
+    it("點擊 Haiku（非當前）應呼叫 updateConnectionAiDecideModel 並帶正確參數", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue({ id: "conn-123" });
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(mockUpdateConnectionAiDecideModel).toHaveBeenCalledWith(
+        "conn-123",
+        "haiku",
+      );
+    });
+
+    it("切換模型成功後應顯示 title 為 AI 決策模型已變更 的 toast", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue({ id: "conn-123" });
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "AI 決策模型已變更",
+        }),
+      );
+    });
+
+    it("切換模型成功後應 emit ai-decide-model-changed", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue({ id: "conn-123" });
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.emitted("ai-decide-model-changed")).toBeTruthy();
+    });
+
+    it("切換模型成功後應 emit close", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue({ id: "conn-123" });
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.emitted("close")).toBeTruthy();
+    });
+  });
+
+  describe("AI Model 點擊已選中的模型 - 直接關閉", () => {
+    it("點擊已選中的模型不應呼叫 updateConnectionAiDecideModel", async () => {
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const sonnetBtn = buttons.find((b) => b.text().includes("Sonnet"));
+      await sonnetBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(mockUpdateConnectionAiDecideModel).not.toHaveBeenCalled();
+    });
+
+    it("點擊已選中的模型應直接 emit close", async () => {
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "haiku",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.emitted("close")).toBeTruthy();
+    });
+  });
+
+  describe("AI Model 切換模型失敗", () => {
+    it("updateConnectionAiDecideModel 回傳 null 時應顯示失敗 toast", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue(null);
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "變更失敗",
+          description: "無法變更 AI 決策模型",
+        }),
+      );
+    });
+
+    it("updateConnectionAiDecideModel 失敗時不應 emit ai-decide-model-changed", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue(null);
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
+      await haikuBtn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.emitted("ai-decide-model-changed")).toBeFalsy();
+    });
+
+    it("updateConnectionAiDecideModel 失敗時不應 emit close", async () => {
+      mockUpdateConnectionAiDecideModel.mockResolvedValue(null);
+      const wrapper = mountMenu({
+        currentTriggerMode: "ai-decide",
+        currentAiDecideModel: "sonnet",
+      });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
       const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
       await haikuBtn?.trigger("click");
       await wrapper.vm.$nextTick();

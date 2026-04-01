@@ -20,10 +20,12 @@ import { useToast } from "@/composables/useToast";
 import { useCanvasWebSocketAction } from "@/composables/useCanvasWebSocketAction";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
 import { DEFAULT_TOAST_DURATION_MS } from "@/lib/constants";
+import { DEFAULT_SUMMARY_MODEL, DEFAULT_AI_DECIDE_MODEL } from "@/types/config";
 import { createWorkflowEventHandlers } from "./workflowEventHandlers";
 import { removeById } from "@/lib/arrayHelpers";
 import type {
   ConnectionCreatedPayload,
+  ConnectionUpdatedPayload,
   ConnectionCreatePayload,
   ConnectionDeletedPayload,
   ConnectionDeletePayload,
@@ -40,6 +42,7 @@ interface RawConnection {
   targetAnchor: AnchorPosition;
   triggerMode?: "auto" | "ai-decide" | "direct";
   summaryModel?: ModelType;
+  aiDecideModel?: ModelType;
   connectionStatus?: string;
   decideReason?: string | null;
 }
@@ -59,7 +62,8 @@ function normalizeConnection(raw: RawConnection): Connection {
   return {
     ...raw,
     triggerMode: (raw.triggerMode ?? "auto") as TriggerMode,
-    summaryModel: raw.summaryModel ?? "sonnet",
+    summaryModel: raw.summaryModel ?? DEFAULT_SUMMARY_MODEL,
+    aiDecideModel: raw.aiDecideModel ?? DEFAULT_AI_DECIDE_MODEL,
     status: (raw.connectionStatus as ConnectionStatus) ?? "idle",
     decideReason: raw.decideReason ?? undefined,
   };
@@ -524,12 +528,15 @@ export const useConnectionStore = defineStore("connection", () => {
 
   async function executeConnectionUpdate(
     connectionId: string,
-    updates: Pick<ConnectionUpdatePayload, "triggerMode" | "summaryModel">,
+    updates: Pick<
+      ConnectionUpdatePayload,
+      "triggerMode" | "summaryModel" | "aiDecideModel"
+    >,
     errorMessage: string,
   ): Promise<Connection | null> {
     const result = await executeAction<
       ConnectionUpdatePayload,
-      ConnectionCreatedPayload
+      ConnectionUpdatedPayload
     >(
       {
         requestEvent: WebSocketRequestEvents.CONNECTION_UPDATE,
@@ -567,6 +574,17 @@ export const useConnectionStore = defineStore("connection", () => {
       connectionId,
       { summaryModel },
       "連線摘要模型更新失敗",
+    );
+  }
+
+  async function updateConnectionAiDecideModel(
+    connectionId: string,
+    aiDecideModel: ModelType,
+  ): Promise<Connection | null> {
+    return executeConnectionUpdate(
+      connectionId,
+      { aiDecideModel },
+      "連線 AI 決策模型更新失敗",
     );
   }
 
@@ -682,7 +700,13 @@ export const useConnectionStore = defineStore("connection", () => {
       ...connection,
       triggerMode: connection.triggerMode ?? "auto",
       summaryModel:
-        connection.summaryModel ?? existingConnection?.summaryModel ?? "sonnet",
+        connection.summaryModel ??
+        existingConnection?.summaryModel ??
+        DEFAULT_SUMMARY_MODEL,
+      aiDecideModel:
+        connection.aiDecideModel ??
+        existingConnection?.aiDecideModel ??
+        DEFAULT_AI_DECIDE_MODEL,
       status: existingConnection?.status ?? ("idle" as ConnectionStatus),
       decideReason: connection.decideReason ?? existingConnection?.decideReason,
     };
@@ -723,6 +747,7 @@ export const useConnectionStore = defineStore("connection", () => {
     setConnectionStatus,
     updateConnectionTriggerMode,
     updateConnectionSummaryModel,
+    updateConnectionAiDecideModel,
     getWorkflowHandlers,
     setupWorkflowListeners,
     cleanupWorkflowListeners,
