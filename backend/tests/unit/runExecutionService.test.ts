@@ -513,6 +513,122 @@ describe("RunExecutionService", () => {
         "completed",
       );
     });
+
+    it("部分 pathway settle 時不改變 instance status（由 processNext 透過 activeStream 判斷）", () => {
+      // auto=pending, direct=pending，settle direct 後 auto 仍為 pending → 尚未全 settled
+      const instance = createMockInstance({
+        status: "running",
+        autoPathwaySettled: "pending",
+        directPathwaySettled: "pending",
+      });
+      const afterSettle = createMockInstance({
+        status: "running",
+        autoPathwaySettled: "pending",
+        directPathwaySettled: "settled",
+      });
+      vi.spyOn(runStore, "getPodInstance")
+        .mockReturnValueOnce(instance) // settlePathwayAndRefresh 第 1 次：settle 前
+        .mockReturnValueOnce(afterSettle); // settlePathwayAndRefresh 第 2 次：settle 後
+      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
+      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
+        () => {},
+      );
+
+      runExecutionService.settlePodTrigger(
+        makeRunContext(),
+        sourcePodId,
+        "direct",
+      );
+
+      // 不應改變 status — processNext 改用 hasActiveStream 判斷是否能 dequeue
+      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalled();
+      // directPathwaySettled 應已 settled，autoPathwaySettled 仍為 pending
+      expect(afterSettle.directPathwaySettled).toBe("settled");
+      expect(afterSettle.autoPathwaySettled).toBe("pending");
+    });
+
+    it("全部 pathway settle 時正常標記 completed", () => {
+      // auto=settled, direct=pending，settle direct 後全部 settled
+      const instance = createMockInstance({
+        status: "running",
+        autoPathwaySettled: "settled",
+        directPathwaySettled: "pending",
+      });
+      const afterSettle = createMockInstance({
+        status: "running",
+        autoPathwaySettled: "settled",
+        directPathwaySettled: "settled",
+      });
+      const completedInstance = createMockInstance({
+        status: "completed",
+        autoPathwaySettled: "settled",
+        directPathwaySettled: "settled",
+      });
+      vi.spyOn(runStore, "getPodInstance")
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(afterSettle)
+        .mockReturnValueOnce(afterSettle);
+      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
+      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
+        () => {},
+      );
+      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
+        completedInstance,
+      ]);
+      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
+      vi.spyOn(runStore, "getRun").mockReturnValue(
+        createMockRun({
+          status: "completed",
+          completedAt: new Date().toISOString(),
+        }),
+      );
+      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+
+      runExecutionService.settlePodTrigger(
+        makeRunContext(),
+        sourcePodId,
+        "direct",
+      );
+
+      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
+        afterSettle.id,
+        "completed",
+      );
+    });
+
+    it("部分 pathway settle 但 instance status 非 running 時不回退", () => {
+      // status=error，settle direct 後 auto 仍為 pending → 尚未全 settled，但不回退非 running 狀態
+      const instance = createMockInstance({
+        status: "error",
+        autoPathwaySettled: "pending",
+        directPathwaySettled: "pending",
+      });
+      const afterSettle = createMockInstance({
+        status: "error",
+        autoPathwaySettled: "pending",
+        directPathwaySettled: "settled",
+      });
+      vi.spyOn(runStore, "getPodInstance")
+        .mockReturnValueOnce(instance)
+        .mockReturnValueOnce(afterSettle);
+      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
+      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
+        () => {},
+      );
+
+      runExecutionService.settlePodTrigger(
+        makeRunContext(),
+        sourcePodId,
+        "direct",
+      );
+
+      // error 狀態不應被回退為 pending
+      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "pending",
+      );
+      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe("settleAndSkipPath", () => {

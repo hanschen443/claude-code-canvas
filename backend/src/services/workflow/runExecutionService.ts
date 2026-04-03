@@ -695,6 +695,11 @@ class RunExecutionService {
     }
   }
 
+  hasActiveStream(runId: string, podId: string): boolean {
+    const streams = this.activeRunStreams.get(runId);
+    return streams !== undefined && streams.has(podId);
+  }
+
   /**
    * 找出目前所有包含指定 podId 的活躍 runId 列表。
    * 用於刪除 Pod 時中止 Run 模式的查詢。

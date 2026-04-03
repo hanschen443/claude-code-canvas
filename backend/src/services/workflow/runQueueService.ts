@@ -1,11 +1,10 @@
-import { v4 as uuidv4 } from 'uuid';
-import type { TriggerMode } from '../../types/index.js';
-import type { TriggerStrategy, ExecutionServiceMethods } from './types.js';
-import type { RunContext } from '../../types/run.js';
-import { runStore } from '../runStore.js';
-import { LazyInitializable } from './lazyInitializable.js';
-import { buildRunQueueKey } from './workflowHelpers.js';
-import { logger } from '../../utils/logger.js';
+import { v4 as uuidv4 } from "uuid";
+import type { TriggerMode } from "../../types/index.js";
+import type { TriggerStrategy, ExecutionServiceMethods } from "./types.js";
+import type { RunContext } from "../../types/run.js";
+import { LazyInitializable } from "./lazyInitializable.js";
+import { buildRunQueueKey } from "./workflowHelpers.js";
+import { logger } from "../../utils/logger.js";
 
 const MAX_QUEUE_SIZE = 50;
 
@@ -25,8 +24,13 @@ export interface RunQueueItem {
 
 interface RunQueueServiceDeps {
   executionService: ExecutionServiceMethods;
-  strategies: { auto: TriggerStrategy; direct: TriggerStrategy; 'ai-decide': TriggerStrategy };
+  strategies: {
+    auto: TriggerStrategy;
+    direct: TriggerStrategy;
+    "ai-decide": TriggerStrategy;
+  };
   queuedPodInstance: (runContext: RunContext, podId: string) => void;
+  hasActiveStream: (runId: string, podId: string) => boolean;
 }
 
 class RunQueueService extends LazyInitializable<RunQueueServiceDeps> {
@@ -36,12 +40,16 @@ class RunQueueService extends LazyInitializable<RunQueueServiceDeps> {
     return this.deps.strategies[triggerMode];
   }
 
-  enqueue(item: Omit<RunQueueItem, 'id' | 'enqueuedAt'>): void {
+  enqueue(item: Omit<RunQueueItem, "id" | "enqueuedAt">): void {
     const key = buildRunQueueKey(item.runContext.runId, item.targetPodId);
     const queue = this.queues.get(key) ?? [];
 
     if (queue.length >= MAX_QUEUE_SIZE) {
-      logger.warn('Run', 'Warn', `[RunQueueService] 佇列已達上限 ${MAX_QUEUE_SIZE}，拒絕加入 (runId=${item.runContext.runId}, targetPodId=${item.targetPodId})`);
+      logger.warn(
+        "Run",
+        "Warn",
+        `[RunQueueService] 佇列已達上限 ${MAX_QUEUE_SIZE}，拒絕加入 (runId=${item.runContext.runId}, targetPodId=${item.targetPodId})`,
+      );
       return;
     }
 
@@ -76,11 +84,14 @@ class RunQueueService extends LazyInitializable<RunQueueServiceDeps> {
     return queue ? queue.length : 0;
   }
 
-  async processNext(canvasId: string, targetPodId: string, runContext: RunContext): Promise<void> {
+  async processNext(
+    canvasId: string,
+    targetPodId: string,
+    runContext: RunContext,
+  ): Promise<void> {
     const key = buildRunQueueKey(runContext.runId, targetPodId);
 
-    const instance = runStore.getPodInstance(runContext.runId, targetPodId);
-    if (instance?.status === 'running') {
+    if (this.deps.hasActiveStream(runContext.runId, targetPodId)) {
       return;
     }
 
