@@ -100,7 +100,7 @@ claude-code-canvas config list
 
 - Hover over the model label on top of the Pod to select Opus / Sonnet / Haiku
 
-![Switch Model](tutorials/switch-model.gif)
+![Switch Model](./tutorials/switch-model.gif)
 
 ### Slot Overview
 
@@ -109,7 +109,7 @@ claude-code-canvas config list
 - Command will automatically prepend to your message, e.g., `/command message`
 - Repo changes the working directory; without one, the Pod uses its own directory
 
-![Slot](tutorials/slot.gif)
+![Slot](./tutorials/slot.gif)
 
 ### Connection Line
 
@@ -117,7 +117,7 @@ claude-code-canvas config list
 - AI: AI decides whether to trigger the next Pod
 - Direct: Ignores other Connection Lines and triggers directly
 
-![Connection Line](tutorials/connection-line.gif)
+![Connection Line](./tutorials/connection-line.gif)
 
 #### Multi-Connection Trigger Rules
 
@@ -135,13 +135,13 @@ Right-click a Connection Line to switch the following models (both default to So
 - **Summary Model**: The model used to generate summaries passed to downstream Pods
 - **AI Model**: The model used to decide whether to trigger downstream Pods (only available in AI mode)
 
-![Connection Line Context Menu](tutorials/connection-summary.jpg)
+![Connection Line Context Menu](./tutorials/connection-summary.jpg)
 
 ### Normal Mode vs Multi-Instance Mode
 
 Pods default to normal mode. **Long-press the eraser button** to switch to Multi-Instance mode — the button displays an **M** icon when enabled.
 
-![Switch Execute Mode](tutorials/switch-execute-mode.gif)
+![Switch Execute Mode](./tutorials/switch-execute-mode.gif)
 
 #### Normal Mode
 
@@ -164,7 +164,7 @@ Plugins are extensions installed via the Claude CLI that add extra capabilities 
 - Once enabled, the Plugin is loaded when the Pod processes conversations
 - Plugins are separate from Skills, MCP, and SubAgents — they can all be used together
 
-![Plugin](tutorials/plugin.png)
+![Plugin](./tutorials/plugin.png)
 
 ### Workflow Patterns
 
@@ -224,7 +224,7 @@ Plugins are extensions installed via the Claude CLI that add extra capabilities 
 
 ### Header Buttons
 
-![Header Buttons](tutorials/setting-button.png)
+![Header Buttons](./tutorials/setting-button.png)
 
 Four icons from left to right:
 
