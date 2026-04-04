@@ -21,7 +21,7 @@ A canvas tool for visually designing and executing AI Agent workflows, powered b
   - [Plugin](#plugin)
   - [Workflow Patterns](#workflow-patterns)
   - [Schedule](#schedule)
-  - [Header Buttons](#header-icons)
+  - [Header Buttons](#header-buttons)
 
 ## Important Notes
 
