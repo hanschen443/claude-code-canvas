@@ -21,7 +21,7 @@ A canvas tool for visually designing and executing AI Agent workflows, powered b
   - [Plugin](#plugin)
   - [Workflow Patterns](#workflow-patterns)
   - [Schedule](#schedule)
-  - [Header Icons](#header-icons)
+  - [Header Buttons](#header-icons)
 
 ## Important Notes
 
@@ -94,7 +94,7 @@ claude-code-canvas config list
 - A Pod = Claude Code
 - Right-click on the canvas → Pod to create one
 
-![Pod](tutorials/pod.png)
+![Pod](./tutorials/pod.png)
 
 ### How to Switch Models?
 
@@ -222,9 +222,9 @@ Plugins are extensions installed via the Claude CLI that add extra capabilities 
 - **When triggered:** Pod status becomes chatting; downstream Workflow is triggered on completion
 - **Note:** Schedule depends on the timezone set in Settings; Pod skips the scheduled run if it is already busy
 
-### Header Icons
+### Header Buttons
 
-![Header Icons](tutorials/setting-button.png)
+![Header Buttons](tutorials/setting-button.png)
 
 Four icons from left to right:
 
