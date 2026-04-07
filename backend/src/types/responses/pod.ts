@@ -1,5 +1,5 @@
-import type { Pod, PodStatus } from '../pod.js';
-import type { MessageRole } from '../message.js';
+import type { Pod, PodStatus } from "../pod.js";
+import type { MessageRole } from "../message.js";
 
 export interface PodCreatedPayload {
   requestId: string;
@@ -223,11 +223,4 @@ export interface PodStatusChangedPayload {
 
 export interface PodMessagesClearedPayload {
   podId: string;
-}
-
-export interface PodDirectoryOpenedPayload {
-  requestId: string;
-  success: boolean;
-  path?: string;
-  error?: string;
 }

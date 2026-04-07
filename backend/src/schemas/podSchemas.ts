@@ -64,12 +64,6 @@ export const podDeleteSchema = z.object({
   podId: podIdSchema,
 });
 
-export const podOpenDirectorySchema = z.object({
-  requestId: requestIdSchema,
-  canvasId: canvasIdSchema,
-  podId: podIdSchema,
-});
-
 export const podSetPluginsSchema = z.object({
   requestId: requestIdSchema,
   canvasId: canvasIdSchema,
@@ -92,5 +86,4 @@ export type PodRenamePayload = z.infer<typeof podRenameSchema>;
 export type PodSetModelPayload = z.infer<typeof podSetModelSchema>;
 export type PodSetSchedulePayload = z.infer<typeof podSetScheduleSchema>;
 export type PodDeletePayload = z.infer<typeof podDeleteSchema>;
-export type PodOpenDirectoryPayload = z.infer<typeof podOpenDirectorySchema>;
 export type PodSetPluginsPayload = z.infer<typeof podSetPluginsSchema>;

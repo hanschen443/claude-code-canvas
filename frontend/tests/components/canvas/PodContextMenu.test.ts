@@ -4,39 +4,35 @@ import { setupStoreTest } from "../../helpers/testSetup";
 import PodContextMenu from "@/components/canvas/PodContextMenu.vue";
 
 const {
-  mockWrapWebSocketRequest,
-  mockToast,
+  mockDownloadPodDirectory,
   mockGetActiveCanvasIdOrWarn,
   mockGetPodById,
+  mockFailTask,
+  mockCompleteTask,
+  mockAddTask,
+  mockUpdateProgress,
 } = vi.hoisted(() => ({
-  mockWrapWebSocketRequest: vi.fn(),
-  mockToast: vi.fn(),
+  mockDownloadPodDirectory: vi.fn(),
   mockGetActiveCanvasIdOrWarn: vi.fn(),
   mockGetPodById: vi.fn().mockReturnValue(null),
+  mockFailTask: vi.fn(),
+  mockCompleteTask: vi.fn(),
+  mockAddTask: vi.fn(),
+  mockUpdateProgress: vi.fn(),
 }));
 
-vi.mock("@/composables/useWebSocketErrorHandler", () => ({
-  useWebSocketErrorHandler: () => ({
-    wrapWebSocketRequest: mockWrapWebSocketRequest,
+vi.mock("@/services/podApi", () => ({
+  downloadPodDirectory: (...args: unknown[]) =>
+    mockDownloadPodDirectory(...args),
+}));
+
+vi.mock("@/composables/canvas/useDownloadProgress", () => ({
+  useDownloadProgress: () => ({
+    addTask: mockAddTask,
+    updateProgress: mockUpdateProgress,
+    completeTask: mockCompleteTask,
+    failTask: mockFailTask,
   }),
-}));
-
-vi.mock("@/composables/useToast", () => ({
-  useToast: () => ({
-    toast: mockToast,
-  }),
-}));
-
-vi.mock("@/services/websocket", () => ({
-  createWebSocketRequest: vi.fn(() =>
-    Promise.resolve({ requestId: "req-1", success: true }),
-  ),
-  WebSocketRequestEvents: {
-    POD_OPEN_DIRECTORY: "pod:open-directory",
-  },
-  WebSocketResponseEvents: {
-    POD_DIRECTORY_OPENED: "pod:directory:opened",
-  },
 }));
 
 vi.mock("@/utils/canvasGuard", () => ({
@@ -55,8 +51,7 @@ vi.mock("@/stores", async (importOriginal) => {
 });
 
 vi.mock("lucide-vue-next", () => ({
-  FolderOpen: { name: "FolderOpen", template: "<svg />" },
-  MessageSquare: { name: "MessageSquare", template: "<svg />" },
+  Download: { name: "Download", template: "<svg />" },
   Unplug: { name: "Unplug", template: "<svg />" },
   Puzzle: { name: "Puzzle", template: "<svg />" },
   ChevronRight: { name: "ChevronRight", template: "<svg />" },
@@ -110,12 +105,12 @@ describe("PodContextMenu", () => {
       expect(style).toContain("top: 200px");
     });
 
-    it("應顯示「打開工作目錄」按鈕", () => {
+    it("應顯示「下載工作目錄」按鈕", () => {
       const wrapper = mountMenu();
 
       const button = wrapper.find("button");
       expect(button.exists()).toBe(true);
-      expect(button.text()).toContain("打開工作目錄");
+      expect(button.text()).toContain("下載工作目錄（zip）");
     });
 
     it("不應渲染全螢幕背景遮罩", () => {
@@ -162,12 +157,9 @@ describe("PodContextMenu", () => {
     });
   });
 
-  describe("點擊「打開工作目錄」", () => {
+  describe("點擊「下載工作目錄」", () => {
     it("成功時應 emit close", async () => {
-      mockWrapWebSocketRequest.mockResolvedValue({
-        requestId: "req-1",
-        success: true,
-      });
+      mockDownloadPodDirectory.mockResolvedValue(undefined);
 
       const wrapper = mountMenu();
       const button = wrapper.find("button");
@@ -177,35 +169,31 @@ describe("PodContextMenu", () => {
       expect(wrapper.emitted("close")).toBeTruthy();
     });
 
-    it("失敗時應顯示錯誤 toast", async () => {
-      mockWrapWebSocketRequest.mockResolvedValue(null);
+    it("失敗時應呼叫 failTask 並帶入錯誤訊息", async () => {
+      mockDownloadPodDirectory.mockRejectedValue(new Error("下載失敗"));
+
+      const wrapper = mountMenu();
+      const button = wrapper.find("button");
+      await button.trigger("click");
+      // 等待背景 promise reject
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await wrapper.vm.$nextTick();
+
+      expect(mockFailTask).toHaveBeenCalledWith(expect.any(String), "下載失敗");
+    });
+
+    it("失敗時仍應 emit close（立即關閉，下載在背景執行）", async () => {
+      mockDownloadPodDirectory.mockRejectedValue(new Error("下載失敗"));
 
       const wrapper = mountMenu();
       const button = wrapper.find("button");
       await button.trigger("click");
       await wrapper.vm.$nextTick();
 
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "打開目錄失敗",
-          description: "無法打開工作目錄，請稍後再試",
-          variant: "destructive",
-        }),
-      );
+      expect(wrapper.emitted("close")).toBeTruthy();
     });
 
-    it("失敗時不應 emit close", async () => {
-      mockWrapWebSocketRequest.mockResolvedValue(null);
-
-      const wrapper = mountMenu();
-      const button = wrapper.find("button");
-      await button.trigger("click");
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.emitted("close")).toBeFalsy();
-    });
-
-    it("沒有啟用的畫布時不應發送 WebSocket 請求", async () => {
+    it("沒有啟用的畫布時不應呼叫 downloadPodDirectory", async () => {
       mockGetActiveCanvasIdOrWarn.mockReturnValue(null);
 
       const wrapper = mountMenu();
@@ -213,7 +201,7 @@ describe("PodContextMenu", () => {
       await button.trigger("click");
       await wrapper.vm.$nextTick();
 
-      expect(mockWrapWebSocketRequest).not.toHaveBeenCalled();
+      expect(mockDownloadPodDirectory).not.toHaveBeenCalled();
     });
   });
 

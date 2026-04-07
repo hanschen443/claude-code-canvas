@@ -360,12 +360,12 @@
       "pullLatest": "Pull to Latest"
     },
     "podContextMenu": {
-      "openDirectory": "Open Working Directory",
+      "downloadDirectory": "Download Working Directory (zip)",
       "plugin": "Plugin",
       "connect": "Connect {label}",
       "disconnect": "Disconnect {label}",
-      "openDirectoryFailed": "Failed to open directory",
-      "openDirectoryFailedDesc": "Unable to open working directory, please try again later",
+      "downloadDirectoryFailed": "Failed to download directory",
+      "downloadDirectoryFailedDesc": "Unable to download working directory, please try again later",
       "noPluginInstalled": "No plugins installed",
       "pluginLoadFailed": "Failed to load plugin list",
       "pluginLoadFailedDesc": "Unable to retrieve installed plugins, please try again later",
@@ -621,6 +621,12 @@
       "failed": "Pull failed",
       "success": "Pull successful"
     },
+    "download": {
+      "started": "Preparing download...",
+      "downloading": "Downloaded {size}",
+      "completed": "Download complete",
+      "failed": "Download failed"
+    },
     "editModal": {
       "editTitle": "Edit {resource}"
     }
@@ -649,7 +655,6 @@
     "workspaceCreateFailed": "Failed to create workspace",
     "targetDirectoryNotExists": "Target directory does not exist",
     "unsupportedOs": "Unsupported operating system: {os}",
-    "openDirectoryFailed": "Failed to open directory",
     "groupNameExists": "Group name already exists",
     "groupNotEmpty": "Group is not empty, cannot delete",
     "sourcePodNotFound": "Source Pod not found: {id}",

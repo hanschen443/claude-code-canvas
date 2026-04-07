@@ -506,10 +506,6 @@ export interface CursorLeftPayload {
   connectionId: string;
 }
 
-export interface PodDirectoryOpenedPayload extends ResultPayload {
-  path?: string;
-}
-
 export interface ConfigGetResultPayload extends ResultPayload {
   timezoneOffset?: number;
   backupGitRemoteUrl?: string;

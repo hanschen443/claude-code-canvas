@@ -207,12 +207,12 @@
       "pullLatest": "最新版に Pull"
     },
     "podContextMenu": {
-      "openDirectory": "作業ディレクトリを開く",
+      "downloadDirectory": "作業ディレクトリをダウンロード（zip）",
       "plugin": "Plugin",
       "connect": "{label} を接続",
       "disconnect": "{label} を切断",
-      "openDirectoryFailed": "ディレクトリを開けませんでした",
-      "openDirectoryFailedDesc": "作業ディレクトリを開けません。後でもう一度お試しください",
+      "downloadDirectoryFailed": "ディレクトリのダウンロードに失敗しました",
+      "downloadDirectoryFailedDesc": "作業ディレクトリをダウンロードできません。後でもう一度お試しください",
       "noPluginInstalled": "プラグインがインストールされていません",
       "pluginLoadFailed": "プラグイン一覧の読み込みに失敗しました",
       "pluginLoadFailedDesc": "インストール済みプラグインを取得できません。後でもう一度お試しください",
@@ -468,6 +468,12 @@
       "failed": "Pull に失敗しました",
       "success": "Pull が成功しました"
     },
+    "download": {
+      "started": "ダウンロードを準備中...",
+      "downloading": "{size} ダウンロード済み",
+      "completed": "ダウンロード完了",
+      "failed": "ダウンロードに失敗しました"
+    },
     "editModal": {
       "editTitle": "{resource} を編集"
     }
@@ -496,7 +502,6 @@
     "workspaceCreateFailed": "ワークスペースの作成に失敗しました",
     "targetDirectoryNotExists": "対象ディレクトリが存在しません",
     "unsupportedOs": "サポートされていないOS：{os}",
-    "openDirectoryFailed": "ディレクトリを開けませんでした",
     "groupNameExists": "グループ名は既に存在します",
     "groupNotEmpty": "グループ内にアイテムがあるため、削除できません",
     "sourcePodNotFound": "ソース Pod が見つかりません：{id}",

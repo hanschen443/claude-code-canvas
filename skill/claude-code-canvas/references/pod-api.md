@@ -104,6 +104,33 @@ curl -X DELETE http://localhost:3001/api/canvas/my-canvas/pods/My%20Pod
 
 ---
 
+## GET /api/canvas/:id/pods/:podId/download
+
+下載指定 Pod 工作目錄的 zip 壓縮檔。`:id` 支援 UUID 或 name，`:podId` 支援 UUID 或 name。
+
+### 成功回應 200
+
+回應 `Content-Type: application/zip`，`Content-Disposition: attachment; filename="<pod-name>.zip"`，Body 為 zip 二進位內容。
+
+### 錯誤回應
+
+| 狀態碼 | 說明 |
+|--------|------|
+| 404 | 找不到 Canvas、找不到 Pod 或工作目錄不存在 |
+| 500 | 壓縮時發生錯誤 |
+
+### curl 範例
+
+```bash
+# 下載 Pod 工作目錄 zip（podId 為 UUID）
+curl -O -J http://localhost:3001/api/canvas/my-canvas/pods/xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx/download
+
+# 用 Pod 名稱下載
+curl -O -J http://localhost:3001/api/canvas/my-canvas/pods/My%20Pod/download
+```
+
+---
+
 ## PATCH /api/canvas/:id/pods/:podId
 
 重新命名指定 Canvas 下的 Pod。`:id` 支援 UUID 或 name，`:podId` 支援 UUID 或 name。

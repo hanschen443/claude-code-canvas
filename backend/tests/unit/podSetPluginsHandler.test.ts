@@ -56,7 +56,6 @@ vi.mock("../../src/schemas/index.js", () => ({
     POD_MOVED: "pod:moved",
     POD_MODEL_SET: "pod:model:set",
     POD_SCHEDULE_SET: "pod:schedule:set",
-    POD_DIRECTORY_OPENED: "pod:directory:opened",
     POD_MULTI_INSTANCE_SET: "pod:multi-instance:set",
   },
 }));

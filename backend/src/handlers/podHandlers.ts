@@ -1,10 +1,8 @@
-import { existsSync } from "fs";
 import { WebSocketResponseEvents } from "../schemas";
 import type {
   PodListResultPayload,
   PodGetResultPayload,
   PodScheduleSetPayload,
-  PodDirectoryOpenedPayload,
   Pod,
   ScheduleConfig,
 } from "../types";
@@ -17,7 +15,6 @@ import type {
   PodSetModelPayload,
   PodSetSchedulePayload,
   PodDeletePayload,
-  PodOpenDirectoryPayload,
   PodSetPluginsPayload,
 } from "../schemas";
 import { podStore } from "../services/podStore.js";
@@ -26,7 +23,6 @@ import {
   deletePodWithCleanup,
 } from "../services/podService.js";
 import { socketService } from "../services/socketService.js";
-import { repositoryService } from "../services/repositoryService.js";
 import { emitSuccess, emitError } from "../utils/websocketResponse.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -58,7 +54,7 @@ export const handlePodCreate = withCanvasId<PodCreatePayload>(
         connectionId,
         WebSocketResponseEvents.POD_CREATED,
         requestId,
-        createI18nError('errors.podCreateFailed'),
+        createI18nError("errors.podCreateFailed"),
       )
     )
       return;
@@ -134,7 +130,7 @@ export const handlePodDelete = withCanvasId<PodDeletePayload>(
       connectionId,
       WebSocketResponseEvents.POD_DELETED,
       requestId,
-      createI18nError('errors.podDeleteFailed'),
+      createI18nError("errors.podDeleteFailed"),
     );
   },
 );
@@ -163,7 +159,7 @@ function handlePodUpdate<TResponse>(
     emitError(
       connectionId,
       responseEvent,
-      createI18nError('errors.podUpdateFailed', { id: podId }),
+      createI18nError("errors.podUpdateFailed", { id: podId }),
       requestId,
       podId,
       "INTERNAL_ERROR",
@@ -212,7 +208,7 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
       emitError(
         connectionId,
         WebSocketResponseEvents.POD_RENAMED,
-        createI18nError('errors.podNameDuplicate'),
+        createI18nError("errors.podNameDuplicate"),
         requestId,
         podId,
         "DUPLICATE_NAME",
@@ -349,7 +345,7 @@ export const handlePodSetSchedule = withCanvasId<PodSetSchedulePayload>(
       emitError(
         connectionId,
         WebSocketResponseEvents.POD_SCHEDULE_SET,
-        createI18nError('errors.podUpdateFailed', { id: podId }),
+        createI18nError("errors.podUpdateFailed", { id: podId }),
         requestId,
         podId,
         "INTERNAL_ERROR",
@@ -369,96 +365,6 @@ export const handlePodSetSchedule = withCanvasId<PodSetSchedulePayload>(
       WebSocketResponseEvents.POD_SCHEDULE_SET,
       response,
     );
-  },
-);
-
-const PLATFORM_COMMANDS: Record<string, string> = {
-  darwin: "open",
-  linux: "xdg-open",
-  win32: "explorer",
-};
-
-function getOpenCommand(platform: string): string | null {
-  return PLATFORM_COMMANDS[platform] ?? null;
-}
-
-export const handlePodOpenDirectory = withCanvasId<PodOpenDirectoryPayload>(
-  WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-  async (
-    connectionId: string,
-    canvasId: string,
-    payload: PodOpenDirectoryPayload,
-    requestId: string,
-  ): Promise<void> => {
-    const { podId } = payload;
-
-    const pod = validatePod(
-      connectionId,
-      podId,
-      WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-      requestId,
-    );
-    if (!pod) {
-      return;
-    }
-
-    const targetPath = pod.repositoryId
-      ? repositoryService.getRepositoryPath(pod.repositoryId)
-      : pod.workspacePath;
-
-    if (!existsSync(targetPath)) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-        createI18nError('errors.targetDirectoryNotExists'),
-        requestId,
-        podId,
-        "INTERNAL_ERROR",
-      );
-      return;
-    }
-
-    const command = getOpenCommand(process.platform);
-    if (!command) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-        createI18nError('errors.unsupportedOs', { os: process.platform }),
-        requestId,
-        podId,
-        "INTERNAL_ERROR",
-      );
-      return;
-    }
-
-    const proc = Bun.spawn([command, targetPath]);
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-        createI18nError('errors.openDirectoryFailed'),
-        requestId,
-        podId,
-        "INTERNAL_ERROR",
-      );
-      return;
-    }
-
-    const response: PodDirectoryOpenedPayload = {
-      requestId,
-      success: true,
-      path: targetPath,
-    };
-
-    emitSuccess(
-      connectionId,
-      WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-      response,
-    );
-
-    logger.log("Pod", "Load", `已打開目錄: ${targetPath}`);
   },
 );
 
@@ -487,7 +393,7 @@ export const handlePodSetPlugins = withCanvasId<PodSetPluginsPayload>(
       emitError(
         connectionId,
         WebSocketResponseEvents.POD_PLUGINS_SET,
-        createI18nError('errors.podUpdateFailed', { id: podId }),
+        createI18nError("errors.podUpdateFailed", { id: podId }),
         requestId,
         podId,
         "INTERNAL_ERROR",

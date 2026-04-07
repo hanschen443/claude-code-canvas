@@ -34,6 +34,21 @@ function handleWebSocketUpgrade(
   return new Response("WebSocket 升級失敗", { status: 400 });
 }
 
+function withCorsHeaders(
+  response: Response,
+  corsHeaders: Record<string, string>,
+): Response {
+  const newHeaders = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    newHeaders.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
 async function startServer(): Promise<void> {
   const result = await startupService.initialize();
 
@@ -78,9 +93,25 @@ async function startServer(): Promise<void> {
         return new Response("Forbidden", { status: 403 });
       }
 
+      const corsHeaders = origin
+        ? {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Max-Age": "86400",
+          }
+        : undefined;
+
+      // 處理 OPTIONS 預檢請求
+      if (req.method === "OPTIONS") {
+        if (!corsHeaders) return new Response("Forbidden", { status: 403 });
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
       const apiResponse = await handleApiRequest(req);
       if (apiResponse !== null) {
-        return apiResponse;
+        if (!corsHeaders) return apiResponse;
+        return withCorsHeaders(apiResponse, corsHeaders);
       }
 
       const upgradeHeader = req.headers.get("upgrade");

@@ -1,19 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
-import { FolderOpen, Unplug, Puzzle, ChevronRight } from "lucide-vue-next";
-import { useToast } from "@/composables/useToast";
+import { Download, Unplug, Puzzle, ChevronRight } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
-import {
-  WebSocketRequestEvents,
-  WebSocketResponseEvents,
-} from "@/services/websocket";
-import type { PodOpenDirectoryPayload } from "@/types/websocket/requests";
-import type { PodDirectoryOpenedPayload } from "@/types/websocket/responses";
-import { useSendCanvasAction } from "@/composables/useSendCanvasAction";
+import { downloadPodDirectory } from "@/services/podApi";
+import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
+import { generateUUID } from "@/services/utils";
 import { usePodStore } from "@/stores";
 import { getAllProviders } from "@/integration/providerRegistry";
 import PodPluginSubMenu from "./PodPluginSubMenu.vue";
 import { usePluginSubMenu } from "@/composables/canvas/usePluginSubMenu";
+import { useDownloadProgress } from "@/composables/canvas/useDownloadProgress";
 
 interface Props {
   position: { x: number; y: number };
@@ -28,12 +24,13 @@ const emit = defineEmits<{
   "disconnect-integration": [podId: string, provider: string];
 }>();
 
-const { toast } = useToast();
 const { t } = useI18n();
 
 const pod = computed(() => usePodStore().getPodById(props.podId));
 const bindings = computed(() => pod.value?.integrationBindings ?? []);
 const providers = getAllProviders();
+
+const downloadProgress = useDownloadProgress();
 
 const menuRef = ref<HTMLElement | null>(null);
 const subMenuRef = ref<InstanceType<typeof PodPluginSubMenu> | null>(null);
@@ -76,28 +73,31 @@ onUnmounted(() => {
   document.removeEventListener("mousedown", handleOutsideClick, true);
 });
 
-const handleOpenDirectory = async (): Promise<void> => {
-  const { sendCanvasAction } = useSendCanvasAction();
+const handleDownloadDirectory = (): void => {
+  const canvasId = getActiveCanvasIdOrWarn("PodContextMenu");
+  if (!canvasId) return;
 
-  const response = await sendCanvasAction<
-    PodOpenDirectoryPayload,
-    PodDirectoryOpenedPayload
-  >({
-    requestEvent: WebSocketRequestEvents.POD_OPEN_DIRECTORY,
-    responseEvent: WebSocketResponseEvents.POD_DIRECTORY_OPENED,
-    payload: { podId: props.podId },
-  });
+  const taskId = generateUUID();
+  const podName = pod.value?.name ?? props.podId;
 
-  if (!response) {
-    toast({
-      title: t("canvas.podContextMenu.openDirectoryFailed"),
-      description: t("canvas.podContextMenu.openDirectoryFailedDesc"),
-      variant: "destructive",
-    });
-    return;
-  }
+  downloadProgress.addTask(taskId, podName);
 
+  // 立即關閉選單，下載在背景執行
   emit("close");
+
+  downloadPodDirectory(canvasId, props.podId, (downloadedBytes) => {
+    downloadProgress.updateProgress(taskId, downloadedBytes);
+  })
+    .then(() => {
+      downloadProgress.completeTask(taskId);
+    })
+    .catch((error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("canvas.podContextMenu.downloadDirectoryFailed");
+      downloadProgress.failTask(taskId, message);
+    });
 };
 
 const handleConnect = (provider: string): void => {
@@ -123,11 +123,11 @@ const handleDisconnect = (provider: string): void => {
   >
     <button
       class="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
-      @click="handleOpenDirectory"
+      @click="handleDownloadDirectory"
     >
-      <FolderOpen :size="14" />
+      <Download :size="14" />
       <span class="font-mono">{{
-        $t("canvas.podContextMenu.openDirectory")
+        $t("canvas.podContextMenu.downloadDirectory")
       }}</span>
     </button>
 

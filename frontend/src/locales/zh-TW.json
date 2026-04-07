@@ -360,12 +360,12 @@
       "pullLatest": "Pull 至最新版本"
     },
     "podContextMenu": {
-      "openDirectory": "打開工作目錄",
+      "downloadDirectory": "下載工作目錄（zip）",
       "plugin": "Plugin",
       "connect": "連接 {label}",
       "disconnect": "斷開 {label}",
-      "openDirectoryFailed": "打開目錄失敗",
-      "openDirectoryFailedDesc": "無法打開工作目錄，請稍後再試",
+      "downloadDirectoryFailed": "下載目錄失敗",
+      "downloadDirectoryFailedDesc": "無法下載工作目錄，請稍後再試",
       "noPluginInstalled": "尚未安裝任何 Plugin",
       "pluginLoadFailed": "載入 Plugin 列表失敗",
       "pluginLoadFailedDesc": "無法取得已安裝的 Plugin 列表，請稍後再試",
@@ -621,6 +621,12 @@
       "failed": "Pull 失敗",
       "success": "Pull 成功"
     },
+    "download": {
+      "started": "準備下載...",
+      "downloading": "已下載 {size}",
+      "completed": "下載完成",
+      "failed": "下載失敗"
+    },
     "editModal": {
       "editTitle": "編輯 {resource}"
     }
@@ -649,7 +655,6 @@
     "workspaceCreateFailed": "建立工作目錄失敗",
     "targetDirectoryNotExists": "目標目錄不存在",
     "unsupportedOs": "不支援的作業系統：{os}",
-    "openDirectoryFailed": "打開目錄失敗",
     "groupNameExists": "Group 名稱已存在",
     "groupNotEmpty": "Group 內還有項目，無法刪除",
     "sourcePodNotFound": "來源 Pod 找不到：{id}",

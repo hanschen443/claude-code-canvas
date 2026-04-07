@@ -370,12 +370,6 @@ export interface CursorMovePayload {
   y: number;
 }
 
-export interface PodOpenDirectoryPayload {
-  requestId: string;
-  canvasId: string;
-  podId: string;
-}
-
 export interface ConfigGetPayload {
   requestId: string;
 }

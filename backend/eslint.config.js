@@ -35,6 +35,7 @@ export default [
         Headers: "readonly",
         URLPattern: "readonly",
         fetch: "readonly",
+        ReadableStream: "readonly",
       },
     },
     plugins: {

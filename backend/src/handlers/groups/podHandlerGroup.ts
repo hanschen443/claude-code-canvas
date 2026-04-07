@@ -9,7 +9,6 @@ import {
   podSetModelSchema,
   podSetScheduleSchema,
   podDeleteSchema,
-  podOpenDirectorySchema,
   podSetPluginsSchema,
 } from "../../schemas";
 import {
@@ -21,7 +20,6 @@ import {
   handlePodSetModel,
   handlePodSetSchedule,
   handlePodDelete,
-  handlePodOpenDirectory,
   handlePodSetPlugins,
 } from "../podHandlers.js";
 import { createHandlerGroup } from "./createHandlerGroup.js";
@@ -76,12 +74,6 @@ export const podHandlerGroup = createHandlerGroup({
       handler: handlePodDelete,
       schema: podDeleteSchema,
       responseEvent: WebSocketResponseEvents.POD_DELETED,
-    },
-    {
-      event: WebSocketRequestEvents.POD_OPEN_DIRECTORY,
-      handler: handlePodOpenDirectory,
-      schema: podOpenDirectorySchema,
-      responseEvent: WebSocketResponseEvents.POD_DIRECTORY_OPENED,
     },
     {
       event: WebSocketRequestEvents.POD_SET_PLUGINS,
