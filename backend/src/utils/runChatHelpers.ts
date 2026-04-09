@@ -8,6 +8,7 @@ import { extractDisplayContent } from "./chatHelpers.js";
 import { runExecutionService } from "../services/workflow/runExecutionService.js";
 import { executeStreamingChat } from "../services/claude/streamingChatExecutor.js";
 import { RunModeExecutionStrategy } from "../services/executionStrategy.js";
+import { logger } from "./logger.js";
 
 export interface LaunchMultiInstanceRunParams {
   canvasId: string;
@@ -53,6 +54,12 @@ export async function launchMultiInstanceRun(
     { canvasId, podId, message, abortable, strategy },
     {
       onComplete: () => onComplete(runContext),
+      onError: (_canvasId, _podId, error) => {
+        // 原始 error.message 可能含內部技術細節（SDK 錯誤、API 路徑等），
+        // 僅記錄到 server log，不直接送往前端以避免資訊洩漏
+        logger.error("Run", "Error", `Pod ${podId} 執行失敗: ${error.message}`);
+        runExecutionService.errorPodInstance(runContext, podId, "執行發生錯誤");
+      },
       ...(onAborted ? { onAborted } : {}),
     },
   );

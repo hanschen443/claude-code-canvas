@@ -336,8 +336,8 @@ describe("ClaudeService", () => {
       ).rejects.toThrow("Network error occurred");
 
       expect(streamEvents[0]).toEqual({
-        type: "error",
-        error: "與 Claude 通訊時發生錯誤，請稍後再試",
+        type: "text",
+        content: "\n\n⚠️ 與 Claude 通訊時發生錯誤，請稍後再試",
       });
 
       const calls = (podStore.setClaudeSessionId as any).mock.calls || [];
@@ -397,11 +397,11 @@ describe("ClaudeService", () => {
         expect.stringContaining("Session 恢復失敗"),
       );
 
-      const errorEvents = streamEvents.filter((e) => e.type === "error");
-      expect(errorEvents.length).toBeGreaterThan(0);
-      expect(errorEvents[errorEvents.length - 1]).toEqual({
-        type: "error",
-        error: "與 Claude 通訊時發生錯誤，請稍後再試",
+      const textEvents = streamEvents.filter((e) => e.type === "text");
+      expect(textEvents.length).toBeGreaterThan(0);
+      expect(textEvents[textEvents.length - 1]).toEqual({
+        type: "text",
+        content: "\n\n⚠️ 與 Claude 通訊時發生錯誤，請稍後再試",
       });
     });
 

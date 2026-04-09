@@ -82,6 +82,8 @@ interface QueryState {
   fullContent: string;
   toolUseInfo: ToolUseInfo | null;
   activeTools: Map<string, ActiveToolEntry>;
+  /** 已透過 onStream 送出過錯誤訊息，避免重複發送 */
+  errorEmitted: boolean;
 }
 
 type UserToolResultBlock = {
@@ -192,6 +194,7 @@ export class ClaudeService {
       fullContent: "",
       toolUseInfo: null,
       activeTools: new Map(),
+      errorEmitted: false,
     };
   }
 
@@ -203,8 +206,10 @@ export class ClaudeService {
     onStream: StreamCallback,
     userMessage: string,
     technicalMessage: string,
+    state?: QueryState,
   ): never {
     onStream({ type: "text", content: "\n\n⚠️ " + userMessage });
+    if (state) state.errorEmitted = true;
     throw new Error(technicalMessage);
   }
 
@@ -284,6 +289,7 @@ export class ClaudeService {
           ? result.userMessage
           : "與 Claude 通訊時發生錯誤，請稍後再試",
         `assistant message 錯誤：${sdkMessage.error}`,
+        state,
       );
     }
   }
@@ -402,8 +408,12 @@ export class ClaudeService {
         ? sdkMessage.errors.join(", ")
         : "Unknown error";
 
-    onStream({ type: "error", error: "與 Claude 通訊時發生錯誤，請稍後再試" });
-    throw new Error(errorMessage);
+    this.emitErrorAndThrow(
+      onStream,
+      "與 Claude 通訊時發生錯誤，請稍後再試",
+      errorMessage,
+      state,
+    );
   }
 
   private handleRateLimitEvent(
@@ -485,6 +495,7 @@ export class ClaudeService {
     onStream: StreamCallback,
     isRetry: boolean,
     retryFn: () => Promise<Message>,
+    state?: QueryState,
   ): Promise<Message> {
     const { pod, canvasId, runOptions } = context;
 
@@ -513,7 +524,13 @@ export class ClaudeService {
       `Pod ${pod.name} ${prefix}失敗: ${errorMessage}`,
     );
 
-    onStream({ type: "error", error: "與 Claude 通訊時發生錯誤，請稍後再試" });
+    // 若上游（handleResultMessage、emitErrorAndThrow）已送出錯誤訊息，不再重複發送
+    if (!state?.errorEmitted) {
+      onStream({
+        type: "error",
+        error: "與 Claude 通訊時發生錯誤，請稍後再試",
+      });
+    }
     throw error;
   }
 
@@ -813,6 +830,7 @@ export class ClaudeService {
         onStream,
         isRetry,
         retryFn,
+        state,
       );
     } finally {
       // 確保所有情況都清理 activeQueries entry，防止 Memory Leak
