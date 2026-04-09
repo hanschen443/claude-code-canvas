@@ -15,6 +15,9 @@ import type {
   SDKResultMessage,
   SDKUserMessage as SDKUserMessageType,
   SDKToolProgressMessage,
+  SDKRateLimitEvent,
+  SDKAuthStatusMessage,
+  SDKAPIRetryMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { podStore } from "../podStore.js";
 import { mcpServerStore } from "../mcpServerStore.js";
@@ -45,6 +48,12 @@ import {
 import type { RunContext } from "../../types/run.js";
 import { runStore } from "../runStore.js";
 import { scanInstalledPlugins } from "../pluginScanner.js";
+import {
+  checkRateLimitEvent,
+  checkAuthStatus,
+  formatApiRetryMessage,
+  checkAssistantError,
+} from "./sdkErrorMapper.js";
 
 export type { StreamEvent, StreamCallback } from "./types.js";
 
@@ -161,6 +170,10 @@ export class ClaudeService {
       ),
     result: (sdkMessage, state, onStream) =>
       this.handleResultMessage(sdkMessage as SDKResultMessage, state, onStream),
+    rate_limit_event: (sdkMessage, _state, onStream) =>
+      this.handleRateLimitEvent(sdkMessage as SDKRateLimitEvent, onStream),
+    auth_status: (sdkMessage, _state, onStream) =>
+      this.handleAuthStatus(sdkMessage as SDKAuthStatusMessage, onStream),
   };
 
   private buildBaseOptions(cwd: string): Partial<Options> {
@@ -180,6 +193,19 @@ export class ClaudeService {
       toolUseInfo: null,
       activeTools: new Map(),
     };
+  }
+
+  /**
+   * 將錯誤以文字訊息串流給使用者，並拋出技術性錯誤供上層捕捉。
+   * 使用 type: "text" 而非 type: "error"，使訊息顯示在聊天氣泡中。
+   */
+  private emitErrorAndThrow(
+    onStream: StreamCallback,
+    userMessage: string,
+    technicalMessage: string,
+  ): never {
+    onStream({ type: "text", content: "\n\n⚠️ " + userMessage });
+    throw new Error(technicalMessage);
   }
 
   private handleSystemInitMessage(
@@ -244,10 +270,21 @@ export class ClaudeService {
     onStream: StreamCallback,
   ): void {
     const assistantMessage = sdkMessage.message;
-    if (!assistantMessage.content) return;
+    if (assistantMessage.content) {
+      for (const block of assistantMessage.content as AssistantContentBlock[]) {
+        this.processContentBlock(block, state, onStream);
+      }
+    }
 
-    for (const block of assistantMessage.content as AssistantContentBlock[]) {
-      this.processContentBlock(block, state, onStream);
+    if (sdkMessage.error) {
+      const result = checkAssistantError(sdkMessage.error);
+      this.emitErrorAndThrow(
+        onStream,
+        result.shouldAbort
+          ? result.userMessage
+          : "與 Claude 通訊時發生錯誤，請稍後再試",
+        `assistant message 錯誤：${sdkMessage.error}`,
+      );
     }
   }
 
@@ -369,6 +406,50 @@ export class ClaudeService {
     throw new Error(errorMessage);
   }
 
+  private handleRateLimitEvent(
+    sdkMessage: SDKRateLimitEvent,
+    onStream: StreamCallback,
+  ): void {
+    const result = checkRateLimitEvent(sdkMessage.rate_limit_info);
+    if (!result.shouldAbort) return;
+
+    this.emitErrorAndThrow(
+      onStream,
+      result.userMessage,
+      `rate_limit_event rejected：帳戶用量已達上限`,
+    );
+  }
+
+  private handleAuthStatus(
+    sdkMessage: SDKAuthStatusMessage,
+    onStream: StreamCallback,
+  ): void {
+    const result = checkAuthStatus(sdkMessage.error);
+    if (!result.shouldAbort) return;
+
+    this.emitErrorAndThrow(
+      onStream,
+      result.userMessage,
+      `auth_status 錯誤：${sdkMessage.error}`,
+    );
+  }
+
+  private handleApiRetryMessage(
+    sdkMessage: SDKAPIRetryMessage,
+    onStream: StreamCallback,
+  ): void {
+    const { attempt, max_retries, error_status, error } = sdkMessage;
+
+    logger.log(
+      "Chat",
+      "Update",
+      `[ClaudeService] API 請求重試：第 ${attempt}/${max_retries} 次，error_status=${error_status ?? "null"}，error=${error}`,
+    );
+
+    const message = formatApiRetryMessage(attempt, max_retries, error_status);
+    onStream({ type: "text", content: message });
+  }
+
   private processSDKMessage(
     sdkMessage: SDKMessage,
     state: QueryState,
@@ -376,6 +457,11 @@ export class ClaudeService {
   ): void {
     if (sdkMessage.type === "system" && sdkMessage.subtype === "init") {
       this.handleSystemInitMessage(sdkMessage, state);
+      return;
+    }
+
+    if (sdkMessage.type === "system" && sdkMessage.subtype === "api_retry") {
+      this.handleApiRetryMessage(sdkMessage as SDKAPIRetryMessage, onStream);
       return;
     }
 
