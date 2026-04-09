@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.4] - 2026-04-09
+
+### 新增
+- 同一 Run 內相同 Repository 的 Pod 共用 Worktree，上游修改下游可見
+
+### 修正
+- 修復 Claude SDK 429/401/用量上限等錯誤導致對話卡住，API 錯誤訊息直接顯示在 Pod 聊天氣泡中
+- API 重試時即時顯示重試進度
+- 修復 Run 結束時 Worktree 含未提交變更導致清理失敗
+- 修復多 Pod 共享 Repository 時資源同步的競態條件
+- 修復 Integration Apps 複製按鈕在非 HTTPS 環境下無法使用
+- Clipboard API 權限被拒時自動降級為備用複製方式
+- 修復元件銷毀時未清除計時器的記憶體洩漏問題
+
 ## [1.0.2] - 2026-04-07
 
 ### 新增
