@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.6] - 2026-04-10
+
+### 新增
+- Canvas 密碼鎖功能：支援設定/修改/解除密碼，鎖定 Canvas 在列表顯示鎖頭圖示
+- Run 啟動前自動同步 repository 到 remote 最新版本
+
+### 修正
+- REST API 與 WebSocket 雙重密碼防護，未驗證請求回傳 403
+- 修復 Run 執行中刪除導致 FOREIGN KEY constraint failed 的 bug
+- deleteRun 改為先發 abort 信號、等待進行中操作完成後再刪除 DB
+- 修復 Run 的 Worktree 清理後重複刪除導致錯誤日誌的問題
+
 ## [1.0.5] - 2026-04-09
 
 ### 修正
