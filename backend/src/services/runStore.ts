@@ -312,6 +312,14 @@ class RunStore {
     }));
   }
 
+  /**
+   * 清除指定 Run 所有 pod instance 的 worktree_path。
+   * 在 worktree 實際刪除成功後呼叫，防止二次清理。
+   */
+  clearWorktreePathsByRunId(runId: string): void {
+    this.stmts.runPodInstance.clearWorktreePathsByRunId.run(runId);
+  }
+
   getPodInstance(runId: string, podId: string): RunPodInstance | undefined {
     const row = this.stmts.runPodInstance.selectByRunIdAndPodId.get({
       $runId: runId,

@@ -168,6 +168,7 @@ function buildStatements(db: Database): {
     settleAutoPathway: ReturnType<Database["prepare"]>;
     settleDirectPathway: ReturnType<Database["prepare"]>;
     selectWorktreePathsByRunId: ReturnType<Database["prepare"]>;
+    clearWorktreePathsByRunId: ReturnType<Database["prepare"]>;
   };
   runMessage: {
     insert: ReturnType<Database["prepare"]>;
@@ -555,6 +556,9 @@ function buildStatements(db: Database): {
       ),
       selectWorktreePathsByRunId: db.prepare(
         "SELECT pod_id, worktree_path FROM run_pod_instances WHERE run_id = ? AND worktree_path IS NOT NULL",
+      ),
+      clearWorktreePathsByRunId: db.prepare(
+        "UPDATE run_pod_instances SET worktree_path = NULL WHERE run_id = ?",
       ),
     },
 

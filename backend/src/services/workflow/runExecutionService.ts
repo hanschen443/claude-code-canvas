@@ -650,6 +650,8 @@ class RunExecutionService {
         }
       }),
     );
+
+    runStore.clearWorktreePathsByRunId(runId);
   }
 
   /**

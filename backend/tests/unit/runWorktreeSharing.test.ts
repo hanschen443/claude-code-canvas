@@ -311,6 +311,9 @@ describe("Run Worktree 共用邏輯", () => {
       vi.spyOn(runStore, "getRun").mockReturnValue(
         createMockRun({ id: runId, canvasId }),
       );
+      const clearWorktreePathsSpy = vi
+        .spyOn(runStore, "clearWorktreePathsByRunId")
+        .mockImplementation(() => {});
       vi.spyOn(runStore, "deleteRun").mockImplementation(() => {});
 
       await runExecutionService.deleteRun(runId);
@@ -321,6 +324,10 @@ describe("Run Worktree 共用邏輯", () => {
         expect.stringContaining("shared-repo"),
         sharedWorktreePath,
       );
+
+      // clearWorktreePathsByRunId 應被呼叫一次，並傳入正確的 runId
+      expect(clearWorktreePathsSpy).toHaveBeenCalledTimes(1);
+      expect(clearWorktreePathsSpy).toHaveBeenCalledWith(runId);
     });
   });
 
