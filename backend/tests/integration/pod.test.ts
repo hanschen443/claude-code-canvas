@@ -273,7 +273,8 @@ describe("Pod 管理", () => {
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, "sonnet");
 
-      expect(updatedPod.model).toBe("sonnet");
+      // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
+      expect(updatedPod.providerConfig?.model).toBe("sonnet");
     });
 
     it("成功設定 Pod 模型為 Haiku", async () => {
@@ -281,7 +282,8 @@ describe("Pod 管理", () => {
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, "haiku");
 
-      expect(updatedPod.model).toBe("haiku");
+      // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
+      expect(updatedPod.providerConfig?.model).toBe("haiku");
     });
 
     it("成功設定 Pod 模型為 Opus", async () => {
@@ -289,7 +291,8 @@ describe("Pod 管理", () => {
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, "opus");
 
-      expect(updatedPod.model).toBe("opus");
+      // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
+      expect(updatedPod.providerConfig?.model).toBe("opus");
     });
 
     it("設定不存在的 Pod 模型時失敗", async () => {

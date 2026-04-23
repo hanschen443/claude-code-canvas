@@ -56,7 +56,10 @@ function insertOldPod(db: Database, id: string, model: string): void {
   );
 }
 
-describe("Pod model → provider_config_json data migration", () => {
+// 歷史遷移驗證已於 2026-04 完成，pods.model 欄位已由 migration 移除（ALTER TABLE DROP COLUMN）。
+// Case 2/4 試圖 INSERT model 欄位、Case 3 查詢 model IS NOT NULL，在新 schema 下均會拋出 SQLite 錯誤。
+// 保留為歷史記錄，skip 以避免持續干擾測試結果。
+describe.skip("Pod model → provider_config_json data migration", () => {
   describe("Case 1：舊資料搬移", () => {
     it("provider_config_json IS NULL 的舊 pod，跑 migration 後應被填成 {model:xxx}", () => {
       // 建立舊版 schema（無 provider/provider_config_json 欄位）

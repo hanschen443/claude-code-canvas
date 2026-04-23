@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type {
-  ModelType,
   Pod,
   PodStatus,
   Position,
@@ -38,6 +37,7 @@ import { useCanvasWebSocketAction } from "@/composables/useCanvasWebSocketAction
 import {
   isValidPod as isValidPodFn,
   enrichPod as enrichPodFn,
+  isValidModelName,
 } from "@/lib/podValidation";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
 
@@ -357,14 +357,17 @@ export const usePodStore = defineStore("pod", () => {
     }
   }
 
-  function updatePodModel(podId: string, model: ModelType): void {
-    updatePodField(podId, "model", model);
-  }
-
-  /** 將 model 寫入 providerConfig.model（provider-agnostic，取代 updatePodModel） */
+  /** 將 model 寫入 providerConfig.model（provider-agnostic） */
   function updatePodProviderConfigModel(podId: string, model: string): void {
     const pod = findPodById(podId);
     if (!pod) return;
+
+    // 驗證 model 名稱格式，防止非法字串（例如 CLI 旗標注入）
+    if (!isValidModelName(model)) {
+      console.warn(`[PodStore] model 不合法，已拒絕更新：${model}`);
+      return;
+    }
+
     pod.providerConfig = { ...pod.providerConfig, model };
   }
 
@@ -499,7 +502,6 @@ export const usePodStore = defineStore("pod", () => {
     updatePodField,
     updatePodOutputStyle,
     clearPodOutputsByIds,
-    updatePodModel,
     updatePodProviderConfigModel,
     updatePodRepository,
     updatePodCommand,

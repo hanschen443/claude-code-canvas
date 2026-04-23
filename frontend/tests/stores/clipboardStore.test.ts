@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
-import { setupStoreTest } from '../helpers/testSetup'
-import { useClipboardStore } from '@/stores/clipboardStore'
+import { describe, it, expect, vi } from "vitest";
+import { setupStoreTest } from "../helpers/testSetup";
+import { useClipboardStore } from "@/stores/clipboardStore";
 import type {
   CopiedPod,
   CopiedOutputStyleNote,
@@ -10,261 +10,266 @@ import type {
   CopiedCommandNote,
   CopiedMcpServerNote,
   CopiedConnection,
-} from '@/types'
+} from "@/types";
 
-describe('clipboardStore', () => {
-  setupStoreTest()
+describe("clipboardStore", () => {
+  setupStoreTest();
 
-  describe('初始狀態', () => {
-    it('所有 copied 陣列應為空', () => {
-      const store = useClipboardStore()
+  describe("初始狀態", () => {
+    it("所有 copied 陣列應為空", () => {
+      const store = useClipboardStore();
 
-      expect(store.copiedPods).toEqual([])
-      expect(store.copiedOutputStyleNotes).toEqual([])
-      expect(store.copiedSkillNotes).toEqual([])
-      expect(store.copiedRepositoryNotes).toEqual([])
-      expect(store.copiedSubAgentNotes).toEqual([])
-      expect(store.copiedCommandNotes).toEqual([])
-      expect(store.copiedMcpServerNotes).toEqual([])
-      expect(store.copiedConnections).toEqual([])
-    })
+      expect(store.copiedPods).toEqual([]);
+      expect(store.copiedOutputStyleNotes).toEqual([]);
+      expect(store.copiedSkillNotes).toEqual([]);
+      expect(store.copiedRepositoryNotes).toEqual([]);
+      expect(store.copiedSubAgentNotes).toEqual([]);
+      expect(store.copiedCommandNotes).toEqual([]);
+      expect(store.copiedMcpServerNotes).toEqual([]);
+      expect(store.copiedConnections).toEqual([]);
+    });
+  });
 
-  })
+  describe("isEmpty getter", () => {
+    it("全空時應為 true", () => {
+      const store = useClipboardStore();
 
-  describe('isEmpty getter', () => {
-    it('全空時應為 true', () => {
-      const store = useClipboardStore()
+      expect(store.isEmpty).toBe(true);
+    });
 
-      expect(store.isEmpty).toBe(true)
-    })
-
-    it('有 copiedPods 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedPods 時應為 false", () => {
+      const store = useClipboardStore();
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
-      store.setCopy([mockPod], [], [], [], [], [], [], [])
+      store.setCopy([mockPod], [], [], [], [], [], [], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedOutputStyleNotes 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedOutputStyleNotes 時應為 false", () => {
+      const store = useClipboardStore();
       const mockNote: CopiedOutputStyleNote = {
-        id: 'note-1',
-        outputStyleId: 'style-1',
-        name: 'Test Style',
+        id: "note-1",
+        outputStyleId: "style-1",
+        name: "Test Style",
         x: 100,
         y: 200,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
-      store.setCopy([], [mockNote], [], [], [], [], [], [])
+      store.setCopy([], [mockNote], [], [], [], [], [], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedSkillNotes 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedSkillNotes 時應為 false", () => {
+      const store = useClipboardStore();
       const mockNote: CopiedSkillNote = {
-        id: 'note-1',
-        skillId: 'skill-1',
-        name: 'Test Skill',
+        id: "note-1",
+        skillId: "skill-1",
+        name: "Test Skill",
         x: 100,
         y: 200,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
-      store.setCopy([], [], [mockNote], [], [], [], [], [])
+      store.setCopy([], [], [mockNote], [], [], [], [], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedRepositoryNotes 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedRepositoryNotes 時應為 false", () => {
+      const store = useClipboardStore();
       const mockNote: CopiedRepositoryNote = {
-        repositoryId: 'repo-1',
-        name: 'Test Repository',
+        repositoryId: "repo-1",
+        name: "Test Repository",
         x: 100,
         y: 200,
         boundToOriginalPodId: null,
         originalPosition: null,
-      }
+      };
 
-      store.setCopy([], [], [], [mockNote], [], [], [], [])
+      store.setCopy([], [], [], [mockNote], [], [], [], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedSubAgentNotes 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedSubAgentNotes 時應為 false", () => {
+      const store = useClipboardStore();
       const mockNote: CopiedSubAgentNote = {
-        id: 'note-1',
-        subAgentId: 'sub-agent-1',
-        name: 'Test SubAgent',
+        id: "note-1",
+        subAgentId: "sub-agent-1",
+        name: "Test SubAgent",
         x: 100,
         y: 200,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
-      store.setCopy([], [], [], [], [mockNote], [], [], [])
+      store.setCopy([], [], [], [], [mockNote], [], [], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedCommandNotes 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedCommandNotes 時應為 false", () => {
+      const store = useClipboardStore();
       const mockNote: CopiedCommandNote = {
-        commandId: 'command-1',
-        name: 'Test Command',
+        commandId: "command-1",
+        name: "Test Command",
         x: 100,
         y: 200,
         boundToOriginalPodId: null,
         originalPosition: null,
-      }
+      };
 
-      store.setCopy([], [], [], [], [], [mockNote], [], [])
+      store.setCopy([], [], [], [], [], [mockNote], [], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedMcpServerNotes 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedMcpServerNotes 時應為 false", () => {
+      const store = useClipboardStore();
       const mockNote: CopiedMcpServerNote = {
-        id: 'note-1',
-        mcpServerId: 'mcp-server-1',
-        name: 'Test MCP Server',
+        id: "note-1",
+        mcpServerId: "mcp-server-1",
+        name: "Test MCP Server",
         x: 100,
         y: 200,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
-      store.setCopy([], [], [], [], [], [], [mockNote], [])
+      store.setCopy([], [], [], [], [], [], [mockNote], []);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有 copiedConnections 時應為 false', () => {
-      const store = useClipboardStore()
+    it("有 copiedConnections 時應為 false", () => {
+      const store = useClipboardStore();
       const mockConnection: CopiedConnection = {
-        sourcePodId: 'pod-1',
-        sourceAnchor: 'bottom',
-        targetPodId: 'pod-2',
-        targetAnchor: 'top',
-      }
+        sourcePodId: "pod-1",
+        sourceAnchor: "bottom",
+        targetPodId: "pod-2",
+        targetAnchor: "top",
+      };
 
-      store.setCopy([], [], [], [], [], [], [], [mockConnection])
+      store.setCopy([], [], [], [], [], [], [], [mockConnection]);
 
-      expect(store.isEmpty).toBe(false)
-    })
+      expect(store.isEmpty).toBe(false);
+    });
 
-    it('有多種類型的資料時應為 false', () => {
-      const store = useClipboardStore()
+    it("有多種類型的資料時應為 false", () => {
+      const store = useClipboardStore();
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
       const mockConnection: CopiedConnection = {
-        sourcePodId: 'pod-1',
-        sourceAnchor: 'bottom',
-        targetPodId: 'pod-2',
-        targetAnchor: 'top',
-      }
+        sourcePodId: "pod-1",
+        sourceAnchor: "bottom",
+        targetPodId: "pod-2",
+        targetAnchor: "top",
+      };
 
-      store.setCopy([mockPod], [], [], [], [], [], [], [mockConnection])
+      store.setCopy([mockPod], [], [], [], [], [], [], [mockConnection]);
 
-      expect(store.isEmpty).toBe(false)
-    })
-  })
+      expect(store.isEmpty).toBe(false);
+    });
+  });
 
-  describe('setCopy', () => {
-    it('應設定所有 8 個陣列', () => {
-      const store = useClipboardStore()
+  describe("setCopy", () => {
+    it("應設定所有 8 個陣列", () => {
+      const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
       const mockOutputStyleNote: CopiedOutputStyleNote = {
-        id: 'note-1',
-        outputStyleId: 'style-1',
-        name: 'Test Style',
+        id: "note-1",
+        outputStyleId: "style-1",
+        name: "Test Style",
         x: 100,
         y: 200,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockSkillNote: CopiedSkillNote = {
-        id: 'note-2',
-        skillId: 'skill-1',
-        name: 'Test Skill',
+        id: "note-2",
+        skillId: "skill-1",
+        name: "Test Skill",
         x: 150,
         y: 250,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockRepositoryNote: CopiedRepositoryNote = {
-        repositoryId: 'repo-1',
-        name: 'Test Repository',
+        repositoryId: "repo-1",
+        name: "Test Repository",
         x: 200,
         y: 300,
         boundToOriginalPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockSubAgentNote: CopiedSubAgentNote = {
-        id: 'note-3',
-        subAgentId: 'sub-agent-1',
-        name: 'Test SubAgent',
+        id: "note-3",
+        subAgentId: "sub-agent-1",
+        name: "Test SubAgent",
         x: 250,
         y: 350,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockCommandNote: CopiedCommandNote = {
-        commandId: 'command-1',
-        name: 'Test Command',
+        commandId: "command-1",
+        name: "Test Command",
         x: 300,
         y: 400,
         boundToOriginalPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockMcpServerNote: CopiedMcpServerNote = {
-        id: 'note-4',
-        mcpServerId: 'mcp-server-1',
-        name: 'Test MCP Server',
+        id: "note-4",
+        mcpServerId: "mcp-server-1",
+        name: "Test MCP Server",
         x: 350,
         y: 450,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockConnection: CopiedConnection = {
-        sourcePodId: 'pod-1',
-        sourceAnchor: 'bottom',
-        targetPodId: 'pod-2',
-        targetAnchor: 'top',
-      }
+        sourcePodId: "pod-1",
+        sourceAnchor: "bottom",
+        targetPodId: "pod-2",
+        targetAnchor: "top",
+      };
 
       store.setCopy(
         [mockPod],
@@ -274,210 +279,224 @@ describe('clipboardStore', () => {
         [mockSubAgentNote],
         [mockCommandNote],
         [mockMcpServerNote],
-        [mockConnection]
-      )
+        [mockConnection],
+      );
 
-      expect(store.copiedPods).toEqual([mockPod])
-      expect(store.copiedOutputStyleNotes).toEqual([mockOutputStyleNote])
-      expect(store.copiedSkillNotes).toEqual([mockSkillNote])
-      expect(store.copiedRepositoryNotes).toEqual([mockRepositoryNote])
-      expect(store.copiedSubAgentNotes).toEqual([mockSubAgentNote])
-      expect(store.copiedCommandNotes).toEqual([mockCommandNote])
-      expect(store.copiedMcpServerNotes).toEqual([mockMcpServerNote])
-      expect(store.copiedConnections).toEqual([mockConnection])
-    })
+      expect(store.copiedPods).toEqual([mockPod]);
+      expect(store.copiedOutputStyleNotes).toEqual([mockOutputStyleNote]);
+      expect(store.copiedSkillNotes).toEqual([mockSkillNote]);
+      expect(store.copiedRepositoryNotes).toEqual([mockRepositoryNote]);
+      expect(store.copiedSubAgentNotes).toEqual([mockSubAgentNote]);
+      expect(store.copiedCommandNotes).toEqual([mockCommandNote]);
+      expect(store.copiedMcpServerNotes).toEqual([mockMcpServerNote]);
+      expect(store.copiedConnections).toEqual([mockConnection]);
+    });
 
-    it('應能設定空陣列', () => {
-      const store = useClipboardStore()
+    it("應能設定空陣列", () => {
+      const store = useClipboardStore();
 
-      store.setCopy([], [], [], [], [], [], [], [])
+      store.setCopy([], [], [], [], [], [], [], []);
 
-      expect(store.copiedPods).toEqual([])
-      expect(store.copiedOutputStyleNotes).toEqual([])
-      expect(store.copiedSkillNotes).toEqual([])
-      expect(store.copiedRepositoryNotes).toEqual([])
-      expect(store.copiedSubAgentNotes).toEqual([])
-      expect(store.copiedCommandNotes).toEqual([])
-      expect(store.copiedMcpServerNotes).toEqual([])
-      expect(store.copiedConnections).toEqual([])
-    })
+      expect(store.copiedPods).toEqual([]);
+      expect(store.copiedOutputStyleNotes).toEqual([]);
+      expect(store.copiedSkillNotes).toEqual([]);
+      expect(store.copiedRepositoryNotes).toEqual([]);
+      expect(store.copiedSubAgentNotes).toEqual([]);
+      expect(store.copiedCommandNotes).toEqual([]);
+      expect(store.copiedMcpServerNotes).toEqual([]);
+      expect(store.copiedConnections).toEqual([]);
+    });
 
-    it('應能覆蓋之前的資料', () => {
-      const store = useClipboardStore()
+    it("應能覆蓋之前的資料", () => {
+      const store = useClipboardStore();
 
       const mockPod1: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod 1',
+        id: "pod-1",
+        name: "Test Pod 1",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
       const mockPod2: CopiedPod = {
-        id: 'pod-2',
-        name: 'Test Pod 2',
+        id: "pod-2",
+        name: "Test Pod 2",
         x: 300,
         y: 400,
         rotation: 45,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
-      store.setCopy([mockPod1], [], [], [], [], [], [], [])
-      expect(store.copiedPods).toEqual([mockPod1])
+      store.setCopy([mockPod1], [], [], [], [], [], [], []);
+      expect(store.copiedPods).toEqual([mockPod1]);
 
-      store.setCopy([mockPod2], [], [], [], [], [], [], [])
-      expect(store.copiedPods).toEqual([mockPod2])
-    })
+      store.setCopy([mockPod2], [], [], [], [], [], [], []);
+      expect(store.copiedPods).toEqual([mockPod2]);
+    });
 
-    it('應能設定多個項目的陣列', () => {
-      const store = useClipboardStore()
+    it("應能設定多個項目的陣列", () => {
+      const store = useClipboardStore();
 
       const mockPods: CopiedPod[] = [
         {
-          id: 'pod-1',
-          name: 'Test Pod 1',
+          id: "pod-1",
+          name: "Test Pod 1",
           x: 100,
           y: 200,
           rotation: 0,
+          provider: "claude",
+          providerConfig: { model: "opus" },
         },
         {
-          id: 'pod-2',
-          name: 'Test Pod 2',
+          id: "pod-2",
+          name: "Test Pod 2",
           x: 300,
           y: 400,
           rotation: 45,
+          provider: "claude",
+          providerConfig: { model: "opus" },
         },
-      ]
+      ];
 
-      store.setCopy(mockPods, [], [], [], [], [], [], [])
+      store.setCopy(mockPods, [], [], [], [], [], [], []);
 
-      expect(store.copiedPods).toHaveLength(2)
-      expect(store.copiedPods).toEqual(mockPods)
-    })
-  })
+      expect(store.copiedPods).toHaveLength(2);
+      expect(store.copiedPods).toEqual(mockPods);
+    });
+  });
 
-  describe('clear', () => {
-    it('應清空所有陣列', () => {
-      const store = useClipboardStore()
+  describe("clear", () => {
+    it("應清空所有陣列", () => {
+      const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
-      store.setCopy([mockPod], [], [], [], [], [], [], [])
-      expect(store.copiedPods).toHaveLength(1)
+      store.setCopy([mockPod], [], [], [], [], [], [], []);
+      expect(store.copiedPods).toHaveLength(1);
 
-      store.clear()
+      store.clear();
 
-      expect(store.copiedPods).toEqual([])
-      expect(store.copiedOutputStyleNotes).toEqual([])
-      expect(store.copiedSkillNotes).toEqual([])
-      expect(store.copiedRepositoryNotes).toEqual([])
-      expect(store.copiedSubAgentNotes).toEqual([])
-      expect(store.copiedCommandNotes).toEqual([])
-      expect(store.copiedMcpServerNotes).toEqual([])
-      expect(store.copiedConnections).toEqual([])
-    })
+      expect(store.copiedPods).toEqual([]);
+      expect(store.copiedOutputStyleNotes).toEqual([]);
+      expect(store.copiedSkillNotes).toEqual([]);
+      expect(store.copiedRepositoryNotes).toEqual([]);
+      expect(store.copiedSubAgentNotes).toEqual([]);
+      expect(store.copiedCommandNotes).toEqual([]);
+      expect(store.copiedMcpServerNotes).toEqual([]);
+      expect(store.copiedConnections).toEqual([]);
+    });
 
-    it('應使 isEmpty 回傳 true', () => {
-      const store = useClipboardStore()
+    it("應使 isEmpty 回傳 true", () => {
+      const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
-      store.setCopy([mockPod], [], [], [], [], [], [], [])
-      expect(store.isEmpty).toBe(false)
+      store.setCopy([mockPod], [], [], [], [], [], [], []);
+      expect(store.isEmpty).toBe(false);
 
-      store.clear()
+      store.clear();
 
-      expect(store.isEmpty).toBe(true)
-    })
-  })
+      expect(store.isEmpty).toBe(true);
+    });
+  });
 
-  describe('getCopiedData', () => {
-    it('應回傳所有 8 個陣列的資料', () => {
-      const store = useClipboardStore()
+  describe("getCopiedData", () => {
+    it("應回傳所有 8 個陣列的資料", () => {
+      const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
       const mockOutputStyleNote: CopiedOutputStyleNote = {
-        id: 'note-1',
-        outputStyleId: 'style-1',
-        name: 'Test Style',
+        id: "note-1",
+        outputStyleId: "style-1",
+        name: "Test Style",
         x: 100,
         y: 200,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockSkillNote: CopiedSkillNote = {
-        id: 'note-2',
-        skillId: 'skill-1',
-        name: 'Test Skill',
+        id: "note-2",
+        skillId: "skill-1",
+        name: "Test Skill",
         x: 150,
         y: 250,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockRepositoryNote: CopiedRepositoryNote = {
-        repositoryId: 'repo-1',
-        name: 'Test Repository',
+        repositoryId: "repo-1",
+        name: "Test Repository",
         x: 200,
         y: 300,
         boundToOriginalPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockSubAgentNote: CopiedSubAgentNote = {
-        id: 'note-3',
-        subAgentId: 'sub-agent-1',
-        name: 'Test SubAgent',
+        id: "note-3",
+        subAgentId: "sub-agent-1",
+        name: "Test SubAgent",
         x: 250,
         y: 350,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockCommandNote: CopiedCommandNote = {
-        commandId: 'command-1',
-        name: 'Test Command',
+        commandId: "command-1",
+        name: "Test Command",
         x: 300,
         y: 400,
         boundToOriginalPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockMcpServerNote: CopiedMcpServerNote = {
-        id: 'note-4',
-        mcpServerId: 'mcp-server-1',
-        name: 'Test MCP Server',
+        id: "note-4",
+        mcpServerId: "mcp-server-1",
+        name: "Test MCP Server",
         x: 350,
         y: 450,
         boundToPodId: null,
         originalPosition: null,
-      }
+      };
 
       const mockConnection: CopiedConnection = {
-        sourcePodId: 'pod-1',
-        sourceAnchor: 'bottom',
-        targetPodId: 'pod-2',
-        targetAnchor: 'top',
-      }
+        sourcePodId: "pod-1",
+        sourceAnchor: "bottom",
+        targetPodId: "pod-2",
+        targetAnchor: "top",
+      };
 
       store.setCopy(
         [mockPod],
@@ -487,10 +506,10 @@ describe('clipboardStore', () => {
         [mockSubAgentNote],
         [mockCommandNote],
         [mockMcpServerNote],
-        [mockConnection]
-      )
+        [mockConnection],
+      );
 
-      const result = store.getCopiedData()
+      const result = store.getCopiedData();
 
       expect(result).toEqual({
         pods: [mockPod],
@@ -501,13 +520,13 @@ describe('clipboardStore', () => {
         commandNotes: [mockCommandNote],
         mcpServerNotes: [mockMcpServerNote],
         connections: [mockConnection],
-      })
-    })
+      });
+    });
 
-    it('應回傳空陣列當沒有資料時', () => {
-      const store = useClipboardStore()
+    it("應回傳空陣列當沒有資料時", () => {
+      const store = useClipboardStore();
 
-      const result = store.getCopiedData()
+      const result = store.getCopiedData();
 
       expect(result).toEqual({
         pods: [],
@@ -518,29 +537,31 @@ describe('clipboardStore', () => {
         commandNotes: [],
         mcpServerNotes: [],
         connections: [],
-      })
-    })
+      });
+    });
 
-    it('應回傳當前 store 狀態的快照', () => {
-      const store = useClipboardStore()
+    it("應回傳當前 store 狀態的快照", () => {
+      const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
-        id: 'pod-1',
-        name: 'Test Pod',
+        id: "pod-1",
+        name: "Test Pod",
         x: 100,
         y: 200,
         rotation: 0,
-      }
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      };
 
-      store.setCopy([mockPod], [], [], [], [], [], [], [])
+      store.setCopy([mockPod], [], [], [], [], [], [], []);
 
-      const result1 = store.getCopiedData()
-      expect(result1.pods).toHaveLength(1)
+      const result1 = store.getCopiedData();
+      expect(result1.pods).toHaveLength(1);
 
-      store.clear()
+      store.clear();
 
-      const result2 = store.getCopiedData()
-      expect(result2.pods).toHaveLength(0)
-    })
-  })
-})
+      const result2 = store.getCopiedData();
+      expect(result2.pods).toHaveLength(0);
+    });
+  });
+});

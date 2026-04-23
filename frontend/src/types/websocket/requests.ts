@@ -148,10 +148,13 @@ export interface PastePodItem {
   x: number;
   y: number;
   rotation: number;
+  /** Pod 使用的 AI Provider（必填，避免貼上時 provider 身份靜默降級） */
+  provider: PodProvider;
+  /** Provider 對應的設定（含 model 等參數） */
+  providerConfig: ProviderConfig;
   outputStyleId?: string | null;
   skillIds?: string[];
   subAgentIds?: string[];
-  model?: ModelType;
   repositoryId?: string | null;
   commandId?: string | null;
 }

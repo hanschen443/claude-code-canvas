@@ -1,4 +1,4 @@
-import { Pod, ModelType } from "./pod.js";
+import { Pod } from "./pod.js";
 import type { ProviderName } from "../services/provider/types.js";
 
 export interface CreatePodRequest {
@@ -11,7 +11,6 @@ export interface CreatePodRequest {
   subAgentIds?: string[];
   mcpServerIds?: string[];
   pluginIds?: string[];
-  model?: ModelType;
   provider?: ProviderName;
   providerConfig?: Record<string, unknown>;
   repositoryId?: string | null;

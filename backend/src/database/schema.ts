@@ -18,7 +18,6 @@ export function createTables(db: Database): void {
       "x REAL NOT NULL DEFAULT 0," +
       "y REAL NOT NULL DEFAULT 0," +
       "rotation REAL NOT NULL DEFAULT 0," +
-      "model TEXT NOT NULL DEFAULT 'opus'," +
       "workspace_path TEXT NOT NULL," +
       "session_id TEXT," +
       "output_style_id TEXT," +
@@ -26,6 +25,8 @@ export function createTables(db: Database): void {
       "command_id TEXT," +
       "multi_instance INTEGER NOT NULL DEFAULT 0," +
       "schedule_json TEXT," +
+      "provider TEXT NOT NULL DEFAULT 'claude'," +
+      "provider_config_json TEXT," +
       "UNIQUE (canvas_id, name)" +
       ")",
   );
@@ -349,24 +350,25 @@ export function createTables(db: Database): void {
     }
   }
 
-  // Data migration: 將舊有 pods.model 搬移至 provider_config_json（冪等，可重複執行）
+  // Migration: 移除 pods.model 欄位（providerConfig.model 已成為唯一來源）
+  // 注意：舊版的 data migration（將 model 搬移至 provider_config_json）已移除，
+  // 因為 pods.model 欄位已由下方的 DROP COLUMN migration 刪除，
+  // 重複執行會因「no such column: model」導致啟動錯誤。
+  // SQLite 3.35+ 支援 ALTER TABLE DROP COLUMN，Bun 內建 SQLite 3.51.0 可安全使用
+  // 冪等：欄位不存在時 catch "no such column" 靜默忽略
   try {
-    db.exec(
-      "UPDATE pods SET provider_config_json = json_object('model', model) WHERE provider_config_json IS NULL AND model IS NOT NULL",
-    );
-
-    const verifyResult = db
-      .prepare(
-        "SELECT COUNT(*) as count FROM pods WHERE provider_config_json IS NULL AND model IS NOT NULL",
+    db.exec("ALTER TABLE pods DROP COLUMN model");
+  } catch (e) {
+    // 欄位已不存在（fresh install 或已執行過此 migration）時忽略
+    if (
+      !(
+        e instanceof Error &&
+        (e.message.includes("no such column") ||
+          e.message.includes("no such index") ||
+          e.message.includes("Cannot drop column"))
       )
-      .get() as { count: number };
-
-    if (verifyResult.count !== 0) {
-      console.warn(
-        `[migration] model→providerConfig 驗證失敗：仍有 ${verifyResult.count} 筆 pod 的 provider_config_json 為 NULL`,
-      );
+    ) {
+      throw e;
     }
-  } catch (err) {
-    console.error("[migration] model→providerConfig 失敗", err);
   }
 }

@@ -290,21 +290,24 @@ describe("useUnifiedEventListeners", () => {
       expect(updatedPod?.name).toBe("New Name");
     });
 
-    it("pod:model:set 應更新 Pod", () => {
+    it("pod:model:set 應更新 Pod 的 providerConfig.model", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", model: "opus" });
+      const pod = createMockPod({
+        id: "pod-1",
+        providerConfig: { model: "opus" },
+      });
       podStore.pods = [pod];
 
       registerUnifiedListeners();
 
       simulateEvent("pod:model:set", {
         canvasId: "canvas-1",
-        pod: { ...pod, model: "sonnet" },
+        pod: { ...pod, providerConfig: { model: "sonnet" } },
       });
 
       const updatedPod = podStore.getPodById("pod-1");
-      expect(updatedPod?.model).toBe("sonnet");
+      expect(updatedPod?.providerConfig.model).toBe("sonnet");
     });
 
     it("pod:deleted 應移除 Pod 並清理相關 notes", () => {

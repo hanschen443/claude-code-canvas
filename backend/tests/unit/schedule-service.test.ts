@@ -827,7 +827,6 @@ describe("排程觸發 multi-instance 分支", () => {
     x: 0,
     y: 0,
     rotation: 0,
-    model: "opus" as const,
     workspacePath: "/tmp",
     sessionId: null,
     outputStyleId: null,
@@ -837,6 +836,8 @@ describe("排程觸發 multi-instance 分支", () => {
     skillIds: [],
     subAgentIds: [],
     mcpServerIds: [],
+    provider: "claude" as const,
+    providerConfig: { model: "opus" },
     schedule: baseSchedule,
   };
 

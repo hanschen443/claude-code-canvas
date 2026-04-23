@@ -24,11 +24,11 @@ export function isValidPod(pod: Pod): boolean {
   return hasValidIdentity(pod) && hasValidPosition(pod) && hasValidOutput(pod);
 }
 
-function resolveOutputArray(
-  existingOutput: string[] | undefined,
+function pickOutputArray(
+  preservedOutput: string[] | undefined,
   podOutput: string[] | undefined,
 ): string[] {
-  if (Array.isArray(existingOutput)) return existingOutput;
+  if (Array.isArray(preservedOutput)) return preservedOutput;
   if (Array.isArray(podOutput)) return podOutput;
   return [];
 }
@@ -48,12 +48,22 @@ function resolveProviderConfig(
 }
 
 /**
+ * 驗證 provider 的 model 名稱是否合法。
+ * 規則：長度 1-100、只允許英數字、點、底線、連字號，與後端 MODEL_RE 對齊。
+ */
+export function isValidModelName(model: string): boolean {
+  if (typeof model !== "string" || model.length < 1 || model.length > 100)
+    return false;
+  return /^[a-zA-Z0-9._-]+$/.test(model);
+}
+
+/**
  * 補全 Pod 缺少的欄位
  * @param pod Pod 物件
- * @param existingOutput 現有的 output（用於保留）
+ * @param preservedOutput 現有的 output（用於保留）
  * @returns 補全後的 Pod
  */
-export function enrichPod(pod: Pod, existingOutput?: string[]): Pod {
+export function enrichPod(pod: Pod, preservedOutput?: string[]): Pod {
   // 缺 provider 時視為舊有的 Claude Pod
   const provider: PodProvider = pod.provider ?? "claude";
 
@@ -62,10 +72,8 @@ export function enrichPod(pod: Pod, existingOutput?: string[]): Pod {
     x: pod.x ?? 100,
     y: pod.y ?? 150,
     rotation: pod.rotation ?? Math.random() * 2 - 1,
-    output: resolveOutputArray(existingOutput, pod.output),
+    output: pickOutputArray(preservedOutput, pod.output),
     outputStyleId: pod.outputStyleId ?? null,
-    // model 欄位向後相容保留，不新增 default（後端 migration 完成後移除）
-    model: pod.model,
     multiInstance: pod.multiInstance ?? false,
     commandId: pod.commandId ?? null,
     schedule: pod.schedule ?? null,

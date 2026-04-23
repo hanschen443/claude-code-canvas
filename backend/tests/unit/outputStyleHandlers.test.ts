@@ -113,7 +113,6 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     x: 0,
     y: 0,
     rotation: 0,
-    model: "opus",
     workspacePath: "/tmp/workspace",
     sessionId: null,
     outputStyleId: null,
@@ -124,7 +123,7 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     subAgentIds: [],
     mcpServerIds: [],
     provider: "claude",
-    providerConfig: null,
+    providerConfig: { model: "opus" },
     ...overrides,
   } as Pod;
 }

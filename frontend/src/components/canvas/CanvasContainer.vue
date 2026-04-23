@@ -308,6 +308,43 @@ const wrappedHandleOpenCreateGroupModal = withMenuPosition(
 );
 const wrappedHandleOpenEditModal = withMenuPosition(handleOpenEditModal);
 const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
+
+/** 處理 PodTypeMenu 的統一 create-note 事件，依 type 分派至對應的 note 建立函式 */
+const handleCreateNote = (payload: {
+  type:
+    | "outputStyle"
+    | "skill"
+    | "subAgent"
+    | "repository"
+    | "command"
+    | "mcpServer";
+  id: string;
+}): void => {
+  const handlerMap = {
+    outputStyle: handleCreateOutputStyleNote,
+    skill: handleCreateSkillNote,
+    subAgent: handleCreateSubAgentNote,
+    repository: handleCreateRepositoryNote,
+    command: handleCreateCommandNote,
+    mcpServer: handleCreateMcpServerNote,
+  } as const;
+  handlerMap[payload.type](payload.id);
+};
+
+/** 處理 PodTypeMenu 的統一 open-modal 事件，依 type 分派至對應的 Modal 開啟函式 */
+const handleOpenModal = (payload: {
+  type: "createRepository" | "cloneRepository" | "mcpServer";
+  mode?: "create" | "edit";
+  mcpServerId?: string;
+}): void => {
+  if (payload.type === "createRepository") {
+    handleOpenCreateRepositoryModal();
+  } else if (payload.type === "cloneRepository") {
+    handleOpenCloneRepositoryModal();
+  } else if (payload.type === "mcpServer") {
+    handleOpenMcpServerModal(payload.mode ?? "create", payload.mcpServerId);
+  }
+};
 </script>
 
 <template>
@@ -409,21 +446,14 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
     v-if="podStore.typeMenu.visible && podStore.typeMenu.position"
     :position="podStore.typeMenu.position"
     @select="handleSelectType"
-    @create-output-style-note="handleCreateOutputStyleNote"
-    @create-skill-note="handleCreateSkillNote"
-    @create-subagent-note="handleCreateSubAgentNote"
-    @create-repository-note="handleCreateRepositoryNote"
-    @create-command-note="handleCreateCommandNote"
-    @create-mcp-server-note="handleCreateMcpServerNote"
-    @open-mcp-server-modal="handleOpenMcpServerModal"
+    @create-note="handleCreateNote"
+    @open-modal="handleOpenModal"
     @clone-started="handleCloneStarted"
     @open-create-modal="wrappedHandleOpenCreateModal"
     @open-create-group-modal="wrappedHandleOpenCreateGroupModal"
     @open-edit-modal="wrappedHandleOpenEditModal"
     @open-delete-modal="handleOpenDeleteModal"
     @open-delete-group-modal="handleOpenDeleteGroupModal"
-    @open-create-repository-modal="handleOpenCreateRepositoryModal"
-    @open-clone-repository-modal="handleOpenCloneRepositoryModal"
     @close="podStore.hideTypeMenu"
   />
 

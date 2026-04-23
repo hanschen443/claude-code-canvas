@@ -759,7 +759,11 @@ export class ClaudeService {
       ...integrationOptions,
       ...pluginOptions,
       ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-      model: pod.model,
+      // providerConfig.model 是 Claude pod 的 model 唯一來源
+      model:
+        typeof pod.providerConfig?.model === "string"
+          ? pod.providerConfig.model
+          : "opus",
       abortController,
     };
   }

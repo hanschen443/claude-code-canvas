@@ -57,7 +57,6 @@ const mockPod: Pod = {
   x: 0,
   y: 0,
   rotation: 0,
-  model: "opus",
   workspacePath: "/tmp",
   sessionId: null,
   outputStyleId: null,
@@ -68,7 +67,7 @@ const mockPod: Pod = {
   subAgentIds: [],
   mcpServerIds: [],
   provider: "claude",
-  providerConfig: null,
+  providerConfig: { model: "opus" },
 };
 
 beforeEach(() => {

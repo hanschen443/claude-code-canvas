@@ -56,9 +56,6 @@ export interface Pod {
   subAgentIds?: string[];
   mcpServerIds?: string[];
   pluginIds?: string[];
-  // TODO: 後端 migration 完成後移除此欄位
-  /** @deprecated 將被後端 migration 移除，前端不再讀寫此欄位；僅為向後相容 TypeScript 編譯保留 */
-  model?: ModelType;
   repositoryId?: string | null;
   multiInstance?: boolean;
   commandId?: string | null;

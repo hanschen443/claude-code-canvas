@@ -1,10 +1,47 @@
 /* Pod card doodle style */
+
+/* ===========================================
+   CSS class 與後端 PodProvider 枚舉耦合說明（#18）
+
+   .pod-provider-claude 對應 PodProvider.Claude
+   .pod-provider-codex  對應 PodProvider.Codex
+
+   命名規則：`pod-provider-${PodProvider 值（小寫）}`
+   請與以下定義保持同步：
+   - backend/src/types/pod.ts 中的 PodProvider 枚舉
+   - frontend/src/types/pod.ts 中的 PodProvider 枚舉
+
+   若未來新增第三個 Provider（例如 PodProvider.Gemini），
+   在此檔案底部新增對應的 .pod-provider-gemini class 即可。
+   =========================================== */
+
+/* ===========================================
+   CSS Custom Properties
+
+   --pod-provider-gradient-stop（#23, #37）
+   - 型別：長度單位
+   - 值：1rem（使用 rem 而非 px，理由如下）
+     1. rem 相對於根元素 font-size（通常 16px），等價於原 16px 硬寫值
+     2. 使用 rem 而非 px 的關鍵原因：避免受 CanvasViewport 的
+        transform: scale(zoom) 影響視覺比例。px 為絕對像素，
+        zoom 放大時 16px 視覺被放大成 32px+；改用 rem 不受
+        viewport 縮放影響，漸層終止點維持穩定視覺比例
+     3. 選擇 1rem（約等於 16px）讓漸層只在 Pod 頂端 padding 區
+        完成，Mini screen 以下保持奶油白以維持文字對比度
+   =========================================== */
+:root {
+  --pod-provider-gradient-stop: 1rem;
+}
+
 .pod-doodle {
   background: var(--card);
   border: 2px solid var(--doodle-ink);
   border-radius: 6px;
   box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4);
-  transition: all 0.15s ease;
+  /* #33：原 transition: all 改為僅列出實際會變動的屬性，減少 hover Paint 成本 */
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
   cursor: pointer;
   position: relative;
 }
@@ -111,7 +148,10 @@
   border: 2px solid var(--doodle-ink);
   border-radius: 50%;
   cursor: default;
-  transition: all 0.2s ease;
+  /* #33：原 transition: all 改為僅列出實際會變動的屬性（scale、box-shadow） */
+  transition:
+    box-shadow 0.2s ease,
+    scale 0.2s ease;
   z-index: 50;
   transform-origin: center;
 }
@@ -173,7 +213,11 @@
   border: 2px solid var(--doodle-ink);
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* #33：原 transition: all 改為僅列出實際會變動的屬性（transform、box-shadow、background-color） */
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    background-color 0.2s ease;
   box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4);
 }
 
@@ -275,16 +319,84 @@
   background: oklch(0.78 0.1 150);
 }
 
-/* POD Status Animation Styles */
+/* ===========================================
+   POD Status Animation Styles（#34）
 
-/* Chatting 狀態的脈衝動畫（增強版 - 更明顯可見） */
-.pod-status-chatting {
-  animation: pod-chatting-pulse 2s ease-in-out infinite;
+   改寫說明：原實作直接在 .pod-status-chatting /
+   .pod-status-summarizing 上動畫 box-shadow，每幀觸發
+   Main Thread Paint，Pod 數量多時效能成本高。
+
+   新實作：改用 ::after pseudo-element 承載靜態 box-shadow
+   光暈色，動畫只動 ::after 的 opacity 或 transform（Compositor
+   Thread 可加速的屬性），不需要每幀 Paint。
+
+   注意：.pod-doodle 已設 position: relative，::after 的
+   position: absolute; inset: 0 可正確定位在 Pod 外框上。
+
+   選擇器使用 .pod-doodle.pod-status-chatting::after（雙 class）
+   以確保 specificity（0,2,1）不低於 .pod-with-skill-notch
+   .pod-doodle::after，保證狀態光暈在有 Skill 凹槽時仍正確顯示。
+
+   視覺節奏維持原樣（2s ease-in-out infinite）。
+   =========================================== */
+
+/* Chatting 狀態：藍色脈衝光暈，只動 ::after 的 opacity */
+.pod-doodle.pod-status-chatting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  /* 靜態光暈色（等同原 50% keyframe 的最亮值），透過 opacity 控制亮暗 */
+  box-shadow:
+    0 0 20px oklch(0.75 0.22 220 / 0.8),
+    0 0 32px oklch(0.65 0.2 220 / 0.5);
+  animation: pod-chatting-glow-opacity 2s ease-in-out infinite;
+  z-index: 1;
 }
 
-/* Summarizing 狀態的向內收縮光暈（金黃色，像資料被彙整） */
-.pod-status-summarizing {
-  animation: pod-summarizing-collect 2s ease-in-out infinite;
+/* Summarizing 狀態：金黃色收縮光暈，用 opacity + scale 模擬收縮彈開 */
+.pod-doodle.pod-status-summarizing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  /* 靜態光暈色（等同原最亮值），透過 opacity + scale 控制節奏 */
+  box-shadow:
+    0 0 20px 8px oklch(0.8 0.18 85 / 0.7),
+    0 0 30px 12px oklch(0.75 0.15 85 / 0.5);
+  animation: pod-summarizing-glow-scale 2s ease-in-out infinite;
+  z-index: 1;
+}
+
+/* #34 新 keyframes：只動 opacity（Compositor Thread 可加速，無 Paint） */
+@keyframes pod-chatting-glow-opacity {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* #34 新 keyframes：opacity + transform scale 模擬向內收縮彈開效果 */
+@keyframes pod-summarizing-glow-scale {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  /* 慢慢收縮到很小 */
+  85% {
+    opacity: 0.6;
+    transform: scale(0.6);
+  }
+  /* 快速彈開 */
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Error 狀態樣式 */
@@ -303,18 +415,14 @@
 
 /* 無障礙支援：減少動態效果 */
 @media (prefers-reduced-motion: reduce) {
-  .pod-status-chatting {
+  .pod-doodle.pod-status-chatting::after {
     animation: none;
-    box-shadow:
-      2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-      0 0 12px oklch(0.7 0.18 220 / 0.6);
+    opacity: 0.7;
   }
 
-  .pod-status-summarizing {
+  .pod-doodle.pod-status-summarizing::after {
     animation: none;
-    box-shadow:
-      2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-      0 0 8px 2px oklch(0.8 0.18 85 / 0.7);
+    opacity: 0.7;
   }
 
   .schedule-button.schedule-fired-animating {
@@ -323,31 +431,42 @@
 }
 
 /* ===========================================
-   Provider Pod 漸層樣式
+   Provider Pod 漸層樣式（#18, #23, #37）
 
    套用對象：.pod-doodle 容器（Pod 本體）
-   效果：頂端依 provider 顏色，在 Header 下緣（約 48px）前淡化為 var(--card) 奶油白
+   效果：頂端依 provider 顏色，在 Pod 頂端 padding 區
+         （約 1rem）前淡化為 var(--card) 奶油白
+
    注意：
-   - 48px = p-3（12px）+ text-base 文字行高（約 24px）+ gap/緩衝（12px），為估值，可依實測微調
-   - Mini screen（從 ~56px 開始）以下完全維持 var(--card) 奶油白，保持閱讀對比度
+   - 漸層終止點使用 --pod-provider-gradient-stop（宣告於檔案頂部）
+   - 採用 1rem 而非 16px（px 絕對值）的理由：
+     CanvasViewport 使用 transform: scale(zoom) 縮放時，
+     px 會被等比例放大縮小（zoom 2x 時 16px 視覺變成 32px），
+     rem 不受 viewport transform 縮放影響，視覺比例維持穩定
+   - 選擇 1rem（根元素 font-size 通常 16px）讓漸層只在頂端
+     padding 區完成，Mini screen 以下完全維持 var(--card) 奶油白，
+     保持閱讀對比度
    - 靜態漸層，無 transition/animation（效能考量）
-   - 狀態光暈（chatting/summarizing/error）為 box-shadow，不受 background 影響
+   - 狀態光暈（chatting/summarizing/error）為 ::after box-shadow，
+     不受 background 影響
+
+   class 與後端 PodProvider 枚舉的耦合說明詳見檔案頂部註解。
    =========================================== */
 
-/* Claude Pod：淡磚紅 → 奶油白（16px 終止） */
+/* Claude Pod：淡磚紅 → 奶油白（--pod-provider-gradient-stop 終止） */
 .pod-provider-claude {
   background: linear-gradient(
     to bottom,
     var(--pod-provider-claude-top) 0,
-    var(--card) 16px
+    var(--card) var(--pod-provider-gradient-stop)
   );
 }
 
-/* Codex Pod：淺灰 → 奶油白（16px 終止） */
+/* Codex Pod：淺灰 → 奶油白（--pod-provider-gradient-stop 終止） */
 .pod-provider-codex {
   background: linear-gradient(
     to bottom,
     var(--pod-provider-codex-top) 0,
-    var(--card) 16px
+    var(--card) var(--pod-provider-gradient-stop)
   );
 }

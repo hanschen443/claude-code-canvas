@@ -45,7 +45,6 @@ interface PodRow {
   x: number;
   y: number;
   rotation: number;
-  model: string;
   workspace_path: string;
   session_id: string | null;
   output_style_id: string | null;
@@ -265,18 +264,19 @@ class PodStore {
   private resolveProviderConfig(
     row: PodRow,
     provider: ProviderName,
-  ): Record<string, unknown> | null {
-    let config: Record<string, unknown> | null =
+  ): Record<string, unknown> {
+    const raw =
       safeJsonParse<Record<string, unknown>>(row.provider_config_json ?? "") ??
-      null;
-    if (config !== null && !("model" in config)) {
-      config = {
-        ...config,
+      {};
+    if (!("model" in raw)) {
+      // providerConfig 無 model 欄位時補入 provider 預設值
+      return {
+        ...raw,
         model:
           provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
       };
     }
-    return config;
+    return raw;
   }
 
   /**
@@ -294,12 +294,6 @@ class PodStore {
       const provider = this.resolveProvider(row);
       const providerConfig = this.resolveProviderConfig(row, provider);
 
-      // 若 providerConfig.model 存在，優先以它為準（POD_SET_MODEL 寫入路徑）
-      const effectiveModel: Pod["model"] =
-        providerConfig && typeof providerConfig.model === "string"
-          ? (providerConfig.model as Pod["model"])
-          : (row.model as Pod["model"]);
-
       const pod: Pod = {
         id: row.id,
         name: row.name,
@@ -314,7 +308,6 @@ class PodStore {
         subAgentIds: relations.subAgentIds.get(row.id) ?? [],
         mcpServerIds: relations.mcpServerIds.get(row.id) ?? [],
         pluginIds: relations.pluginIds.get(row.id) ?? [],
-        model: effectiveModel,
         provider,
         providerConfig,
         repositoryId: row.repository_id,
@@ -357,7 +350,10 @@ class PodStore {
     // 確保 providerConfig 一定含有 model 欄位
     const providerConfig: Record<string, unknown> = incomingConfig
       ? { ...incomingConfig }
-      : { model: data.model ?? CLAUDE_DEFAULT_MODEL };
+      : {
+          model:
+            provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
+        };
     if (!("model" in providerConfig)) {
       providerConfig.model =
         provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL;
@@ -377,7 +373,6 @@ class PodStore {
       subAgentIds: data.subAgentIds ?? [],
       mcpServerIds: data.mcpServerIds ?? [],
       pluginIds: data.pluginIds ?? [],
-      model: data.model ?? "opus",
       provider,
       providerConfig,
       repositoryId: data.repositoryId ?? null,
@@ -393,7 +388,6 @@ class PodStore {
       $x: pod.x,
       $y: pod.y,
       $rotation: pod.rotation,
-      $model: pod.model,
       $workspacePath: pod.workspacePath,
       $sessionId: pod.sessionId,
       $outputStyleId: pod.outputStyleId,
@@ -555,14 +549,6 @@ class PodStore {
       schedule: this.mergeSchedule(pod, updates),
     };
 
-    // 注意：DB 的 pods.model 欄位已凍結，不再寫入新值；$model 傳入既有 row 值以維持 named param 不缺失。
-    // 但回傳的 in-memory Pod.model 應反映 providerConfig.model（與 rowsToPods 邏輯一致）。
-    const effectiveModel =
-      typeof updatedPod.providerConfig?.model === "string"
-        ? (updatedPod.providerConfig.model as Pod["model"])
-        : updatedPod.model;
-    updatedPod.model = effectiveModel;
-
     this.stmts.pod.update.run({
       $id: id,
       $name: updatedPod.name,
@@ -570,7 +556,6 @@ class PodStore {
       $x: updatedPod.x,
       $y: updatedPod.y,
       $rotation: updatedPod.rotation,
-      $model: pod.model, // 傳入既有 DB 值，不寫入新的 providerConfig.model
       $sessionId: updatedPod.sessionId,
       $outputStyleId: updatedPod.outputStyleId,
       $repositoryId: updatedPod.repositoryId,

@@ -200,11 +200,10 @@ function makeMultiInstancePod(overrides: Partial<Pod> = {}): Pod {
     commandId: null,
     skillIds: [],
     subAgentIds: [],
-    model: "sonnet",
     multiInstance: true,
     integrationBindings: undefined,
     provider: "claude",
-    providerConfig: null,
+    providerConfig: { model: "sonnet" },
     ...overrides,
   } as Pod;
 }

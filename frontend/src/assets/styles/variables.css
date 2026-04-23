@@ -80,6 +80,16 @@
   --sidebar-accent-foreground: oklch(0.92 0.01 80);
   --sidebar-border: oklch(0.35 0.01 50);
   --sidebar-ring: oklch(0.65 0.18 150);
+  /* Pod 漸層頂端色 - dark mode
+     亮度設定在 0.38，比 --card(0.22) 明顯亮但不過曝；
+     Claude 保持色相 45（橘紅）以延續品牌識別，chroma 0.09 讓暗背景仍能看出磚紅；
+     Codex 保持色相 240（中性灰藍），chroma 0.01 維持低彩度無彩感 */
+  --pod-provider-claude-top: oklch(
+    0.38 0.09 45
+  ); /* 暗模式 Claude Pod 頂端色：深磚紅，在暗底可見 */
+  --pod-provider-codex-top: oklch(
+    0.38 0.01 240
+  ); /* 暗模式 Codex Pod 頂端色：深灰藍，在暗底可見 */
   /* Doodle color palette - dark mode */
   --doodle-blue: oklch(0.55 0.12 200);
   --doodle-light-blue: oklch(0.45 0.08 220);

@@ -62,7 +62,11 @@ export const podSetModelSchema = z.object({
   requestId: requestIdSchema,
   canvasId: canvasIdSchema,
   podId: podIdSchema,
-  model: modelTypeSchema,
+  /** pod:set-model 可能傳 Claude 短名（opus/sonnet/haiku）或 Codex 完整名（gpt-5.4 等），使用與 providerConfig.model 同規則的 regex */
+  model: z
+    .string()
+    .regex(/^[a-zA-Z0-9._-]+$/, "model 名稱包含不允許的字元")
+    .max(100),
 });
 
 export const podSetScheduleSchema = z.object({

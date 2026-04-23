@@ -86,7 +86,6 @@ export function createMockPod(overrides?: Partial<Pod>): Pod {
     output: [],
     rotation: 0,
     status: "idle" as PodStatus,
-    model: "opus" as ModelType,
     outputStyleId: null,
     skillIds: [],
     subAgentIds: [],

@@ -113,7 +113,6 @@ async function createSinglePod(
     skillIds: podItem.skillIds ?? [],
     subAgentIds: podItem.subAgentIds ?? [],
     pluginIds: podItem.pluginIds ?? [],
-    model: podItem.model,
     repositoryId: finalRepositoryId,
     commandId: podItem.commandId ?? null,
   });

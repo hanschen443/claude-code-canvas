@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, type Component } from "vue";
+import {
+  ref,
+  onMounted,
+  onUnmounted,
+  computed,
+  shallowRef,
+  watchEffect,
+  type Component,
+} from "vue";
 import {
   Palette,
   Wrench,
@@ -53,31 +61,46 @@ type OpenMenuType =
   | "mcpServer"
   | "pod";
 
+/** 建立 Note 的 discriminated union，統一六個 create-*-note 事件為一個事件 */
+type CreateNotePayload =
+  | { type: "outputStyle"; id: string }
+  | { type: "skill"; id: string }
+  | { type: "subAgent"; id: string }
+  | { type: "repository"; id: string }
+  | { type: "command"; id: string }
+  | { type: "mcpServer"; id: string };
+
+/** 開啟 Modal 的 discriminated union，統一多個 open-*-modal 事件 */
+type OpenModalPayload =
+  | { type: "createRepository" }
+  | { type: "cloneRepository" }
+  | { type: "mcpServer"; mode: "create" | "edit"; mcpServerId?: string };
+
 const emit = defineEmits<{
+  /** Pod 建立：選擇 provider 後觸發 */
   select: [
     config: PodTypeConfig,
     provider: PodProvider,
     providerConfig: ProviderConfig,
   ];
-  "create-output-style-note": [outputStyleId: string];
-  "create-skill-note": [skillId: string];
-  "create-subagent-note": [subAgentId: string];
-  "create-repository-note": [repositoryId: string];
-  "create-command-note": [commandId: string];
-  "create-mcp-server-note": [mcpServerId: string];
+  /** 建立任意資源的 Note（原六個 create-*-note 合併） */
+  "create-note": [payload: CreateNotePayload];
+  /** clone 開始（進度任務通知） */
   "clone-started": [payload: { requestId: string; repoName: string }];
+  /** 開啟 create/edit 資源 Modal */
   "open-create-modal": [resourceType: ResourceType, title: string];
   "open-edit-modal": [resourceType: ResourceType, id: string];
+  /** 開啟 delete 資源 Modal */
   "open-delete-modal": [type: ItemType, id: string, name: string];
+  /** 開啟 create/delete group Modal */
   "open-create-group-modal": [groupType: GroupType, title: string];
   "open-delete-group-modal": [
     groupType: GroupType,
     groupId: string,
     name: string,
   ];
-  "open-create-repository-modal": [];
-  "open-clone-repository-modal": [];
-  "open-mcp-server-modal": [mode: "create" | "edit", mcpServerId?: string];
+  /** 開啟各種 Modal（repository 建立/clone、MCP Server Modal） */
+  "open-modal": [payload: OpenModalPayload];
   close: [];
 }>();
 
@@ -143,43 +166,43 @@ const handleProviderSelect = (payload: {
 
 const handleOutputStyleSelect = (style: OutputStyleListItem): void => {
   openMenuType.value = null;
-  emit("create-output-style-note", style.id);
+  emit("create-note", { type: "outputStyle", id: style.id });
   emit("close");
 };
 
 const handleSkillSelect = (skill: Skill): void => {
   openMenuType.value = null;
-  emit("create-skill-note", skill.id);
+  emit("create-note", { type: "skill", id: skill.id });
   emit("close");
 };
 
 const handleSubAgentSelect = (subAgent: SubAgent): void => {
   openMenuType.value = null;
-  emit("create-subagent-note", subAgent.id);
+  emit("create-note", { type: "subAgent", id: subAgent.id });
   emit("close");
 };
 
 const handleRepositorySelect = (repository: Repository): void => {
   openMenuType.value = null;
-  emit("create-repository-note", repository.id);
+  emit("create-note", { type: "repository", id: repository.id });
   emit("close");
 };
 
 const handleCommandSelect = (command: { id: string; name: string }): void => {
   openMenuType.value = null;
-  emit("create-command-note", command.id);
+  emit("create-note", { type: "command", id: command.id });
   emit("close");
 };
 
 const handleMcpServerSelect = (mcpServer: McpServer): void => {
   openMenuType.value = null;
-  emit("create-mcp-server-note", mcpServer.id);
+  emit("create-note", { type: "mcpServer", id: mcpServer.id });
   emit("close");
 };
 
 const handleNewMcpServer = (): void => {
   openMenuType.value = null;
-  emit("open-mcp-server-modal", "create");
+  emit("open-modal", { type: "mcpServer", mode: "create" });
   emit("close");
 };
 
@@ -210,13 +233,13 @@ const handleNewCommand = (): void =>
 
 const handleNewRepository = (): void => {
   openMenuType.value = null;
-  emit("open-create-repository-modal");
+  emit("open-modal", { type: "createRepository" });
   emit("close");
 };
 
 const handleCloneRepository = (): void => {
   openMenuType.value = null;
-  emit("open-clone-repository-modal");
+  emit("open-modal", { type: "cloneRepository" });
   emit("close");
 };
 
@@ -302,8 +325,8 @@ interface FooterAction {
   icon: Component;
   label: string;
   handler: () => void;
-  /** 動態 class，例如 isImporting 狀態下的禁用樣式 */
-  extraClass?: () => string;
+  /** 禁用狀態，顯示 opacity-50 cursor-not-allowed 樣式 */
+  disabled?: boolean;
 }
 
 interface MenuSection {
@@ -312,11 +335,11 @@ interface MenuSection {
   iconColor: string;
   icon: Component | null;
   /** 自訂 icon slot，當 icon 為 null 時使用 */
-  iconSlot?: () => string;
-  items: () => unknown[];
+  iconSlot?: string;
+  items: unknown[];
   editable?: boolean;
-  groups?: () => unknown[];
-  expandedGroupIds?: () => Set<string>;
+  groups?: unknown[];
+  expandedGroupIds?: Set<string>;
   onSelect: (item: unknown) => void;
   onEdit?: (id: string, name: string, event: Event) => void;
   onDelete: (id: string, name: string, event: Event) => void;
@@ -326,173 +349,192 @@ interface MenuSection {
   footerActions: FooterAction[];
 }
 
-const buildOutputStyleSection = (): MenuSection => ({
-  type: "outputStyle",
-  label: "Styles >",
-  iconColor: "var(--doodle-pink)",
-  icon: Palette,
-  items: (): unknown[] => outputStyleStore.typedAvailableItems,
-  groups: (): unknown[] => outputStyleStore.groups,
-  expandedGroupIds: (): Set<string> => outputStyleStore.expandedGroupIds,
-  onSelect: (item: unknown): void =>
-    handleOutputStyleSelect(item as OutputStyleListItem),
-  onEdit: handleOutputStyleEdit,
-  onDelete: (id: string, name: string, event: Event): void =>
-    handleDeleteClick("outputStyle", id, name, event),
-  onToggleGroup: (groupId: string): void =>
-    outputStyleStore.toggleGroupExpand(groupId),
-  onGroupDelete: (groupId: string, name: string, event: Event): void =>
-    handleGroupDelete("outputStyleGroup", groupId, name, event),
-  onDropToGroup: handleOutputStyleDropToGroup,
-  footerActions: [
-    {
-      icon: FilePlus,
-      label: "New File...",
-      handler: handleNewOutputStyle,
-    },
-    {
-      icon: FolderPlus,
-      label: "New Group...",
-      handler: handleNewOutputStyleGroup,
-    },
-  ],
+/**
+ * 各 section 的設定介面：差異化欄位集中宣告。
+ * items / groups / expandedGroupIds 以 getter 函式提供，讓 watchEffect 正確追蹤響應式依賴。
+ */
+interface SectionConfig {
+  type: OpenMenuType;
+  label: string;
+  iconColor: string;
+  icon: Component | null;
+  iconSlot?: string;
+  editable?: boolean;
+  getItems: () => unknown[];
+  getGroups?: () => unknown[];
+  getExpandedGroupIds?: () => Set<string>;
+  onSelect: (item: unknown) => void;
+  onEdit?: (id: string, name: string, event: Event) => void;
+  onDelete: (id: string, name: string, event: Event) => void;
+  onToggleGroup?: (groupId: string) => void;
+  onGroupDelete?: (groupId: string, name: string, event: Event) => void;
+  onDropToGroup?: (itemId: string, groupId: string | null) => void;
+  footerActions: FooterAction[];
+}
+
+/** SectionConfig → MenuSection 的 factory，解構 getter 供 template 直接使用 */
+const buildMenuSection = (config: SectionConfig): MenuSection => ({
+  type: config.type,
+  label: config.label,
+  iconColor: config.iconColor,
+  icon: config.icon,
+  iconSlot: config.iconSlot,
+  items: config.getItems(),
+  editable: config.editable,
+  groups: config.getGroups?.(),
+  expandedGroupIds: config.getExpandedGroupIds?.(),
+  onSelect: config.onSelect,
+  onEdit: config.onEdit,
+  onDelete: config.onDelete,
+  onToggleGroup: config.onToggleGroup,
+  onGroupDelete: config.onGroupDelete,
+  onDropToGroup: config.onDropToGroup,
+  footerActions: config.footerActions,
 });
 
-const buildCommandSection = (): MenuSection => ({
-  type: "command",
-  label: "Commands >",
-  iconColor: "var(--doodle-mint)",
-  icon: null,
-  iconSlot: (): string => "/",
-  items: (): unknown[] => commandStore.typedAvailableItems,
-  groups: (): unknown[] => commandStore.groups,
-  expandedGroupIds: (): Set<string> => commandStore.expandedGroupIds,
-  onSelect: (item: unknown): void =>
-    handleCommandSelect(item as { id: string; name: string }),
-  onEdit: handleCommandEdit,
-  onDelete: (id: string, name: string, event: Event): void =>
-    handleDeleteClick("command", id, name, event),
-  onToggleGroup: (groupId: string): void =>
-    commandStore.toggleGroupExpand(groupId),
-  onGroupDelete: (groupId: string, name: string, event: Event): void =>
-    handleGroupDelete("commandGroup", groupId, name, event),
-  onDropToGroup: handleCommandDropToGroup,
-  footerActions: [
-    {
-      icon: FilePlus,
-      label: "New File...",
-      handler: handleNewCommand,
-    },
-    {
-      icon: FolderPlus,
-      label: "New Group...",
-      handler: handleNewCommandGroup,
-    },
-  ],
-});
+/**
+ * 宣告式 section 設定陣列，各 section 的差異化欄位集中於此。
+ * 由 watchEffect 驅動 buildMenuSection 轉換，避免在 template 中直接呼叫 getter 閉包。
+ */
+const SECTION_CONFIGS: SectionConfig[] = [
+  {
+    type: "outputStyle",
+    label: "Styles >",
+    iconColor: "var(--doodle-pink)",
+    icon: Palette,
+    getItems: () => outputStyleStore.typedAvailableItems,
+    getGroups: () => outputStyleStore.groups,
+    getExpandedGroupIds: () => outputStyleStore.expandedGroupIds,
+    onSelect: (item) => handleOutputStyleSelect(item as OutputStyleListItem),
+    onEdit: handleOutputStyleEdit,
+    onDelete: (id, name, event) =>
+      handleDeleteClick("outputStyle", id, name, event),
+    onToggleGroup: (groupId) => outputStyleStore.toggleGroupExpand(groupId),
+    onGroupDelete: (groupId, name, event) =>
+      handleGroupDelete("outputStyleGroup", groupId, name, event),
+    onDropToGroup: handleOutputStyleDropToGroup,
+    footerActions: [
+      { icon: FilePlus, label: "New File...", handler: handleNewOutputStyle },
+      {
+        icon: FolderPlus,
+        label: "New Group...",
+        handler: handleNewOutputStyleGroup,
+      },
+    ],
+  },
+  {
+    type: "command",
+    label: "Commands >",
+    iconColor: "var(--doodle-mint)",
+    icon: null,
+    iconSlot: "/",
+    getItems: () => commandStore.typedAvailableItems,
+    getGroups: () => commandStore.groups,
+    getExpandedGroupIds: () => commandStore.expandedGroupIds,
+    onSelect: (item) =>
+      handleCommandSelect(item as { id: string; name: string }),
+    onEdit: handleCommandEdit,
+    onDelete: (id, name, event) =>
+      handleDeleteClick("command", id, name, event),
+    onToggleGroup: (groupId) => commandStore.toggleGroupExpand(groupId),
+    onGroupDelete: (groupId, name, event) =>
+      handleGroupDelete("commandGroup", groupId, name, event),
+    onDropToGroup: handleCommandDropToGroup,
+    footerActions: [
+      { icon: FilePlus, label: "New File...", handler: handleNewCommand },
+      {
+        icon: FolderPlus,
+        label: "New Group...",
+        handler: handleNewCommandGroup,
+      },
+    ],
+  },
+  {
+    type: "skill",
+    label: "Skills >",
+    iconColor: "var(--doodle-green)",
+    icon: Wrench,
+    editable: false,
+    getItems: () => skillStore.typedAvailableItems,
+    onSelect: (item) => handleSkillSelect(item as Skill),
+    onDelete: (id, name, event) => handleDeleteClick("skill", id, name, event),
+    footerActions: [
+      {
+        icon: Import,
+        label: "Import...",
+        handler: handleImportSkill,
+        // isImporting 是響應式 ref，在 watchEffect 執行 buildMenuSection 時被追蹤，確保 disabled 狀態隨之更新
+        get disabled() {
+          return isImporting.value;
+        },
+      },
+    ],
+  },
+  {
+    type: "subAgent",
+    label: "Agents >",
+    iconColor: "var(--doodle-sand)",
+    icon: Bot,
+    getItems: () => subAgentStore.typedAvailableItems,
+    getGroups: () => subAgentStore.groups,
+    getExpandedGroupIds: () => subAgentStore.expandedGroupIds,
+    onSelect: (item) => handleSubAgentSelect(item as SubAgent),
+    onEdit: handleSubAgentEdit,
+    onDelete: (id, name, event) =>
+      handleDeleteClick("subAgent", id, name, event),
+    onToggleGroup: (groupId) => subAgentStore.toggleGroupExpand(groupId),
+    onGroupDelete: (groupId, name, event) =>
+      handleGroupDelete("subAgentGroup", groupId, name, event),
+    onDropToGroup: handleSubAgentDropToGroup,
+    footerActions: [
+      { icon: FilePlus, label: "New File...", handler: handleNewSubAgent },
+      {
+        icon: FolderPlus,
+        label: "New Group...",
+        handler: handleNewSubAgentGroup,
+      },
+    ],
+  },
+  {
+    type: "mcpServer",
+    label: "MCPs >",
+    iconColor: "var(--doodle-purple)",
+    icon: Server,
+    editable: false,
+    getItems: () => mcpServerStore.typedAvailableItems,
+    onSelect: (item) => handleMcpServerSelect(item as McpServer),
+    onDelete: (id, name, event) =>
+      handleDeleteClick("mcpServer", id, name, event),
+    footerActions: [
+      { icon: FilePlus, label: "New...", handler: handleNewMcpServer },
+    ],
+  },
+  {
+    type: "repository",
+    label: "Repository >",
+    iconColor: "var(--doodle-orange)",
+    icon: FolderOpen,
+    getItems: () => repositoryStore.typedAvailableItems,
+    onSelect: (item) => handleRepositorySelect(item as Repository),
+    onDelete: (id, name, event) =>
+      handleDeleteClick("repository", id, name, event),
+    footerActions: [
+      { icon: FolderPlus, label: "New...", handler: handleNewRepository },
+      { icon: Github, label: "Clone", handler: handleCloneRepository },
+    ],
+  },
+];
 
-const buildSkillSection = (): MenuSection => ({
-  type: "skill",
-  label: "Skills >",
-  iconColor: "var(--doodle-green)",
-  icon: Wrench,
-  items: (): unknown[] => skillStore.typedAvailableItems,
-  editable: false,
-  onSelect: (item: unknown): void => handleSkillSelect(item as Skill),
-  onDelete: (id: string, name: string, event: Event): void =>
-    handleDeleteClick("skill", id, name, event),
-  footerActions: [
-    {
-      icon: Import,
-      label: "Import...",
-      handler: handleImportSkill,
-      extraClass: (): string =>
-        isImporting.value ? "opacity-50 cursor-not-allowed" : "",
-    },
-  ],
-});
+/**
+ * menuSections 使用 shallowRef + watchEffect 維護。
+ * shallowRef 確保只有整個陣列被替換時才觸發子元件 diff，
+ * watchEffect 在 store 響應式資料變動時重新呼叫 buildMenuSection。
+ */
+const menuSections = shallowRef<MenuSection[]>([]);
 
-const buildSubAgentSection = (): MenuSection => ({
-  type: "subAgent",
-  label: "Agents >",
-  iconColor: "var(--doodle-sand)",
-  icon: Bot,
-  items: (): unknown[] => subAgentStore.typedAvailableItems,
-  groups: (): unknown[] => subAgentStore.groups,
-  expandedGroupIds: (): Set<string> => subAgentStore.expandedGroupIds,
-  onSelect: (item: unknown): void => handleSubAgentSelect(item as SubAgent),
-  onEdit: handleSubAgentEdit,
-  onDelete: (id: string, name: string, event: Event): void =>
-    handleDeleteClick("subAgent", id, name, event),
-  onToggleGroup: (groupId: string): void =>
-    subAgentStore.toggleGroupExpand(groupId),
-  onGroupDelete: (groupId: string, name: string, event: Event): void =>
-    handleGroupDelete("subAgentGroup", groupId, name, event),
-  onDropToGroup: handleSubAgentDropToGroup,
-  footerActions: [
-    {
-      icon: FilePlus,
-      label: "New File...",
-      handler: handleNewSubAgent,
-    },
-    {
-      icon: FolderPlus,
-      label: "New Group...",
-      handler: handleNewSubAgentGroup,
-    },
-  ],
+watchEffect(() => {
+  menuSections.value = SECTION_CONFIGS.map(buildMenuSection);
 });
-
-const buildMcpServerSection = (): MenuSection => ({
-  type: "mcpServer",
-  label: "MCPs >",
-  iconColor: "var(--doodle-purple)",
-  icon: Server,
-  items: (): unknown[] => mcpServerStore.typedAvailableItems,
-  editable: false,
-  onSelect: (item: unknown): void => handleMcpServerSelect(item as McpServer),
-  onDelete: (id: string, name: string, event: Event): void =>
-    handleDeleteClick("mcpServer", id, name, event),
-  footerActions: [
-    {
-      icon: FilePlus,
-      label: "New...",
-      handler: handleNewMcpServer,
-    },
-  ],
-});
-
-const buildRepositorySection = (): MenuSection => ({
-  type: "repository",
-  label: "Repository >",
-  iconColor: "var(--doodle-orange)",
-  icon: FolderOpen,
-  items: (): unknown[] => repositoryStore.typedAvailableItems,
-  onSelect: (item: unknown): void => handleRepositorySelect(item as Repository),
-  onDelete: (id: string, name: string, event: Event): void =>
-    handleDeleteClick("repository", id, name, event),
-  footerActions: [
-    {
-      icon: FolderPlus,
-      label: "New...",
-      handler: handleNewRepository,
-    },
-    {
-      icon: Github,
-      label: "Clone",
-      handler: handleCloneRepository,
-    },
-  ],
-});
-
-const menuSections = computed<MenuSection[]>((): MenuSection[] => [
-  buildOutputStyleSection(),
-  buildCommandSection(),
-  buildSkillSection(),
-  buildSubAgentSection(),
-  buildMcpServerSection(),
-  buildRepositorySection(),
-]);
 
 const { menuStyle } = useMenuPosition({
   position: computed(() => props.position),
@@ -554,7 +596,7 @@ const { menuStyle } = useMenuPosition({
             class="text-card"
           />
           <span v-else class="text-xs text-card font-mono font-bold">{{
-            section.iconSlot?.()
+            section.iconSlot
           }}</span>
         </span>
         <span class="font-mono text-sm text-foreground">{{
@@ -564,11 +606,11 @@ const { menuStyle } = useMenuPosition({
 
       <PodTypeMenuSubmenu
         v-model:hovered-item-id="hoveredItemId"
-        :items="section.items() as any[]"
+        :items="section.items as any[]"
         :visible="openMenuType === section.type"
         :editable="section.editable"
-        :groups="section.groups?.() as any[]"
-        :expanded-group-ids="section.expandedGroupIds?.()"
+        :groups="section.groups as any[]"
+        :expanded-group-ids="section.expandedGroupIds"
         @item-select="section.onSelect"
         @item-edit="section.onEdit"
         @item-delete="section.onDelete"
@@ -582,7 +624,7 @@ const { menuStyle } = useMenuPosition({
             v-for="action in section.footerActions"
             :key="action.label"
             class="pod-menu-submenu-item flex items-center gap-2"
-            :class="action.extraClass?.()"
+            :class="{ 'opacity-50 cursor-not-allowed': action.disabled }"
             @click="action.handler"
           >
             <component :is="action.icon" :size="16" />

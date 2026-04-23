@@ -18,8 +18,9 @@ import {
 import { usePodStore } from "@/stores/pod/podStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useConnectionStore } from "@/stores/connectionStore";
-import type { Pod, ModelType, Schedule } from "@/types";
+import type { Pod, Schedule } from "@/types";
 import { MAX_POD_NAME_LENGTH } from "@/lib/constants";
+import { CLAUDE_DEFAULT_MODEL } from "@/constants/providerDefaults";
 
 // Mock WebSocket
 vi.mock("@/services/websocket", () => webSocketMockFactory());
@@ -364,7 +365,7 @@ describe("podStore", () => {
         rotation: 1.5,
         output: ["existing"],
         outputStyleId: "style-1",
-        model: "sonnet",
+        providerConfig: { model: "sonnet" },
         multiInstance: true,
         commandId: "cmd-1",
         schedule,
@@ -377,7 +378,7 @@ describe("podStore", () => {
       expect(result.rotation).toBe(1.5);
       expect(result.output).toEqual(["existing"]);
       expect(result.outputStyleId).toBe("style-1");
-      expect(result.model).toBe("sonnet");
+      expect(result.providerConfig.model).toBe("sonnet");
       expect(result.multiInstance).toBe(true);
       expect(result.commandId).toBe("cmd-1");
       expect(result.schedule).toEqual(schedule);
@@ -551,6 +552,30 @@ describe("podStore", () => {
   });
 
   describe("createPodWithBackend", () => {
+    /** 建立 createPodWithBackend 所需的預設 payload，可透過 overrides 覆寫任意欄位 */
+    function buildCreatePodPayload(
+      overrides?: Partial<Omit<Pod, "id">>,
+    ): Omit<Pod, "id"> {
+      return {
+        name: "Pod",
+        x: 100,
+        y: 100,
+        rotation: 0,
+        output: [],
+        status: "idle",
+        outputStyleId: null,
+        skillIds: [],
+        subAgentIds: [],
+        repositoryId: null,
+        multiInstance: false,
+        commandId: null,
+        schedule: null,
+        provider: "claude",
+        providerConfig: { model: CLAUDE_DEFAULT_MODEL },
+        ...overrides,
+      };
+    }
+
     it("成功時應回傳 Pod、顯示成功 Toast、使用本地座標", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
@@ -563,24 +588,14 @@ describe("podStore", () => {
         data: { pod: newPod },
       });
 
-      const result = await store.createPodWithBackend({
-        name: "New Pod",
-        x: 300,
-        y: 400,
-        rotation: 0.5,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-        provider: "claude",
-        providerConfig: { model: "opus" },
-      });
+      const result = await store.createPodWithBackend(
+        buildCreatePodPayload({
+          name: "New Pod",
+          x: 300,
+          y: 400,
+          rotation: 0.5,
+        }),
+      );
 
       expect(mockExecuteAction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -593,7 +608,7 @@ describe("podStore", () => {
             y: 400,
             rotation: 0.5,
             provider: "claude",
-            providerConfig: { model: "opus" },
+            providerConfig: { model: CLAUDE_DEFAULT_MODEL },
           }),
         }),
         expect.objectContaining({
@@ -623,24 +638,7 @@ describe("podStore", () => {
         error: "沒有啟用的畫布",
       });
 
-      const result = await store.createPodWithBackend({
-        name: "Pod",
-        x: 100,
-        y: 100,
-        rotation: 0,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-        provider: "claude",
-        providerConfig: { model: "opus" },
-      });
+      const result = await store.createPodWithBackend(buildCreatePodPayload());
 
       expect(result).toBeNull();
     });
@@ -655,24 +653,7 @@ describe("podStore", () => {
         data: {},
       });
 
-      const result = await store.createPodWithBackend({
-        name: "Pod",
-        x: 100,
-        y: 100,
-        rotation: 0,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-        provider: "claude",
-        providerConfig: { model: "opus" },
-      });
+      const result = await store.createPodWithBackend(buildCreatePodPayload());
 
       expect(result).toBeNull();
       expect(mockShowErrorToast).toHaveBeenCalledWith(
@@ -692,24 +673,7 @@ describe("podStore", () => {
         error: "Pod 建立失敗",
       });
 
-      const result = await store.createPodWithBackend({
-        name: "Pod",
-        x: 100,
-        y: 100,
-        rotation: 0,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-        provider: "claude",
-        providerConfig: { model: "opus" },
-      });
+      const result = await store.createPodWithBackend(buildCreatePodPayload());
 
       expect(result).toBeNull();
     });
@@ -1064,40 +1028,6 @@ describe("podStore", () => {
       store.setActivePod(null);
 
       expect(store.activePodId).toBeNull();
-    });
-  });
-
-  describe("updatePodModel", () => {
-    it("應更新 Pod 的 model", () => {
-      const store = usePodStore();
-      const pod = createMockPod({ id: "pod-1", model: "opus" });
-      store.pods = [pod];
-
-      store.updatePodModel("pod-1", "sonnet");
-
-      expect(store.pods[0]?.model).toBe("sonnet");
-    });
-
-    it("Pod 不存在時不應報錯", () => {
-      const store = usePodStore();
-
-      expect(() => store.updatePodModel("non-existent", "haiku")).not.toThrow();
-    });
-
-    it("應支援所有 ModelType", () => {
-      const store = usePodStore();
-      const models: ModelType[] = ["opus", "sonnet", "haiku"];
-
-      for (const model of models) {
-        const pod = createMockPod({ id: `pod-${model}`, model: "opus" });
-        store.pods = [pod];
-
-        store.updatePodModel(`pod-${model}`, model);
-
-        expect(store.pods.find((p) => p.id === `pod-${model}`)?.model).toBe(
-          model,
-        );
-      }
     });
   });
 
@@ -1617,15 +1547,19 @@ describe("podStore", () => {
     it("應處理多個 Pod 並使用 enrichPod", () => {
       const store = usePodStore();
       const pod1 = createMockPod({ id: "pod-1", x: undefined as any });
-      const pod2 = createMockPod({ id: "pod-2", model: undefined as any });
+      // 模擬 providerConfig 缺失時 enrichPod 應補預設值
+      const pod2 = createMockPod({
+        id: "pod-2",
+        providerConfig: undefined as any,
+      });
 
       store.syncPodsFromBackend([pod1, pod2]);
 
       expect(store.pods).toHaveLength(2);
       // enrichPod 應填入預設值
       expect(store.pods[0]?.x).toBe(100);
-      // model 已 deprecated，改驗 providerConfig.model
-      expect(store.pods[1]?.providerConfig?.model).toBe("opus");
+      // providerConfig 缺失時應補 claude 預設 model
+      expect(store.pods[1]?.providerConfig?.model).toBe(CLAUDE_DEFAULT_MODEL);
     });
 
     it("應過濾掉無效 Pod", () => {
@@ -1667,7 +1601,7 @@ describe("podStore", () => {
   });
 
   describe("updatePodProviderConfigModel", () => {
-    it("應將 providerConfig.model 更新為新值", () => {
+    it("合法 model 名稱應成功更新 providerConfig.model", () => {
       const store = usePodStore();
       // 建立一個 codex provider 的 Pod，初始 model 為 gpt-5.4
       const pod = createMockPod({
@@ -1677,9 +1611,46 @@ describe("podStore", () => {
       });
       store.pods = [pod];
 
-      store.updatePodProviderConfigModel("pod-1", "gpt-5.5-something");
+      // gpt-4o-mini 符合 isValidModelName 規則（字母、數字、點、連字號）
+      store.updatePodProviderConfigModel("pod-1", "gpt-4o-mini");
 
-      expect(store.pods[0]?.providerConfig?.model).toBe("gpt-5.5-something");
+      expect(store.pods[0]?.providerConfig?.model).toBe("gpt-4o-mini");
+    });
+
+    it("非法 model 名稱應被拒絕，store state 不應被更新", () => {
+      const store = usePodStore();
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+      });
+      store.pods = [pod];
+
+      // "../etc/passwd" 含有 "/" 不符合 isValidModelName 規則，應被拒絕
+      store.updatePodProviderConfigModel("pod-1", "../etc/passwd");
+
+      // model 不應被更新
+      expect(store.pods[0]?.providerConfig?.model).toBe("gpt-5.4");
+      expect(console.warn).toHaveBeenCalledWith(
+        "[PodStore] model 不合法，已拒絕更新：../etc/passwd",
+      );
+    });
+
+    it("空字串 model 應被拒絕，store state 不應被更新", () => {
+      const store = usePodStore();
+      const pod = createMockPod({
+        id: "pod-1",
+        providerConfig: { model: CLAUDE_DEFAULT_MODEL },
+      });
+      store.pods = [pod];
+
+      store.updatePodProviderConfigModel("pod-1", "");
+
+      // model 不應被更新
+      expect(store.pods[0]?.providerConfig?.model).toBe(CLAUDE_DEFAULT_MODEL);
+      expect(console.warn).toHaveBeenCalledWith(
+        "[PodStore] model 不合法，已拒絕更新：",
+      );
     });
 
     it("Pod 不存在時應靜默忽略不拋錯，store state 不變", () => {
@@ -1690,7 +1661,7 @@ describe("podStore", () => {
 
       // 對不存在的 podId 呼叫，不應 throw，也不應改動其他 pod
       expect(() =>
-        store.updatePodProviderConfigModel("non-existent", "new-model"),
+        store.updatePodProviderConfigModel("non-existent", "valid-model"),
       ).not.toThrow();
       expect(store.pods[0]?.providerConfig?.model).toBe(originalModel);
     });
@@ -1705,9 +1676,10 @@ describe("podStore", () => {
       });
       store.pods = [pod];
 
-      store.updatePodProviderConfigModel("pod-1", "new-model");
+      // valid-model 符合 isValidModelName 規則
+      store.updatePodProviderConfigModel("pod-1", "valid-model");
 
-      expect(store.pods[0]?.providerConfig?.model).toBe("new-model");
+      expect(store.pods[0]?.providerConfig?.model).toBe("valid-model");
       // Pod.provider 仍為 'codex'，providerConfig 只有 model 欄位
       expect(store.pods[0]?.provider).toBe("codex");
       expect(Object.keys(store.pods[0]?.providerConfig ?? {})).toEqual([
@@ -1727,14 +1699,14 @@ describe("podStore", () => {
       expect(store.pods[0]?.outputStyleId).toBe("style-abc");
     });
 
-    it("Pod 存在時應成功更新 model 欄位", () => {
+    it("Pod 存在時應成功更新 outputStyleId 至另一個值", () => {
       const store = usePodStore();
-      const pod = createMockPod({ id: "pod-1", model: "opus" });
+      const pod = createMockPod({ id: "pod-1", outputStyleId: "style-old" });
       store.pods = [pod];
 
-      store.updatePodField("pod-1", "model", "sonnet");
+      store.updatePodField("pod-1", "outputStyleId", "style-new");
 
-      expect(store.pods[0]?.model).toBe("sonnet");
+      expect(store.pods[0]?.outputStyleId).toBe("style-new");
     });
 
     it("Pod 不存在時應靜默忽略不拋錯", () => {
@@ -1742,7 +1714,7 @@ describe("podStore", () => {
       store.pods = [];
 
       expect(() =>
-        store.updatePodField("non-existent", "model", "haiku"),
+        store.updatePodField("non-existent", "outputStyleId", null),
       ).not.toThrow();
       expect(store.pods).toHaveLength(0);
     });

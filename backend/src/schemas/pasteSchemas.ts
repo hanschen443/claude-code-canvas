@@ -6,7 +6,6 @@ import {
   createPasteNoteItemSchema,
   resourceIdSchema,
 } from "./base.js";
-import { modelTypeSchema } from "./podSchemas.js";
 import { anchorPositionSchema } from "./connectionSchemas.js";
 
 export const pastePodItemSchema = z.object({
@@ -26,7 +25,6 @@ export const pastePodItemSchema = z.object({
         .max(100),
     )
     .optional(),
-  model: modelTypeSchema.optional(),
   repositoryId: resourceIdSchema.nullable().optional(),
   commandId: resourceIdSchema.nullable().optional(),
 });

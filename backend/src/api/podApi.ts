@@ -10,14 +10,14 @@ import {
   deletePodWithCleanup,
 } from "../services/podService.js";
 import { logger } from "../utils/logger.js";
-import type { ModelType } from "../types/pod.js";
 import type { ProviderName } from "../services/provider/types.js";
 import { HTTP_STATUS } from "../constants.js";
 import { socketService } from "../services/socketService.js";
 import { WebSocketResponseEvents } from "../schemas/index.js";
 import { getResultErrorString } from "../types/result.js";
 
-const VALID_MODELS: ModelType[] = ["opus", "sonnet", "haiku"];
+/** REST API 的 model 便捷欄位：Claude provider 僅允許短名，方便向後相容 */
+const VALID_CLAUDE_MODELS = ["opus", "sonnet", "haiku"] as const;
 const VALID_PROVIDERS: ProviderName[] = ["claude", "codex"];
 /** providerConfig 允許的 key 白名單 */
 const PROVIDER_CONFIG_ALLOWED_KEYS = ["model"] as const;
@@ -26,7 +26,6 @@ interface ValidatedCreatePodBody {
   name: string;
   x: number;
   y: number;
-  model: ModelType;
   provider?: ProviderName;
   providerConfig?: Record<string, unknown>;
 }
@@ -63,10 +62,16 @@ function validatePodCoordinates(data: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * 驗證 REST API 傳入的 model 便捷欄位（僅支援 Claude 短名）。
+ * 若同時傳了 providerConfig.model，以 providerConfig.model 為主，model 欄位忽略。
+ */
 function validatePodModel(data: Record<string, unknown>): string | null {
   if (
     data.model !== undefined &&
-    !VALID_MODELS.includes(data.model as ModelType)
+    !VALID_CLAUDE_MODELS.includes(
+      data.model as (typeof VALID_CLAUDE_MODELS)[number],
+    )
   ) {
     return "無效的模型類型";
   }
@@ -126,19 +131,23 @@ function validateCreatePodBody(
   if (providerConfigError) return { error: providerConfigError };
 
   const name = (data.name as string).trim();
-  const model = (data.model as ModelType) ?? "opus";
   const provider =
     data.provider !== undefined ? (data.provider as ProviderName) : undefined;
-  const providerConfig =
+
+  // REST API 的 model 便捷欄位：若 providerConfig.model 未指定，則使用 model 欄位作為 providerConfig.model
+  let providerConfig: Record<string, unknown> | undefined =
     data.providerConfig !== undefined
       ? (data.providerConfig as Record<string, unknown>)
       : undefined;
+
+  if (data.model !== undefined && providerConfig === undefined) {
+    providerConfig = { model: data.model as string };
+  }
 
   return {
     name,
     x: data.x as number,
     y: data.y as number,
-    model,
     provider,
     providerConfig,
   };
@@ -189,7 +198,6 @@ export async function handleCreatePod(
         x: validated.x,
         y: validated.y,
         rotation: 0,
-        model: validated.model,
         provider: validated.provider,
         providerConfig: validated.providerConfig,
       },

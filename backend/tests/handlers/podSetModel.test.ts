@@ -94,7 +94,6 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     x: 0,
     y: 0,
     rotation: 0,
-    model: "opus",
     workspacePath: "/tmp",
     sessionId: null,
     outputStyleId: null,
@@ -121,7 +120,6 @@ describe("handlePodSetModel", () => {
       const existingPod = makePod({ providerConfig: { model: "opus" } });
       const updatedPod = makePod({
         providerConfig: { model: "sonnet" },
-        model: "sonnet",
       });
 
       mockValidatePod.mockReturnValue(existingPod);
@@ -143,14 +141,12 @@ describe("handlePodSetModel", () => {
     });
   });
 
-  describe("Case 2：不再寫 pods.model 新值（DB 欄位凍結）", () => {
-    it("podStore.update 的 updates 物件不含頂層 model 欄位（不寫入新 model 到 pods.model）", async () => {
+  describe("Case 2：providerConfig.model 是唯一來源（pods.model 欄位已移除）", () => {
+    it("podStore.update 的 updates 物件不含頂層 model 欄位", async () => {
       const existingPod = makePod({
-        model: "opus",
         providerConfig: { model: "opus" },
       });
       const updatedPod = makePod({
-        model: "sonnet",
         providerConfig: { model: "sonnet" },
       });
 
@@ -163,8 +159,7 @@ describe("handlePodSetModel", () => {
         REQUEST_ID,
       );
 
-      // handlePodSetModel 傳給 podStore.update 的 updates 只有 providerConfig，
-      // 不含頂層 model 欄位，因此 DB 的 pods.model 不會被新值覆蓋
+      // handlePodSetModel 傳給 podStore.update 的 updates 只有 providerConfig，不含頂層 model 欄位
       const updateCall = mockPodStoreUpdate.mock.calls[0];
       const updatesArg = updateCall?.[2] as Record<string, unknown>;
 
@@ -180,11 +175,9 @@ describe("handlePodSetModel", () => {
   describe("Case 3：白名單 merge（只保留已知安全 key，捨棄未知 key）", () => {
     it("原本 providerConfig: { model: 'opus', someOther: 'x' } → set model 為 'sonnet' → 未知 key someOther 應被捨棄，只保留 { model: 'sonnet' }", async () => {
       const existingPod = makePod({
-        model: "opus",
         providerConfig: { model: "opus", someOther: "x" },
       });
       const updatedPod = makePod({
-        model: "sonnet",
         providerConfig: { model: "sonnet" },
       });
 
@@ -212,11 +205,9 @@ describe("handlePodSetModel", () => {
 
     it("providerConfig 為 null 時，應建立新的 { model: 'sonnet' }，不拋錯", async () => {
       const existingPod = makePod({
-        model: "opus",
         providerConfig: null,
       });
       const updatedPod = makePod({
-        model: "sonnet",
         providerConfig: { model: "sonnet" },
       });
 
@@ -244,7 +235,6 @@ describe("handlePodSetModel", () => {
     it("socketService.emitToCanvas 收到的 pod 應含最新 providerConfig.model", async () => {
       const existingPod = makePod({ providerConfig: { model: "opus" } });
       const updatedPod = makePod({
-        model: "haiku",
         providerConfig: { model: "haiku" },
       });
 
