@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import type { Pod, ModelType } from "@/types";
+import type { Pod } from "@/types";
 import { useCanvasContext } from "@/composables/canvas/useCanvasContext";
 import { useBatchDrag } from "@/composables/canvas";
 import { isCtrlOrCmdPressed } from "@/utils/keyboardHelpers";
@@ -15,6 +15,7 @@ import { usePodNoteBinding } from "@/composables/pod/usePodNoteBinding";
 import { useWorkflowClear } from "@/composables/pod/useWorkflowClear";
 import { usePodSchedule } from "@/composables/pod/usePodSchedule";
 import { usePodAnchorDrag } from "@/composables/pod/usePodAnchorDrag";
+import { usePodCapabilities } from "@/composables/pod/usePodCapabilities";
 import { useToast } from "@/composables/useToast";
 import { useI18n } from "vue-i18n";
 import {
@@ -78,7 +79,7 @@ const hasUpstreamConnection = computed(() =>
 const showScheduleButton = computed(
   () => isSourcePod.value || !hasUpstreamConnection.value,
 );
-const currentModel = computed(() => props.pod.model ?? "opus");
+const currentModel = computed(() => props.pod.providerConfig.model);
 
 const isSelected = computed(() =>
   selectionStore.selectedPodIds.includes(props.pod.id),
@@ -112,6 +113,9 @@ const isWorkflowRunning = computed(() =>
 );
 
 const computedPodId = computed(() => props.pod.id);
+
+// 取得此 Pod 的 capability，用於守門不支援的功能入口
+const { isRunModeEnabled } = usePodCapabilities(computedPodId);
 
 const {
   showScheduleModal,
@@ -232,7 +236,7 @@ const handleDblClick = (e: MouseEvent): void => {
   handleSelectPod();
 };
 
-const handleModelChange = async (model: ModelType): Promise<void> => {
+const handleModelChange = async (model: string): Promise<void> => {
   const response = await sendCanvasAction<
     PodSetModelPayload,
     PodModelSetPayload
@@ -245,7 +249,10 @@ const handleModelChange = async (model: ModelType): Promise<void> => {
   if (!response) return;
   if (!response.pod) return;
 
-  podStore.updatePodModel(props.pod.id, response.pod.model ?? "opus");
+  podStore.updatePodProviderConfigModel(
+    props.pod.id,
+    response.pod.providerConfig.model,
+  );
 };
 
 const handleToggleMultiInstance = async (): Promise<void> => {
@@ -278,6 +285,7 @@ const handleContextMenu = (e: MouseEvent): void => {
     >
       <PodModelSelector
         :pod-id="pod.id"
+        :provider="pod.provider"
         :current-model="currentModel"
         @update:model="handleModelChange"
       />
@@ -357,6 +365,7 @@ const handleContextMenu = (e: MouseEvent): void => {
         :schedule-tooltip="scheduleTooltip"
         :is-schedule-fired-animating="isScheduleFiredAnimating"
         :is-workflow-running="isWorkflowRunning"
+        :is-run-mode-enabled="isRunModeEnabled"
         @open-schedule-modal="handleOpenScheduleModal"
         @update:show-clear-dialog="showClearDialog = $event"
         @update:show-delete-dialog="showDeleteDialog = $event"

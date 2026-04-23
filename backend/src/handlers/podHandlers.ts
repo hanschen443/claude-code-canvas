@@ -40,11 +40,11 @@ export const handlePodCreate = withCanvasId<PodCreatePayload>(
     payload: PodCreatePayload,
     requestId: string,
   ): Promise<void> => {
-    const { name, x, y, rotation } = payload;
+    const { name, x, y, rotation, provider, providerConfig } = payload;
 
     const result = await createPodWithWorkspace(
       canvasId,
-      { name, x, y, rotation },
+      { name, x, y, rotation, provider, providerConfig },
       requestId,
     );
 
@@ -254,11 +254,25 @@ export const handlePodSetModel = withCanvasId<PodSetModelPayload>(
   ): Promise<void> => {
     const { podId, model } = payload;
 
+    // 讀取現有 providerConfig，merge { model } 後寫回，保留其他既有 keys
+    const existingPod = validatePod(
+      connectionId,
+      podId,
+      WebSocketResponseEvents.POD_MODEL_SET,
+      requestId,
+    );
+    if (!existingPod) return;
+
+    const mergedProviderConfig: Record<string, unknown> = {
+      ...(existingPod.providerConfig ?? {}),
+      model,
+    };
+
     handlePodUpdate(
       connectionId,
       canvasId,
       podId,
-      { model },
+      { providerConfig: mergedProviderConfig },
       requestId,
       WebSocketResponseEvents.POD_MODEL_SET,
       (pod) => ({ requestId, canvasId, success: true, pod }),

@@ -1,4 +1,4 @@
-import type { ModelType, Schedule } from "../pod";
+import type { ModelType, Schedule, PodProvider, ProviderConfig } from "../pod";
 import type { AnchorPosition } from "@/types";
 import type { McpServerConfig } from "../mcpServer";
 
@@ -15,6 +15,15 @@ export interface PodCreatePayload {
   x: number;
   y: number;
   rotation: number;
+  /** Pod 使用的 AI Provider */
+  provider: PodProvider;
+  /** Provider 對應的設定（含 model 等參數） */
+  providerConfig: ProviderConfig;
+}
+
+/** 查詢可用 Provider 列表 */
+export interface ProviderListPayload {
+  requestId: string;
 }
 
 export interface PodListPayload {
@@ -41,7 +50,8 @@ export interface PodSetModelPayload {
   requestId: string;
   canvasId: string;
   podId: string;
-  model: ModelType;
+  /** 傳送 provider-agnostic 的 model 字串，後端依 provider 解析 */
+  model: string;
 }
 
 export interface PodSetSchedulePayload {

@@ -50,7 +50,7 @@ describe("ClaudeService", () => {
     (config as any).canvasRoot = "/test/canvas";
 
     vi.spyOn(podStore, "getByIdGlobal").mockReturnValue(null as any);
-    vi.spyOn(podStore, "setClaudeSessionId").mockImplementation(() => {});
+    vi.spyOn(podStore, "setSessionId").mockImplementation(() => {});
     vi.spyOn(outputStyleService, "getContent").mockResolvedValue(null);
     vi.spyOn(logger, "log").mockImplementation(() => {});
 
@@ -67,7 +67,7 @@ describe("ClaudeService", () => {
     id: "test-pod-id",
     name: "Test Pod",
     model: "claude-sonnet-4-5-20250929" as const,
-    claudeSessionId: null,
+    sessionId: null,
     repositoryId: null,
     workspacePath: "/test/canvas/workspace",
     commandId: null,
@@ -137,7 +137,7 @@ describe("ClaudeService", () => {
       expect(result.content).toBe("Hello, how can I help?");
       expect(result.podId).toBe("test-pod-id");
 
-      expect(podStore.setClaudeSessionId).toHaveBeenCalledWith(
+      expect(podStore.setSessionId).toHaveBeenCalledWith(
         "test-canvas",
         "test-pod-id",
         "new-session-123",
@@ -240,7 +240,7 @@ describe("ClaudeService", () => {
       const { podStore } = await import("../../src/services/podStore.js");
       const { logger } = await import("../../src/utils/logger.js");
       const mockPod = createMockPod({
-        claudeSessionId: "old-invalid-session",
+        sessionId: "old-invalid-session",
       });
 
       (podStore.getByIdGlobal as any).mockReturnValue({
@@ -299,7 +299,7 @@ describe("ClaudeService", () => {
         expect.stringContaining("Session 恢復失敗"),
       );
 
-      expect(podStore.setClaudeSessionId).toHaveBeenCalledWith(
+      expect(podStore.setSessionId).toHaveBeenCalledWith(
         "test-canvas",
         "test-pod-id",
         "",
@@ -341,7 +341,7 @@ describe("ClaudeService", () => {
         content: "\n\n⚠️ 與 Claude 通訊時發生錯誤，請稍後再試",
       });
 
-      const calls = (podStore.setClaudeSessionId as any).mock.calls || [];
+      const calls = (podStore.setSessionId as any).mock.calls || [];
       const hasEmptyStringCall = calls.some((call: any[]) => call[2] === "");
       expect(hasEmptyStringCall).toBe(false);
     });
@@ -350,7 +350,7 @@ describe("ClaudeService", () => {
       const { podStore } = await import("../../src/services/podStore.js");
       const { logger } = await import("../../src/utils/logger.js");
       const mockPod = createMockPod({
-        claudeSessionId: "old-invalid-session",
+        sessionId: "old-invalid-session",
       });
 
       (podStore.getByIdGlobal as any).mockReturnValue({
@@ -386,7 +386,7 @@ describe("ClaudeService", () => {
 
       expect(callCount).toBe(2);
 
-      expect(podStore.setClaudeSessionId).toHaveBeenCalledWith(
+      expect(podStore.setSessionId).toHaveBeenCalledWith(
         "test-canvas",
         "test-pod-id",
         "",
@@ -948,10 +948,10 @@ describe("ClaudeService", () => {
       ).rejects.toThrow("非法的工作目錄路徑");
     });
 
-    it("有 claudeSessionId 時設定 resume 選項", async () => {
+    it("有 sessionId 時設定 resume 選項", async () => {
       const { podStore } = await import("../../src/services/podStore.js");
       const mockPod = createMockPod({
-        claudeSessionId: "existing-session-123",
+        sessionId: "existing-session-123",
       });
 
       (podStore.getByIdGlobal as any).mockReturnValue({
@@ -1349,12 +1349,12 @@ describe("resolveResumeSessionId", () => {
     expect(result).toBe("session-abc");
   });
 
-  it("Normal mode + runOptions 為 undefined：應 fallback 到 pod.claudeSessionId", () => {
+  it("Normal mode + runOptions 為 undefined：應 fallback 到 pod.sessionId", () => {
     const result = resolveResumeSessionId(undefined, podSessionId);
     expect(result).toBe(podSessionId);
   });
 
-  it("Normal mode + runOptions 無 sessionId（空物件）：應 fallback 到 pod.claudeSessionId", () => {
+  it("Normal mode + runOptions 無 sessionId（空物件）：應 fallback 到 pod.sessionId", () => {
     const result = resolveResumeSessionId({}, podSessionId);
     expect(result).toBe(podSessionId);
   });
@@ -1367,7 +1367,7 @@ describe("resolveResumeSessionId", () => {
     expect(result).toBe("session-xyz");
   });
 
-  it("Normal mode + pod.claudeSessionId 為 null：應回傳 null", () => {
+  it("Normal mode + pod.sessionId 為 null：應回傳 null", () => {
     const result = resolveResumeSessionId(undefined, null);
     expect(result).toBeNull();
   });

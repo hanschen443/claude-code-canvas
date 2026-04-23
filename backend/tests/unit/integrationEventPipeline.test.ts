@@ -127,7 +127,7 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     x: 0,
     y: 0,
     rotation: 0,
-    claudeSessionId: null,
+    sessionId: null,
     outputStyleId: null,
     skillIds: [],
     subAgentIds: [],

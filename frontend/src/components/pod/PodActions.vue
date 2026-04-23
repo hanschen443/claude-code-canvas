@@ -21,6 +21,8 @@ const props = withDefaults(
     isLoadingDownstream: boolean;
     isClearing: boolean;
     isWorkflowRunning?: boolean;
+    /** Run 模式是否啟用（Codex Pod 為 false，完全隱藏長按切換入口） */
+    isRunModeEnabled?: boolean;
     downstreamPods: Array<{ id: string; name: string }>;
     showClearDialog: boolean;
     showDeleteDialog: boolean;
@@ -32,6 +34,7 @@ const props = withDefaults(
   {
     isScheduleFiredAnimating: false,
     isWorkflowRunning: false,
+    isRunModeEnabled: true,
   },
 );
 
@@ -87,6 +90,10 @@ const cleanupLongPress = (): void => {
 const handleEraserMouseDown = (event: MouseEvent): void => {
   event.stopPropagation();
   isLongPress = false;
+
+  // Run 模式不啟用時（例如 Codex Pod），不啟動長按切換邏輯
+  if (!props.isRunModeEnabled) return;
+
   isLongPressing.value = true;
   longPressProgress.value = 0;
   longPressStartTime = performance.now();

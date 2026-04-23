@@ -5,7 +5,7 @@ vi.mock("../../src/services/podStore.js", () => ({
     setStatus: vi.fn(() => {}),
     getById: vi.fn(() => undefined),
     getByIdGlobal: vi.fn(() => undefined),
-    setClaudeSessionId: vi.fn(() => {}),
+    setSessionId: vi.fn(() => {}),
   },
 }));
 
@@ -51,7 +51,7 @@ describe("NormalModeExecutionStrategy", () => {
     asMock(podStore.setStatus).mockClear();
     asMock(podStore.getById).mockClear();
     asMock(podStore.getByIdGlobal).mockClear();
-    asMock(podStore.setClaudeSessionId).mockClear();
+    asMock(podStore.setSessionId).mockClear();
     asMock(messageStore.upsertMessage).mockClear();
     asMock(injectUserMessage).mockClear();
     asMock(createNormalEmitStrategy).mockClear();
@@ -88,11 +88,11 @@ describe("NormalModeExecutionStrategy", () => {
       expect(result).toBeUndefined();
     });
 
-    it("Pod 存在且有 claudeSessionId 時應回傳該值", () => {
+    it("Pod 存在且有 sessionId 時應回傳該值", () => {
       const sessionId = "session-123";
       asMock(podStore.getByIdGlobal).mockReturnValue({
         canvasId,
-        pod: { claudeSessionId: sessionId },
+        pod: { sessionId: sessionId },
       });
 
       const strategy = makeStrategy();
@@ -101,10 +101,10 @@ describe("NormalModeExecutionStrategy", () => {
       expect(result).toBe(sessionId);
     });
 
-    it("Pod 存在但 claudeSessionId 為 null 時應回傳 undefined", () => {
+    it("Pod 存在但 sessionId 為 null 時應回傳 undefined", () => {
       asMock(podStore.getByIdGlobal).mockReturnValue({
         canvasId,
-        pod: { claudeSessionId: null },
+        pod: { sessionId: null },
       });
 
       const strategy = makeStrategy();
@@ -228,7 +228,7 @@ describe("NormalModeExecutionStrategy", () => {
       strategy.onStreamStart(podId);
 
       expect(podStore.setStatus).not.toHaveBeenCalled();
-      expect(podStore.setClaudeSessionId).not.toHaveBeenCalled();
+      expect(podStore.setSessionId).not.toHaveBeenCalled();
       expect(messageStore.upsertMessage).not.toHaveBeenCalled();
     });
   });
@@ -241,24 +241,24 @@ describe("NormalModeExecutionStrategy", () => {
       expect(podStore.setStatus).toHaveBeenCalledWith(canvasId, podId, "idle");
     });
 
-    it("有 sessionId 時應額外呼叫 podStore.setClaudeSessionId", () => {
+    it("有 sessionId 時應額外呼叫 podStore.setSessionId", () => {
       const sessionId = "new-session-456";
       const strategy = makeStrategy();
       strategy.onStreamComplete(podId, sessionId);
 
       expect(podStore.setStatus).toHaveBeenCalledWith(canvasId, podId, "idle");
-      expect(podStore.setClaudeSessionId).toHaveBeenCalledWith(
+      expect(podStore.setSessionId).toHaveBeenCalledWith(
         canvasId,
         podId,
         sessionId,
       );
     });
 
-    it("sessionId 為 undefined 時不應呼叫 podStore.setClaudeSessionId", () => {
+    it("sessionId 為 undefined 時不應呼叫 podStore.setSessionId", () => {
       const strategy = makeStrategy();
       strategy.onStreamComplete(podId, undefined);
 
-      expect(podStore.setClaudeSessionId).not.toHaveBeenCalled();
+      expect(podStore.setSessionId).not.toHaveBeenCalled();
     });
   });
 

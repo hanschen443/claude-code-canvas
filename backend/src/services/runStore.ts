@@ -65,7 +65,7 @@ export interface RunPodInstance {
   runId: string;
   podId: string;
   status: RunPodInstanceStatus;
-  claudeSessionId: string | null;
+  sessionId: string | null;
   errorMessage: string | null;
   triggeredAt: string | null;
   completedAt: string | null;
@@ -99,7 +99,7 @@ interface RunPodInstanceRow {
   run_id: string;
   pod_id: string;
   status: string;
-  claude_session_id: string | null;
+  session_id: string | null;
   error_message: string | null;
   triggered_at: string | null;
   completed_at: string | null;
@@ -136,7 +136,7 @@ function rowToRunPodInstance(row: RunPodInstanceRow): RunPodInstance {
     runId: row.run_id,
     podId: row.pod_id,
     status: row.status as RunPodInstanceStatus,
-    claudeSessionId: row.claude_session_id,
+    sessionId: row.session_id,
     errorMessage: row.error_message,
     triggeredAt: row.triggered_at,
     completedAt: row.completed_at,
@@ -263,7 +263,7 @@ class RunStore {
       runId,
       podId,
       status: "pending",
-      claudeSessionId: null,
+      sessionId: null,
       errorMessage: null,
       triggeredAt: null,
       completedAt: null,
@@ -277,7 +277,7 @@ class RunStore {
       $runId: instance.runId,
       $podId: instance.podId,
       $status: instance.status,
-      $claudeSessionId: instance.claudeSessionId,
+      $sessionId: instance.sessionId,
       $errorMessage: instance.errorMessage,
       $triggeredAt: instance.triggeredAt,
       $completedAt: instance.completedAt,
@@ -355,12 +355,9 @@ class RunStore {
     });
   }
 
-  updatePodInstanceClaudeSessionId(
-    instanceId: string,
-    sessionId: string,
-  ): void {
-    this.stmts.runPodInstance.updateClaudeSessionId.run({
-      $claudeSessionId: sessionId,
+  updatePodInstanceSessionId(instanceId: string, sessionId: string): void {
+    this.stmts.runPodInstance.updateSessionId.run({
+      $sessionId: sessionId,
       $id: instanceId,
     });
   }

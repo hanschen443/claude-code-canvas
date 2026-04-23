@@ -33,7 +33,7 @@ function makeInstance(overrides?: Partial<RunPodInstance>): RunPodInstance {
     runId: RUN_ID,
     podId: "pod-a",
     status: "pending",
-    claudeSessionId: null,
+    sessionId: null,
     errorMessage: null,
     triggeredAt: null,
     completedAt: null,

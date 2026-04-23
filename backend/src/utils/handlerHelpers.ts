@@ -6,6 +6,10 @@ import { socketService } from "../services/socketService.js";
 import { emitError, emitNotFound } from "./websocketResponse.js";
 import { logger, type LogCategory } from "./logger.js";
 import { createI18nError, type I18nError } from "./i18nError.js";
+import {
+  getCapabilities,
+  type ProviderCapabilities,
+} from "../services/provider/index.js";
 
 export function handleResultError<T>(
   result: Result<T>,
@@ -83,6 +87,33 @@ export function withCanvasId<TPayload = unknown>(
 
     await handler(connectionId, canvasId, payload, requestId);
   };
+}
+
+/**
+ * 守門：檢查 Pod 對應的 provider 是否支援指定 capability。
+ * 不支援時發送 CAPABILITY_NOT_SUPPORTED 錯誤並回傳 false，呼叫端應立即 early return。
+ * 支援時回傳 true 繼續執行。
+ */
+export function assertCapability(
+  connectionId: string,
+  pod: Pod,
+  key: keyof ProviderCapabilities,
+  responseEvent: WebSocketResponseEvents,
+  requestId: string,
+): boolean {
+  const cap = getCapabilities(pod.provider);
+  if (cap[key]) return true;
+  emitError(
+    connectionId,
+    responseEvent,
+    createI18nError("errors.capabilityNotSupported", {
+      provider: pod.provider,
+    }),
+    requestId,
+    pod.id,
+    "CAPABILITY_NOT_SUPPORTED",
+  );
+  return false;
 }
 
 export function validatePod(

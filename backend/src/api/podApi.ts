@@ -11,18 +11,24 @@ import {
 } from "../services/podService.js";
 import { logger } from "../utils/logger.js";
 import type { ModelType } from "../types/pod.js";
+import type { ProviderName } from "../services/provider/types.js";
 import { HTTP_STATUS } from "../constants.js";
 import { socketService } from "../services/socketService.js";
 import { WebSocketResponseEvents } from "../schemas/index.js";
 import { getResultErrorString } from "../types/result.js";
 
 const VALID_MODELS: ModelType[] = ["opus", "sonnet", "haiku"];
+const VALID_PROVIDERS: ProviderName[] = ["claude", "codex"];
+/** providerConfig 允許的 key 白名單 */
+const PROVIDER_CONFIG_ALLOWED_KEYS = ["model"] as const;
 
 interface ValidatedCreatePodBody {
   name: string;
   x: number;
   y: number;
   model: ModelType;
+  provider?: ProviderName;
+  providerConfig?: Record<string, unknown>;
 }
 
 function validatePodName(data: Record<string, unknown>): string | null {
@@ -67,6 +73,40 @@ function validatePodModel(data: Record<string, unknown>): string | null {
   return null;
 }
 
+function validatePodProvider(data: Record<string, unknown>): string | null {
+  if (
+    data.provider !== undefined &&
+    !VALID_PROVIDERS.includes(data.provider as ProviderName)
+  ) {
+    return `無效的 provider，只允許：${VALID_PROVIDERS.join(", ")}`;
+  }
+  return null;
+}
+
+function validatePodProviderConfig(
+  data: Record<string, unknown>,
+): string | null {
+  if (data.providerConfig === undefined) return null;
+  if (
+    typeof data.providerConfig !== "object" ||
+    data.providerConfig === null ||
+    Array.isArray(data.providerConfig)
+  ) {
+    return "providerConfig 必須是物件";
+  }
+  const config = data.providerConfig as Record<string, unknown>;
+  const invalidKeys = Object.keys(config).filter(
+    (k) =>
+      !PROVIDER_CONFIG_ALLOWED_KEYS.includes(
+        k as (typeof PROVIDER_CONFIG_ALLOWED_KEYS)[number],
+      ),
+  );
+  if (invalidKeys.length > 0) {
+    return `providerConfig 含有不允許的欄位：${invalidKeys.join(", ")}`;
+  }
+  return null;
+}
+
 function validateCreatePodBody(
   data: Record<string, unknown>,
 ): { error: string } | ValidatedCreatePodBody {
@@ -79,10 +119,29 @@ function validateCreatePodBody(
   const modelError = validatePodModel(data);
   if (modelError) return { error: modelError };
 
+  const providerError = validatePodProvider(data);
+  if (providerError) return { error: providerError };
+
+  const providerConfigError = validatePodProviderConfig(data);
+  if (providerConfigError) return { error: providerConfigError };
+
   const name = (data.name as string).trim();
   const model = (data.model as ModelType) ?? "opus";
+  const provider =
+    data.provider !== undefined ? (data.provider as ProviderName) : undefined;
+  const providerConfig =
+    data.providerConfig !== undefined
+      ? (data.providerConfig as Record<string, unknown>)
+      : undefined;
 
-  return { name, x: data.x as number, y: data.y as number, model };
+  return {
+    name,
+    x: data.x as number,
+    y: data.y as number,
+    model,
+    provider,
+    providerConfig,
+  };
 }
 
 export function handleListPods(
@@ -128,12 +187,19 @@ export async function handleCreatePod(
       y: validated.y,
       rotation: 0,
       model: validated.model,
+      provider: validated.provider,
+      providerConfig: validated.providerConfig,
     },
     "system",
   );
 
   if (!result.success) {
-    logger.error("Pod", "Error", "建立 Pod 失敗", getResultErrorString(result.error));
+    logger.error(
+      "Pod",
+      "Error",
+      "建立 Pod 失敗",
+      getResultErrorString(result.error),
+    );
     return jsonResponse(
       { error: "建立 Pod 時發生內部錯誤" },
       HTTP_STATUS.INTERNAL_ERROR,
@@ -217,7 +283,12 @@ export async function handleDeletePod(
 
   const result = await deletePodWithCleanup(canvas.id, pod.id, "system");
   if (!result.success) {
-    logger.error("Pod", "Error", "刪除 Pod 失敗", getResultErrorString(result.error));
+    logger.error(
+      "Pod",
+      "Error",
+      "刪除 Pod 失敗",
+      getResultErrorString(result.error),
+    );
     return jsonResponse(
       { error: "刪除 Pod 時發生錯誤" },
       HTTP_STATUS.INTERNAL_ERROR,

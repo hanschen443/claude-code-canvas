@@ -20,11 +20,13 @@ import type {
   SubAgent,
   McpServer,
 } from "@/types";
+import type { PodProvider, ProviderConfig } from "@/types/pod";
 import { podTypes } from "@/data/podTypes";
 import { useCanvasContext } from "@/composables/canvas/useCanvasContext";
 import { useMenuPosition } from "@/composables/useMenuPosition";
 import { useSkillImport } from "@/composables/useSkillImport";
 import PodTypeMenuSubmenu from "./PodTypeMenuSubmenu.vue";
+import ProviderPicker from "./ProviderPicker.vue";
 import { useI18n } from "vue-i18n";
 
 interface Props {
@@ -48,10 +50,15 @@ type OpenMenuType =
   | "subAgent"
   | "repository"
   | "command"
-  | "mcpServer";
+  | "mcpServer"
+  | "pod";
 
 const emit = defineEmits<{
-  select: [config: PodTypeConfig];
+  select: [
+    config: PodTypeConfig,
+    provider: PodProvider,
+    providerConfig: ProviderConfig,
+  ];
   "create-output-style-note": [outputStyleId: string];
   "create-skill-note": [skillId: string];
   "create-subagent-note": [subAgentId: string];
@@ -124,8 +131,14 @@ onUnmounted(() => {
   document.removeEventListener("mousedown", handleOutsideMouseDown, true);
 });
 
-const handleSelect = (config: PodTypeConfig): void => {
-  emit("select", config);
+/** ProviderPicker 選到 provider 後，轉發 select 事件給父層 */
+const handleProviderSelect = (payload: {
+  provider: PodProvider;
+  providerConfig: ProviderConfig;
+}): void => {
+  if (!podTypes[0]) return;
+  openMenuType.value = null;
+  emit("select", podTypes[0], payload.provider, payload.providerConfig);
 };
 
 const handleOutputStyleSelect = (style: OutputStyleListItem): void => {
@@ -493,19 +506,31 @@ const { menuStyle } = useMenuPosition({
     :style="menuStyle"
     @contextmenu.prevent
   >
-    <button
+    <!-- 新增 Pod → hover 展開 ProviderPicker 子選單 -->
+    <div
       v-if="podTypes[0]"
-      class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-secondary transition-colors text-left mb-1"
-      @click="handleSelect(podTypes[0])"
+      class="relative mb-1"
+      @mouseenter="openMenuType = 'pod'"
+      @mouseleave="openMenuType = null"
     >
-      <span
-        class="w-8 h-8 rounded-full flex items-center justify-center border border-doodle-ink"
-        style="background-color: var(--doodle-blue)"
+      <button
+        class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-secondary transition-colors text-left"
       >
-        <component :is="podTypes[0].icon" :size="16" class="text-card" />
-      </span>
-      <span class="font-mono text-sm text-foreground">Pod</span>
-    </button>
+        <span
+          class="w-8 h-8 rounded-full flex items-center justify-center border border-doodle-ink"
+          style="background-color: var(--doodle-blue)"
+        >
+          <component :is="podTypes[0].icon" :size="16" class="text-card" />
+        </span>
+        <span class="font-mono text-sm text-foreground">新增 Pod &gt;</span>
+      </button>
+
+      <!-- ProviderPicker 子選單，樣式對齊既有 pod-menu-submenu -->
+      <ProviderPicker
+        v-if="openMenuType === 'pod'"
+        @select="handleProviderSelect"
+      />
+    </div>
 
     <div
       v-for="section in menuSections"

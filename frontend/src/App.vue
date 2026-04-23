@@ -29,6 +29,7 @@ import { useIntegrationStore } from "@/stores/integrationStore";
 import { getAllProviders } from "@/integration/providerRegistry";
 import { useRunStore } from "@/stores/run/runStore";
 import { useConfigStore } from "@/stores/configStore";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 
 const {
   podStore,
@@ -47,6 +48,7 @@ const {
 const integrationStore = useIntegrationStore();
 const runStore = useRunStore();
 const configStore = useConfigStore();
+const providerCapabilityStore = useProviderCapabilityStore();
 
 const cursorStore = useCursorStore();
 
@@ -293,6 +295,9 @@ watch(
     if (connected) {
       chatStore.unregisterListeners();
       chatStore.registerListeners();
+
+      // 連線就緒後（含 reconnect）立即拉一次 provider capabilities
+      providerCapabilityStore.loadFromBackend();
     }
   },
   { flush: "sync" },

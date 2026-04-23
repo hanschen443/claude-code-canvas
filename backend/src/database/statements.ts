@@ -23,7 +23,7 @@ function buildStatements(db: Database): {
     countByCanvasIdAndName: ReturnType<Database["prepare"]>;
     update: ReturnType<Database["prepare"]>;
     updateStatus: ReturnType<Database["prepare"]>;
-    updateClaudeSessionId: ReturnType<Database["prepare"]>;
+    updateSessionId: ReturnType<Database["prepare"]>;
     updateOutputStyleId: ReturnType<Database["prepare"]>;
     updateRepositoryId: ReturnType<Database["prepare"]>;
     updateCommandId: ReturnType<Database["prepare"]>;
@@ -162,7 +162,7 @@ function buildStatements(db: Database): {
     selectByRunId: ReturnType<Database["prepare"]>;
     selectByRunIdAndPodId: ReturnType<Database["prepare"]>;
     updateStatus: ReturnType<Database["prepare"]>;
-    updateClaudeSessionId: ReturnType<Database["prepare"]>;
+    updateSessionId: ReturnType<Database["prepare"]>;
     selectRunningByRunId: ReturnType<Database["prepare"]>;
     deleteByRunId: ReturnType<Database["prepare"]>;
     settleAutoPathway: ReturnType<Database["prepare"]>;
@@ -197,7 +197,7 @@ function buildStatements(db: Database): {
 
     pod: {
       insert: db.prepare(
-        "INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, multi_instance, schedule_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $multiInstance, $scheduleJson)",
+        "INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, session_id, output_style_id, repository_id, command_id, multi_instance, schedule_json, provider, provider_config_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $sessionId, $outputStyleId, $repositoryId, $commandId, $multiInstance, $scheduleJson, $provider, $providerConfigJson)",
       ),
       selectByCanvasId: db.prepare("SELECT * FROM pods WHERE canvas_id = ?"),
       selectById: db.prepare("SELECT * FROM pods WHERE id = ?"),
@@ -214,13 +214,13 @@ function buildStatements(db: Database): {
         "SELECT COUNT(*) as count FROM pods WHERE canvas_id = $canvasId AND name = $name AND id != $excludeId",
       ),
       update: db.prepare(
-        "UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, multi_instance = $multiInstance, schedule_json = $scheduleJson WHERE id = $id",
+        "UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, session_id = $sessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, multi_instance = $multiInstance, schedule_json = $scheduleJson, provider = $provider, provider_config_json = $providerConfigJson WHERE id = $id",
       ),
       updateStatus: db.prepare(
         "UPDATE pods SET status = $status WHERE id = $id",
       ),
-      updateClaudeSessionId: db.prepare(
-        "UPDATE pods SET claude_session_id = $claudeSessionId WHERE id = $id",
+      updateSessionId: db.prepare(
+        "UPDATE pods SET session_id = $sessionId WHERE id = $id",
       ),
       updateOutputStyleId: db.prepare(
         "UPDATE pods SET output_style_id = $outputStyleId WHERE id = $id",
@@ -528,7 +528,7 @@ function buildStatements(db: Database): {
 
     runPodInstance: {
       insert: db.prepare(
-        "INSERT INTO run_pod_instances (id, run_id, pod_id, status, claude_session_id, error_message, triggered_at, completed_at, auto_pathway_settled, direct_pathway_settled, worktree_path) VALUES ($id, $runId, $podId, $status, $claudeSessionId, $errorMessage, $triggeredAt, $completedAt, $autoPathwaySettled, $directPathwaySettled, $worktreePath)",
+        "INSERT INTO run_pod_instances (id, run_id, pod_id, status, session_id, error_message, triggered_at, completed_at, auto_pathway_settled, direct_pathway_settled, worktree_path) VALUES ($id, $runId, $podId, $status, $sessionId, $errorMessage, $triggeredAt, $completedAt, $autoPathwaySettled, $directPathwaySettled, $worktreePath)",
       ),
       selectByRunId: db.prepare(
         "SELECT * FROM run_pod_instances WHERE run_id = ?",
@@ -539,8 +539,8 @@ function buildStatements(db: Database): {
       updateStatus: db.prepare(
         "UPDATE run_pod_instances SET status = $status, error_message = $errorMessage, triggered_at = CASE WHEN $status = 'running' THEN $triggeredAt ELSE triggered_at END, completed_at = $completedAt WHERE id = $id",
       ),
-      updateClaudeSessionId: db.prepare(
-        "UPDATE run_pod_instances SET claude_session_id = $claudeSessionId WHERE id = $id",
+      updateSessionId: db.prepare(
+        "UPDATE run_pod_instances SET session_id = $sessionId WHERE id = $id",
       ),
       selectRunningByRunId: db.prepare(
         "SELECT * FROM run_pod_instances WHERE run_id = ? AND status IN ('pending', 'running', 'summarizing', 'deciding', 'queued', 'waiting')",

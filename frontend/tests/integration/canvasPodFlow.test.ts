@@ -84,6 +84,8 @@ describe("Canvas/Pod 操作完整流程", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
       });
 
       expect(pod).toBeTruthy();
@@ -136,6 +138,8 @@ describe("Canvas/Pod 操作完整流程", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
       });
 
       expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
@@ -172,6 +176,8 @@ describe("Canvas/Pod 操作完整流程", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "sonnet" },
       });
 
       expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(

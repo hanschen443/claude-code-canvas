@@ -829,7 +829,7 @@ describe("排程觸發 multi-instance 分支", () => {
     rotation: 0,
     model: "opus" as const,
     workspacePath: "/tmp",
-    claudeSessionId: null,
+    sessionId: null,
     outputStyleId: null,
     repositoryId: null,
     commandId: null,

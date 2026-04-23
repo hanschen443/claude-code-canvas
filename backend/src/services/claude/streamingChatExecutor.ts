@@ -16,6 +16,8 @@ import {
 import { podStore } from "../podStore.js";
 import { logger } from "../../utils/logger.js";
 import type { ExecutionStrategy } from "../executionStrategy.js";
+import { getProvider } from "../provider/index.js";
+import type { NormalizedEvent } from "../provider/types.js";
 
 export interface StreamingChatExecutorOptions {
   canvasId: string;
@@ -345,7 +347,134 @@ async function handleExecutionError(
 }
 
 /**
+ * 將 NormalizedEvent 轉換為 StreamEvent，供 streamingCallback 消費。
+ * `thinking` 暫走 text 路徑（前端不區分），`session_started` 回傳 null（由呼叫端自行暫存）。
+ */
+function normalizedEventToStreamEvent(ev: NormalizedEvent): StreamEvent | null {
+  switch (ev.type) {
+    case "text":
+      return { type: "text", content: ev.content };
+    case "thinking":
+      // 暫時也走 text，前端目前不區分思考過程
+      return { type: "text", content: ev.content };
+    case "tool_call_start":
+      return {
+        type: "tool_use",
+        toolUseId: ev.toolUseId,
+        toolName: ev.toolName,
+        input: ev.input,
+      };
+    case "tool_call_result":
+      return {
+        type: "tool_result",
+        toolUseId: ev.toolUseId,
+        toolName: ev.toolName,
+        output: ev.output,
+      };
+    case "turn_complete":
+      return { type: "complete" };
+    case "error":
+      return { type: "error", error: ev.message };
+    case "session_started":
+      // 由呼叫端自行暫存，不直接轉成 StreamEvent
+      return null;
+  }
+}
+
+/**
+ * 執行 Codex provider 的串流聊天，將 NormalizedEvent 轉為 StreamEvent 後呼叫 streamingCallback。
+ */
+async function executeCodexStream(
+  options: StreamingChatExecutorOptions,
+  streamContext: StreamContext,
+  streamingCallback: (event: StreamEvent) => void,
+  callbacks?: StreamingChatExecutorCallbacks,
+): Promise<StreamingChatExecutorResult> {
+  const { podId, message, abortable, strategy } = options;
+  const { canvasId, messageId, streamState } = streamContext;
+
+  // 取得 Pod 資訊（workspacePath、providerConfig）
+  const podResult = podStore.getByIdGlobal(podId);
+  if (!podResult) {
+    throw new Error(`找不到 Pod ${podId}`);
+  }
+  const { pod } = podResult;
+
+  const sessionId = strategy.getSessionId(podId);
+  const queryKey = strategy.getQueryKey(podId);
+  const runContext = strategy.getRunContext();
+
+  // 建立 AbortController 並注冊到 claudeService，讓 abortQuery() 能統一取消
+  const abortController = new AbortController();
+  claudeService.registerAbortKey(queryKey, abortController);
+
+  // 串流開始前置處理
+  strategy.onStreamStart(podId);
+
+  try {
+    const provider = await getProvider("codex");
+
+    const ctx = {
+      podId,
+      message,
+      workspacePath: pod.workspacePath,
+      resumeSessionId: sessionId ?? null,
+      abortSignal: abortController.signal,
+      runContext,
+      providerConfig: pod.providerConfig ?? undefined,
+    };
+
+    let capturedSessionId: string | undefined;
+
+    for await (const ev of provider.chat(ctx)) {
+      // 捕捉 session_started，留到 finalizeAfterStream 使用
+      if (ev.type === "session_started") {
+        capturedSessionId = ev.sessionId;
+        continue;
+      }
+
+      const streamEvent = normalizedEventToStreamEvent(ev);
+      if (streamEvent === null) continue;
+
+      streamingCallback(streamEvent);
+
+      // error 事件：以 text 形式額外發給前端（⚠️ 格式）後拋出
+      if (ev.type === "error") {
+        streamingCallback({
+          type: "text",
+          content: `\n\n⚠️ ${ev.message}`,
+        });
+        throw new Error(ev.message);
+      }
+    }
+
+    // 串流正常結束後收尾處理
+    await finalizeAfterStream(streamContext, capturedSessionId);
+
+    if (callbacks?.onComplete) {
+      await callbacks.onComplete(canvasId, podId);
+    }
+
+    const hasAssistantContent =
+      streamState.accumulatedContent.length > 0 ||
+      streamState.subMessages.length > 0;
+
+    return {
+      messageId,
+      content: streamState.accumulatedContent,
+      hasContent: hasAssistantContent,
+      aborted: false,
+    };
+  } catch (error) {
+    return handleExecutionError(error, streamContext, abortable, callbacks);
+  } finally {
+    claudeService.unregisterAbortKey(queryKey);
+  }
+}
+
+/**
  * 統一的串流聊天執行器，透過 ExecutionStrategy 區分 Normal mode 與 Run mode 的差異。
+ * Provider 分流：`provider === 'codex'` 走新分支，其餘維持 Claude 原路徑。
  */
 export async function executeStreamingChat(
   options: StreamingChatExecutorOptions,
@@ -357,6 +486,21 @@ export async function executeStreamingChat(
   const streamContext = setupStreamContext(options);
   const { canvasId, messageId, streamState } = streamContext;
   const streamingCallback = createStreamingCallback(streamContext);
+
+  // ── Provider 分流 ──────────────────────────────────────────────────
+  const podResult = podStore.getByIdGlobal(podId);
+  const provider = podResult?.pod.provider ?? "claude";
+
+  if (provider === "codex") {
+    return executeCodexStream(
+      options,
+      streamContext,
+      streamingCallback,
+      callbacks,
+    );
+  }
+
+  // ── 以下為 Claude 原始路徑（不動） ────────────────────────────────
 
   // 取得 session ID 與 query key
   const sessionId = strategy.getSessionId(podId);

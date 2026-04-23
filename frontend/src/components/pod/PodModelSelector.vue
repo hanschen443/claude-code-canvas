@@ -1,89 +1,100 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import type { ModelType } from '@/types/pod'
+import { ref, computed } from "vue";
+import type { PodProvider } from "@/types/pod";
 
 const props = defineProps<{
-  podId: string
-  currentModel: ModelType
-}>()
+  podId: string;
+  currentModel: string;
+  provider: PodProvider;
+}>();
 
 const emit = defineEmits<{
-  'update:model': [model: ModelType]
-}>()
+  "update:model": [model: string];
+}>();
 
-const HOVER_DEBOUNCE_MS = 150
-const COLLAPSE_ANIMATION_MS = 300
-const SELECT_FEEDBACK_DELAY_MS = 400
+const HOVER_DEBOUNCE_MS = 150;
+const COLLAPSE_ANIMATION_MS = 300;
+const SELECT_FEEDBACK_DELAY_MS = 400;
 
-const isHovered = ref(false)
-const isAnimating = ref(false)
-const isCollapsing = ref(false)
-const hoverTimeoutId = ref<number | null>(null)
+const isHovered = ref(false);
+const isAnimating = ref(false);
+const isCollapsing = ref(false);
+const hoverTimeoutId = ref<number | null>(null);
 
-const allOptions = [
-  { label: 'Opus', value: 'opus' as ModelType },
-  { label: 'Sonnet', value: 'sonnet' as ModelType },
-  { label: 'Haiku', value: 'haiku' as ModelType }
-]
+/** 依 provider 動態決定可選模型清單 */
+const allOptions = computed(() => {
+  if (props.provider === "codex") {
+    return [{ label: "GPT 5.4", value: "gpt-5.4" }];
+  }
+  // claude（預設）
+  return [
+    { label: "Opus", value: "opus" },
+    { label: "Sonnet", value: "sonnet" },
+    { label: "Haiku", value: "haiku" },
+  ];
+});
+
+/** Codex 只有單一選項，不需展開 */
+const isSingleOption = computed(() => allOptions.value.length === 1);
 
 const sortedOptions = computed(() => {
-  const active = allOptions.find(o => o.value === props.currentModel)
-  const others = allOptions.filter(o => o.value !== props.currentModel)
-  return active ? [active, ...others] : allOptions
-})
+  const active = allOptions.value.find((o) => o.value === props.currentModel);
+  const others = allOptions.value.filter((o) => o.value !== props.currentModel);
+  return active ? [active, ...others] : allOptions.value;
+});
 
 const handleMouseEnter = (): void => {
-  if (isAnimating.value) return
+  // 單一選項仍允許展開動畫，但不允許切換
+  if (isAnimating.value) return;
 
   if (hoverTimeoutId.value !== null) {
-    clearTimeout(hoverTimeoutId.value)
-    hoverTimeoutId.value = null
+    clearTimeout(hoverTimeoutId.value);
+    hoverTimeoutId.value = null;
   }
-  isHovered.value = true
-}
+  isHovered.value = true;
+};
 
 const handleMouseLeave = (): void => {
-  if (isAnimating.value) return
+  if (isAnimating.value) return;
 
   hoverTimeoutId.value = window.setTimeout(() => {
-    isHovered.value = false
-    hoverTimeoutId.value = null
-  }, HOVER_DEBOUNCE_MS)
-}
+    isHovered.value = false;
+    hoverTimeoutId.value = null;
+  }, HOVER_DEBOUNCE_MS);
+};
 
-const selectModel = (model: ModelType): void => {
-  if (isAnimating.value || isCollapsing.value) return
+const selectModel = (model: string): void => {
+  // 單一選項時點擊不做任何事
+  if (isSingleOption.value) return;
+  if (isAnimating.value || isCollapsing.value) return;
 
   if (model === props.currentModel) {
-    isCollapsing.value = true
+    isCollapsing.value = true;
     setTimeout(() => {
-      isHovered.value = false
-      isCollapsing.value = false
-    }, COLLAPSE_ANIMATION_MS)
-    return
+      isHovered.value = false;
+      isCollapsing.value = false;
+    }, COLLAPSE_ANIMATION_MS);
+    return;
   }
 
-  isAnimating.value = true
+  isAnimating.value = true;
 
-  emit('update:model', model)
+  emit("update:model", model);
 
   setTimeout(() => {
-    isCollapsing.value = true
+    isCollapsing.value = true;
 
     setTimeout(() => {
-      isHovered.value = false
-      isCollapsing.value = false
-      isAnimating.value = false
-    }, COLLAPSE_ANIMATION_MS)
-  }, SELECT_FEEDBACK_DELAY_MS)
-}
+      isHovered.value = false;
+      isCollapsing.value = false;
+      isAnimating.value = false;
+    }, COLLAPSE_ANIMATION_MS);
+  }, SELECT_FEEDBACK_DELAY_MS);
+};
 </script>
 
 <template>
-  <div
-    class="pod-model-slot"
-    @mouseleave="handleMouseLeave"
-  >
+  <div class="pod-model-slot" @mouseleave="handleMouseLeave">
     <TransitionGroup
       name="card-swap"
       tag="div"
@@ -96,9 +107,11 @@ const selectModel = (model: ModelType): void => {
         class="model-card"
         :class="{
           active: option.value === currentModel,
+          'card-single': isSingleOption,
           'card-opus': option.value === 'opus',
           'card-sonnet': option.value === 'sonnet',
-          'card-haiku': option.value === 'haiku'
+          'card-haiku': option.value === 'haiku',
+          'card-codex': provider === 'codex',
         }"
         @mouseenter="option.value === currentModel && handleMouseEnter()"
         @click.stop="selectModel(option.value)"
@@ -120,6 +133,8 @@ const selectModel = (model: ModelType): void => {
 
 .model-cards-container {
   display: inline-flex;
+  /* 底部對齊：高度不同的卡片以底部為錨點，避免高度變化時卡片位置亂跳 */
+  align-items: flex-end;
   gap: 6px;
   transition: transform 0.3s ease;
   position: relative;
@@ -132,9 +147,12 @@ const selectModel = (model: ModelType): void => {
 }
 
 .model-card {
+  /* 固定窄寬度，垂直文字排列 */
   width: 24px;
-  height: 70px;
-  padding: 6px 4px;
+  /* min-height 保底高度，height: max-content 讓字數多的 card 自然撐高 */
+  min-height: 70px;
+  height: max-content;
+  padding: 8px 4px;
   border: 2px solid var(--doodle-ink);
   border-radius: 2px;
   font-family: var(--font-mono);
@@ -150,6 +168,7 @@ const selectModel = (model: ModelType): void => {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 垂直文字：字符直立排列，字數越多 card 越高 */
   writing-mode: vertical-lr;
   text-orientation: upright;
   letter-spacing: -2px;
@@ -175,6 +194,11 @@ const selectModel = (model: ModelType): void => {
   box-shadow: 3px 3px 0 oklch(0.4 0.02 50 / 0.4);
 }
 
+/* 單一選項：cursor 提示無法切換，但仍允許 hover 事件觸發展開動畫 */
+.model-card.card-single {
+  cursor: default;
+}
+
 .card-opus {
   background: var(--doodle-yellow);
 }
@@ -185,5 +209,11 @@ const selectModel = (model: ModelType): void => {
 
 .card-haiku {
   background: oklch(0.85 0.1 150);
+}
+
+/* Codex 使用中性灰色背景；字間距微調，讓垂直文字較整齊 */
+.card-codex {
+  background: oklch(0.9 0.005 240);
+  letter-spacing: -1px;
 }
 </style>

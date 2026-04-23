@@ -72,6 +72,13 @@ vi.mock("../../src/utils/chatCallbacks.js", () => ({
   onRunChatComplete: vi.fn(),
 }));
 
+// mock getCapabilities：預設 claude provider 支援 runMode
+vi.mock("../../src/services/provider/index.js", () => ({
+  getCapabilities: vi.fn((provider: string) => ({
+    runMode: provider === "claude",
+  })),
+}));
+
 vi.mock("../../src/schemas/index.js", () => ({
   WebSocketResponseEvents: {
     POD_ERROR: "pod:error",
@@ -94,6 +101,7 @@ function makePod(overrides: Record<string, unknown> = {}) {
     status: "idle" as const,
     multiInstance: false,
     integrationBindings: [],
+    provider: "claude" as const,
     ...overrides,
   };
 }
@@ -251,6 +259,53 @@ describe("handleChatSend", () => {
 
     // 不應觸發 POD_BUSY 錯誤
     expect(mockEmitError).not.toHaveBeenCalled();
+    expect(mockLaunchMultiInstanceRun).toHaveBeenCalled();
+  });
+
+  // ================================================================
+  // Capability 守門：Codex Pod + multiInstance 不支援 Run 模式
+  // ================================================================
+  it("Codex Pod 且 multiInstance=true 時應回傳 RUN_NOT_SUPPORTED 錯誤，不執行後續 chat 邏輯", async () => {
+    // Codex provider：getCapabilities 回傳 runMode: false
+    const pod = makePod({ provider: "codex", multiInstance: true });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "開始 run" },
+      REQUEST_ID,
+    );
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.objectContaining({ key: expect.any(String) }),
+      REQUEST_ID,
+      POD_ID,
+      "RUN_NOT_SUPPORTED",
+    );
+    // 不應進入後續的 launchMultiInstanceRun 或 executeStreamingChat
+    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+  });
+
+  it("Claude Pod 且 multiInstance=true 時不應觸發 RUN_NOT_SUPPORTED 錯誤", async () => {
+    // Claude provider：getCapabilities 回傳 runMode: true
+    const pod = makePod({ provider: "claude", multiInstance: true });
+    mockValidatePod.mockReturnValue(pod);
+    mockLaunchMultiInstanceRun.mockResolvedValue(undefined);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "開始 run" },
+      REQUEST_ID,
+    );
+
+    // 不應收到 RUN_NOT_SUPPORTED
+    const errorCalls = (mockEmitError.mock.calls as unknown[][]).filter(
+      (args) => args[5] === "RUN_NOT_SUPPORTED",
+    );
+    expect(errorCalls).toHaveLength(0);
     expect(mockLaunchMultiInstanceRun).toHaveBeenCalled();
   });
 });

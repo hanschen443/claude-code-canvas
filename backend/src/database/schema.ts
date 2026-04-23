@@ -20,7 +20,7 @@ export function createTables(db: Database): void {
       "rotation REAL NOT NULL DEFAULT 0," +
       "model TEXT NOT NULL DEFAULT 'opus'," +
       "workspace_path TEXT NOT NULL," +
-      "claude_session_id TEXT," +
+      "session_id TEXT," +
       "output_style_id TEXT," +
       "repository_id TEXT," +
       "command_id TEXT," +
@@ -210,7 +210,7 @@ export function createTables(db: Database): void {
       "run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE," +
       "pod_id TEXT NOT NULL," +
       "status TEXT NOT NULL DEFAULT 'pending'," +
-      "claude_session_id TEXT," +
+      "session_id TEXT," +
       "error_message TEXT," +
       "triggered_at TEXT," +
       "completed_at TEXT," +
@@ -240,6 +240,40 @@ export function createTables(db: Database): void {
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_run_messages_run_pod ON run_messages(run_id, pod_id)",
   );
+
+  // Migration: pods.claude_session_id 重命名為 session_id（語意統一，支援 Claude 以外的 provider）
+  try {
+    db.exec("ALTER TABLE pods RENAME COLUMN claude_session_id TO session_id");
+  } catch (e) {
+    // 欄位不存在（已是新名稱）或 fresh install 時忽略
+    if (
+      !(
+        e instanceof Error &&
+        (e.message.includes("no such column") ||
+          e.message.includes("duplicate column"))
+      )
+    ) {
+      throw e;
+    }
+  }
+
+  // Migration: run_pod_instances.claude_session_id 重命名為 session_id（語意統一，支援 Claude 以外的 provider）
+  try {
+    db.exec(
+      "ALTER TABLE run_pod_instances RENAME COLUMN claude_session_id TO session_id",
+    );
+  } catch (e) {
+    // 欄位不存在（已是新名稱）或 fresh install 時忽略
+    if (
+      !(
+        e instanceof Error &&
+        (e.message.includes("no such column") ||
+          e.message.includes("duplicate column"))
+      )
+    ) {
+      throw e;
+    }
+  }
 
   // Migration: run_pod_instances 新增 worktree_path 欄位
   try {
@@ -273,5 +307,48 @@ export function createTables(db: Database): void {
     if (!(e instanceof Error && e.message.includes("duplicate column"))) {
       throw e;
     }
+  }
+
+  // Migration: pods 新增 provider 欄位（預設 'claude' 確保舊資料相容）
+  try {
+    db.exec(
+      "ALTER TABLE pods ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'",
+    );
+  } catch (e) {
+    // 欄位已存在時忽略，其他錯誤重新拋出
+    if (!(e instanceof Error && e.message.includes("duplicate column"))) {
+      throw e;
+    }
+  }
+
+  // Migration: pods 新增 provider_config_json 欄位
+  try {
+    db.exec("ALTER TABLE pods ADD COLUMN provider_config_json TEXT");
+  } catch (e) {
+    // 欄位已存在時忽略，其他錯誤重新拋出
+    if (!(e instanceof Error && e.message.includes("duplicate column"))) {
+      throw e;
+    }
+  }
+
+  // Data migration: 將舊有 pods.model 搬移至 provider_config_json（冪等，可重複執行）
+  try {
+    db.exec(
+      "UPDATE pods SET provider_config_json = json_object('model', model) WHERE provider_config_json IS NULL AND model IS NOT NULL",
+    );
+
+    const verifyResult = db
+      .prepare(
+        "SELECT COUNT(*) as count FROM pods WHERE provider_config_json IS NULL AND model IS NOT NULL",
+      )
+      .get() as { count: number };
+
+    if (verifyResult.count !== 0) {
+      console.warn(
+        `[migration] model→providerConfig 驗證失敗：仍有 ${verifyResult.count} 筆 pod 的 provider_config_json 為 NULL`,
+      );
+    }
+  } catch (err) {
+    console.error("[migration] model→providerConfig 失敗", err);
   }
 }

@@ -32,6 +32,7 @@ import {
   getPodDisplayName,
   validatePod,
   withCanvasId,
+  assertCapability,
 } from "../utils/handlerHelpers.js";
 
 function sanitizeApp(app: IntegrationApp): SanitizedIntegrationApp {
@@ -372,6 +373,17 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
       requestId,
     );
     if (!pod) return;
+
+    if (
+      !assertCapability(
+        connectionId,
+        pod,
+        "integration",
+        WebSocketResponseEvents.POD_INTEGRATION_BOUND,
+        requestId,
+      )
+    )
+      return;
 
     const app = integrationAppStore.getById(appId);
     if (!app) {

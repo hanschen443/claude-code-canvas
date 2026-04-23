@@ -136,6 +136,8 @@ export const usePodStore = defineStore("pod", () => {
           x: pod.x,
           y: pod.y,
           rotation: pod.rotation,
+          provider: pod.provider,
+          providerConfig: pod.providerConfig,
         },
       },
       {
@@ -361,6 +363,13 @@ export const usePodStore = defineStore("pod", () => {
     updatePodField(podId, "model", model);
   }
 
+  /** 將 model 寫入 providerConfig.model（provider-agnostic，取代 updatePodModel） */
+  function updatePodProviderConfigModel(podId: string, model: string): void {
+    const pod = findPodById(podId);
+    if (!pod) return;
+    pod.providerConfig = { ...pod.providerConfig, model };
+  }
+
   function updatePodRepository(
     podId: string,
     repositoryId: string | null,
@@ -488,6 +497,7 @@ export const usePodStore = defineStore("pod", () => {
     updatePodOutputStyle,
     clearPodOutputsByIds,
     updatePodModel,
+    updatePodProviderConfigModel,
     updatePodRepository,
     updatePodCommand,
     updatePodPlugins,

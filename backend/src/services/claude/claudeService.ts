@@ -93,7 +93,7 @@ type UserToolResultBlock = {
 };
 
 interface RunQueryOptions {
-  /** 覆蓋 pod 全域的 claudeSessionId（來自 run_pod_instances） */
+  /** 覆蓋 pod 全域的 sessionId（來自 run_pod_instances） */
   sessionId?: string;
   /** activeQueries 的 key，預設為 podId。Run 模式使用 `${runId}:${podId}` */
   queryKey?: string;
@@ -144,17 +144,17 @@ function isSessionResumeError(errorMessage: string): boolean {
  *
  * - Run mode（runOptions.queryKey 存在）：只使用 runOptions.sessionId，
  *   不 fallback 到 pod 全域 session，因為 Run mode 是一次性執行。
- * - Normal mode：優先使用 runOptions.sessionId，否則 fallback 到 podClaudeSessionId。
+ * - Normal mode：優先使用 runOptions.sessionId，否則 fallback 到 podSessionId。
  */
 export function resolveResumeSessionId(
   runOptions: RunQueryOptions | undefined,
-  podClaudeSessionId: string | null | undefined,
+  podSessionId: string | null | undefined,
 ): string | null {
   const isRunMode = Boolean(runOptions?.queryKey);
   if (isRunMode) {
     return runOptions?.sessionId ?? null;
   }
-  return runOptions?.sessionId ?? podClaudeSessionId ?? null;
+  return runOptions?.sessionId ?? podSessionId ?? null;
 }
 
 export class ClaudeService {
@@ -165,6 +165,9 @@ export class ClaudeService {
       abortController: AbortController;
     }
   >();
+
+  /** 外部（非 Claude SDK）注入的 AbortController，供 Codex 等第三方 provider 使用 */
+  private externalControllers = new Map<string, AbortController>();
 
   private readonly sdkMessageHandlers: Record<
     string,
@@ -502,7 +505,7 @@ export class ClaudeService {
     isRetry: boolean,
   ): boolean {
     if (isRetry) return false;
-    if (!pod.claudeSessionId) return false;
+    if (!pod.sessionId) return false;
     const errorMessage = getErrorMessage(error);
     return isSessionResumeError(errorMessage);
   }
@@ -741,10 +744,7 @@ export class ClaudeService {
     );
     const pluginOptions = this.applyPlugins(pod);
 
-    const resumeSessionId = resolveResumeSessionId(
-      runOptions,
-      pod.claudeSessionId,
-    );
+    const resumeSessionId = resolveResumeSessionId(runOptions, pod.sessionId);
 
     return {
       ...this.buildBaseOptions(cwd),
@@ -760,16 +760,39 @@ export class ClaudeService {
 
   public abortQuery(key: string): boolean {
     const entry = this.activeQueries.get(key);
-    if (!entry) {
-      return false;
+    if (entry) {
+      // close() 會直接殺掉底層 CLI 進程，導致 for await 靜默結束而非拋出 AbortError
+      // 這會使 catch 區塊無法被觸發，前端收不到 POD_CHAT_ABORTED 事件
+      entry.abortController.abort();
+      this.activeQueries.delete(key);
+      return true;
     }
 
-    // close() 會直接殺掉底層 CLI 進程，導致 for await 靜默結束而非拋出 AbortError
-    // 這會使 catch 區塊無法被觸發，前端收不到 POD_CHAT_ABORTED 事件
-    entry.abortController.abort();
-    this.activeQueries.delete(key);
+    // 若不在 activeQueries，嘗試從外部注入的 controller map 取消（例如 Codex subprocess）
+    const externalController = this.externalControllers.get(key);
+    if (externalController) {
+      externalController.abort();
+      this.externalControllers.delete(key);
+      return true;
+    }
 
-    return true;
+    return false;
+  }
+
+  /**
+   * 注冊外部（非 Claude SDK）的 AbortController，讓 abortQuery() 能統一取消。
+   * 供 Codex 等第三方 provider 在串流開始前呼叫。
+   */
+  public registerAbortKey(key: string, controller: AbortController): void {
+    this.externalControllers.set(key, controller);
+  }
+
+  /**
+   * 移除外部 AbortController 的註冊，避免 Memory Leak。
+   * 供 Codex 等第三方 provider 在串流結束或錯誤時呼叫。
+   */
+  public unregisterAbortKey(key: string): void {
+    this.externalControllers.delete(key);
   }
 
   public abortAllQueries(): number {
@@ -819,12 +842,12 @@ export class ClaudeService {
     const { canvasId, pod, runOptions } = context;
 
     if (!state.sessionId) return;
-    if (state.sessionId === pod.claudeSessionId) return;
+    if (state.sessionId === pod.sessionId) return;
 
     // Run 模式：不寫入 pod 全域 session（由呼叫方從回傳值自行處理）
     if (runOptions?.queryKey) return;
 
-    podStore.setClaudeSessionId(canvasId, pod.id, state.sessionId);
+    podStore.setSessionId(canvasId, pod.id, state.sessionId);
   }
 
   private async executeWithSessionRetry(
@@ -910,10 +933,7 @@ export class ClaudeService {
 
     const cwd = this.resolveCwdWithRunContext(pod, runOptions);
     const queryOptions = await this.buildQueryOptions(pod, cwd, runOptions);
-    const resumeSessionId = resolveResumeSessionId(
-      runOptions,
-      pod.claudeSessionId,
-    );
+    const resumeSessionId = resolveResumeSessionId(runOptions, pod.sessionId);
     const prompt = this.buildPrompt(message, pod.commandId, resumeSessionId);
 
     const context: ExecutionContext = {

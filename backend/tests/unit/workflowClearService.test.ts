@@ -12,7 +12,7 @@ vi.mock('../../src/services/connectionStore.js', () => ({
 vi.mock('../../src/services/podStore.js', () => ({
   podStore: {
     getById: vi.fn(),
-    setClaudeSessionId: vi.fn(),
+    setSessionId: vi.fn(),
     resetClaudeSession: vi.fn(),
   },
 }));

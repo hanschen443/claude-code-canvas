@@ -31,6 +31,7 @@ import CreateEditModal from "./CreateEditModal.vue";
 import McpServerModal from "./McpServerModal.vue";
 import IntegrationConnectModal from "@/components/integration/IntegrationConnectModal.vue";
 import type { Pod, PodTypeConfig, Position, McpServerConfig } from "@/types";
+import type { PodProvider, ProviderConfig } from "@/types/pod";
 import {
   POD_MENU_X_OFFSET,
   POD_MENU_Y_OFFSET,
@@ -191,7 +192,11 @@ const handleCanvasClick = (e: MouseEvent): void => {
   connectionStore.selectConnection(null);
 };
 
-const handleSelectType = async (_config: PodTypeConfig): Promise<void> => {
+const handleSelectType = async (
+  _config: PodTypeConfig,
+  provider: PodProvider,
+  providerConfig: ProviderConfig,
+): Promise<void> => {
   if (!podStore.typeMenu.position) return;
 
   const { x: canvasX, y: canvasY } = screenToCanvasPosition(
@@ -207,6 +212,8 @@ const handleSelectType = async (_config: PodTypeConfig): Promise<void> => {
     y: canvasY - POD_MENU_Y_OFFSET,
     output: [],
     rotation: Math.round(rotation * 10) / 10,
+    provider,
+    providerConfig,
   };
 
   podStore.hideTypeMenu();

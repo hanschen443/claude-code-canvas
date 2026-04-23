@@ -129,7 +129,7 @@ describe("RunStore", () => {
       expect(instance.runId).toBe(run.id);
       expect(instance.podId).toBe("pod-1");
       expect(instance.status).toBe("pending");
-      expect(instance.claudeSessionId).toBeNull();
+      expect(instance.sessionId).toBeNull();
       expect(instance.errorMessage).toBeNull();
       expect(instance.triggeredAt).toBeNull();
       expect(instance.completedAt).toBeNull();
@@ -172,14 +172,14 @@ describe("RunStore", () => {
       expect(instances).toHaveLength(2);
     });
 
-    it("updatePodInstanceClaudeSessionId 更新 claude_session_id", () => {
+    it("updatePodInstanceSessionId 更新 session_id", () => {
       const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
       const instance = runStore.createPodInstance(run.id, "pod-1");
 
-      runStore.updatePodInstanceClaudeSessionId(instance.id, "session-abc");
+      runStore.updatePodInstanceSessionId(instance.id, "session-abc");
 
       const updated = runStore.getPodInstance(run.id, "pod-1");
-      expect(updated?.claudeSessionId).toBe("session-abc");
+      expect(updated?.sessionId).toBe("session-abc");
     });
 
     it("createPodInstance 帶入 pending 後 getPodInstance 讀回應為 pending", () => {

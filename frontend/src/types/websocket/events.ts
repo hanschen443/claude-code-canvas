@@ -115,6 +115,8 @@ export const WebSocketRequestEvents = {
   POD_SET_PLUGINS: "pod:set-plugins",
   BACKUP_TEST_CONNECTION: "backup:test-connection",
   BACKUP_TRIGGER: "backup:trigger",
+  /** 查詢可用 Provider 列表 */
+  PROVIDER_LIST: "provider:list",
 } as const;
 
 export type WebSocketRequestEvents =
@@ -278,6 +280,8 @@ export const WebSocketResponseEvents = {
   BACKUP_STARTED: "backup:started",
   BACKUP_COMPLETED: "backup:completed",
   BACKUP_FAILED: "backup:failed",
+  /** Provider 列表查詢結果 */
+  PROVIDER_LIST_RESULT: "provider:list:result",
 } as const;
 
 export type WebSocketResponseEvents =

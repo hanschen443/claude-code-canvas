@@ -4,7 +4,7 @@ vi.mock("../../src/services/runStore.js", () => ({
   runStore: {
     getPodInstance: vi.fn(() => undefined),
     upsertRunMessage: vi.fn(() => {}),
-    updatePodInstanceClaudeSessionId: vi.fn(() => {}),
+    updatePodInstanceSessionId: vi.fn(() => {}),
   },
 }));
 
@@ -67,7 +67,7 @@ describe("RunModeExecutionStrategy", () => {
     asMock(runExecutionService.unregisterActiveStream).mockClear();
     asMock(runStore.getPodInstance).mockClear();
     asMock(runStore.upsertRunMessage).mockClear();
-    asMock(runStore.updatePodInstanceClaudeSessionId).mockClear();
+    asMock(runStore.updatePodInstanceSessionId).mockClear();
     asMock(injectRunUserMessage).mockClear();
     asMock(createRunEmitStrategy).mockClear();
   });
@@ -125,11 +125,11 @@ describe("RunModeExecutionStrategy", () => {
       expect(result).toBeUndefined();
     });
 
-    it("Pod instance 存在且有 claudeSessionId 時應回傳該值", () => {
+    it("Pod instance 存在且有 sessionId 時應回傳該值", () => {
       const sessionId = "run-session-789";
       asMock(runStore.getPodInstance).mockReturnValue({
         id: "instance-1",
-        claudeSessionId: sessionId,
+        sessionId: sessionId,
       });
 
       const strategy = makeStrategy();
@@ -138,10 +138,10 @@ describe("RunModeExecutionStrategy", () => {
       expect(result).toBe(sessionId);
     });
 
-    it("Pod instance 的 claudeSessionId 為 null 時應回傳 undefined", () => {
+    it("Pod instance 的 sessionId 為 null 時應回傳 undefined", () => {
       asMock(runStore.getPodInstance).mockReturnValue({
         id: "instance-1",
-        claudeSessionId: null,
+        sessionId: null,
       });
 
       const strategy = makeStrategy();
@@ -253,9 +253,9 @@ describe("RunModeExecutionStrategy", () => {
       );
     });
 
-    it("有 sessionId 且 instance 存在時應更新 claudeSessionId", () => {
+    it("有 sessionId 且 instance 存在時應更新 sessionId", () => {
       const sessionId = "run-new-session";
-      const instance = { id: "instance-abc", claudeSessionId: null };
+      const instance = { id: "instance-abc", sessionId: null };
       asMock(runStore.getPodInstance).mockReturnValue(instance);
 
       const strategy = makeStrategy();
@@ -266,26 +266,26 @@ describe("RunModeExecutionStrategy", () => {
         podId,
       );
       expect(runStore.getPodInstance).toHaveBeenCalledWith(runId, podId);
-      expect(runStore.updatePodInstanceClaudeSessionId).toHaveBeenCalledWith(
+      expect(runStore.updatePodInstanceSessionId).toHaveBeenCalledWith(
         instance.id,
         sessionId,
       );
     });
 
-    it("sessionId 為 undefined 時不應呼叫 updatePodInstanceClaudeSessionId", () => {
+    it("sessionId 為 undefined 時不應呼叫 updatePodInstanceSessionId", () => {
       const strategy = makeStrategy();
       strategy.onStreamComplete(podId, undefined);
 
-      expect(runStore.updatePodInstanceClaudeSessionId).not.toHaveBeenCalled();
+      expect(runStore.updatePodInstanceSessionId).not.toHaveBeenCalled();
     });
 
-    it("有 sessionId 但 instance 不存在時不應呼叫 updatePodInstanceClaudeSessionId", () => {
+    it("有 sessionId 但 instance 不存在時不應呼叫 updatePodInstanceSessionId", () => {
       asMock(runStore.getPodInstance).mockReturnValue(undefined);
 
       const strategy = makeStrategy();
       strategy.onStreamComplete(podId, "some-session");
 
-      expect(runStore.updatePodInstanceClaudeSessionId).not.toHaveBeenCalled();
+      expect(runStore.updatePodInstanceSessionId).not.toHaveBeenCalled();
     });
   });
 

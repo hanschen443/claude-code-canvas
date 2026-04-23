@@ -319,12 +319,15 @@ describe("Database", () => {
         $rotation: 0,
         $model: "opus",
         $workspacePath: "/workspace/p1",
-        $claudeSessionId: null,
+        $sessionId: null,
         $outputStyleId: null,
         $repositoryId: null,
         $commandId: null,
         $multiInstance: 0,
         $scheduleJson: null,
+        // Phase 1 B 新增欄位：provider 為必填，預設 claude
+        $provider: "claude",
+        $providerConfigJson: null,
       });
 
       stmts.podSkillIds.insert.run({ $podId: "p1", $skillId: "skill-1" });

@@ -1,4 +1,10 @@
-import type { Pod, PodStatus, ModelType } from "../pod";
+import type {
+  Pod,
+  PodStatus,
+  ModelType,
+  PodProvider,
+  ProviderCapabilities,
+} from "../pod";
 import type { OutputStyleNote } from "@/types";
 import type { SkillNote } from "@/types";
 import type { Repository, RepositoryNote } from "@/types";
@@ -606,6 +612,14 @@ export interface RunToolResultPayload {
   toolUseId: string;
   toolName: string;
   output: string;
+}
+
+/** Provider 列表查詢結果，包含每個 Provider 的功能能力表 */
+export interface ProviderListResultPayload extends ResultPayload {
+  providers?: Array<{
+    name: PodProvider;
+    capabilities: ProviderCapabilities;
+  }>;
 }
 
 export type BackupTestConnectionResultPayload = ResultPayload;

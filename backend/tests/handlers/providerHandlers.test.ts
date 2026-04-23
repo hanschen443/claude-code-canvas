@@ -1,0 +1,157 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// --- mock 函式 ---
+const mockEmitToConnection = vi.fn();
+
+// mock socketService：攔截 emitToConnection 呼叫
+vi.mock("../../src/services/socketService.js", () => ({
+  socketService: {
+    emitToConnection: mockEmitToConnection,
+  },
+}));
+
+// mock schemas：提供測試用的 event name 常數
+vi.mock("../../src/schemas/index.js", () => ({
+  WebSocketResponseEvents: {
+    PROVIDER_LIST_RESULT: "provider:list:result",
+  },
+}));
+
+// mock provider index：使用真實的 PROVIDER_NAMES + getCapabilities
+// 這裡不 mock，讓 handler 直接使用真實實作，以驗證 capabilities 正確性
+vi.mock("../../src/services/provider/index.js", async (importOriginal) => {
+  // 取得真實模組，直接回傳以驗證 capabilities 常數
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/provider/index.js")
+    >();
+  return {
+    PROVIDER_NAMES: actual.PROVIDER_NAMES,
+    getCapabilities: actual.getCapabilities,
+  };
+});
+
+const { handleProviderList } =
+  await import("../../src/handlers/providerHandlers.js");
+
+const CONNECTION_ID = "conn-test-1";
+const REQUEST_ID = "req-test-1";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ================================================================
+// handleProviderList
+// ================================================================
+describe("handleProviderList", () => {
+  it("收到 provider:list 請求後，應呼叫 emitToConnection 一次並帶 provider:list:result 事件", async () => {
+    // 執行 handler
+    await handleProviderList(
+      CONNECTION_ID,
+      { requestId: REQUEST_ID },
+      REQUEST_ID,
+    );
+
+    // 應只呼叫一次
+    expect(mockEmitToConnection).toHaveBeenCalledTimes(1);
+
+    // 第一個參數：connectionId
+    expect(mockEmitToConnection).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "provider:list:result",
+      expect.objectContaining({ success: true }),
+    );
+  });
+
+  it("response payload 應包含 providers 陣列", async () => {
+    await handleProviderList(
+      CONNECTION_ID,
+      { requestId: REQUEST_ID },
+      REQUEST_ID,
+    );
+
+    const [, , payload] = mockEmitToConnection.mock.calls[0];
+
+    // providers 應是陣列且不為空
+    expect(Array.isArray(payload.providers)).toBe(true);
+    expect(payload.providers.length).toBeGreaterThan(0);
+
+    // 每個 provider 應包含 name 及 capabilities
+    for (const provider of payload.providers) {
+      expect(provider).toHaveProperty("name");
+      expect(provider).toHaveProperty("capabilities");
+    }
+  });
+
+  it("claude 的 capabilities 全部為 true", async () => {
+    await handleProviderList(
+      CONNECTION_ID,
+      { requestId: REQUEST_ID },
+      REQUEST_ID,
+    );
+
+    const [, , payload] = mockEmitToConnection.mock.calls[0];
+    const claude = payload.providers.find(
+      (p: { name: string }) => p.name === "claude",
+    );
+
+    // claude provider 必須存在
+    expect(claude).toBeDefined();
+
+    const caps = claude.capabilities;
+    // 所有能力欄位皆應為 true
+    expect(caps.chat).toBe(true);
+    expect(caps.outputStyle).toBe(true);
+    expect(caps.skill).toBe(true);
+    expect(caps.subAgent).toBe(true);
+    expect(caps.repository).toBe(true);
+    expect(caps.command).toBe(true);
+    expect(caps.mcp).toBe(true);
+    expect(caps.integration).toBe(true);
+    expect(caps.runMode).toBe(true);
+  });
+
+  it("codex 的 capabilities 中 chat=true，其餘全部 false", async () => {
+    await handleProviderList(
+      CONNECTION_ID,
+      { requestId: REQUEST_ID },
+      REQUEST_ID,
+    );
+
+    const [, , payload] = mockEmitToConnection.mock.calls[0];
+    const codex = payload.providers.find(
+      (p: { name: string }) => p.name === "codex",
+    );
+
+    // codex provider 必須存在
+    expect(codex).toBeDefined();
+
+    const caps = codex.capabilities;
+    // chat 為 true，其餘全部 false
+    expect(caps.chat).toBe(true);
+    expect(caps.outputStyle).toBe(false);
+    expect(caps.skill).toBe(false);
+    expect(caps.subAgent).toBe(false);
+    expect(caps.repository).toBe(false);
+    expect(caps.command).toBe(false);
+    expect(caps.mcp).toBe(false);
+    expect(caps.integration).toBe(false);
+    expect(caps.runMode).toBe(false);
+  });
+
+  it("response payload 應帶回 request 的 requestId 供 RPC 對應", async () => {
+    const specificRequestId = "rpc-correlate-abc123";
+
+    await handleProviderList(
+      CONNECTION_ID,
+      { requestId: specificRequestId },
+      specificRequestId,
+    );
+
+    const [, , payload] = mockEmitToConnection.mock.calls[0];
+
+    // requestId 必須與 request 帶入的值一致
+    expect(payload.requestId).toBe(specificRequestId);
+  });
+});

@@ -8,11 +8,17 @@ import type {
   ScheduleConfig,
 } from "../types";
 import type { IntegrationBinding } from "../types/integration.js";
+import type { ProviderName } from "./provider/types.js";
 import { socketService } from "./socketService.js";
 import { canvasStore } from "./canvasStore.js";
 import { getStmts } from "../database/stmtsHelper.js";
 import { getDb } from "../database/index.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
+
+/** Claude provider 的預設 model */
+const CLAUDE_DEFAULT_MODEL = "opus" as const;
+/** Codex provider 的預設 model */
+const CODEX_DEFAULT_MODEL = "gpt-5.4" as const;
 
 type PodUpdates = Partial<Omit<Pod, "schedule">> & {
   schedule?: ScheduleConfig | null;
@@ -28,12 +34,14 @@ interface PodRow {
   rotation: number;
   model: string;
   workspace_path: string;
-  claude_session_id: string | null;
+  session_id: string | null;
   output_style_id: string | null;
   repository_id: string | null;
   command_id: string | null;
   multi_instance: number;
   schedule_json: string | null;
+  provider: string;
+  provider_config_json: string | null;
 }
 
 interface IntegrationBindingRow {
@@ -238,6 +246,32 @@ class PodStore {
     const bindingsMap = this.batchLoadBindings(podIds);
 
     return rows.map((row) => {
+      // 解析 provider，不合法的值 fallback 為 'claude'
+      const validProviders: ProviderName[] = ["claude", "codex"];
+      const provider: ProviderName =
+        row.provider && validProviders.includes(row.provider as ProviderName)
+          ? (row.provider as ProviderName)
+          : "claude";
+
+      // 解析 providerConfig，並在缺少 model 時補入 provider 預設 model
+      let providerConfig: Record<string, unknown> | null =
+        safeJsonParse<Record<string, unknown>>(
+          row.provider_config_json ?? "",
+        ) ?? null;
+      if (providerConfig !== null && !("model" in providerConfig)) {
+        providerConfig = {
+          ...providerConfig,
+          model:
+            provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
+        };
+      }
+
+      // 若 providerConfig.model 存在，優先以它為準（POD_SET_MODEL 寫入路徑）
+      const effectiveModel: Pod["model"] =
+        providerConfig && typeof providerConfig.model === "string"
+          ? (providerConfig.model as Pod["model"])
+          : (row.model as Pod["model"]);
+
       const pod: Pod = {
         id: row.id,
         name: row.name,
@@ -246,13 +280,15 @@ class PodStore {
         x: row.x,
         y: row.y,
         rotation: row.rotation,
-        claudeSessionId: row.claude_session_id,
+        sessionId: row.session_id,
         outputStyleId: row.output_style_id,
         skillIds: relations.skillIds.get(row.id) ?? [],
         subAgentIds: relations.subAgentIds.get(row.id) ?? [],
         mcpServerIds: relations.mcpServerIds.get(row.id) ?? [],
         pluginIds: relations.pluginIds.get(row.id) ?? [],
-        model: row.model as Pod["model"],
+        model: effectiveModel,
+        provider,
+        providerConfig,
         repositoryId: row.repository_id,
         commandId: row.command_id,
         multiInstance: row.multi_instance === 1,
@@ -288,6 +324,17 @@ class PodStore {
       throw new Error(`找不到 Canvas：${canvasId}`);
     }
 
+    const provider: ProviderName = data.provider ?? "claude";
+    const incomingConfig = data.providerConfig ?? null;
+    // 確保 providerConfig 一定含有 model 欄位
+    const providerConfig: Record<string, unknown> = incomingConfig
+      ? { ...incomingConfig }
+      : { model: data.model ?? CLAUDE_DEFAULT_MODEL };
+    if (!("model" in providerConfig)) {
+      providerConfig.model =
+        provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL;
+    }
+
     const pod: Pod = {
       id,
       name: data.name,
@@ -296,13 +343,15 @@ class PodStore {
       x: data.x,
       y: data.y,
       rotation: data.rotation,
-      claudeSessionId: null,
+      sessionId: null,
       outputStyleId: data.outputStyleId ?? null,
       skillIds: data.skillIds ?? [],
       subAgentIds: data.subAgentIds ?? [],
       mcpServerIds: data.mcpServerIds ?? [],
       pluginIds: data.pluginIds ?? [],
       model: data.model ?? "opus",
+      provider,
+      providerConfig,
       repositoryId: data.repositoryId ?? null,
       commandId: data.commandId ?? null,
       multiInstance: false,
@@ -318,12 +367,14 @@ class PodStore {
       $rotation: pod.rotation,
       $model: pod.model,
       $workspacePath: pod.workspacePath,
-      $claudeSessionId: pod.claudeSessionId,
+      $sessionId: pod.sessionId,
       $outputStyleId: pod.outputStyleId,
       $repositoryId: pod.repositoryId,
       $commandId: pod.commandId,
       $multiInstance: 0,
       $scheduleJson: null,
+      $provider: pod.provider,
+      $providerConfigJson: JSON.stringify(pod.providerConfig),
     });
 
     for (const skillId of pod.skillIds) {
@@ -476,6 +527,14 @@ class PodStore {
       schedule: this.mergeSchedule(pod, updates),
     };
 
+    // 注意：DB 的 pods.model 欄位已凍結，不再寫入新值；$model 傳入既有 row 值以維持 named param 不缺失。
+    // 但回傳的 in-memory Pod.model 應反映 providerConfig.model（與 rowsToPods 邏輯一致）。
+    const effectiveModel =
+      typeof updatedPod.providerConfig?.model === "string"
+        ? (updatedPod.providerConfig.model as Pod["model"])
+        : updatedPod.model;
+    updatedPod.model = effectiveModel;
+
     this.stmts.pod.update.run({
       $id: id,
       $name: updatedPod.name,
@@ -483,13 +542,17 @@ class PodStore {
       $x: updatedPod.x,
       $y: updatedPod.y,
       $rotation: updatedPod.rotation,
-      $model: updatedPod.model,
-      $claudeSessionId: updatedPod.claudeSessionId,
+      $model: pod.model, // 傳入既有 DB 值，不寫入新的 providerConfig.model
+      $sessionId: updatedPod.sessionId,
       $outputStyleId: updatedPod.outputStyleId,
       $repositoryId: updatedPod.repositoryId,
       $commandId: updatedPod.commandId,
       $multiInstance: updatedPod.multiInstance ? 1 : 0,
       $scheduleJson: serializeSchedule(updatedPod.schedule),
+      $provider: updatedPod.provider,
+      $providerConfigJson: updatedPod.providerConfig
+        ? JSON.stringify(updatedPod.providerConfig)
+        : null,
     });
 
     this.updateJoinTables(id, updates);
@@ -532,15 +595,15 @@ class PodStore {
     );
   }
 
-  setClaudeSessionId(canvasId: string, id: string, sessionId: string): void {
-    this.stmts.pod.updateClaudeSessionId.run({
-      $claudeSessionId: sessionId,
+  setSessionId(canvasId: string, id: string, sessionId: string): void {
+    this.stmts.pod.updateSessionId.run({
+      $sessionId: sessionId,
       $id: id,
     });
   }
 
   resetClaudeSession(canvasId: string, podId: string): void {
-    this.setClaudeSessionId(canvasId, podId, "");
+    this.setSessionId(canvasId, podId, "");
   }
 
   setOutputStyleId(

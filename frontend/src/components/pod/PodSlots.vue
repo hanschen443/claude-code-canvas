@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toRef } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   OutputStyleNote,
@@ -18,6 +19,18 @@ import {
   useRepositoryStore,
   useCommandStore,
 } from "@/stores/note";
+import { usePodCapabilities } from "@/composables/pod/usePodCapabilities";
+
+const props = defineProps<{
+  podId: string;
+  podRotation: number;
+  boundOutputStyleNote: OutputStyleNote | undefined;
+  boundSkillNotes: SkillNote[];
+  boundSubAgentNotes: SubAgentNote[];
+  boundRepositoryNote: RepositoryNote | undefined;
+  boundCommandNote: CommandNote | undefined;
+  boundMcpServerNotes: McpServerNote[];
+}>();
 
 const {
   podId,
@@ -28,16 +41,7 @@ const {
   boundRepositoryNote,
   boundCommandNote,
   boundMcpServerNotes,
-} = defineProps<{
-  podId: string;
-  podRotation: number;
-  boundOutputStyleNote: OutputStyleNote | undefined;
-  boundSkillNotes: SkillNote[];
-  boundSubAgentNotes: SubAgentNote[];
-  boundRepositoryNote: RepositoryNote | undefined;
-  boundCommandNote: CommandNote | undefined;
-  boundMcpServerNotes: McpServerNote[];
-}>();
+} = props;
 
 const emit = defineEmits<{
   "output-style-dropped": [noteId: string];
@@ -59,6 +63,19 @@ const mcpServerStore = useMcpServerStore();
 const outputStyleStore = useOutputStyleStore();
 const repositoryStore = useRepositoryStore();
 const commandStore = useCommandStore();
+
+// 讀取 Pod 對應 Provider 的 capability flags
+const {
+  isOutputStyleEnabled,
+  isSkillEnabled,
+  isSubAgentEnabled,
+  isRepositoryEnabled,
+  isCommandEnabled,
+  isMcpEnabled,
+} = usePodCapabilities(toRef(props, "podId"));
+
+/** 不支援功能時顯示的 tooltip 文字 */
+const DISABLED_TOOLTIP = "Codex 不支援此功能";
 </script>
 
 <template>
@@ -70,6 +87,8 @@ const commandStore = useCommandStore();
       label="Style"
       slot-class="pod-output-style-slot"
       :pod-rotation="podRotation"
+      :disabled="!isOutputStyleEnabled"
+      :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('output-style-dropped', noteId)"
       @note-removed="() => emit('output-style-removed')"
     />
@@ -86,6 +105,8 @@ const commandStore = useCommandStore();
       slot-class="pod-skill-slot"
       menu-scrollable-class="pod-skill-menu-scrollable"
       item-id-field="skillId"
+      :disabled="!isSkillEnabled"
+      :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('skill-dropped', noteId)"
     />
   </div>
@@ -101,6 +122,8 @@ const commandStore = useCommandStore();
       slot-class="pod-subagent-slot"
       menu-scrollable-class="pod-subagent-menu-scrollable"
       item-id-field="subAgentId"
+      :disabled="!isSubAgentEnabled"
+      :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('subagent-dropped', noteId)"
     />
   </div>
@@ -113,6 +136,8 @@ const commandStore = useCommandStore();
       label="Repo"
       slot-class="pod-repository-slot"
       :pod-rotation="podRotation"
+      :disabled="!isRepositoryEnabled"
+      :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('repository-dropped', noteId)"
       @note-removed="() => emit('repository-removed')"
     />
@@ -126,6 +151,8 @@ const commandStore = useCommandStore();
       label="Command"
       slot-class="pod-command-slot"
       :pod-rotation="podRotation"
+      :disabled="!isCommandEnabled"
+      :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('command-dropped', noteId)"
       @note-removed="() => emit('command-removed')"
     />
@@ -142,6 +169,8 @@ const commandStore = useCommandStore();
       slot-class="pod-mcp-server-slot"
       menu-scrollable-class="pod-mcp-server-menu-scrollable"
       item-id-field="mcpServerId"
+      :disabled="!isMcpEnabled"
+      :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('mcp-server-dropped', noteId)"
     />
   </div>

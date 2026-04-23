@@ -55,7 +55,7 @@ describe('Paste Helpers', () => {
         model: 'sonnet' as const,
         status: 'idle' as const,
         schedule: undefined,
-        claudeSessionId: null,
+        sessionId: null,
         multiInstance: false,
       };
 
@@ -167,7 +167,7 @@ describe('Paste Helpers', () => {
         model: 'sonnet' as const,
         status: 'idle' as const,
         schedule: undefined,
-        claudeSessionId: null,
+        sessionId: null,
         multiInstance: false,
       };
 
@@ -247,7 +247,7 @@ describe('Paste Helpers', () => {
         model: 'sonnet' as const,
         status: 'idle' as const,
         schedule: undefined,
-        claudeSessionId: null,
+        sessionId: null,
         multiInstance: false,
       };
 

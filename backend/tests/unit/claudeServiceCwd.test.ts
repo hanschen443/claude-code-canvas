@@ -73,7 +73,7 @@ describe("ClaudeService — cwd 解析", () => {
     (config as any).canvasRoot = "/test/canvas";
 
     vi.spyOn(podStore, "getByIdGlobal").mockReturnValue(null as any);
-    vi.spyOn(podStore, "setClaudeSessionId").mockImplementation(() => {});
+    vi.spyOn(podStore, "setSessionId").mockImplementation(() => {});
     vi.spyOn(outputStyleService, "getContent").mockResolvedValue(null);
 
     (claudeAgentSdk.query as any).mockClear();
@@ -89,7 +89,7 @@ describe("ClaudeService — cwd 解析", () => {
     id: "test-pod-id",
     name: "Test Pod",
     model: "claude-sonnet-4-5-20250929" as const,
-    claudeSessionId: null,
+    sessionId: null,
     repositoryId: null,
     workspacePath: "/test/canvas/workspace",
     commandId: null,
@@ -116,7 +116,7 @@ describe("ClaudeService — cwd 解析", () => {
       runId,
       podId,
       status: "running",
-      claudeSessionId: null,
+      sessionId: null,
       errorMessage: null,
       triggeredAt: null,
       completedAt: null,
@@ -157,7 +157,7 @@ describe("ClaudeService — cwd 解析", () => {
       runId,
       podId,
       status: "running",
-      claudeSessionId: null,
+      sessionId: null,
       errorMessage: null,
       triggeredAt: null,
       completedAt: null,

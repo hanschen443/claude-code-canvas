@@ -23,7 +23,7 @@ vi.mock("../../src/services/podStore.js", () => ({
     setStatus: vi.fn(() => {}),
     getById: vi.fn(() => undefined),
     getByIdGlobal: vi.fn(() => undefined),
-    setClaudeSessionId: vi.fn(() => {}),
+    setSessionId: vi.fn(() => {}),
   },
 }));
 
@@ -47,7 +47,7 @@ vi.mock("../../src/services/runStore.js", () => ({
   runStore: {
     getPodInstance: vi.fn(() => undefined),
     upsertRunMessage: vi.fn(() => {}),
-    updatePodInstanceClaudeSessionId: vi.fn(() => {}),
+    updatePodInstanceSessionId: vi.fn(() => {}),
   },
 }));
 
@@ -531,7 +531,7 @@ describe("executeStreamingChat", () => {
       asMock(runExecutionService.errorPodInstance).mockClear();
       asMock(runStore.getPodInstance).mockClear();
       asMock(runStore.upsertRunMessage).mockClear();
-      asMock(runStore.updatePodInstanceClaudeSessionId).mockClear();
+      asMock(runStore.updatePodInstanceSessionId).mockClear();
     });
 
     it("正常串流完成：呼叫 onStreamStart → sendMessage → onStreamComplete", async () => {

@@ -450,7 +450,7 @@ describe("WorkflowPipeline", () => {
         runId: "run-1",
         podId: targetPodId,
         status,
-        claudeSessionId: null,
+        sessionId: null,
         errorMessage: null,
         triggeredAt: null,
         completedAt: null,

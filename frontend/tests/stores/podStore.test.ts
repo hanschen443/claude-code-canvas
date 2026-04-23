@@ -348,7 +348,8 @@ describe("podStore", () => {
       expect(result.y).toBe(150);
       expect(result.output).toEqual([]);
       expect(result.outputStyleId).toBeNull();
-      expect(result.model).toBe("opus");
+      // model 已 deprecated，改驗 providerConfig.model
+      expect(result.providerConfig?.model).toBe("opus");
       expect(result.multiInstance).toBe(false);
       expect(result.commandId).toBeNull();
       expect(result.schedule).toBeNull();
@@ -578,22 +579,28 @@ describe("podStore", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
       });
 
       expect(mockExecuteAction).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "pod:create",
           responseEvent: "pod:created",
-          payload: {
+          // 使用 objectContaining 允許 payload 包含額外欄位（provider、providerConfig 等）
+          payload: expect.objectContaining({
             name: "New Pod",
             x: 300,
             y: 400,
             rotation: 0.5,
-          },
+            provider: "claude",
+            providerConfig: { provider: "claude", model: "opus" },
+          }),
         }),
         expect.objectContaining({
           errorCategory: "Pod",
           errorAction: "建立失敗",
+          errorMessage: "Pod 建立失敗",
         }),
       );
       expect(mockShowSuccessToast).toHaveBeenCalledWith(
@@ -632,6 +639,8 @@ describe("podStore", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
       });
 
       expect(result).toBeNull();
@@ -662,6 +671,8 @@ describe("podStore", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
       });
 
       expect(result).toBeNull();
@@ -697,6 +708,8 @@ describe("podStore", () => {
         multiInstance: false,
         commandId: null,
         schedule: null,
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
       });
 
       expect(result).toBeNull();
@@ -1299,7 +1312,8 @@ describe("podStore", () => {
         store.addPodFromEvent(incompletePod);
 
         expect(store.pods[0]?.x).toBe(100);
-        expect(store.pods[0]?.model).toBe("opus");
+        // model 已 deprecated，改驗 providerConfig.model
+        expect(store.pods[0]?.providerConfig?.model).toBe("opus");
       });
     });
 
@@ -1611,7 +1625,8 @@ describe("podStore", () => {
       expect(store.pods).toHaveLength(2);
       // enrichPod 應填入預設值
       expect(store.pods[0]?.x).toBe(100);
-      expect(store.pods[1]?.model).toBe("opus");
+      // model 已 deprecated，改驗 providerConfig.model
+      expect(store.pods[1]?.providerConfig?.model).toBe("opus");
     });
 
     it("應過濾掉無效 Pod", () => {

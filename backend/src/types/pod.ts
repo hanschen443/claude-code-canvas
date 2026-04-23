@@ -1,5 +1,6 @@
 import type { ScheduleConfig } from "./schedule.js";
 import type { IntegrationBinding } from "./integration.js";
+import type { ProviderName } from "../services/provider/types.js";
 
 export type PodStatus = "idle" | "chatting" | "summarizing" | "error";
 
@@ -19,13 +20,15 @@ export interface Pod {
   x: number;
   y: number;
   rotation: number;
-  claudeSessionId: string | null;
+  sessionId: string | null;
   outputStyleId: string | null;
   skillIds: string[];
   subAgentIds: string[];
   mcpServerIds: string[];
   pluginIds: string[];
   model: ModelType;
+  provider: ProviderName;
+  providerConfig: Record<string, unknown> | null;
   repositoryId: string | null;
   commandId: string | null;
   multiInstance: boolean;

@@ -116,6 +116,7 @@ export enum WebSocketRequestEvents {
   POD_SET_PLUGINS = "pod:set-plugins",
   BACKUP_TRIGGER = "backup:trigger",
   BACKUP_TEST_CONNECTION = "backup:test-connection",
+  PROVIDER_LIST = "provider:list",
 }
 
 export enum WebSocketResponseEvents {
@@ -279,4 +280,5 @@ export enum WebSocketResponseEvents {
   BACKUP_COMPLETED = "backup:completed",
   BACKUP_FAILED = "backup:failed",
   BACKUP_TEST_CONNECTION_RESULT = "backup:test-connection:result",
+  PROVIDER_LIST_RESULT = "provider:list:result",
 }

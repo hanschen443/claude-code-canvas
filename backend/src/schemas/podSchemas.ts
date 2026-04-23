@@ -16,6 +16,10 @@ export const podCreateSchema = z.object({
   x: coordinateSchema,
   y: coordinateSchema,
   rotation: z.number(),
+  /** AI provider 名稱，預設為 claude，未提供時由服務層補預設值 */
+  provider: z.enum(["claude", "codex"]).optional(),
+  /** provider 的設定物件，目前只允許 model 欄位 */
+  providerConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const podListSchema = z.object({
