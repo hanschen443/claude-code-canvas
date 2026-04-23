@@ -7,6 +7,10 @@ import {
   createUnboundNoteCollector,
 } from "@/composables/canvas/copyPaste/collectCopyData";
 import type { SelectableElement } from "@/types";
+import {
+  CLAUDE_DEFAULT_MODEL,
+  CODEX_DEFAULT_MODEL,
+} from "@/constants/providerDefaults";
 
 describe("collectCopyData", () => {
   describe("collectBoundNotesFromStore", () => {
@@ -49,6 +53,8 @@ describe("collectCopyData", () => {
           subAgentIds: [],
           repositoryId: null,
           commandId: null,
+          provider: "claude" as const,
+          providerConfig: { model: CLAUDE_DEFAULT_MODEL },
         },
       ];
 
@@ -62,6 +68,113 @@ describe("collectCopyData", () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe("pod-1");
+    });
+
+    it("Codex Pod 複製後 CopiedPod 應保留 provider=codex 與 providerConfig.model", () => {
+      const pods = [
+        {
+          id: "pod-codex",
+          name: "Codex Pod",
+          x: 100,
+          y: 200,
+          rotation: 0,
+          outputStyleId: null,
+          skillIds: [],
+          subAgentIds: [],
+          repositoryId: null,
+          commandId: null,
+          provider: "codex" as const,
+          providerConfig: { model: CODEX_DEFAULT_MODEL },
+        },
+      ];
+
+      const selectedElements: SelectableElement[] = [
+        { type: "pod", id: "pod-codex" },
+      ];
+
+      const result = collectSelectedPods(selectedElements, pods as any);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.provider).toBe("codex");
+      expect(result[0]!.providerConfig.model).toBe(CODEX_DEFAULT_MODEL);
+    });
+
+    it("非預設 model 的 Claude Pod 複製後 CopiedPod 應保留正確 providerConfig.model", () => {
+      const customModel = "claude-3-5-sonnet-20241022";
+      const pods = [
+        {
+          id: "pod-custom",
+          name: "Custom Model Pod",
+          x: 50,
+          y: 50,
+          rotation: 0,
+          outputStyleId: null,
+          skillIds: [],
+          subAgentIds: [],
+          repositoryId: null,
+          commandId: null,
+          provider: "claude" as const,
+          providerConfig: { model: customModel },
+        },
+      ];
+
+      const selectedElements: SelectableElement[] = [
+        { type: "pod", id: "pod-custom" },
+      ];
+
+      const result = collectSelectedPods(selectedElements, pods as any);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.provider).toBe("claude");
+      expect(result[0]!.providerConfig.model).toBe(customModel);
+    });
+
+    it("同時選取 Claude Pod 與 Codex Pod，各自保留正確 provider 與 providerConfig", () => {
+      const pods = [
+        {
+          id: "pod-claude",
+          name: "Claude Pod",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          outputStyleId: null,
+          skillIds: [],
+          subAgentIds: [],
+          repositoryId: null,
+          commandId: null,
+          provider: "claude" as const,
+          providerConfig: { model: CLAUDE_DEFAULT_MODEL },
+        },
+        {
+          id: "pod-codex",
+          name: "Codex Pod",
+          x: 200,
+          y: 200,
+          rotation: 0,
+          outputStyleId: null,
+          skillIds: [],
+          subAgentIds: [],
+          repositoryId: null,
+          commandId: null,
+          provider: "codex" as const,
+          providerConfig: { model: CODEX_DEFAULT_MODEL },
+        },
+      ];
+
+      const selectedElements: SelectableElement[] = [
+        { type: "pod", id: "pod-claude" },
+        { type: "pod", id: "pod-codex" },
+      ];
+
+      const result = collectSelectedPods(selectedElements, pods as any);
+
+      expect(result).toHaveLength(2);
+      const claudeResult = result.find((p) => p.id === "pod-claude");
+      const codexResult = result.find((p) => p.id === "pod-codex");
+      expect(claudeResult!.provider).toBe("claude");
+      expect(claudeResult!.providerConfig.model).toBe(CLAUDE_DEFAULT_MODEL);
+      expect(codexResult!.provider).toBe("codex");
+      expect(codexResult!.providerConfig.model).toBe(CODEX_DEFAULT_MODEL);
     });
   });
 

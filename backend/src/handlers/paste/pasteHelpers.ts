@@ -109,6 +109,8 @@ async function createSinglePod(
     x: podItem.x,
     y: podItem.y,
     rotation: podItem.rotation,
+    provider: podItem.provider,
+    providerConfig: podItem.providerConfig,
     outputStyleId: podItem.outputStyleId ?? null,
     skillIds: podItem.skillIds ?? [],
     subAgentIds: podItem.subAgentIds ?? [],

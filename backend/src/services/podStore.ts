@@ -260,6 +260,20 @@ class PodStore {
       : "claude";
   }
 
+  /**
+   * 白名單過濾 providerConfig，只保留合法欄位（目前僅 model）。
+   * 用於讀取層與寫入層，確保舊格式資料（含 provider 等多餘 key）自動淨化。
+   */
+  private sanitizeProviderConfig(
+    raw: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = {};
+    if ("model" in raw) {
+      sanitized.model = raw.model;
+    }
+    return sanitized;
+  }
+
   /** 解析 DB row 的 providerConfig，缺少 model 時補入對應 provider 的預設值 */
   private resolveProviderConfig(
     row: PodRow,
@@ -268,15 +282,14 @@ class PodStore {
     const raw =
       safeJsonParse<Record<string, unknown>>(row.provider_config_json ?? "") ??
       {};
-    if (!("model" in raw)) {
+    // 白名單過濾，丟棄舊格式中的 provider 等多餘 key
+    const sanitized = this.sanitizeProviderConfig(raw);
+    if (!("model" in sanitized)) {
       // providerConfig 無 model 欄位時補入 provider 預設值
-      return {
-        ...raw,
-        model:
-          provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
-      };
+      sanitized.model =
+        provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL;
     }
-    return raw;
+    return sanitized;
   }
 
   /**
@@ -347,13 +360,11 @@ class PodStore {
 
     const provider: ProviderName = data.provider ?? "claude";
     const incomingConfig = data.providerConfig ?? null;
-    // 確保 providerConfig 一定含有 model 欄位
-    const providerConfig: Record<string, unknown> = incomingConfig
+    // 白名單過濾後確保 providerConfig 一定含有 model 欄位
+    const rawConfig: Record<string, unknown> = incomingConfig
       ? { ...incomingConfig }
-      : {
-          model:
-            provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
-        };
+      : {};
+    const providerConfig = this.sanitizeProviderConfig(rawConfig);
     if (!("model" in providerConfig)) {
       providerConfig.model =
         provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL;
@@ -564,7 +575,7 @@ class PodStore {
       $scheduleJson: serializeSchedule(updatedPod.schedule),
       $provider: updatedPod.provider,
       $providerConfigJson: updatedPod.providerConfig
-        ? JSON.stringify(updatedPod.providerConfig)
+        ? JSON.stringify(this.sanitizeProviderConfig(updatedPod.providerConfig))
         : null,
     });
 

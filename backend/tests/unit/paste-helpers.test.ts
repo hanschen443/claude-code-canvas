@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { PastePodItem, PasteConnectionItem } from "../../src/schemas";
 import type { PasteError } from "../../src/types";
+import { CODEX_DEFAULT_MODEL } from "../../src/services/provider/capabilities.js";
 
 describe("Paste Helpers", () => {
   let canvasId: string;
@@ -372,6 +373,181 @@ describe("Paste Helpers", () => {
       expect(errors).toHaveLength(1);
       expect(errors[0].type).toBe("pod");
       expect(errors[0].originalId).toBe(failingPodId);
+    });
+
+    it("Codex Pod 的 provider 和 providerConfig 應被原樣傳給 podStore.create", async () => {
+      const { createPastedPods } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { podStore } = await import("../../src/services/podStore.js");
+      const { workspaceService } =
+        await import("../../src/services/workspace/index.js");
+
+      const originalPodId = uuidv4();
+      const newPodId = uuidv4();
+
+      const mockPod = {
+        id: newPodId,
+        name: "Codex Pod",
+        x: 0,
+        y: 0,
+        rotation: 0,
+        workspacePath: "/test/workspace",
+        repositoryId: null,
+        outputStyleId: null,
+        skillIds: [],
+        subAgentIds: [],
+        commandId: null,
+        provider: "codex" as const,
+        providerConfig: { model: CODEX_DEFAULT_MODEL },
+        status: "idle" as const,
+        schedule: undefined,
+        sessionId: null,
+        multiInstance: false,
+      };
+
+      let capturedCreateArgs: Parameters<typeof podStore.create>[1] | undefined;
+      const originalCreate = podStore.create
+        ? podStore.create.bind(podStore)
+        : undefined;
+      (podStore as any).create = ((_cid: string, args: any) => {
+        capturedCreateArgs = args;
+        return { pod: mockPod, persisted: Promise.resolve() };
+      }) as any;
+      allSpies.push({
+        restore: () => {
+          if (originalCreate) {
+            (podStore as any).create = originalCreate;
+          }
+        },
+      });
+
+      const getByIdSpy = vi
+        .spyOn(podStore, "getById")
+        .mockReturnValue(undefined);
+      allSpies.push(getByIdSpy as any);
+
+      const createWorkspaceSpy = vi
+        .spyOn(workspaceService, "createWorkspace")
+        .mockResolvedValue({ success: true, data: "/test/workspace" });
+      allSpies.push(createWorkspaceSpy as any);
+
+      const pods: PastePodItem[] = [
+        {
+          originalId: originalPodId,
+          name: "Codex Pod",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          provider: "codex",
+          providerConfig: { model: CODEX_DEFAULT_MODEL },
+        },
+      ];
+
+      const podIdMapping: Record<string, string> = {};
+      const errors: PasteError[] = [];
+
+      const createdPods = await createPastedPods(
+        canvasId,
+        pods,
+        podIdMapping,
+        errors,
+      );
+
+      expect(createdPods).toHaveLength(1);
+      expect(errors).toHaveLength(0);
+      // 驗證 createSinglePod 有將 provider / providerConfig 透傳給 podStore.create
+      expect(capturedCreateArgs?.provider).toBe("codex");
+      expect((capturedCreateArgs?.providerConfig as any)?.model).toBe(
+        CODEX_DEFAULT_MODEL,
+      );
+    });
+
+    it("Claude 非預設 model 的 providerConfig 應被原樣傳給 podStore.create，不被覆寫成 opus", async () => {
+      const { createPastedPods } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { podStore } = await import("../../src/services/podStore.js");
+      const { workspaceService } =
+        await import("../../src/services/workspace/index.js");
+
+      const originalPodId = uuidv4();
+      const newPodId = uuidv4();
+      const nonDefaultClaudeModel = "sonnet";
+
+      const mockPod = {
+        id: newPodId,
+        name: "Claude Sonnet Pod",
+        x: 0,
+        y: 0,
+        rotation: 0,
+        workspacePath: "/test/workspace",
+        repositoryId: null,
+        outputStyleId: null,
+        skillIds: [],
+        subAgentIds: [],
+        commandId: null,
+        provider: "claude" as const,
+        providerConfig: { model: nonDefaultClaudeModel },
+        status: "idle" as const,
+        schedule: undefined,
+        sessionId: null,
+        multiInstance: false,
+      };
+
+      let capturedCreateArgs: Parameters<typeof podStore.create>[1] | undefined;
+      const originalCreate = podStore.create
+        ? podStore.create.bind(podStore)
+        : undefined;
+      (podStore as any).create = ((_cid: string, args: any) => {
+        capturedCreateArgs = args;
+        return { pod: mockPod, persisted: Promise.resolve() };
+      }) as any;
+      allSpies.push({
+        restore: () => {
+          if (originalCreate) {
+            (podStore as any).create = originalCreate;
+          }
+        },
+      });
+
+      const getByIdSpy = vi
+        .spyOn(podStore, "getById")
+        .mockReturnValue(undefined);
+      allSpies.push(getByIdSpy as any);
+
+      const createWorkspaceSpy = vi
+        .spyOn(workspaceService, "createWorkspace")
+        .mockResolvedValue({ success: true, data: "/test/workspace" });
+      allSpies.push(createWorkspaceSpy as any);
+
+      const pods: PastePodItem[] = [
+        {
+          originalId: originalPodId,
+          name: "Claude Sonnet Pod",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          provider: "claude",
+          providerConfig: { model: nonDefaultClaudeModel },
+        },
+      ];
+
+      const podIdMapping: Record<string, string> = {};
+      const errors: PasteError[] = [];
+
+      const createdPods = await createPastedPods(
+        canvasId,
+        pods,
+        podIdMapping,
+        errors,
+      );
+
+      expect(createdPods).toHaveLength(1);
+      expect(errors).toHaveLength(0);
+      // 驗證 provider 和 非預設 model 沒有被靜默覆寫
+      expect(capturedCreateArgs?.provider).toBe("claude");
+      expect((capturedCreateArgs?.providerConfig as any)?.model).toBe(
+        nonDefaultClaudeModel,
+      );
     });
   });
 

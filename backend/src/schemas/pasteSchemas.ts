@@ -7,6 +7,7 @@ import {
   resourceIdSchema,
 } from "./base.js";
 import { anchorPositionSchema } from "./connectionSchemas.js";
+import { providerSchema, providerConfigSchema } from "./podSchemas.js";
 
 export const pastePodItemSchema = z.object({
   originalId: z.uuid(),
@@ -14,6 +15,10 @@ export const pastePodItemSchema = z.object({
   x: coordinateSchema,
   y: coordinateSchema,
   rotation: z.number().finite(),
+  /** AI provider 名稱，避免貼上時 provider 身份靜默降級 */
+  provider: providerSchema.optional(),
+  /** provider 對應的設定（含 model 等參數） */
+  providerConfig: providerConfigSchema.optional(),
   outputStyleId: resourceIdSchema.nullable().optional(),
   skillIds: z.array(resourceIdSchema).optional(),
   subAgentIds: z.array(resourceIdSchema).optional(),

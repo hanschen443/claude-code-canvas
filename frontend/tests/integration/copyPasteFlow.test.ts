@@ -6,6 +6,10 @@ import {
   createMockNote,
   createMockConnection,
 } from "../helpers/factories";
+import {
+  CLAUDE_DEFAULT_MODEL,
+  CODEX_DEFAULT_MODEL,
+} from "@/constants/providerDefaults";
 import { usePodStore, useSelectionStore, useViewportStore } from "@/stores/pod";
 import {
   useOutputStyleStore,
@@ -413,6 +417,142 @@ describe("複製貼上/批量操作完整流程", () => {
       expect(selectionStore.selectedElements).toEqual(newSelectedElements);
       expect(selectionStore.selectedPodIds).toEqual(["new-pod-1"]);
       expect(selectionStore.selectedOutputStyleNoteIds).toEqual(["new-note-1"]);
+    });
+
+    it("Codex Pod 複製後 clipboardStore 應正確保留 provider=codex 與 providerConfig.model", () => {
+      const codexPod = createMockPod({
+        id: "pod-codex",
+        x: 100,
+        y: 100,
+        provider: "codex",
+        providerConfig: { model: CODEX_DEFAULT_MODEL },
+      });
+
+      podStore.pods = [codexPod];
+
+      selectionStore.startSelection(0, 0);
+      selectionStore.updateSelection(500, 500);
+      selectionStore.calculateSelectedElements({
+        pods: podStore.pods,
+        noteGroups: [
+          { notes: outputStyleStore.notes, type: "outputStyleNote" },
+          { notes: skillStore.notes, type: "skillNote" },
+          { notes: repositoryStore.notes, type: "repositoryNote" },
+          { notes: subAgentStore.notes, type: "subAgentNote" },
+          { notes: commandStore.notes, type: "commandNote" },
+          { notes: mcpServerStore.notes, type: "mcpServerNote" as const },
+        ],
+      });
+
+      const selectedElements = selectionStore.selectedElements;
+      const selectedPodIds = new Set(
+        selectedElements.filter((el) => el.type === "pod").map((el) => el.id),
+      );
+      const copiedPods = podStore.pods
+        .filter((p) => selectedPodIds.has(p.id))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          x: p.x,
+          y: p.y,
+          rotation: p.rotation,
+          provider: p.provider,
+          providerConfig: p.providerConfig,
+          outputStyleId: p.outputStyleId,
+          skillIds: p.skillIds,
+          subAgentIds: p.subAgentIds,
+          repositoryId: p.repositoryId,
+          commandId: p.commandId,
+        }));
+
+      clipboardStore.setCopy(copiedPods, [], [], [], [], [], [], []);
+
+      expect(clipboardStore.isEmpty).toBe(false);
+      expect(clipboardStore.copiedPods).toHaveLength(1);
+      expect(clipboardStore.copiedPods[0]!.provider).toBe("codex");
+      expect(clipboardStore.copiedPods[0]!.providerConfig.model).toBe(
+        CODEX_DEFAULT_MODEL,
+      );
+    });
+
+    it("Codex Pod round-trip：複製後 clipboardStore 的 provider 與 model 與原 Pod 一致", () => {
+      const codexPod = createMockPod({
+        id: "pod-codex-roundtrip",
+        x: 150,
+        y: 150,
+        provider: "codex",
+        providerConfig: { model: CODEX_DEFAULT_MODEL },
+      });
+
+      const copiedPod = {
+        id: codexPod.id,
+        name: codexPod.name,
+        x: codexPod.x,
+        y: codexPod.y,
+        rotation: codexPod.rotation,
+        provider: codexPod.provider,
+        providerConfig: codexPod.providerConfig,
+        outputStyleId: codexPod.outputStyleId,
+        skillIds: codexPod.skillIds,
+        subAgentIds: codexPod.subAgentIds,
+        repositoryId: codexPod.repositoryId,
+        commandId: codexPod.commandId,
+      };
+
+      clipboardStore.setCopy([copiedPod], [], [], [], [], [], [], []);
+
+      // 確認 clipboard 中保留了 Codex provider 身份
+      const storedPod = clipboardStore.copiedPods[0]!;
+      expect(storedPod.provider).toBe(codexPod.provider);
+      expect(storedPod.providerConfig.model).toBe(
+        codexPod.providerConfig.model,
+      );
+    });
+
+    it("同時複製 Claude Pod 與 Codex Pod，clipboardStore 各自保留正確 provider 與 model", () => {
+      const claudePod = createMockPod({
+        id: "pod-claude-mix",
+        x: 100,
+        y: 100,
+        provider: "claude",
+        providerConfig: { model: CLAUDE_DEFAULT_MODEL },
+      });
+      const codexPod = createMockPod({
+        id: "pod-codex-mix",
+        x: 300,
+        y: 300,
+        provider: "codex",
+        providerConfig: { model: CODEX_DEFAULT_MODEL },
+      });
+
+      const copiedPods = [claudePod, codexPod].map((p) => ({
+        id: p.id,
+        name: p.name,
+        x: p.x,
+        y: p.y,
+        rotation: p.rotation,
+        provider: p.provider,
+        providerConfig: p.providerConfig,
+        outputStyleId: p.outputStyleId,
+        skillIds: p.skillIds,
+        subAgentIds: p.subAgentIds,
+        repositoryId: p.repositoryId,
+        commandId: p.commandId,
+      }));
+
+      clipboardStore.setCopy(copiedPods, [], [], [], [], [], [], []);
+
+      expect(clipboardStore.copiedPods).toHaveLength(2);
+      const storedClaude = clipboardStore.copiedPods.find(
+        (p) => p.id === "pod-claude-mix",
+      )!;
+      const storedCodex = clipboardStore.copiedPods.find(
+        (p) => p.id === "pod-codex-mix",
+      )!;
+      expect(storedClaude.provider).toBe("claude");
+      expect(storedClaude.providerConfig.model).toBe(CLAUDE_DEFAULT_MODEL);
+      expect(storedCodex.provider).toBe("codex");
+      expect(storedCodex.providerConfig.model).toBe(CODEX_DEFAULT_MODEL);
     });
   });
 

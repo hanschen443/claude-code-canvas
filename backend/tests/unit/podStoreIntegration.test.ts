@@ -353,6 +353,134 @@ describe("PodStore - Integration Binding", () => {
   });
 });
 
+describe("PodStore - providerConfig 白名單過濾", () => {
+  let canvasId: string;
+
+  beforeEach(() => {
+    initTestDb();
+    resetStatements();
+
+    const store = podStore as unknown as {
+      relationsStmtCache: Map<unknown, unknown>;
+      bindingsStmtCache: Map<unknown, unknown>;
+    };
+    store.relationsStmtCache.clear();
+    store.bindingsStmtCache.clear();
+
+    const stmts = getStatements(getDb());
+    canvasId = "test-canvas-sanitize";
+    stmts.canvas.insert.run({
+      $id: canvasId,
+      $name: "test-canvas-sanitize",
+      $sortIndex: 0,
+    });
+  });
+
+  afterEach(() => {
+    closeDb();
+  });
+
+  it("DB 中存有舊格式 {provider,model} 時，getById 回傳的 providerConfig 只含 model", () => {
+    // 先建立 Pod 取得合法 id
+    const { pod } = podStore.create(canvasId, {
+      name: "pod-legacy-read",
+      x: 0,
+      y: 0,
+      rotation: 0,
+    });
+
+    // 直接將舊格式（含 provider key）寫進 DB，模擬 cfe6d9b 以前的歷史資料
+    getDb()
+      .prepare("UPDATE pods SET provider_config_json = ? WHERE id = ?")
+      .run('{"provider":"claude","model":"haiku"}', pod.id);
+
+    const found = podStore.getById(canvasId, pod.id);
+
+    expect(found).toBeDefined();
+    expect(found!.providerConfig).toEqual({ model: "haiku" });
+    expect(
+      (found!.providerConfig as Record<string, unknown>).provider,
+    ).toBeUndefined();
+  });
+
+  it("DB 中存有舊格式 {provider,model} 時，list 回傳的 providerConfig 只含 model", () => {
+    const { pod } = podStore.create(canvasId, {
+      name: "pod-legacy-list",
+      x: 0,
+      y: 0,
+      rotation: 0,
+    });
+
+    getDb()
+      .prepare("UPDATE pods SET provider_config_json = ? WHERE id = ?")
+      .run('{"provider":"codex","model":"gpt-5.4"}', pod.id);
+
+    const pods = podStore.list(canvasId);
+    const found = pods.find((p) => p.id === pod.id);
+
+    expect(found).toBeDefined();
+    expect(found!.providerConfig).toEqual({ model: "gpt-5.4" });
+    expect(
+      (found!.providerConfig as Record<string, unknown>).provider,
+    ).toBeUndefined();
+  });
+
+  it("create 收到含 provider key 的 providerConfig 時，DB 寫入的 provider_config_json 只含 model", () => {
+    const { pod } = podStore.create(canvasId, {
+      name: "pod-create-sanitize",
+      x: 0,
+      y: 0,
+      rotation: 0,
+      provider: "codex",
+      // 傳入包含多餘 provider key 的物件，模擬舊格式資料流入
+      providerConfig: { provider: "codex", model: "gpt-5.4" } as Record<
+        string,
+        unknown
+      >,
+    });
+
+    const row = getDb()
+      .prepare("SELECT provider_config_json FROM pods WHERE id = ?")
+      .get(pod.id) as { provider_config_json: string };
+
+    const parsed = JSON.parse(row.provider_config_json) as Record<
+      string,
+      unknown
+    >;
+
+    expect(parsed).toEqual({ model: "gpt-5.4" });
+    expect(parsed.provider).toBeUndefined();
+  });
+
+  it("update 收到含 provider key 的 providerConfig 時，DB 寫入的 provider_config_json 只含 model", () => {
+    const { pod } = podStore.create(canvasId, {
+      name: "pod-update-sanitize",
+      x: 0,
+      y: 0,
+      rotation: 0,
+    });
+
+    podStore.update(canvasId, pod.id, {
+      providerConfig: { provider: "claude", model: "sonnet" } as Record<
+        string,
+        unknown
+      >,
+    });
+
+    const row = getDb()
+      .prepare("SELECT provider_config_json FROM pods WHERE id = ?")
+      .get(pod.id) as { provider_config_json: string };
+
+    const parsed = JSON.parse(row.provider_config_json) as Record<
+      string,
+      unknown
+    >;
+
+    expect(parsed).toEqual({ model: "sonnet" });
+    expect(parsed.provider).toBeUndefined();
+  });
+});
+
 describe("PodStore - resetAllBusyPods", () => {
   let canvasId: string;
 
