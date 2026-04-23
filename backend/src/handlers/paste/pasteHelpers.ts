@@ -75,6 +75,19 @@ async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
   );
 }
 
+/**
+ * 若 candidateName 已存在於 Canvas，自動附加數字後綴直到找到唯一名稱。
+ * 例：「Pod 1」→「Pod 1 (2)」→「Pod 1 (3)」…
+ */
+function resolveUniquePodName(canvasId: string, candidateName: string): string {
+  if (!podStore.hasName(canvasId, candidateName)) return candidateName;
+  let counter = 2;
+  while (podStore.hasName(canvasId, `${candidateName} (${counter})`)) {
+    counter++;
+  }
+  return `${candidateName} (${counter})`;
+}
+
 async function createSinglePod(
   canvasId: string,
   podItem: PastePodItem,
@@ -88,8 +101,11 @@ async function createSinglePod(
     }
   }
 
+  // 名稱重複時自動加上後綴，避免觸發 UNIQUE (canvas_id, name) 約束
+  const uniqueName = resolveUniquePodName(canvasId, podItem.name);
+
   const { pod } = podStore.create(canvasId, {
-    name: podItem.name,
+    name: uniqueName,
     x: podItem.x,
     y: podItem.y,
     rotation: podItem.rotation,

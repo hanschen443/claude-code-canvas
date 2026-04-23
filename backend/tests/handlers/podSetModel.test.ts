@@ -177,15 +177,15 @@ describe("handlePodSetModel", () => {
     });
   });
 
-  describe("Case 3：既有 providerConfig 其他 keys 不被覆蓋（merge，不是 replace）", () => {
-    it("原本 providerConfig: { model: 'opus', someOther: 'x' } → set model 為 'sonnet' → 應變 { model: 'sonnet', someOther: 'x' }", async () => {
+  describe("Case 3：白名單 merge（只保留已知安全 key，捨棄未知 key）", () => {
+    it("原本 providerConfig: { model: 'opus', someOther: 'x' } → set model 為 'sonnet' → 未知 key someOther 應被捨棄，只保留 { model: 'sonnet' }", async () => {
       const existingPod = makePod({
         model: "opus",
         providerConfig: { model: "opus", someOther: "x" },
       });
       const updatedPod = makePod({
         model: "sonnet",
-        providerConfig: { model: "sonnet", someOther: "x" },
+        providerConfig: { model: "sonnet" },
       });
 
       mockValidatePod.mockReturnValue(existingPod);
@@ -206,8 +206,8 @@ describe("handlePodSetModel", () => {
 
       // 新 model 寫入
       expect(mergedConfig?.model).toBe("sonnet");
-      // 既有 someOther 保留
-      expect(mergedConfig?.someOther).toBe("x");
+      // 未知 key someOther 應被白名單過濾掉，不保留
+      expect(mergedConfig).not.toHaveProperty("someOther");
     });
 
     it("providerConfig 為 null 時，應建立新的 { model: 'sonnet' }，不拋錯", async () => {

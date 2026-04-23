@@ -5,10 +5,13 @@ const mockValidatePod = vi.fn();
 const mockEmitPodUpdated = vi.fn();
 const mockSetMultiInstance = vi.fn();
 const mockEmitError = vi.fn();
+// assertCapability：預設回傳 true（能力支援），可在個別測試覆寫為 false
+const mockAssertCapability = vi.fn().mockReturnValue(true);
 
 vi.mock("../../src/utils/handlerHelpers.js", () => ({
   validatePod: mockValidatePod,
   emitPodUpdated: mockEmitPodUpdated,
+  assertCapability: mockAssertCapability,
   withCanvasId:
     (
       _event: unknown,
@@ -31,13 +34,6 @@ vi.mock("../../src/services/podStore.js", () => ({
 
 vi.mock("../../src/utils/websocketResponse.js", () => ({
   emitError: mockEmitError,
-}));
-
-// mock getCapabilities：claude 支援 runMode，codex 不支援
-vi.mock("../../src/services/provider/index.js", () => ({
-  getCapabilities: vi.fn((provider: string) => ({
-    runMode: provider === "claude",
-  })),
 }));
 
 vi.mock("../../src/schemas/index.js", () => ({
@@ -144,6 +140,65 @@ describe("handlePodSetMultiInstance", () => {
       );
 
       expect(mockEmitPodUpdated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Capability 守門", () => {
+    it("multiInstance: true 且 assertCapability 回傳 false 時應提前 return，不呼叫 setMultiInstance", async () => {
+      mockValidatePod.mockReturnValue(mockPod);
+      // 模擬不支援 runMode 的 provider（如 codex）
+      mockAssertCapability.mockReturnValue(false);
+
+      await handlePodSetMultiInstance(
+        CONNECTION_ID,
+        { podId: POD_ID, multiInstance: true },
+        REQUEST_ID,
+      );
+
+      expect(mockSetMultiInstance).not.toHaveBeenCalled();
+      expect(mockEmitPodUpdated).not.toHaveBeenCalled();
+    });
+
+    it("multiInstance: false 時即使 assertCapability 未被呼叫也應正常執行（關閉方向不擋）", async () => {
+      mockValidatePod.mockReturnValue(mockPod);
+
+      await handlePodSetMultiInstance(
+        CONNECTION_ID,
+        { podId: POD_ID, multiInstance: false },
+        REQUEST_ID,
+      );
+
+      // 關閉方向不應觸發 capability 守門
+      expect(mockAssertCapability).not.toHaveBeenCalled();
+      expect(mockSetMultiInstance).toHaveBeenCalledWith(
+        CANVAS_ID,
+        POD_ID,
+        false,
+      );
+    });
+
+    it("multiInstance: true 且 assertCapability 回傳 true 時應正常呼叫 setMultiInstance", async () => {
+      mockValidatePod.mockReturnValue(mockPod);
+      mockAssertCapability.mockReturnValue(true);
+
+      await handlePodSetMultiInstance(
+        CONNECTION_ID,
+        { podId: POD_ID, multiInstance: true },
+        REQUEST_ID,
+      );
+
+      expect(mockAssertCapability).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        mockPod,
+        "runMode",
+        "pod:multiInstanceSet",
+        REQUEST_ID,
+      );
+      expect(mockSetMultiInstance).toHaveBeenCalledWith(
+        CANVAS_ID,
+        POD_ID,
+        true,
+      );
     });
   });
 });

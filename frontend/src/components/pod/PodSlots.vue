@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { toRef } from "vue";
+import { computed, toRef } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   OutputStyleNote,
@@ -74,8 +74,8 @@ const {
   isMcpEnabled,
 } = usePodCapabilities(toRef(props, "podId"));
 
-/** 不支援功能時顯示的 tooltip 文字 */
-const DISABLED_TOOLTIP = "Codex 不支援此功能";
+/** 不支援功能時顯示的 tooltip 文字（由 i18n 提供） */
+const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 </script>
 
 <template>

@@ -18,8 +18,18 @@ export const podCreateSchema = z.object({
   rotation: z.number(),
   /** AI provider 名稱，預設為 claude，未提供時由服務層補預設值 */
   provider: z.enum(["claude", "codex"]).optional(),
-  /** provider 的設定物件，目前只允許 model 欄位 */
-  providerConfig: z.record(z.string(), z.unknown()).optional(),
+  /** provider 的設定物件，僅允許已知欄位（.strict() 拒絕未知 key） */
+  providerConfig: z
+    .object({
+      /** model 名稱，僅允許字母、數字、點、底線、連字號，最長 100 字元 */
+      model: z
+        .string()
+        .regex(/^[a-zA-Z0-9._-]+$/, "model 名稱包含不允許的字元")
+        .max(100)
+        .optional(),
+    })
+    .strict()
+    .optional(),
 });
 
 export const podListSchema = z.object({

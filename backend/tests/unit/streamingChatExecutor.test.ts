@@ -3,7 +3,19 @@ import type { Mock } from "vitest";
 vi.mock("../../src/services/claude/claudeService.js", () => ({
   claudeService: {
     sendMessage: vi.fn(() => Promise.resolve({})),
+    registerAbortKey: vi.fn(() => {}),
+    unregisterAbortKey: vi.fn(() => {}),
   },
+}));
+
+// mock getProvider：預設回傳無 chat 事件的 stub，測試中再覆寫
+vi.mock("../../src/services/provider/index.js", () => ({
+  getProvider: vi.fn(() =>
+    Promise.resolve({
+      chat: vi.fn(async function* () {}),
+      cancel: vi.fn(() => false),
+    }),
+  ),
 }));
 
 vi.mock("../../src/services/socketService.js", () => ({
@@ -64,6 +76,7 @@ import { AbortError } from "@anthropic-ai/claude-agent-sdk";
 import { NormalModeExecutionStrategy } from "../../src/services/normalExecutionStrategy.js";
 import { RunModeExecutionStrategy } from "../../src/services/executionStrategy.js";
 import type { RunContext } from "../../src/types/run.js";
+import { getProvider } from "../../src/services/provider/index.js";
 
 /** 取得 mock 函式的型別化引用，避免重複的 `as Mock<any>` 轉型 */
 function asMock(fn: unknown): Mock<any> {
@@ -507,6 +520,278 @@ describe("executeStreamingChat", () => {
         canvasId,
         podId,
         expect.objectContaining({ message: "Claude API 錯誤" }),
+      );
+    });
+  });
+
+  describe("Codex 路徑 (executeCodexStream)", () => {
+    /** 建立一個帶有 provider=codex 的假 podResult，供 podStore.getByIdGlobal 回傳 */
+    function makeCodexPodResult() {
+      return {
+        canvasId,
+        pod: {
+          id: podId,
+          canvasId,
+          name: "codex-pod",
+          provider: "codex" as const,
+          workspacePath: "/tmp/workspace",
+          providerConfig: null,
+          // 其餘 Pod 欄位不影響被測路徑，填 null / 空值即可
+          sessionId: null,
+          status: "idle",
+          outputStyle: null,
+          skill: null,
+          subAgent: null,
+          repository: null,
+          command: null,
+          mcp: null,
+          integration: null,
+          bindings: [],
+        },
+      };
+    }
+
+    /**
+     * 將 NormalizedEvent 陣列包裝成 async generator，
+     * 供 mock provider.chat 使用。
+     */
+    async function* makeEventStream(
+      events: Array<
+        import("../../src/services/provider/types.js").NormalizedEvent
+      >,
+    ) {
+      for (const ev of events) {
+        yield ev;
+      }
+    }
+
+    /**
+     * 設定 getProvider mock：讓 provider.chat 產生指定的 NormalizedEvent 序列。
+     * 同時讓 podStore.getByIdGlobal 回傳 codex pod。
+     */
+    function setupCodexMock(
+      events: Array<
+        import("../../src/services/provider/types.js").NormalizedEvent
+      >,
+    ) {
+      const chatMock = vi.fn(() => makeEventStream(events));
+      asMock(getProvider).mockResolvedValue({
+        chat: chatMock,
+        cancel: vi.fn(() => false),
+      });
+      asMock(podStore.getByIdGlobal).mockReturnValue(makeCodexPodResult());
+      return { chatMock };
+    }
+
+    beforeEach(() => {
+      // 每個 case 前重置相關 mock
+      asMock(claudeService.sendMessage).mockClear();
+      asMock(claudeService.registerAbortKey).mockClear();
+      asMock(claudeService.unregisterAbortKey).mockClear();
+      asMock(getProvider).mockClear();
+      // 預設讓 getByIdGlobal 回傳 codex pod（setupCodexMock 會再覆寫）
+      // 若部分 case 需要 undefined 可在各別 case 中設定
+      asMock(podStore.getByIdGlobal).mockReturnValue(makeCodexPodResult());
+    });
+
+    afterEach(() => {
+      // 清理 codex pod mock，確保後續其他 describe 的 test 看到的是 undefined（預設值）
+      asMock(podStore.getByIdGlobal).mockReturnValue(undefined);
+    });
+
+    // ── Case 1 ────────────────────────────────────────────────────────────────
+    it("provider=codex 時走 executeCodexStream：呼叫 getProvider('codex').chat，不呼叫 sendMessage", async () => {
+      const { chatMock } = setupCodexMock([{ type: "turn_complete" }]);
+
+      await executeStreamingChat({
+        canvasId,
+        podId,
+        message,
+        abortable: false,
+        strategy: makeStrategy(),
+      });
+
+      // codex provider 的 chat 應被呼叫
+      expect(chatMock).toHaveBeenCalledTimes(1);
+      // claude 原路徑的 sendMessage 不應被呼叫
+      expect(claudeService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    // ── Case 2 ────────────────────────────────────────────────────────────────
+    it("session_started 事件被暫存並傳入 finalizeAfterStream → onStreamComplete 帶 sessionId", async () => {
+      setupCodexMock([
+        { type: "session_started", sessionId: "thread_abc" },
+        { type: "turn_complete" },
+      ]);
+
+      // 用 spy 追蹤 strategy.onStreamComplete 的呼叫
+      const strategy = makeStrategy();
+      const completeSpy = vi.spyOn(strategy, "onStreamComplete");
+
+      await executeStreamingChat({
+        canvasId,
+        podId,
+        message,
+        abortable: false,
+        strategy,
+      });
+
+      // onStreamComplete 應帶入暫存的 sessionId
+      expect(completeSpy).toHaveBeenCalledWith(podId, "thread_abc");
+    });
+
+    // ── Case 3 ────────────────────────────────────────────────────────────────
+    it("error 事件 fatal=true → 先廣播 ⚠️ 文字，再拋出 Error", async () => {
+      setupCodexMock([{ type: "error", message: "某致命錯誤", fatal: true }]);
+
+      const collectedPayloads: unknown[] = [];
+      asMock(socketService.emitToCanvas).mockImplementation(
+        (_cId: string, _event: string, payload: unknown) => {
+          collectedPayloads.push(payload);
+        },
+      );
+
+      await expect(
+        executeStreamingChat({
+          canvasId,
+          podId,
+          message,
+          abortable: false,
+          strategy: makeStrategy(),
+        }),
+      ).rejects.toThrow("某致命錯誤");
+
+      // streamingCallback 應收到含 ⚠️ 的 text 廣播
+      const textPayloads = collectedPayloads.filter(
+        (p) =>
+          typeof p === "object" &&
+          p !== null &&
+          "content" in p &&
+          typeof (p as { content: unknown }).content === "string" &&
+          (p as { content: string }).content.includes("⚠️"),
+      );
+      expect(textPayloads.length).toBeGreaterThan(0);
+    });
+
+    // ── Case 4 ────────────────────────────────────────────────────────────────
+    it("error 事件 fatal=false → 不拋出、繼續消費後續事件直到 turn_complete", async () => {
+      setupCodexMock([
+        { type: "error", message: "某警告", fatal: false },
+        { type: "text", content: "continued" },
+        { type: "turn_complete" },
+      ]);
+
+      const emittedContents: string[] = [];
+      asMock(socketService.emitToCanvas).mockImplementation(
+        (_cId: string, event: string, payload: unknown) => {
+          // 收集所有 text 廣播的 content
+          if (
+            event === WebSocketResponseEvents.POD_CLAUDE_CHAT_MESSAGE &&
+            typeof payload === "object" &&
+            payload !== null &&
+            "content" in payload
+          ) {
+            emittedContents.push((payload as { content: string }).content);
+          }
+        },
+      );
+
+      const result = await executeStreamingChat({
+        canvasId,
+        podId,
+        message,
+        abortable: false,
+        strategy: makeStrategy(),
+      });
+
+      // 不應拋出例外
+      expect(result.aborted).toBe(false);
+
+      // 應有 ⚠️ 警告文字廣播
+      expect(emittedContents.some((c) => c.includes("⚠️"))).toBe(true);
+
+      // 也應收到 'continued' 文字
+      expect(emittedContents.some((c) => c.includes("continued"))).toBe(true);
+
+      // complete 廣播應被呼叫
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        WebSocketResponseEvents.POD_CHAT_COMPLETE,
+        expect.anything(),
+      );
+    });
+
+    // ── Case 5 ────────────────────────────────────────────────────────────────
+    it("thinking 事件轉為 text 廣播", async () => {
+      setupCodexMock([
+        { type: "thinking", content: "思考中..." },
+        { type: "turn_complete" },
+      ]);
+
+      await executeStreamingChat({
+        canvasId,
+        podId,
+        message,
+        abortable: false,
+        strategy: makeStrategy(),
+      });
+
+      // thinking 應映射成 POD_CLAUDE_CHAT_MESSAGE（text 路徑）
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        WebSocketResponseEvents.POD_CLAUDE_CHAT_MESSAGE,
+        expect.objectContaining({
+          content: expect.stringContaining("思考中..."),
+        }),
+      );
+    });
+
+    // ── Case 6 ────────────────────────────────────────────────────────────────
+    it("tool_call_start / tool_call_result 映射為 POD_CHAT_TOOL_USE / POD_CHAT_TOOL_RESULT", async () => {
+      setupCodexMock([
+        {
+          type: "tool_call_start",
+          toolUseId: "cu1",
+          toolName: "Bash",
+          input: { command: "ls" },
+        },
+        {
+          type: "tool_call_result",
+          toolUseId: "cu1",
+          toolName: "Bash",
+          output: "file1\nfile2",
+        },
+        { type: "turn_complete" },
+      ]);
+
+      await executeStreamingChat({
+        canvasId,
+        podId,
+        message,
+        abortable: false,
+        strategy: makeStrategy(),
+      });
+
+      // tool_call_start → tool_use 廣播
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        WebSocketResponseEvents.POD_CHAT_TOOL_USE,
+        expect.objectContaining({
+          toolUseId: "cu1",
+          toolName: "Bash",
+          input: { command: "ls" },
+        }),
+      );
+
+      // tool_call_result → tool_result 廣播
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        WebSocketResponseEvents.POD_CHAT_TOOL_RESULT,
+        expect.objectContaining({
+          toolUseId: "cu1",
+          toolName: "Bash",
+          output: "file1\nfile2",
+        }),
       );
     });
   });

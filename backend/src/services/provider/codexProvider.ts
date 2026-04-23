@@ -12,7 +12,7 @@
  *   - `-` 表示從 stdin 讀取 prompt
  */
 
-import { CODEX_CAPABILITIES } from "./capabilities.js";
+import { CODEX_CAPABILITIES, CODEX_DEFAULT_MODEL } from "./capabilities.js";
 import { normalize } from "./codexNormalizer.js";
 import type {
   AgentProvider,
@@ -21,11 +21,14 @@ import type {
 } from "./types.js";
 import { logger } from "../../utils/logger.js";
 
-/** Codex provider 的預設模型 */
-const CODEX_DEFAULT_MODEL = "gpt-5.4";
-
 /** 合法 resumeSessionId 格式（防止 CLI 旗標注入） */
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+/**
+ * 合法 model 名稱格式（防止 CLI 旗標注入）。
+ * 只允許英數字、點、底線、連字號，不允許空格或 -- 前綴等旗標字元。
+ */
+const MODEL_RE = /^[a-zA-Z0-9._-]+$/;
 
 /** 合法 attachment MIME 類型副檔名白名單 */
 const ALLOWED_IMAGE_EXTS = new Set(["jpg", "png", "gif", "webp"]);
@@ -34,7 +37,13 @@ const ALLOWED_IMAGE_EXTS = new Set(["jpg", "png", "gif", "webp"]);
 const BASE64_RE = /^[A-Za-z0-9+/=]+$/;
 
 /**
- * 傳入 codex subprocess 的環境變數白名單。
+ * stderr 收集上限（64KB）。
+ * 超過後停止累積，避免長時間執行的 codex 輸出大量 debug log 時記憶體爆掉。
+ */
+const STDERR_MAX_BYTES = 64 * 1024;
+
+/**
+ * 傳入 codex subprocess 的環境變數白名單（固定清單）。
  * 僅傳遞 codex 實際需要的 key，避免洩漏其他 API key、DB 連線字串等敏感資訊。
  */
 const CODEX_ENV_WHITELIST = new Set([
@@ -46,16 +55,35 @@ const CODEX_ENV_WHITELIST = new Set([
   "TERM", // 終端機類型
 ]);
 
-/** 篩選環境變數，僅保留白名單與 CODEX_ 前綴的 key */
+/**
+ * 明確 allow-list 避免 CODEX_SECRET 之類的敏感 env 被無意洩漏到 subprocess。
+ * 這裡只列出 codex CLI 已知需要的環境變數，使用者可視需要後續擴充。
+ */
+const CODEX_ALLOWED_ENV: ReadonlyArray<string> = [
+  "CODEX_DISABLE_TELEMETRY",
+  "CODEX_LOG_LEVEL",
+];
+
+/** 篩選環境變數，僅保留白名單與明確允許的 CODEX_* key */
 function buildCodexEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (CODEX_ENV_WHITELIST.has(key) || key.startsWith("CODEX_")) {
+    if (CODEX_ENV_WHITELIST.has(key) || CODEX_ALLOWED_ENV.includes(key)) {
       out[key] = value;
     }
   }
   return out;
+}
+
+/**
+ * 將 stderr 文字中的敏感資訊遮蔽。
+ * 避免 OPENAI_API_KEY 或 Bearer token 等資訊寫進 server log。
+ */
+function maskSensitiveText(text: string): string {
+  return text
+    .replace(/OPENAI_API_KEY\s*=\s*\S+/gi, "OPENAI_API_KEY=[REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
 }
 
 /**
@@ -109,6 +137,199 @@ function buildPromptText(
   return parts.join("\n");
 }
 
+/**
+ * 組合 codex CLI 參數。
+ * 驗證 resumeSessionId 及 model 格式，防止 CLI 旗標注入。
+ *
+ * @param resumeSessionId 恢復對話的 session ID，為 null 時走新對話模式
+ * @param model 模型名稱（已通過 MODEL_RE 驗證）
+ * @returns CLI 參數陣列（不含 "codex" 本身）
+ */
+function buildCodexArgs(
+  resumeSessionId: string | null,
+  model: string,
+): string[] {
+  const args: string[] = [];
+
+  if (resumeSessionId) {
+    if (!SESSION_ID_RE.test(resumeSessionId)) {
+      // resumeSessionId 格式不合法，防止旗標注入，改走新對話
+      logger.warn(
+        "Chat",
+        "Warn",
+        `[CodexProvider] resumeSessionId 格式不合法，已略過並改為新對話：${resumeSessionId}`,
+      );
+      args.push(
+        "exec",
+        "-",
+        "--json",
+        "--yolo",
+        "--skip-git-repo-check",
+        "--model",
+        model,
+      );
+    } else {
+      // 恢復對話模式：不帶 --model（由 session 決定）
+      args.push("exec", "resume", resumeSessionId, "-", "--json", "--yolo");
+    }
+  } else {
+    // 新對話模式
+    args.push(
+      "exec",
+      "-",
+      "--json",
+      "--yolo",
+      "--skip-git-repo-check",
+      "--model",
+      model,
+    );
+  }
+
+  return args;
+}
+
+/**
+ * 啟動 codex subprocess。
+ * ENOENT 錯誤會重新包裝後拋出，讓上層可辨識；其他錯誤訊息寫進 logger 後拋出通用訊息。
+ *
+ * @param args CLI 參數（不含 "codex"）
+ * @param workspacePath 工作目錄
+ * @returns Bun.Subprocess
+ */
+function spawnCodexProcess(
+  args: string[],
+  workspacePath: string,
+): Bun.Subprocess<"pipe", "pipe", "pipe"> {
+  try {
+    return Bun.spawn(["codex", ...args], {
+      cwd: workspacePath,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: buildCodexEnv(),
+    });
+  } catch (err: unknown) {
+    // 判斷是否為 ENOENT（codex CLI 尚未安裝）
+    const isNotFound =
+      err instanceof Error &&
+      ("code" in err
+        ? (err as NodeJS.ErrnoException).code === "ENOENT"
+        : err.message.includes("ENOENT"));
+
+    if (isNotFound) {
+      const notFoundErr = new Error(
+        "codex CLI 尚未安裝或不在 PATH 中，請執行 codex login",
+      );
+      (notFoundErr as NodeJS.ErrnoException).code = "ENOENT";
+      throw notFoundErr;
+    }
+
+    // 其他錯誤：原始訊息寫進 logger，不暴露給前端
+    logger.error("Chat", "Error", "[CodexProvider] 啟動 codex 子程序失敗", err);
+    throw new Error("啟動 codex 子程序失敗，請查 server log");
+  }
+}
+
+/**
+ * 逐行讀取 codex subprocess 的 stdout，yield NormalizedEvent；
+ * 同時收集 stderr（上限 STDERR_MAX_BYTES），並在結束後依 exit code 決定是否 yield error event。
+ *
+ * @param proc Bun.Subprocess
+ * @param promptText 寫入 stdin 的 prompt 文字
+ * @param abortSignal abort 控制
+ * @param podId 僅用於 log 顯示
+ */
+async function* streamCodexOutput(
+  proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
+  promptText: string,
+  abortSignal: AbortSignal,
+  podId: string,
+): AsyncGenerator<NormalizedEvent> {
+  // ── 寫入 prompt 到 stdin 後關閉 ────────────────────────────────
+  // Bun.Subprocess.stdin 是 FileSink，直接呼叫 write/end
+  proc.stdin.write(promptText);
+  await proc.stdin.end();
+
+  // ── 逐行讀取 stdout ─────────────────────────────────────────────
+  let buffer = "";
+  let hasTurnComplete = false;
+
+  for await (const chunk of proc.stdout as ReadableStream<Uint8Array>) {
+    if (abortSignal.aborted) break;
+
+    buffer += Buffer.from(chunk as Uint8Array).toString("utf-8");
+
+    const lines = buffer.split("\n");
+    // 最後一段可能不完整，保留在 buffer
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const event = normalize(line);
+      if (event !== null) {
+        if (event.type === "turn_complete") {
+          hasTurnComplete = true;
+        }
+        yield event;
+      }
+    }
+  }
+
+  // 處理 stdout 結束時剩餘的 buffer 內容
+  if (buffer.trim()) {
+    const event = normalize(buffer);
+    if (event !== null) {
+      if (event.type === "turn_complete") {
+        hasTurnComplete = true;
+      }
+      yield event;
+    }
+  }
+
+  // ── 收集 stderr（僅用於 exit code 處理時的 server log） ─────────
+  // 累計長度超過 STDERR_MAX_BYTES 後停止 push，避免記憶體爆掉
+  const stderrChunks: Buffer[] = [];
+  let stderrTotalBytes = 0;
+  let stderrTruncated = false;
+
+  for await (const chunk of proc.stderr as ReadableStream<Uint8Array>) {
+    const buf = Buffer.from(chunk as Uint8Array);
+    if (stderrTotalBytes + buf.byteLength <= STDERR_MAX_BYTES) {
+      stderrChunks.push(buf);
+      stderrTotalBytes += buf.byteLength;
+    } else {
+      // 超過上限後停止收集，標記為已截斷
+      stderrTruncated = true;
+      break;
+    }
+  }
+
+  let stderrText = Buffer.concat(stderrChunks).toString("utf-8").trim();
+  if (stderrTruncated) {
+    stderrText += "\n[TRUNCATED]";
+  }
+
+  // ── exit code 檢查 ──────────────────────────────────────────────
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0 && !abortSignal.aborted && !hasTurnComplete) {
+    logger.error(
+      "Chat",
+      "Error",
+      `[CodexProvider] codex 子程序以非零 exit code 結束（exit code: ${exitCode}，podId: ${podId}）${stderrText ? "，stderr 詳見下行" : "，無 stderr 輸出"}`,
+    );
+    if (stderrText) {
+      // stderr 遮蔽敏感資訊後寫進 logger，不對外廣播
+      const maskedText = maskSensitiveText(stderrText);
+      logger.error("Chat", "Error", `[CodexProvider] stderr: ${maskedText}`);
+    }
+    yield {
+      type: "error",
+      message: `Codex 執行時發生錯誤（exit code: ${exitCode}），請查閱伺服器日誌`,
+      fatal: false,
+    };
+  }
+}
+
 export class CodexProvider implements AgentProvider {
   readonly name = "codex" as const;
   readonly capabilities = CODEX_CAPABILITIES;
@@ -132,49 +353,18 @@ export class CodexProvider implements AgentProvider {
         ? providerConfig.model
         : CODEX_DEFAULT_MODEL;
 
-    // ── 組合 CLI 參數 ──────────────────────────────────────────────
-    const codexArgs: string[] = [];
-
-    if (resumeSessionId) {
-      if (!SESSION_ID_RE.test(resumeSessionId)) {
-        // resumeSessionId 格式不合法，防止旗標注入，改走新對話
-        logger.warn(
-          "Chat",
-          "Warn",
-          `[CodexProvider] resumeSessionId 格式不合法，已略過並改為新對話：${resumeSessionId}`,
-        );
-        codexArgs.push(
-          "exec",
-          "-",
-          "--json",
-          "--yolo",
-          "--skip-git-repo-check",
-          "--model",
-          model,
-        );
-      } else {
-        // 恢復對話模式：不帶 --model（由 session 決定）
-        codexArgs.push(
-          "exec",
-          "resume",
-          resumeSessionId,
-          "-",
-          "--json",
-          "--yolo",
-        );
-      }
-    } else {
-      // 新對話模式
-      codexArgs.push(
-        "exec",
-        "-",
-        "--json",
-        "--yolo",
-        "--skip-git-repo-check",
-        "--model",
-        model,
-      );
+    // ── 驗證 model（防止 CLI 旗標注入） ───────────────────────────────
+    if (!MODEL_RE.test(model)) {
+      yield {
+        type: "error",
+        message: `不合法的 model 名稱：${model}`,
+        fatal: true,
+      };
+      return;
     }
+
+    // ── 組合 CLI 參數 ──────────────────────────────────────────────
+    const codexArgs = buildCodexArgs(resumeSessionId, model);
 
     // ── 組合 prompt 文字 ───────────────────────────────────────────
     const promptText = buildPromptText(message);
@@ -183,15 +373,8 @@ export class CodexProvider implements AgentProvider {
     let proc: Bun.Subprocess<"pipe", "pipe", "pipe"> | null = null;
 
     try {
-      proc = Bun.spawn(["codex", ...codexArgs], {
-        cwd: workspacePath,
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-        env: buildCodexEnv(),
-      });
+      proc = spawnCodexProcess(codexArgs, workspacePath);
     } catch (err: unknown) {
-      // ENOENT：codex CLI 尚未安裝
       const isNotFound =
         err instanceof Error &&
         ("code" in err
@@ -207,7 +390,7 @@ export class CodexProvider implements AgentProvider {
       } else {
         yield {
           type: "error",
-          message: `啟動 codex 子程序失敗：${err instanceof Error ? err.message : String(err)}`,
+          message: "啟動 codex 子程序失敗，請查 server log",
           fatal: true,
         };
       }
@@ -235,72 +418,7 @@ export class CodexProvider implements AgentProvider {
     abortSignal.addEventListener("abort", onAbort, { once: true });
 
     try {
-      // ── 寫入 prompt 到 stdin 後關閉 ────────────────────────────
-      // Bun.Subprocess.stdin 是 FileSink，直接呼叫 write/end
-      proc.stdin.write(promptText);
-      await proc.stdin.end();
-
-      // ── 逐行讀取 stdout ─────────────────────────────────────────
-      let buffer = "";
-      let hasTurnComplete = false;
-
-      for await (const chunk of proc.stdout as ReadableStream<Uint8Array>) {
-        if (abortSignal.aborted) break;
-
-        buffer += Buffer.from(chunk as Uint8Array).toString("utf-8");
-
-        const lines = buffer.split("\n");
-        // 最後一段可能不完整，保留在 buffer
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const event = normalize(line);
-          if (event !== null) {
-            if (event.type === "turn_complete") {
-              hasTurnComplete = true;
-            }
-            yield event;
-          }
-        }
-      }
-
-      // 處理 stdout 結束時剩餘的 buffer 內容
-      if (buffer.trim()) {
-        const event = normalize(buffer);
-        if (event !== null) {
-          if (event.type === "turn_complete") {
-            hasTurnComplete = true;
-          }
-          yield event;
-        }
-      }
-
-      // ── 收集 stderr（僅用於 exit code 處理時的 server log） ─────
-      const stderrChunks: Buffer[] = [];
-      for await (const chunk of proc.stderr as ReadableStream<Uint8Array>) {
-        stderrChunks.push(Buffer.from(chunk as Uint8Array));
-      }
-      const stderrText = Buffer.concat(stderrChunks).toString("utf-8").trim();
-
-      // ── exit code 檢查 ──────────────────────────────────────────
-      const exitCode = await proc.exited;
-
-      if (exitCode !== 0 && !abortSignal.aborted && !hasTurnComplete) {
-        logger.error(
-          "Chat",
-          "Error",
-          `[CodexProvider] codex 子程序以非零 exit code 結束（exit code: ${exitCode}，podId: ${podId}）${stderrText ? "，stderr 詳見下行" : "，無 stderr 輸出"}`,
-        );
-        if (stderrText) {
-          // stderr 原文只輸出到 server log，不對外廣播（避免洩漏 API key 等敏感資訊）
-          console.error(stderrText);
-        }
-        yield {
-          type: "error",
-          message: `Codex 執行時發生錯誤（exit code: ${exitCode}），請查閱伺服器日誌`,
-          fatal: false,
-        };
-      }
+      yield* streamCodexOutput(proc, promptText, abortSignal, podId);
     } finally {
       abortSignal.removeEventListener("abort", onAbort);
       this.activeProcesses.delete(sessionKey);

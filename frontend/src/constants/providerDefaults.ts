@@ -3,7 +3,7 @@ import type { ProviderCapabilities } from "@/types/pod";
 /** 新建 Claude Pod 的預設模型（與 enrichPod fallback 一致） */
 export const CLAUDE_DEFAULT_MODEL = "opus";
 
-/** 新建 Codex Pod 的預設模型 */
+/** 新建 Codex Pod 的預設模型（需與後端 backend/src/services/provider/capabilities.ts 同步） */
 export const CODEX_DEFAULT_MODEL = "gpt-5.4";
 
 /** Codex Provider 的功能能力（目前僅支援基本聊天） */

@@ -116,9 +116,7 @@ export const usePodStore = defineStore("pod", () => {
     };
 
     if (!isValidPod(mergedPod)) {
-      console.warn("[PodStore] updatePod 驗證失敗，已忽略更新", {
-        podId: pod.id,
-      });
+      console.warn("[PodStore] updatePod 驗證失敗，已忽略更新");
       return;
     }
     pods.value.splice(index, 1, mergedPod);
@@ -448,13 +446,18 @@ export const usePodStore = defineStore("pod", () => {
   }
 
   function triggerScheduleFiredAnimation(podId: string): void {
-    scheduleFiredPodIds.value.delete(podId);
-    scheduleFiredPodIds.value = new Set([...scheduleFiredPodIds.value, podId]);
+    // 先在原 Set 上操作，再以 new Set() 淺複製觸發響應式更新，避免展開整個 Set
+    const next = new Set(scheduleFiredPodIds.value);
+    next.delete(podId);
+    next.add(podId);
+    scheduleFiredPodIds.value = next;
   }
 
   function clearScheduleFiredAnimation(podId: string): void {
-    scheduleFiredPodIds.value.delete(podId);
-    scheduleFiredPodIds.value = new Set(scheduleFiredPodIds.value);
+    // 同上，淺複製後刪除再賦值觸發響應式
+    const next = new Set(scheduleFiredPodIds.value);
+    next.delete(podId);
+    scheduleFiredPodIds.value = next;
   }
 
   // 切換 canvas 時重設 pod 相關狀態

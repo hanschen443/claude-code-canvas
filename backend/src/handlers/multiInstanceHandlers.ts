@@ -5,10 +5,8 @@ import {
   validatePod,
   withCanvasId,
   emitPodUpdated,
+  assertCapability,
 } from "../utils/handlerHelpers.js";
-import { emitError } from "../utils/websocketResponse.js";
-import { createI18nError } from "../utils/i18nError.js";
-import { getCapabilities } from "../services/provider/index.js";
 
 export const handlePodSetMultiInstance =
   withCanvasId<PodSetMultiInstancePayload>(
@@ -32,16 +30,17 @@ export const handlePodSetMultiInstance =
         return;
       }
 
-      // Capability 守門：Codex Pod 不支援 Run 模式，拒絕開啟 multiInstance
-      if (multiInstance === true && !getCapabilities(pod.provider).runMode) {
-        emitError(
+      // Capability 守門：僅在啟用方向（true）檢查，不支援 runMode 的 provider 拒絕開啟
+      if (
+        multiInstance === true &&
+        !assertCapability(
           connectionId,
+          pod,
+          "runMode",
           WebSocketResponseEvents.POD_MULTI_INSTANCE_SET,
-          createI18nError("errors.runNotSupported", { provider: pod.provider }),
           requestId,
-          pod.id,
-          "RUN_NOT_SUPPORTED",
-        );
+        )
+      ) {
         return;
       }
 

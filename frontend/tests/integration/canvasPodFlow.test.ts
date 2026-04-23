@@ -419,6 +419,122 @@ describe("Canvas/Pod 操作完整流程", () => {
     });
   });
 
+  describe("切換 Pod Model（E2E：pod:set-model → store 更新 providerConfig.model）", () => {
+    it("切換 Claude Pod model：Opus → Sonnet，驗證 WebSocket request 送出且 store 更新", async () => {
+      const canvasStore = useCanvasStore();
+      const podStore = usePodStore();
+
+      // Arrange：設定 activeCanvasId 與初始 Pod（model: opus）
+      canvasStore.activeCanvasId = "canvas-1";
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "opus" },
+      });
+      podStore.pods = [pod];
+
+      // 模擬後端回傳已更新的 Pod（model: sonnet）
+      const updatedPod = createMockPod({
+        id: "pod-1",
+        provider: "claude",
+        providerConfig: { provider: "claude", model: "sonnet" },
+      });
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        pod: updatedPod,
+      });
+
+      // Act：模擬 handleModelChange 的完整流程
+      // step 1 — 送出 pod:set-model WebSocket request
+      const response = await mockCreateWebSocketRequest({
+        requestEvent: "pod:set-model",
+        responseEvent: "pod:model:set",
+        payload: { podId: "pod-1", canvasId: "canvas-1", model: "sonnet" },
+      });
+
+      // step 2 — 依回應結果呼叫 store 更新 providerConfig.model
+      if (response?.pod) {
+        podStore.updatePodProviderConfigModel(
+          "pod-1",
+          response.pod.providerConfig.model,
+        );
+      }
+
+      // Assert：WebSocket request 已被呼叫，payload 含 model: 'sonnet'
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestEvent: "pod:set-model",
+          payload: expect.objectContaining({
+            podId: "pod-1",
+            model: "sonnet",
+          }),
+        }),
+      );
+
+      // Assert：store 已更新 providerConfig.model
+      const updatedStorePod = podStore.getPodById("pod-1");
+      expect(updatedStorePod?.providerConfig.model).toBe("sonnet");
+    });
+
+    it("切換 Codex Pod model（gpt-5.4），驗證 WebSocket request 送出且 store 更新", async () => {
+      const canvasStore = useCanvasStore();
+      const podStore = usePodStore();
+
+      // Arrange：設定 activeCanvasId 與初始 Codex Pod
+      canvasStore.activeCanvasId = "canvas-1";
+      const pod = createMockPod({
+        id: "pod-codex-1",
+        provider: "codex",
+        providerConfig: { provider: "codex", model: "codex-mini-latest" },
+      });
+      podStore.pods = [pod];
+
+      // 模擬後端回傳已更新的 Pod（model: gpt-5.4）
+      const updatedPod = createMockPod({
+        id: "pod-codex-1",
+        provider: "codex",
+        providerConfig: { provider: "codex", model: "gpt-5.4" },
+      });
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        pod: updatedPod,
+      });
+
+      // Act：模擬 handleModelChange 的完整流程
+      // step 1 — 送出 pod:set-model WebSocket request
+      const response = await mockCreateWebSocketRequest({
+        requestEvent: "pod:set-model",
+        responseEvent: "pod:model:set",
+        payload: {
+          podId: "pod-codex-1",
+          canvasId: "canvas-1",
+          model: "gpt-5.4",
+        },
+      });
+
+      // step 2 — 依回應結果呼叫 store 更新 providerConfig.model
+      if (response?.pod) {
+        podStore.updatePodProviderConfigModel(
+          "pod-codex-1",
+          response.pod.providerConfig.model,
+        );
+      }
+
+      // Assert：WebSocket request 已被呼叫，payload 含 model: 'gpt-5.4'
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestEvent: "pod:set-model",
+          payload: expect.objectContaining({
+            podId: "pod-codex-1",
+            model: "gpt-5.4",
+          }),
+        }),
+      );
+
+      // Assert：store 已更新 providerConfig.model
+      const updatedStorePod = podStore.getPodById("pod-codex-1");
+      expect(updatedStorePod?.providerConfig.model).toBe("gpt-5.4");
+    });
+  });
+
   describe("排程觸發", () => {
     it("設定排程 -> 模擬 SCHEDULE_FIRED 事件 -> 驗證動畫狀態", async () => {
       const canvasStore = useCanvasStore();

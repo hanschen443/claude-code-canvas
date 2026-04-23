@@ -237,8 +237,13 @@ export class ClaudeService {
   private handleSystemInitMessage(
     sdkMessage: SDKSystemMessage,
     state: QueryState,
+    onSessionInit?: (sessionId: string) => void,
   ): void {
     state.sessionId = sdkMessage.session_id;
+    // 立即通知呼叫方 sessionId，讓上層能在串流開始時就發出 session_started 事件
+    if (sdkMessage.session_id && onSessionInit) {
+      onSessionInit(sdkMessage.session_id);
+    }
   }
 
   private processTextBlock(
@@ -485,9 +490,10 @@ export class ClaudeService {
     sdkMessage: SDKMessage,
     state: QueryState,
     onStream: StreamCallback,
+    onSessionInit?: (sessionId: string) => void,
   ): void {
     if (sdkMessage.type === "system" && sdkMessage.subtype === "init") {
-      this.handleSystemInitMessage(sdkMessage, state);
+      this.handleSystemInitMessage(sdkMessage, state, onSessionInit);
       return;
     }
 
@@ -809,6 +815,8 @@ export class ClaudeService {
     message: string | ContentBlock[],
     onStream: StreamCallback,
     runOptions?: RunQueryOptions,
+    /** 當 Claude SDK 發出 system/init 訊息（sessionId 確立）時立即呼叫的 callback */
+    onSessionInit?: (sessionId: string) => void,
   ): Promise<Message> {
     return this.sendMessageInternal(
       podId,
@@ -816,6 +824,7 @@ export class ClaudeService {
       onStream,
       false,
       runOptions,
+      onSessionInit,
     );
   }
 
@@ -824,9 +833,10 @@ export class ClaudeService {
     abortController: AbortController,
     state: QueryState,
     onStream: StreamCallback,
+    onSessionInit?: (sessionId: string) => void,
   ): Promise<void> {
     for await (const sdkMessage of queryStream) {
-      this.processSDKMessage(sdkMessage, state, onStream);
+      this.processSDKMessage(sdkMessage, state, onStream, onSessionInit);
     }
 
     // 防禦性檢查：若 abort signal 已觸發但未拋出 AbortError，手動拋出
@@ -857,6 +867,7 @@ export class ClaudeService {
     onStream: StreamCallback,
     isRetry: boolean,
     retryFn: () => Promise<Message>,
+    onSessionInit?: (sessionId: string) => void,
   ): Promise<Message | null> {
     const { queryKey, queryOptions } = context;
     const { abortController } = queryOptions;
@@ -864,7 +875,13 @@ export class ClaudeService {
     this.activeQueries.set(queryKey, { queryStream, abortController });
 
     try {
-      await this.runQueryStream(queryStream, abortController, state, onStream);
+      await this.runQueryStream(
+        queryStream,
+        abortController,
+        state,
+        onStream,
+        onSessionInit,
+      );
       this.finalizeSession(context, state);
       return null;
     } catch (error) {
@@ -920,6 +937,7 @@ export class ClaudeService {
     onStream: StreamCallback,
     isRetry: boolean,
     runOptions?: RunQueryOptions,
+    onSessionInit?: (sessionId: string) => void,
   ): Promise<Message> {
     const result = podStore.getByIdGlobal(podId);
     if (!result) {
@@ -951,7 +969,15 @@ export class ClaudeService {
       onStream,
       isRetry,
       () =>
-        this.sendMessageInternal(podId, message, onStream, true, runOptions),
+        this.sendMessageInternal(
+          podId,
+          message,
+          onStream,
+          true,
+          runOptions,
+          onSessionInit,
+        ),
+      onSessionInit,
     );
 
     if (retryResult !== null) {

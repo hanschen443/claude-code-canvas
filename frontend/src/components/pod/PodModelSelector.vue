@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import type { PodProvider } from "@/types/pod";
+import { CODEX_DEFAULT_MODEL } from "@/constants/providerDefaults";
 
 const props = defineProps<{
   podId: string;
@@ -24,7 +25,7 @@ const hoverTimeoutId = ref<number | null>(null);
 /** 依 provider 動態決定可選模型清單 */
 const allOptions = computed(() => {
   if (props.provider === "codex") {
-    return [{ label: "GPT 5.4", value: "gpt-5.4" }];
+    return [{ label: "GPT 5.4", value: CODEX_DEFAULT_MODEL }];
   }
   // claude（預設）
   return [

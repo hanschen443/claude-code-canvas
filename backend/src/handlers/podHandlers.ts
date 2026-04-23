@@ -204,6 +204,7 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
     const { podId, name } = payload;
     const trimmedName = name.trim();
 
+    // 預檢：讓常見重複命名情境快速回錯（非最終保證，SQLite 層才是最終防線）
     if (podStore.hasName(canvasId, trimmedName)) {
       emitError(
         connectionId,
@@ -216,31 +217,64 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
       return;
     }
 
-    const oldName = podStore.getById(canvasId, podId)?.name;
-
-    handlePodUpdate(
+    const existingPod = validatePod(
       connectionId,
-      canvasId,
       podId,
-      { name: trimmedName },
-      requestId,
       WebSocketResponseEvents.POD_RENAMED,
-      (pod) => {
-        logger.log(
-          "Pod",
-          "Rename",
-          `已重命名 Pod「${oldName ?? podId}」為「${pod.name}」`,
-        );
-        return {
-          requestId,
-          canvasId,
-          success: true,
-          pod,
-          podId: pod.id,
-          name: pod.name,
-        };
-      },
+      requestId,
     );
+    if (!existingPod) return;
+
+    const oldName = existingPod.name;
+
+    let result: ReturnType<typeof podStore.update>;
+    try {
+      result = podStore.update(canvasId, podId, { name: trimmedName });
+    } catch (e) {
+      // SQLite UNIQUE constraint 違反：並發請求造成名稱衝突（TOCTOU 防護）
+      if (
+        e instanceof Error &&
+        e.message.includes("UNIQUE constraint failed")
+      ) {
+        emitError(
+          connectionId,
+          WebSocketResponseEvents.POD_RENAMED,
+          createI18nError("errors.podNameDuplicate"),
+          requestId,
+          podId,
+          "POD_NAME_DUPLICATE",
+        );
+        return;
+      }
+      throw e;
+    }
+
+    if (!result) {
+      emitError(
+        connectionId,
+        WebSocketResponseEvents.POD_RENAMED,
+        createI18nError("errors.podUpdateFailed", { id: podId }),
+        requestId,
+        podId,
+        "INTERNAL_ERROR",
+      );
+      return;
+    }
+
+    logger.log(
+      "Pod",
+      "Rename",
+      `已重命名 Pod「${oldName}」為「${result.pod.name}」`,
+    );
+
+    socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_RENAMED, {
+      requestId,
+      canvasId,
+      success: true,
+      pod: result.pod,
+      podId: result.pod.id,
+      name: result.pod.name,
+    });
   },
 );
 
@@ -254,7 +288,7 @@ export const handlePodSetModel = withCanvasId<PodSetModelPayload>(
   ): Promise<void> => {
     const { podId, model } = payload;
 
-    // 讀取現有 providerConfig，merge { model } 後寫回，保留其他既有 keys
+    // 讀取現有 providerConfig，以白名單 merge 後寫回，避免未知 key 污染
     const existingPod = validatePod(
       connectionId,
       podId,
@@ -263,8 +297,11 @@ export const handlePodSetModel = withCanvasId<PodSetModelPayload>(
     );
     if (!existingPod) return;
 
-    const mergedProviderConfig: Record<string, unknown> = {
-      ...(existingPod.providerConfig ?? {}),
+    // 白名單 merge：目前只保留 model；未來新增安全 key 時在此同步擴充
+    const safeProviderConfig: Record<string, unknown> = {
+      ...(existingPod.providerConfig?.model
+        ? { model: existingPod.providerConfig.model }
+        : {}),
       model,
     };
 
@@ -272,7 +309,7 @@ export const handlePodSetModel = withCanvasId<PodSetModelPayload>(
       connectionId,
       canvasId,
       podId,
-      { providerConfig: mergedProviderConfig },
+      { providerConfig: safeProviderConfig },
       requestId,
       WebSocketResponseEvents.POD_MODEL_SET,
       (pod) => ({ requestId, canvasId, success: true, pod }),

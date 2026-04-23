@@ -226,7 +226,8 @@
       "duplicateTitle": "Already exists, cannot insert",
       "skillDuplicate": "This Skill is already bound to this Pod",
       "subAgentDuplicate": "This SubAgent is already bound to this Pod",
-      "mcpServerDuplicate": "This MCP Server is already bound to this Pod"
+      "mcpServerDuplicate": "This MCP Server is already bound to this Pod",
+      "codexDisabled": "Codex doesn't support this"
     }
   },
   "run": {

@@ -226,7 +226,8 @@
       "duplicateTitle": "已存在，無法插入",
       "skillDuplicate": "此 Skill 已綁定到此 Pod",
       "subAgentDuplicate": "此 SubAgent 已綁定到此 Pod",
-      "mcpServerDuplicate": "此 MCP Server 已綁定到此 Pod"
+      "mcpServerDuplicate": "此 MCP Server 已綁定到此 Pod",
+      "codexDisabled": "Codex 不支援此功能"
     }
   },
   "run": {

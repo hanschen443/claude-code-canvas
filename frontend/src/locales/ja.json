@@ -73,7 +73,8 @@
       "duplicateTitle": "すでに存在しています",
       "skillDuplicate": "このスキルはすでにこの Pod にバインドされています",
       "subAgentDuplicate": "このサブエージェントはすでにこの Pod にバインドされています",
-      "mcpServerDuplicate": "この MCP サーバーはすでにこの Pod にバインドされています"
+      "mcpServerDuplicate": "この MCP サーバーはすでにこの Pod にバインドされています",
+      "codexDisabled": "Codex はこの機能をサポートしていません"
     }
   },
   "run": {

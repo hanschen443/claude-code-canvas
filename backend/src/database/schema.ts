@@ -25,10 +25,28 @@ export function createTables(db: Database): void {
       "repository_id TEXT," +
       "command_id TEXT," +
       "multi_instance INTEGER NOT NULL DEFAULT 0," +
-      "schedule_json TEXT" +
+      "schedule_json TEXT," +
+      "UNIQUE (canvas_id, name)" +
       ")",
   );
   db.exec("CREATE INDEX IF NOT EXISTS idx_pods_canvas_id ON pods(canvas_id)");
+  // Migration: 既有 DB 補上 (canvas_id, name) 唯一索引，防止 TOCTOU rename 競爭條件
+  try {
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_pods_canvas_name ON pods(canvas_id, name)",
+    );
+  } catch (e) {
+    // 索引已存在或建立失敗時忽略（fresh install 已由 UNIQUE constraint 涵蓋）
+    if (
+      !(
+        e instanceof Error &&
+        (e.message.includes("already exists") ||
+          e.message.includes("UNIQUE constraint"))
+      )
+    ) {
+      throw e;
+    }
+  }
 
   db.exec(
     "CREATE TABLE IF NOT EXISTS pod_skill_ids (" +

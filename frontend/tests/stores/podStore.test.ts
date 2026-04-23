@@ -515,7 +515,6 @@ describe("podStore", () => {
       expect(store.pods[0]?.x).toBe(100);
       expect(console.warn).toHaveBeenCalledWith(
         "[PodStore] updatePod 驗證失敗，已忽略更新",
-        { podId: "pod-1" },
       );
     });
 
@@ -1664,6 +1663,54 @@ describe("podStore", () => {
 
       expect(store.pods[0]?.x).toBe(500);
       expect(store.pods[0]?.y).toBe(600);
+    });
+  });
+
+  describe("updatePodProviderConfigModel", () => {
+    it("應將 providerConfig.model 更新為新值", () => {
+      const store = usePodStore();
+      // 建立一個 codex provider 的 Pod，初始 model 為 gpt-5.4
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "codex",
+        providerConfig: { provider: "codex", model: "gpt-5.4" },
+      });
+      store.pods = [pod];
+
+      store.updatePodProviderConfigModel("pod-1", "gpt-5.5-something");
+
+      expect(store.pods[0]?.providerConfig?.model).toBe("gpt-5.5-something");
+    });
+
+    it("Pod 不存在時應靜默忽略不拋錯，store state 不變", () => {
+      const store = usePodStore();
+      const pod = createMockPod({ id: "pod-1" });
+      store.pods = [pod];
+      const originalModel = store.pods[0]?.providerConfig?.model;
+
+      // 對不存在的 podId 呼叫，不應 throw，也不應改動其他 pod
+      expect(() =>
+        store.updatePodProviderConfigModel("non-existent", "new-model"),
+      ).not.toThrow();
+      expect(store.pods[0]?.providerConfig?.model).toBe(originalModel);
+    });
+
+    it("應保留 providerConfig 中的 provider 欄位不被覆蓋", () => {
+      const store = usePodStore();
+      // ProviderConfig 為 strict discriminated union（只有 provider + model 兩個 key），
+      // 因此只驗證 provider 欄位在更新後不被清除
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "codex",
+        providerConfig: { provider: "codex", model: "gpt-5.4" },
+      });
+      store.pods = [pod];
+
+      store.updatePodProviderConfigModel("pod-1", "new-model");
+
+      expect(store.pods[0]?.providerConfig?.model).toBe("new-model");
+      // provider 欄位應保持不變
+      expect(store.pods[0]?.providerConfig?.provider).toBe("codex");
     });
   });
 

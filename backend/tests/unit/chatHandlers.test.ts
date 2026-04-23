@@ -308,6 +308,100 @@ describe("handleChatSend", () => {
     expect(errorCalls).toHaveLength(0);
     expect(mockLaunchMultiInstanceRun).toHaveBeenCalled();
   });
+
+  // ================================================================
+  // Codex Pod multiInstance=false：走一般 chat 流程（review #29 + #36）
+  // ================================================================
+  it("Codex Pod multiInstance=false 時 capability 守門不應觸發，應走一般 chat 流程", async () => {
+    // capability 守門只在 multiInstance===true 時才判斷，false 時直接略過
+    const pod = makePod({
+      provider: "codex",
+      multiInstance: false,
+      status: "idle",
+    });
+    mockValidatePod.mockReturnValue(pod);
+    mockInjectUserMessage.mockResolvedValue(undefined);
+    mockExecuteStreamingChat.mockResolvedValue(undefined);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "codex 一般對話" },
+      REQUEST_ID,
+    );
+
+    // 不應觸發 RUN_NOT_SUPPORTED
+    const runNotSupportedCalls = (
+      mockEmitError.mock.calls as unknown[][]
+    ).filter((args) => args[5] === "RUN_NOT_SUPPORTED");
+    expect(runNotSupportedCalls).toHaveLength(0);
+    // 應走一般 chat 流程：呼叫 executeStreamingChat 而非 launchMultiInstanceRun
+    expect(mockExecuteStreamingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canvasId: CANVAS_ID,
+        podId: POD_ID,
+        message: "codex 一般對話",
+        abortable: true,
+      }),
+      expect.objectContaining({
+        onComplete: expect.any(Function),
+        onAborted: expect.any(Function),
+      }),
+    );
+    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+  });
+
+  it("Codex Pod multiInstance=false 仍應通過 validateIntegrationBindings 與 validatePodNotBusy 驗證鏈", async () => {
+    // 有 integration bindings 時應擋住，與 provider 無關
+    const podWithBindings = makePod({
+      provider: "codex",
+      multiInstance: false,
+      integrationBindings: [{ id: "bind-1" }],
+    });
+    mockValidatePod.mockReturnValue(podWithBindings);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "codex 被擋住" },
+      REQUEST_ID,
+    );
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.objectContaining({ key: expect.any(String) }),
+      REQUEST_ID,
+      POD_ID,
+      "INTEGRATION_BOUND",
+    );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+  });
+
+  it("Codex Pod multiInstance=false 且 Pod busy 時應回傳 POD_BUSY 錯誤", async () => {
+    // validatePodNotBusy 對 codex normal mode 仍應有效
+    const pod = makePod({
+      provider: "codex",
+      multiInstance: false,
+      status: "chatting",
+    });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "codex busy 測試" },
+      REQUEST_ID,
+    );
+
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.objectContaining({ key: expect.any(String) }),
+      REQUEST_ID,
+      POD_ID,
+      "POD_BUSY",
+    );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+  });
 });
 
 // ================================================================

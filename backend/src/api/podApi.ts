@@ -172,6 +172,7 @@ export async function handleCreatePod(
     return jsonResponse({ error: validated.error }, HTTP_STATUS.BAD_REQUEST);
   }
 
+  // 預檢：讓常見的重複名稱情境快速回錯，不需等到 DB 插入
   if (podStore.hasName(canvas.id, validated.name)) {
     return jsonResponse(
       { error: "同一 Canvas 下已存在相同名稱的 Pod" },
@@ -179,19 +180,32 @@ export async function handleCreatePod(
     );
   }
 
-  const result = await createPodWithWorkspace(
-    canvas.id,
-    {
-      name: validated.name,
-      x: validated.x,
-      y: validated.y,
-      rotation: 0,
-      model: validated.model,
-      provider: validated.provider,
-      providerConfig: validated.providerConfig,
-    },
-    "system",
-  );
+  let result: Awaited<ReturnType<typeof createPodWithWorkspace>>;
+  try {
+    result = await createPodWithWorkspace(
+      canvas.id,
+      {
+        name: validated.name,
+        x: validated.x,
+        y: validated.y,
+        rotation: 0,
+        model: validated.model,
+        provider: validated.provider,
+        providerConfig: validated.providerConfig,
+      },
+      "system",
+    );
+  } catch (e) {
+    // 並發請求同時通過預檢時，DB 的 UNIQUE 約束會擋下後者
+    // Bun SQLite 的 UNIQUE 違反 error.code 為 "SQLITE_CONSTRAINT_UNIQUE"
+    if (
+      e instanceof Error &&
+      (e as NodeJS.ErrnoException).code === "SQLITE_CONSTRAINT_UNIQUE"
+    ) {
+      return jsonResponse({ error: "Pod 名稱已存在" }, HTTP_STATUS.CONFLICT);
+    }
+    throw e;
+  }
 
   if (!result.success) {
     logger.error(

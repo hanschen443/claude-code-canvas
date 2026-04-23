@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import type { IntegrationBinding } from "../types/integration.js";
 import type { ProviderName } from "./provider/types.js";
+import { CODEX_DEFAULT_MODEL } from "./provider/capabilities.js";
 import { socketService } from "./socketService.js";
 import { canvasStore } from "./canvasStore.js";
 import { getStmts } from "../database/stmtsHelper.js";
@@ -17,8 +18,20 @@ import { safeJsonParse } from "../utils/safeJsonParse.js";
 
 /** Claude provider 的預設 model */
 const CLAUDE_DEFAULT_MODEL = "opus" as const;
-/** Codex provider 的預設 model */
-const CODEX_DEFAULT_MODEL = "gpt-5.4" as const;
+
+/** LRU 快取上限（entry 數） */
+const STMT_CACHE_MAX = 32;
+
+/**
+ * 簡易 LRU 輔助函式：set 前若 cache size 已達上限則刪除最舊的 entry。
+ * Map 在 ES2015+ 維持插入順序，keys().next().value 即最舊 key。
+ */
+function lruSet<K, V>(cache: Map<K, V>, key: K, value: V): void {
+  if (cache.size >= STMT_CACHE_MAX) {
+    cache.delete(cache.keys().next().value as K);
+  }
+  cache.set(key, value);
+}
 
 type PodUpdates = Partial<Omit<Pod, "schedule">> & {
   schedule?: ScheduleConfig | null;
@@ -65,7 +78,7 @@ function serializeSchedule(schedule?: ScheduleConfig): string | null {
 }
 
 class PodStore {
-  /** 以 podIds 長度為 key 快取 batchLoadRelations 用的 PreparedStatement */
+  /** 以 podIds 長度為 key 快取 batchLoadRelations 用的 PreparedStatement（LRU 上限 32） */
   private readonly relationsStmtCache = new Map<
     number,
     {
@@ -76,9 +89,15 @@ class PodStore {
     }
   >();
 
-  /** 以 podIds 長度為 key 快取 batchLoadBindings 用的 PreparedStatement */
+  /** 以 podIds 長度為 key 快取 batchLoadBindings 用的 PreparedStatement（LRU 上限 32） */
   private readonly bindingsStmtCache = new Map<
     number,
+    ReturnType<Database["prepare"]>
+  >();
+
+  /** 以 "tableName:n" 為 key 快取 findByJoinTableId / findByIntegrationApp* 用的 PreparedStatement（LRU 上限 32） */
+  private readonly joinTableStmtCache = new Map<
+    string,
     ReturnType<Database["prepare"]>
   >();
 
@@ -145,7 +164,7 @@ class PodStore {
           `SELECT pod_id, plugin_id FROM pod_plugin_ids WHERE pod_id IN (${placeholders})`,
         ),
       };
-      this.relationsStmtCache.set(n, cached);
+      lruSet(this.relationsStmtCache, n, cached);
     }
 
     const skillRows = cached.skill.all(...podIds) as Array<{
@@ -211,7 +230,7 @@ class PodStore {
       stmt = db.prepare(
         `SELECT * FROM integration_bindings WHERE pod_id IN (${placeholders})`,
       );
-      this.bindingsStmtCache.set(n, stmt);
+      lruSet(this.bindingsStmtCache, n, stmt);
     }
 
     const rows = stmt.all(...podIds) as IntegrationBindingRow[];
@@ -234,6 +253,32 @@ class PodStore {
     return result;
   }
 
+  /** 解析 DB row 的 provider 欄位，不合法值 fallback 為 'claude' */
+  private resolveProvider(row: PodRow): ProviderName {
+    const validProviders: ProviderName[] = ["claude", "codex"];
+    return row.provider && validProviders.includes(row.provider as ProviderName)
+      ? (row.provider as ProviderName)
+      : "claude";
+  }
+
+  /** 解析 DB row 的 providerConfig，缺少 model 時補入對應 provider 的預設值 */
+  private resolveProviderConfig(
+    row: PodRow,
+    provider: ProviderName,
+  ): Record<string, unknown> | null {
+    let config: Record<string, unknown> | null =
+      safeJsonParse<Record<string, unknown>>(row.provider_config_json ?? "") ??
+      null;
+    if (config !== null && !("model" in config)) {
+      config = {
+        ...config,
+        model:
+          provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
+      };
+    }
+    return config;
+  }
+
   /**
    * 將多筆 PodRow 組合為 Pod 陣列，使用批次查詢取代逐筆子查詢。
    * 僅用於列表查詢（如 list()），避免 N+1 問題。
@@ -246,25 +291,8 @@ class PodStore {
     const bindingsMap = this.batchLoadBindings(podIds);
 
     return rows.map((row) => {
-      // 解析 provider，不合法的值 fallback 為 'claude'
-      const validProviders: ProviderName[] = ["claude", "codex"];
-      const provider: ProviderName =
-        row.provider && validProviders.includes(row.provider as ProviderName)
-          ? (row.provider as ProviderName)
-          : "claude";
-
-      // 解析 providerConfig，並在缺少 model 時補入 provider 預設 model
-      let providerConfig: Record<string, unknown> | null =
-        safeJsonParse<Record<string, unknown>>(
-          row.provider_config_json ?? "",
-        ) ?? null;
-      if (providerConfig !== null && !("model" in providerConfig)) {
-        providerConfig = {
-          ...providerConfig,
-          model:
-            provider === "codex" ? CODEX_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL,
-        };
-      }
+      const provider = this.resolveProvider(row);
+      const providerConfig = this.resolveProviderConfig(row, provider);
 
       // 若 providerConfig.model 存在，優先以它為準（POD_SET_MODEL 寫入路徑）
       const effectiveModel: Pod["model"] =
@@ -658,13 +686,16 @@ class PodStore {
     if (podIds.length === 0) return [];
 
     // 用 WHERE id IN (...) 一次取得所有 Pod，再過濾 canvas，避免 N+1
-    const db = getDb();
-    const placeholders = podIds.map(() => "?").join(", ");
-    const rows = db
-      .prepare(
+    const cacheKey = `pods_canvas_in:${podIds.length}`;
+    let stmt = this.joinTableStmtCache.get(cacheKey);
+    if (!stmt) {
+      const placeholders = podIds.map(() => "?").join(", ");
+      stmt = getDb().prepare(
         `SELECT * FROM pods WHERE canvas_id = ? AND id IN (${placeholders})`,
-      )
-      .all(canvasId, ...podIds) as PodRow[];
+      );
+      lruSet(this.joinTableStmtCache, cacheKey, stmt);
+    }
+    const rows = stmt.all(canvasId, ...podIds) as PodRow[];
     return this.rowsToPods(rows);
   }
 
@@ -794,11 +825,16 @@ class PodStore {
     if (podIds.length === 0) return [];
 
     // 用 WHERE id IN (...) 一次取得所有 Pod，避免 N+1
-    const db = getDb();
-    const placeholders = podIds.map(() => "?").join(", ");
-    const rows = db
-      .prepare(`SELECT * FROM pods WHERE id IN (${placeholders})`)
-      .all(...podIds) as PodRow[];
+    const cacheKey = `pods_in:${podIds.length}`;
+    let stmt = this.joinTableStmtCache.get(cacheKey);
+    if (!stmt) {
+      const placeholders = podIds.map(() => "?").join(", ");
+      stmt = getDb().prepare(
+        `SELECT * FROM pods WHERE id IN (${placeholders})`,
+      );
+      lruSet(this.joinTableStmtCache, cacheKey, stmt);
+    }
+    const rows = stmt.all(...podIds) as PodRow[];
     const canvasIdMap = new Map(rows.map((r) => [r.id, r.canvas_id]));
     const pods = this.rowsToPods(rows);
     return pods.map((pod) => ({ canvasId: canvasIdMap.get(pod.id)!, pod }));
@@ -817,11 +853,17 @@ class PodStore {
     if (podIds.length === 0) return [];
 
     // 用 WHERE id IN (...) 一次取得所有 Pod，避免 N+1
-    const db = getDb();
-    const placeholders = podIds.map(() => "?").join(", ");
-    const rows = db
-      .prepare(`SELECT * FROM pods WHERE id IN (${placeholders})`)
-      .all(...podIds) as PodRow[];
+    // 與 findByIntegrationApp 共用相同 cacheKey（SQL 結構一致，僅 IN 數量有別）
+    const cacheKey = `pods_in:${podIds.length}`;
+    let stmt = this.joinTableStmtCache.get(cacheKey);
+    if (!stmt) {
+      const placeholders = podIds.map(() => "?").join(", ");
+      stmt = getDb().prepare(
+        `SELECT * FROM pods WHERE id IN (${placeholders})`,
+      );
+      lruSet(this.joinTableStmtCache, cacheKey, stmt);
+    }
+    const rows = stmt.all(...podIds) as PodRow[];
     const canvasIdMap = new Map(rows.map((r) => [r.id, r.canvas_id]));
     const pods = this.rowsToPods(rows);
     return pods.map((pod) => ({ canvasId: canvasIdMap.get(pod.id)!, pod }));
@@ -862,11 +904,17 @@ class PodStore {
     podId: string,
     date: Date,
   ): void {
-    const pod = this.getById(canvasId, podId);
-    if (!pod?.schedule) return;
+    // 輕量查詢：只讀 schedule_json，不做 join table 查詢，避免 getById() 的完整多表 join
+    const row = this.stmts.pod.selectByCanvasIdAndId.get(canvasId, podId) as
+      | Pick<PodRow, "schedule_json">
+      | undefined;
+    if (!row?.schedule_json) return;
+
+    const persisted = safeJsonParse<Record<string, unknown>>(row.schedule_json);
+    if (!persisted) return;
 
     const updatedSchedule: ScheduleConfig = {
-      ...pod.schedule,
+      ...(persisted as unknown as ScheduleConfig),
       lastTriggeredAt: date,
     };
     this.stmts.pod.updateScheduleJson.run({
