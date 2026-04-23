@@ -85,7 +85,7 @@ describe("Canvas/Pod 操作完整流程", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
 
       expect(pod).toBeTruthy();
@@ -139,7 +139,7 @@ describe("Canvas/Pod 操作完整流程", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
 
       expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
@@ -177,7 +177,7 @@ describe("Canvas/Pod 操作完整流程", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "sonnet" },
+        providerConfig: { model: "sonnet" },
       });
 
       expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
@@ -429,7 +429,7 @@ describe("Canvas/Pod 操作完整流程", () => {
       const pod = createMockPod({
         id: "pod-1",
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
       podStore.pods = [pod];
 
@@ -437,7 +437,7 @@ describe("Canvas/Pod 操作完整流程", () => {
       const updatedPod = createMockPod({
         id: "pod-1",
         provider: "claude",
-        providerConfig: { provider: "claude", model: "sonnet" },
+        providerConfig: { model: "sonnet" },
       });
       mockCreateWebSocketRequest.mockResolvedValueOnce({
         pod: updatedPod,
@@ -484,7 +484,7 @@ describe("Canvas/Pod 操作完整流程", () => {
       const pod = createMockPod({
         id: "pod-codex-1",
         provider: "codex",
-        providerConfig: { provider: "codex", model: "codex-mini-latest" },
+        providerConfig: { model: "codex-mini-latest" },
       });
       podStore.pods = [pod];
 
@@ -492,7 +492,7 @@ describe("Canvas/Pod 操作完整流程", () => {
       const updatedPod = createMockPod({
         id: "pod-codex-1",
         provider: "codex",
-        providerConfig: { provider: "codex", model: "gpt-5.4" },
+        providerConfig: { model: "gpt-5.4" },
       });
       mockCreateWebSocketRequest.mockResolvedValueOnce({
         pod: updatedPod,

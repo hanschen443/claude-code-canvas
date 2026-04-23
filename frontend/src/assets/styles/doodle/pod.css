@@ -42,7 +42,8 @@
 }
 
 .pod-with-notch:has(.pod-doodle:hover) {
-  transform: translate(-0.5px, -0.5px) rotate(calc(var(--pod-rotation, 0deg) + 0.5deg));
+  transform: translate(-0.5px, -0.5px)
+    rotate(calc(var(--pod-rotation, 0deg) + 0.5deg));
 }
 
 .pod-with-notch.dragging,
@@ -73,11 +74,11 @@
 
 /* Output Style 凹槽視覺效果（POD 右側的小突出） */
 .pod-with-notch .pod-doodle::before {
-  content: '';
+  content: "";
   position: absolute;
-  right: -6px;  /* 凹槽往右延伸的距離 */
-  top: 16px;    /* 凹槽的垂直位置（相對於 .pod-doodle） */
-  width: 8px;   /* 凹槽寬度 */
+  right: -6px; /* 凹槽往右延伸的距離 */
+  top: 16px; /* 凹槽的垂直位置（相對於 .pod-doodle） */
+  width: 8px; /* 凹槽寬度 */
   height: 32px; /* 凹槽高度 */
   background: var(--card);
   border: 2px solid var(--doodle-ink);
@@ -88,11 +89,11 @@
 
 /* Skill 凹槽視覺效果（POD 左側） */
 .pod-with-skill-notch .pod-doodle::after {
-  content: '';
+  content: "";
   position: absolute;
-  left: -6px;   /* 凹槽往左延伸的距離 */
-  top: 16px;    /* 凹槽的垂直位置（與 Output Style 同高） */
-  width: 8px;   /* 凹槽寬度 */
+  left: -6px; /* 凹槽往左延伸的距離 */
+  top: 16px; /* 凹槽的垂直位置（與 Output Style 同高） */
+  width: 8px; /* 凹槽寬度 */
   height: 32px; /* 凹槽高度 */
   background: var(--card);
   border: 2px solid var(--doodle-ink);
@@ -116,7 +117,7 @@
 }
 
 .pod-anchor::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -288,8 +289,9 @@
 
 /* Error 狀態樣式 */
 .pod-status-error {
-  box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-              0 0 8px oklch(0.65 0.2 25 / 0.5);
+  box-shadow:
+    2px 2px 0 oklch(0.4 0.02 50 / 0.4),
+    0 0 8px oklch(0.65 0.2 25 / 0.5);
 }
 
 /* 排程觸發動畫狀態 - 作用於整個按鈕（包含背景） */
@@ -303,17 +305,49 @@
 @media (prefers-reduced-motion: reduce) {
   .pod-status-chatting {
     animation: none;
-    box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-                0 0 12px oklch(0.7 0.18 220 / 0.6);
+    box-shadow:
+      2px 2px 0 oklch(0.4 0.02 50 / 0.4),
+      0 0 12px oklch(0.7 0.18 220 / 0.6);
   }
 
   .pod-status-summarizing {
     animation: none;
-    box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-                0 0 8px 2px oklch(0.8 0.18 85 / 0.7);
+    box-shadow:
+      2px 2px 0 oklch(0.4 0.02 50 / 0.4),
+      0 0 8px 2px oklch(0.8 0.18 85 / 0.7);
   }
 
   .schedule-button.schedule-fired-animating {
     animation: none;
   }
+}
+
+/* ===========================================
+   Provider Pod 漸層樣式
+
+   套用對象：.pod-doodle 容器（Pod 本體）
+   效果：頂端依 provider 顏色，在 Header 下緣（約 48px）前淡化為 var(--card) 奶油白
+   注意：
+   - 48px = p-3（12px）+ text-base 文字行高（約 24px）+ gap/緩衝（12px），為估值，可依實測微調
+   - Mini screen（從 ~56px 開始）以下完全維持 var(--card) 奶油白，保持閱讀對比度
+   - 靜態漸層，無 transition/animation（效能考量）
+   - 狀態光暈（chatting/summarizing/error）為 box-shadow，不受 background 影響
+   =========================================== */
+
+/* Claude Pod：淡磚紅 → 奶油白（16px 終止） */
+.pod-provider-claude {
+  background: linear-gradient(
+    to bottom,
+    var(--pod-provider-claude-top) 0,
+    var(--card) 16px
+  );
+}
+
+/* Codex Pod：淺灰 → 奶油白（16px 終止） */
+.pod-provider-codex {
+  background: linear-gradient(
+    to bottom,
+    var(--pod-provider-codex-top) 0,
+    var(--card) 16px
+  );
 }

@@ -95,7 +95,7 @@ export function createMockPod(overrides?: Partial<Pod>): Pod {
     commandId: null,
     schedule: null,
     provider: "claude",
-    providerConfig: { provider: "claude", model: CLAUDE_DEFAULT_MODEL },
+    providerConfig: { model: CLAUDE_DEFAULT_MODEL },
     ...overrides,
   };
 }

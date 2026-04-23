@@ -579,7 +579,7 @@ describe("podStore", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
 
       expect(mockExecuteAction).toHaveBeenCalledWith(
@@ -593,7 +593,7 @@ describe("podStore", () => {
             y: 400,
             rotation: 0.5,
             provider: "claude",
-            providerConfig: { provider: "claude", model: "opus" },
+            providerConfig: { model: "opus" },
           }),
         }),
         expect.objectContaining({
@@ -639,7 +639,7 @@ describe("podStore", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
 
       expect(result).toBeNull();
@@ -671,7 +671,7 @@ describe("podStore", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
 
       expect(result).toBeNull();
@@ -708,7 +708,7 @@ describe("podStore", () => {
         commandId: null,
         schedule: null,
         provider: "claude",
-        providerConfig: { provider: "claude", model: "opus" },
+        providerConfig: { model: "opus" },
       });
 
       expect(result).toBeNull();
@@ -1673,7 +1673,7 @@ describe("podStore", () => {
       const pod = createMockPod({
         id: "pod-1",
         provider: "codex",
-        providerConfig: { provider: "codex", model: "gpt-5.4" },
+        providerConfig: { model: "gpt-5.4" },
       });
       store.pods = [pod];
 
@@ -1695,22 +1695,24 @@ describe("podStore", () => {
       expect(store.pods[0]?.providerConfig?.model).toBe(originalModel);
     });
 
-    it("應保留 providerConfig 中的 provider 欄位不被覆蓋", () => {
+    it("model 更新後 providerConfig 僅含 model 欄位（provider 判別改由 Pod.provider 負責）", () => {
       const store = usePodStore();
-      // ProviderConfig 為 strict discriminated union（只有 provider + model 兩個 key），
-      // 因此只驗證 provider 欄位在更新後不被清除
+      // ProviderConfig 現在只有 model 欄位，provider 身份由上層 Pod.provider 負責
       const pod = createMockPod({
         id: "pod-1",
         provider: "codex",
-        providerConfig: { provider: "codex", model: "gpt-5.4" },
+        providerConfig: { model: "gpt-5.4" },
       });
       store.pods = [pod];
 
       store.updatePodProviderConfigModel("pod-1", "new-model");
 
       expect(store.pods[0]?.providerConfig?.model).toBe("new-model");
-      // provider 欄位應保持不變
-      expect(store.pods[0]?.providerConfig?.provider).toBe("codex");
+      // Pod.provider 仍為 'codex'，providerConfig 只有 model 欄位
+      expect(store.pods[0]?.provider).toBe("codex");
+      expect(Object.keys(store.pods[0]?.providerConfig ?? {})).toEqual([
+        "model",
+      ]);
     });
   });
 

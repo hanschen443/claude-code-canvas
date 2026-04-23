@@ -1,43 +1,49 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
-import { MAX_POD_NAME_LENGTH } from '@/lib/constants'
-import { Pencil } from 'lucide-vue-next'
+import { ref, watch, nextTick } from "vue";
+import { MAX_POD_NAME_LENGTH } from "@/lib/constants";
+import { Pencil } from "lucide-vue-next";
 
 const props = defineProps<{
-  name: string
-  isEditing: boolean
-}>()
+  name: string;
+  isEditing: boolean;
+}>();
 
 const emit = defineEmits<{
-  'update:name': [name: string]
-  save: []
-  rename: []
-}>()
+  "update:name": [name: string];
+  save: [];
+  rename: [];
+}>();
 
-const editName = ref(props.name)
-const inputRef = ref<HTMLInputElement | null>(null)
+const editName = ref(props.name);
+const inputRef = ref<HTMLInputElement | null>(null);
 
-watch(() => props.name, (newName) => {
-  editName.value = newName
-})
+watch(
+  () => props.name,
+  (newName) => {
+    editName.value = newName;
+  },
+);
 
-watch(() => props.isEditing, (isEditing) => {
-  if (isEditing) {
-    nextTick(() => {
-      inputRef.value?.focus()
-    })
-  }
-})
+watch(
+  () => props.isEditing,
+  (isEditing) => {
+    if (isEditing) {
+      nextTick(() => {
+        inputRef.value?.focus();
+      });
+    }
+  },
+);
 
 const handleSave = (): void => {
-  const trimmedName = editName.value.trim()
+  const trimmedName = editName.value.trim();
   if (trimmedName && trimmedName.length <= MAX_POD_NAME_LENGTH) {
-    emit('update:name', trimmedName)
+    emit("update:name", trimmedName);
   } else {
-    editName.value = props.name
+    editName.value = props.name;
   }
-  emit('save')
-}
+  emit("save");
+};
 </script>
 
 <template>
@@ -52,11 +58,8 @@ const handleSave = (): void => {
         class="flex-1 min-w-0 w-full bg-transparent border-b-2 border-doodle-ink/50 outline-none font-sans text-base"
         @blur="handleSave"
         @keydown.enter="handleSave"
-      >
-      <h3
-        v-else
-        class="flex-1 font-sans text-base text-foreground truncate"
-      >
+      />
+      <h3 v-else class="flex-1 font-sans text-base text-foreground truncate">
         {{ name }}
       </h3>
       <button

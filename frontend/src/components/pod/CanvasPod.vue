@@ -89,6 +89,9 @@ const podStatusClass = computed(() => {
   return props.pod.status ? `pod-status-${props.pod.status}` : "";
 });
 
+// 依 provider 動態套用漸層 class，方便未來擴增第三個 provider
+const podProviderClass = computed(() => `pod-provider-${props.pod.provider}`);
+
 const emit = defineEmits<{
   select: [podId: string];
   update: [pod: Pod];
@@ -316,6 +319,7 @@ const handleContextMenu = (e: MouseEvent): void => {
         class="pod-doodle w-56 overflow-visible relative"
         :class="[
           podStatusClass,
+          podProviderClass,
           { selected: isSelected, dragging: isDragging || isBatchDragging },
         ]"
         @dblclick="handleDblClick"

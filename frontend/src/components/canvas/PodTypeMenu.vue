@@ -522,7 +522,7 @@ const { menuStyle } = useMenuPosition({
         >
           <component :is="podTypes[0].icon" :size="16" class="text-card" />
         </span>
-        <span class="font-mono text-sm text-foreground">新增 Pod &gt;</span>
+        <span class="font-mono text-sm text-foreground">Pod &gt;</span>
       </button>
 
       <!-- ProviderPicker 子選單，樣式對齊既有 pod-menu-submenu -->

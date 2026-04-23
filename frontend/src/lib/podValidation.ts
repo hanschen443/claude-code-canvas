@@ -42,9 +42,9 @@ function resolveProviderConfig(
 ): ProviderConfig {
   if (existing) return existing;
   if (provider === "codex") {
-    return { provider: "codex", model: CODEX_DEFAULT_MODEL };
+    return { model: CODEX_DEFAULT_MODEL };
   }
-  return { provider: "claude", model: CLAUDE_DEFAULT_MODEL };
+  return { model: CLAUDE_DEFAULT_MODEL };
 }
 
 /**

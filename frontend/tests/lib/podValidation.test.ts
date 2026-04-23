@@ -16,7 +16,7 @@ function makeRawPod(overrides: Partial<Pod> = {}): Pod {
     rotation: 0,
     output: [],
     provider: "claude",
-    providerConfig: { provider: "claude", model: CLAUDE_DEFAULT_MODEL },
+    providerConfig: { model: CLAUDE_DEFAULT_MODEL },
     ...overrides,
   };
 }
@@ -34,14 +34,13 @@ describe("enrichPod", () => {
 
   // --- case 2：provider='codex' 但缺 providerConfig 時補 codex 預設 ---
   describe("provider=codex 且缺 providerConfig 時補 codex 預設", () => {
-    it("providerConfig 應為 codex 預設值", () => {
+    it("providerConfig 應為 codex 預設值（僅含 model，不含 provider 欄位）", () => {
       const raw = makeRawPod({
         provider: "codex",
         providerConfig: undefined as any,
       });
       const enriched = enrichPod(raw);
       expect(enriched.providerConfig).toEqual({
-        provider: "codex",
         model: CODEX_DEFAULT_MODEL,
       });
     });
@@ -49,14 +48,13 @@ describe("enrichPod", () => {
 
   // --- case 3：provider='claude' 但缺 providerConfig 時補 claude 預設 ---
   describe("provider=claude 且缺 providerConfig 時補 claude 預設", () => {
-    it("providerConfig 應為 claude 預設值", () => {
+    it("providerConfig 應為 claude 預設值（僅含 model，不含 provider 欄位）", () => {
       const raw = makeRawPod({
         provider: "claude",
         providerConfig: undefined as any,
       });
       const enriched = enrichPod(raw);
       expect(enriched.providerConfig).toEqual({
-        provider: "claude",
         model: CLAUDE_DEFAULT_MODEL,
       });
     });
@@ -66,7 +64,6 @@ describe("enrichPod", () => {
   describe("既有 providerConfig 應原樣保留", () => {
     it("claude pod 的自訂 model 不應被覆蓋", () => {
       const customConfig = {
-        provider: "claude" as const,
         model: "haiku" as any,
       };
       const raw = makeRawPod({
@@ -79,7 +76,6 @@ describe("enrichPod", () => {
 
     it("codex pod 的自訂 model 不應被覆蓋", () => {
       const customConfig = {
-        provider: "codex" as const,
         model: "gpt-4o" as any,
       };
       const raw = makeRawPod({

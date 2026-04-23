@@ -7,9 +7,7 @@ export type PodStatus = "idle" | "chatting" | "summarizing" | "error";
 
 export type PodProvider = "claude" | "codex";
 
-export type ProviderConfig =
-  | { provider: "claude"; model: string }
-  | { provider: "codex"; model: string };
+export type ProviderConfig = { model: string };
 
 /** 各 Provider 支援的功能能力表 */
 export interface ProviderCapabilities {

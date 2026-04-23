@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const handleSelectClaude = (): void => {
   emit("select", {
     provider: "claude",
-    providerConfig: { provider: "claude", model: CLAUDE_DEFAULT_MODEL },
+    providerConfig: { model: CLAUDE_DEFAULT_MODEL },
   });
 };
 
@@ -24,7 +24,7 @@ const handleSelectClaude = (): void => {
 const handleSelectCodex = (): void => {
   emit("select", {
     provider: "codex",
-    providerConfig: { provider: "codex", model: CODEX_DEFAULT_MODEL },
+    providerConfig: { model: CODEX_DEFAULT_MODEL },
   });
 };
 </script>
