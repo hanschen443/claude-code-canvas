@@ -37,20 +37,30 @@ const EMPTY_AVAILABLE_MODELS: ReadonlyArray<ModelOption> = Object.freeze([]);
 
 /**
  * provider:list 回應的單一 Provider 資料結構。
- * defaultOptions 為 optional：後端 Phase 6 才會帶此欄位，
- * 前端先行處理以確保 graceful degradation。
+ * 後端保證 defaultOptions 與 availableModels 均會帶入。
  */
 interface ProviderListItem {
   name: PodProvider;
   capabilities: ProviderCapabilities;
-  /** 後端 Phase 6 後才帶入；不存在時預設 {} */
-  defaultOptions?: Record<string, unknown>;
-  /**
-   * 後端提供的可選模型清單；未來由此欄位取代前端 CLAUDE_OPTIONS / CODEX_OPTIONS 硬編碼。
-   * 後端尚未帶入時為 undefined，UI 層需 fallback 至內建清單。
-   */
-  availableModels?: ReadonlyArray<ModelOption>;
+  /** Provider 預設執行時選項（後端已移除伺服器敏感路徑） */
+  defaultOptions: Record<string, unknown>;
+  /** Provider 聲告支援的模型清單，前端模型選擇器依此動態渲染選項 */
+  availableModels: ReadonlyArray<ModelOption>;
 }
+
+/**
+ * syncFromPayload 的輸入型別。
+ * defaultOptions 與 availableModels 為 optional（有 ?? 防禦 fallback），
+ * 允許測試僅傳入 name + capabilities 而不必補齊所有欄位。
+ * 後端 WS 回應路徑使用 ProviderListItem（兩欄位必填），不受此影響。
+ */
+type SyncProviderItem = Omit<
+  ProviderListItem,
+  "defaultOptions" | "availableModels"
+> & {
+  defaultOptions?: Record<string, unknown>;
+  availableModels?: ReadonlyArray<ModelOption>;
+};
 
 /** provider:list:result 回應格式 */
 interface ProviderListResultPayload {
@@ -68,6 +78,9 @@ interface ProviderListPayload {
 export const useProviderCapabilityStore = defineStore(
   "providerCapability",
   () => {
+    // ---- Toast composable（store 頂層取得，避免 action 每次重新呼叫） ----
+    const { toast } = useToast();
+
     // ---- State ----
 
     /**
@@ -170,10 +183,11 @@ export const useProviderCapabilityStore = defineStore(
     /**
      * 把後端回傳的 providers 陣列寫入 state。
      * 同時更新 capabilitiesByProvider、defaultOptionsByProvider 與 availableModelsByProvider。
-     * 若 payload 未帶 defaultOptions，寫入 {} 確保 graceful degradation；
-     * 若 payload 未帶 availableModels，寫入空陣列，UI 層會 fallback 至 currentModel 單卡模式。
+     * 後端保證 defaultOptions 與 availableModels 均會帶入。
+     * 測試路徑可傳入 SyncProviderItem（兩欄位 optional，?? fallback 保護），
+     * 避免所有只關心 capabilities 的測試都要補齊非必填欄位。
      */
-    function syncFromPayload(providers: ProviderListItem[]): void {
+    function syncFromPayload(providers: SyncProviderItem[]): void {
       for (const {
         name,
         capabilities,
@@ -181,24 +195,22 @@ export const useProviderCapabilityStore = defineStore(
         availableModels,
       } of providers) {
         capabilitiesByProvider.value[name] = { ...capabilities };
-        // 後端 Phase 6 才送 defaultOptions，此階段先以 {} 填充確保不 crash
         defaultOptionsByProvider.value[name] = { ...(defaultOptions ?? {}) };
-        // 後端提供 availableModels 時寫入，未帶則以空陣列覆蓋；
-        // 淺拷貝一份避免外部引用污染 store 內部狀態
-        availableModelsByProvider.value[name] = availableModels
-          ? [...availableModels]
-          : [];
+        // Object.freeze 一次性凍結陣列，防止外部引用意外修改 store 內部狀態
+        availableModelsByProvider.value[name] = Object.freeze([
+          ...(availableModels ?? []),
+        ]);
       }
     }
 
     /**
      * 透過 WebSocket 向後端載入 provider capabilities。
-     * 失敗時維持初始空物件，並顯示警告 toast。
+     * 失敗時維持上一次成功載入的值（或初始空物件），並顯示警告 toast。
      */
     async function loadFromBackend(): Promise<void> {
-      const { toast } = useToast();
-
       try {
+        // createWebSocketRequest 的 payload 型別為 Omit<TPayload, "requestId">，
+        // 因此傳入 {} 即符合合約（requestId 由 createWebSocketRequest 內部自動產生並注入）
         const response = await createWebSocketRequest<
           ProviderListPayload,
           ProviderListResultPayload

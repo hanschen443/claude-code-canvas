@@ -13,8 +13,11 @@ const emit = defineEmits<{
   "update:model": [model: string];
 }>();
 
+/** hover 展開 debounce 延遲（毫秒）：防止滑鼠短暫經過時觸發展開動畫，150ms 為可感知的最小延遲 */
 const HOVER_DEBOUNCE_MS = 150;
+/** 收合動畫總時長（毫秒）：與 CSS transition 0.3s 對齊，確保動畫完全結束後才重設狀態 */
 const COLLAPSE_ANIMATION_MS = 300;
+/** 選取 feedback 等待時間（毫秒）：讓使用者看到選取視覺回饋後再觸發收合動畫，400ms 為自然停頓感 */
 const SELECT_FEEDBACK_DELAY_MS = 400;
 
 const isHovered = ref(false);
@@ -77,6 +80,12 @@ const effectiveOptions = computed((): ReadonlyArray<ModelOption> => {
 /** 單一選項時不開放切換，也不展開多張卡片 */
 const isSingleOption = computed(() => effectiveOptions.value.length === 1);
 
+/**
+ * 依 provider 動態決定每張卡片的背景色 class。
+ * 命名規則：`card-{provider}`，新增 provider 時只需在 CSS 加一條 rule，不需改 template。
+ */
+const providerCardClass = computed(() => `card-${props.provider}`);
+
 /** 單次迴圈同時收集 active 與 others，避免兩次掃描 */
 const sortedOptions = computed((): ModelOption[] => {
   const active: ModelOption[] = [];
@@ -122,7 +131,11 @@ const selectModel = async (model: string): Promise<void> => {
   // 不在清單內時直接 return 不 emit，防止 devtools 偽造非法 model 值
   if (!effectiveOptions.value.some((o) => o.value === model)) return;
 
-  if (model === props.currentModel) {
+  // 鎖定選取值：async 函式後續的 await 期間 props.currentModel 可能被外部更新，
+  // 用 local const 避免後續比較或 emit 時讀到新值造成競態
+  const selectedValue = model;
+
+  if (selectedValue === props.currentModel) {
     // 點擊 active 選項：直接收合
     isCollapsing.value = true;
     await sleep(COLLAPSE_ANIMATION_MS);
@@ -133,7 +146,7 @@ const selectModel = async (model: string): Promise<void> => {
   }
 
   isAnimating.value = true;
-  emit("update:model", model);
+  emit("update:model", selectedValue);
 
   // 視覺 feedback 後觸發收合動畫
   await sleep(SELECT_FEEDBACK_DELAY_MS);
@@ -169,14 +182,16 @@ const selectModel = async (model: string): Promise<void> => {
         v-for="option in sortedOptions"
         :key="option.value"
         class="model-card"
-        :class="{
-          active: option.value === currentModel,
-          'card-single': isSingleOption,
-          'card-opus': option.value === 'opus',
-          'card-sonnet': option.value === 'sonnet',
-          'card-haiku': option.value === 'haiku',
-          'card-codex': provider === 'codex',
-        }"
+        :class="[
+          providerCardClass,
+          {
+            active: option.value === currentModel,
+            'card-single': isSingleOption,
+            'card-opus': option.value === 'opus',
+            'card-sonnet': option.value === 'sonnet',
+            'card-haiku': option.value === 'haiku',
+          },
+        ]"
         @mouseenter="option.value === currentModel && handleMouseEnter()"
         @click.stop="selectModel(option.value)"
       >

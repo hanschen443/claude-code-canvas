@@ -11,6 +11,7 @@
 
 import {
   CLAUDE_AVAILABLE_MODELS,
+  CLAUDE_AVAILABLE_MODEL_VALUES,
   CLAUDE_CAPABILITIES,
 } from "./capabilities.js";
 import {
@@ -54,6 +55,7 @@ export const claudeProvider: AgentProvider<ClaudeOptions> = {
       pathToClaudeCodeExecutable: getClaudeCodePath(),
     },
     availableModels: CLAUDE_AVAILABLE_MODELS,
+    availableModelValues: CLAUDE_AVAILABLE_MODEL_VALUES,
   } satisfies ProviderMetadata<ClaudeOptions>,
 
   /**

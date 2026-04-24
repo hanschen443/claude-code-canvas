@@ -25,11 +25,11 @@ const STMT_CACHE_MAX = 32;
  * 避免 PreparedStatement 快取無上限成長造成記憶體洩漏。
  * Map 在 ES2015+ 維持插入順序，keys().next().value 即最舊 key。
  */
-function lruSet<K, V>(cache: Map<K, V>, key: K, value: V): void {
+function lruSet<K, V>(cache: Map<K, V>, cacheKey: K, stmt: V): void {
   if (cache.size >= STMT_CACHE_MAX) {
     cache.delete(cache.keys().next().value as K);
   }
-  cache.set(key, value);
+  cache.set(cacheKey, stmt);
 }
 
 type PodUpdates = Partial<Omit<Pod, "schedule">> & {
@@ -86,11 +86,11 @@ class PodStore {
   >();
 
   /**
-   * 以 podIds 長度為 key 快取 batchLoadBindings 用的 PreparedStatement（LRU 上限 32）。
-   * 長度決定 IN 佔位符數量，同長度可共用同一 prepared statement。
+   * 以 "bindings:n" 為 key 快取 batchLoadBindings 用的 PreparedStatement（LRU 上限 32）。
+   * key 含語意前綴 "bindings:" 與 n（長度）決定 IN 佔位符數量，同長度可共用同一 prepared statement。
    */
   private readonly bindingsStmtCache = new Map<
-    number,
+    string,
     ReturnType<Database["prepare"]>
   >();
 
@@ -142,6 +142,22 @@ class PodStore {
     return result;
   }
 
+  /** 合法的 tableName 白名單，防止 SQL injection */
+  private static readonly ALLOWED_RELATION_TABLES = new Set([
+    "pod_skill_ids",
+    "pod_sub_agent_ids",
+    "pod_mcp_server_ids",
+    "pod_plugin_ids",
+  ]);
+
+  /** 合法的 valueColumn 白名單，防止 SQL injection */
+  private static readonly ALLOWED_RELATION_COLUMNS = new Set([
+    "skill_id",
+    "sub_agent_id",
+    "mcp_server_id",
+    "plugin_id",
+  ]);
+
   /** 取得或建立指定 tableName 與 podIds 數量的 PreparedStatement（LRU 快取） */
   private getRelationStmt(
     tableName: string,
@@ -149,6 +165,12 @@ class PodStore {
     n: number,
     placeholders: string,
   ): ReturnType<Database["prepare"]> {
+    if (!PodStore.ALLOWED_RELATION_TABLES.has(tableName)) {
+      throw new Error(`非法的 relation tableName：${tableName}`);
+    }
+    if (!PodStore.ALLOWED_RELATION_COLUMNS.has(valueColumn)) {
+      throw new Error(`非法的 relation valueColumn：${valueColumn}`);
+    }
     const cacheKey = `relations:${tableName}:${n}`;
     let stmt = this.relationsStmtCache.get(cacheKey);
     if (!stmt) {
@@ -252,7 +274,7 @@ class PodStore {
   /**
    * 批次載入多個 Pod 的 integration binding 資料。
    * 使用 WHERE pod_id IN (...) 一次查詢，避免 N+1 問題。
-   * PreparedStatement 以 podIds.length 為 key 快取，避免重複 prepare。
+   * PreparedStatement 以 "bindings:n" 為 key 快取，避免重複 prepare。
    * 僅用於列表查詢（如 list()），單筆查詢請改用 loadBindingsForPod()。
    */
   private batchLoadBindings(
@@ -263,14 +285,15 @@ class PodStore {
     }
 
     const n = podIds.length;
-    let stmt = this.bindingsStmtCache.get(n);
+    const cacheKey = `bindings:${n}`;
+    let stmt = this.bindingsStmtCache.get(cacheKey);
     if (!stmt) {
       const db = getDb();
       const placeholders = podIds.map(() => "?").join(", ");
       stmt = db.prepare(
         `SELECT id, pod_id, canvas_id, provider, app_id, resource_id, extra_json FROM integration_bindings WHERE pod_id IN (${placeholders})`,
       );
-      lruSet(this.bindingsStmtCache, n, stmt);
+      lruSet(this.bindingsStmtCache, cacheKey, stmt);
     }
 
     const rows = stmt.all(...podIds) as IntegrationBindingRow[];
@@ -306,7 +329,7 @@ class PodStore {
       logger.warn(
         "Pod",
         "Warn",
-        `收到未知 provider 值：${String(row.provider)}，已 fallback 為 claude`,
+        `收到未知 provider 值：${String(row.provider).slice(0, 64)}，已 fallback 為 claude`,
       );
       return "claude";
     }
@@ -341,16 +364,32 @@ class PodStore {
     const sanitized = this.sanitizeProviderConfig(raw);
 
     if ("model" in sanitized) {
-      const availableModels = getProvider(provider).metadata.availableModels;
-      const legalValues = availableModels.map((m) => m.value);
-      if (!legalValues.includes(sanitized.model as string)) {
-        throw new Error(
-          `Provider ${provider} 不支援 model ${String(sanitized.model)}，合法選項：${legalValues.join("、")}`,
-        );
+      const { availableModelValues } = getProvider(provider).metadata;
+      if (!availableModelValues.has(sanitized.model as string)) {
+        throw new Error(`Provider ${provider} 不支援此 model`);
       }
     }
 
     return sanitized;
+  }
+
+  /**
+   * 讀取路徑下的 warn log：若 DB 中的 model 不在 provider 的 availableModels 內，
+   * 記錄一次 warn log 但不丟棄原值（不影響 Pod 載入）。
+   */
+  private warnIfModelOutOfRange(
+    model: unknown,
+    provider: ProviderName,
+    podId: string,
+  ): void {
+    const { availableModelValues } = getProvider(provider).metadata;
+    if (!availableModelValues.has(model as string)) {
+      logger.warn(
+        "Pod",
+        "Warn",
+        `DB 中 Pod ${podId} 的 providerConfig.model 值 ${String(model)} 不在 provider ${provider} 的 availableModels 內，保留原值`,
+      );
+    }
   }
 
   /** 解析 DB row 的 providerConfig，缺少 model 時補入對應 provider 的預設值 */
@@ -371,15 +410,7 @@ class PodStore {
       sanitized.model = defaultOptions.model;
     } else {
       // 讀取時額外做一次 availableModels 檢查，若不合法則 warn log 但保留原值
-      const availableModels = getProvider(provider).metadata.availableModels;
-      const legalValues = availableModels.map((m) => m.value);
-      if (!legalValues.includes(sanitized.model as string)) {
-        logger.warn(
-          "Pod",
-          "Warn",
-          `DB 中 Pod ${row.id} 的 providerConfig.model 值 ${String(sanitized.model)} 不在 provider ${provider} 的 availableModels 內（合法選項：${legalValues.join("、")}），保留原值`,
-        );
-      }
+      this.warnIfModelOutOfRange(sanitized.model, provider, row.id);
     }
     return sanitized;
   }
@@ -439,6 +470,40 @@ class PodStore {
     });
   }
 
+  /**
+   * 私有 helper：將 Pod 的四張 join table（skillIds / subAgentIds / mcpServerIds / pluginIds）
+   * 批次寫入 DB。必須在同一個 transaction 內被呼叫（由 create / update 統一保證）。
+   */
+  private insertJoinTableIds(
+    podId: string,
+    pod: Pick<Pod, "skillIds" | "subAgentIds" | "mcpServerIds" | "pluginIds">,
+  ): void {
+    for (const skillId of pod.skillIds) {
+      this.stmts.podSkillIds.insert.run({ $podId: podId, $skillId: skillId });
+    }
+
+    for (const subAgentId of pod.subAgentIds) {
+      this.stmts.podSubAgentIds.insert.run({
+        $podId: podId,
+        $subAgentId: subAgentId,
+      });
+    }
+
+    for (const mcpServerId of pod.mcpServerIds) {
+      this.stmts.podMcpServerIds.insert.run({
+        $podId: podId,
+        $mcpServerId: mcpServerId,
+      });
+    }
+
+    for (const pluginId of pod.pluginIds) {
+      this.stmts.podPluginIds.insert.run({
+        $podId: podId,
+        $pluginId: pluginId,
+      });
+    }
+  }
+
   create(
     canvasId: string,
     data: CreatePodRequest,
@@ -453,6 +518,7 @@ class PodStore {
     const provider: ProviderName = data.provider ?? "claude";
     const incomingConfig = data.providerConfig ?? null;
     // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
+    // 此處在 transaction 外先驗證，避免進入 transaction 後才 throw 導致不必要的 rollback
     const rawConfig: Record<string, unknown> = incomingConfig
       ? { ...incomingConfig }
       : {};
@@ -489,46 +555,29 @@ class PodStore {
       integrationBindings: [],
     };
 
-    this.stmts.pod.insert.run({
-      $id: id,
-      $canvasId: canvasId,
-      $name: pod.name,
-      $status: pod.status,
-      $x: pod.x,
-      $y: pod.y,
-      $rotation: pod.rotation,
-      $workspacePath: pod.workspacePath,
-      $sessionId: pod.sessionId,
-      $outputStyleId: pod.outputStyleId,
-      $repositoryId: pod.repositoryId,
-      $commandId: pod.commandId,
-      $multiInstance: 0,
-      $scheduleJson: null,
-      $provider: pod.provider,
-      $providerConfigJson: JSON.stringify(pod.providerConfig),
-    });
-
-    for (const skillId of pod.skillIds) {
-      this.stmts.podSkillIds.insert.run({ $podId: id, $skillId: skillId });
-    }
-
-    for (const subAgentId of pod.subAgentIds) {
-      this.stmts.podSubAgentIds.insert.run({
-        $podId: id,
-        $subAgentId: subAgentId,
+    // 使用 transaction 確保主表 insert 與 join table insert 的原子性
+    getDb().transaction(() => {
+      this.stmts.pod.insert.run({
+        $id: id,
+        $canvasId: canvasId,
+        $name: pod.name,
+        $status: pod.status,
+        $x: pod.x,
+        $y: pod.y,
+        $rotation: pod.rotation,
+        $workspacePath: pod.workspacePath,
+        $sessionId: pod.sessionId,
+        $outputStyleId: pod.outputStyleId,
+        $repositoryId: pod.repositoryId,
+        $commandId: pod.commandId,
+        $multiInstance: 0,
+        $scheduleJson: null,
+        $provider: pod.provider,
+        $providerConfigJson: JSON.stringify(pod.providerConfig),
       });
-    }
 
-    for (const mcpServerId of pod.mcpServerIds) {
-      this.stmts.podMcpServerIds.insert.run({
-        $podId: id,
-        $mcpServerId: mcpServerId,
-      });
-    }
-
-    for (const pluginId of pod.pluginIds) {
-      this.stmts.podPluginIds.insert.run({ $podId: id, $pluginId: pluginId });
-    }
+      this.insertJoinTableIds(id, pod);
+    })();
 
     return { pod, persisted: Promise.resolve() };
   }
@@ -658,32 +707,38 @@ class PodStore {
       schedule: this.mergeSchedule(pod, updates),
     };
 
-    this.stmts.pod.update.run({
-      $id: id,
-      $name: updatedPod.name,
-      $status: updatedPod.status,
-      $x: updatedPod.x,
-      $y: updatedPod.y,
-      $rotation: updatedPod.rotation,
-      $sessionId: updatedPod.sessionId,
-      $outputStyleId: updatedPod.outputStyleId,
-      $repositoryId: updatedPod.repositoryId,
-      $commandId: updatedPod.commandId,
-      $multiInstance: updatedPod.multiInstance ? 1 : 0,
-      $scheduleJson: serializeSchedule(updatedPod.schedule),
-      $provider: updatedPod.provider,
-      // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
-      $providerConfigJson: updatedPod.providerConfig
-        ? JSON.stringify(
-            this.sanitizeProviderConfigStrict(
-              updatedPod.providerConfig,
-              updatedPod.provider,
-            ),
-          )
-        : null,
-    });
+    // sanitizeProviderConfigStrict 在 transaction 外先驗證，不合法時直接 throw（transaction 不會啟動）
+    const sanitizedProviderConfigJson = updatedPod.providerConfig
+      ? JSON.stringify(
+          this.sanitizeProviderConfigStrict(
+            updatedPod.providerConfig,
+            updatedPod.provider,
+          ),
+        )
+      : null;
 
-    this.updateJoinTables(id, updates);
+    // 使用 transaction 確保主表 update 與 join table update 的原子性
+    getDb().transaction(() => {
+      this.stmts.pod.update.run({
+        $id: id,
+        $name: updatedPod.name,
+        $status: updatedPod.status,
+        $x: updatedPod.x,
+        $y: updatedPod.y,
+        $rotation: updatedPod.rotation,
+        $sessionId: updatedPod.sessionId,
+        $outputStyleId: updatedPod.outputStyleId,
+        $repositoryId: updatedPod.repositoryId,
+        $commandId: updatedPod.commandId,
+        $multiInstance: updatedPod.multiInstance ? 1 : 0,
+        $scheduleJson: serializeSchedule(updatedPod.schedule),
+        $provider: updatedPod.provider,
+        // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
+        $providerConfigJson: sanitizedProviderConfigJson,
+      });
+
+      this.updateJoinTables(id, updates);
+    })();
 
     return { pod: updatedPod, persisted: Promise.resolve() };
   }
@@ -786,7 +841,7 @@ class PodStore {
     if (podIds.length === 0) return [];
 
     // 用 WHERE id IN (...) 一次取得所有 Pod，再過濾 canvas，避免 N+1
-    const cacheKey = `pods_canvas_in:${podIds.length}`;
+    const cacheKey = `join_fetch_by_canvas:${podIds.length}`;
     let stmt = this.joinTableStmtCache.get(cacheKey);
     if (!stmt) {
       const placeholders = podIds.map(() => "?").join(", ");

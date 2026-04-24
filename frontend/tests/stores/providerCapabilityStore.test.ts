@@ -529,4 +529,82 @@ describe("providerCapabilityStore", () => {
       expect(store.getAvailableModels("codex")).toEqual(codexModels);
     });
   });
+
+  // ----------------------------------------------------------------
+  // 重連行為：state 覆蓋不累積；先成功再失敗時保留上次成功值
+  // ----------------------------------------------------------------
+  describe("重連行為", () => {
+    it("重連後 syncFromPayload 再次呼叫時，state 覆蓋而非累積（舊 provider 被新資料取代）", () => {
+      const store = useProviderCapabilityStore();
+
+      // 第一次載入：claude + codex
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: CLAUDE_TEST_CAPABILITIES,
+          availableModels: [
+            { label: "Opus", value: "opus" },
+            { label: "Sonnet", value: "sonnet" },
+          ],
+        },
+        {
+          name: "codex",
+          capabilities: CODEX_TEST_CAPABILITIES,
+          availableModels: [{ label: "GPT-5.4", value: "gpt-5.4" }],
+        },
+      ]);
+
+      // 第二次載入（重連後）：僅送 claude，model 清單縮減為一個
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: { ...CLAUDE_TEST_CAPABILITIES, skill: false },
+          availableModels: [{ label: "Sonnet", value: "sonnet" }],
+        },
+      ]);
+
+      // claude 的 capabilities 應被覆蓋（不累積舊值）
+      expect(store.getCapabilities("claude").skill).toBe(false);
+      // claude 的 availableModels 應被覆蓋為新清單
+      expect(store.getAvailableModels("claude")).toEqual([
+        { label: "Sonnet", value: "sonnet" },
+      ]);
+      // codex 的資料應保留上一次成功的值（第二次未送 codex）
+      expect(store.getAvailableModels("codex")).toEqual([
+        { label: "GPT-5.4", value: "gpt-5.4" },
+      ]);
+    });
+
+    it("先成功載入再失敗時，保留上次成功的 availableModelsByProvider", async () => {
+      const store = useProviderCapabilityStore();
+
+      const claudeModels = [
+        { label: "Opus", value: "opus" },
+        { label: "Sonnet", value: "sonnet" },
+      ];
+
+      // 第一次：成功
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        providers: [
+          {
+            name: "claude",
+            capabilities: CLAUDE_TEST_CAPABILITIES,
+            availableModels: claudeModels,
+          },
+        ],
+      });
+      await store.loadFromBackend();
+      expect(store.getAvailableModels("claude")).toEqual(claudeModels);
+      expect(store.loaded).toBe(true);
+
+      // 第二次：失敗（模擬重連時 WebSocket 超時）
+      mockCreateWebSocketRequest.mockRejectedValueOnce(new Error("重連超時"));
+      await store.loadFromBackend();
+
+      // loaded 仍為 true（上次成功設定的值不被清除）
+      expect(store.loaded).toBe(true);
+      // availableModelsByProvider 保留上次成功的值，不因失敗而被清空
+      expect(store.getAvailableModels("claude")).toEqual(claudeModels);
+    });
+  });
 });

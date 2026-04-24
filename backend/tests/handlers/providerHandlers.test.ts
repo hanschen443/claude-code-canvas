@@ -17,8 +17,10 @@ vi.mock("../../src/schemas/index.js", () => ({
   },
 }));
 
-// mock provider index：使用真實的 providerRegistry + getProvider
-// 這裡不 mock，讓 handler 直接使用真實實作，以驗證 capabilities / defaultOptions 正確性
+// mock provider index：使用真實的 providerRegistry + getProvider（不 mock）
+// 理由：handler 的職責是將 registry 的 metadata 轉換為 response payload；
+// 若 mock 掉 getProvider 回傳假資料，則無法驗證 capabilities / defaultOptions 的正確性，
+// 也無法捕捉 providerRegistry 被改動後 handler 輸出不一致的迴歸問題。
 vi.mock("../../src/services/provider/index.js", async (importOriginal) => {
   // 取得真實模組，直接回傳以驗證 capabilities / defaultOptions 常數
   const actual =

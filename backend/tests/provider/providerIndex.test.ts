@@ -3,6 +3,7 @@ import {
   getProvider,
   providerRegistry,
 } from "../../src/services/provider/index.js";
+import { CODEX_AVAILABLE_MODELS } from "../../src/services/provider/capabilities.js";
 
 // ================================================================
 // providerRegistry
@@ -104,5 +105,20 @@ describe("getProvider", () => {
 
     // 嚴格相等：同一個物件參考
     expect(first).toBe(second);
+  });
+});
+
+// ================================================================
+// CODEX_AVAILABLE_MODELS 每個 value 符合 MODEL_RE
+// ================================================================
+describe("CODEX_AVAILABLE_MODELS — 每個 value 符合 MODEL_RE", () => {
+  // MODEL_RE = /^[a-zA-Z0-9._-]+$/
+  // 用與 codexProvider 相同的規則驗證，確保所有合法 model 均可通過 CLI 注入防護
+  const MODEL_RE = /^[a-zA-Z0-9._-]+$/;
+
+  it("CODEX_AVAILABLE_MODELS 的每個 value 都應符合 MODEL_RE", () => {
+    for (const { value } of CODEX_AVAILABLE_MODELS) {
+      expect(MODEL_RE.test(value)).toBe(true);
+    }
   });
 });

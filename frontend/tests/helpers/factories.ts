@@ -74,6 +74,13 @@ export function createMockSchedule(overrides?: Partial<Schedule>): Schedule {
 
 /**
  * 建立 Mock Pod
+ *
+ * 預設 provider 為 "claude"，providerConfig.model 為 "opus"。
+ * 若傳入 provider 非 "claude"，請同步傳入對應 provider 的合法 providerConfig，
+ * 否則 providerConfig 仍會是 claude 的預設值，可能導致測試錯誤。
+ *
+ * 範例：
+ *   createMockPod({ provider: "codex", providerConfig: { model: "gpt-5.4" } })
  */
 export function createMockPod(overrides?: Partial<Pod>): Pod {
   const id = `pod-${++podCounter}`;

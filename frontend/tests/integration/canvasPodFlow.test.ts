@@ -527,7 +527,12 @@ describe("Canvas/Pod 操作完整流程", () => {
         },
       });
 
-      // 展開選單後點擊 sonnet 按鈕（hover 展開狀態下 sonnet card 才可見）
+      // 先 mouseenter active 卡片展開，再點擊 sonnet 卡片；
+      // 透過父元件的 @update:model 事件驗證 handleModelChange 流程
+      const activeCard = wrapper.find(".model-card.active");
+      expect(activeCard.exists()).toBeTruthy();
+      await activeCard.trigger("mouseenter");
+
       const buttons = wrapper.findAll("button");
       const sonnetBtn = buttons.find((b) => b.text() === "Sonnet");
       expect(sonnetBtn).toBeTruthy();

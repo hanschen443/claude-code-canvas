@@ -614,11 +614,18 @@ export interface RunToolResultPayload {
   output: string;
 }
 
-/** Provider 列表查詢結果，包含每個 Provider 的功能能力表 */
+/** Provider 列表查詢結果，包含每個 Provider 的功能能力表、預設選項與可選模型清單 */
 export interface ProviderListResultPayload extends ResultPayload {
   providers?: Array<{
     name: PodProvider;
     capabilities: ProviderCapabilities;
+    /** Provider 預設執行時選項（已移除 pathToClaudeCodeExecutable 等伺服器敏感路徑） */
+    defaultOptions: Record<string, unknown>;
+    /**
+     * Provider 聲告支援的模型清單，前端模型選擇器依此動態渲染選項。
+     * 每個元素為 { label, value } pair，label 供 UI 顯示、value 為實際 model id。
+     */
+    availableModels: ReadonlyArray<{ label: string; value: string }>;
   }>;
 }
 

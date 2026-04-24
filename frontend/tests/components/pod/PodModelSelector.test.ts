@@ -538,3 +538,84 @@ describe("PodModelSelector - 測試 8：selectModel 白名單防護", () => {
     wrapper.unmount();
   });
 });
+
+// -----------------------------------------------------------------------
+// 測試 9：isCollapsing 期間再點 active 不觸發第二次 collapse
+// -----------------------------------------------------------------------
+
+describe("PodModelSelector - 測試 9：isCollapsing 期間再點 active 不觸發第二次 collapse", () => {
+  beforeEach(() => {
+    setupPinia();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("isCollapsing 為 true 時再次點擊 active 卡片，selectModel 應被 guard 擋住，collapsing 狀態不重設", async () => {
+    seedModels("claude", CLAUDE_MODELS);
+
+    const wrapper = mountSelector({ currentModel: "sonnet" });
+    const activeCard = wrapper.find(".model-card.active");
+
+    // 展開
+    await activeCard.trigger("mouseenter");
+
+    // 第一次點擊 active 卡片 → 進入 collapsing
+    await activeCard.trigger("click");
+
+    const stack = wrapper.find(".model-cards-stack");
+    expect(stack.classes()).toContain("collapsing");
+
+    // isCollapsing 仍為 true（COLLAPSE_ANIMATION_MS 尚未到期）
+    // 再次點擊 active 卡片，selectModel 應被 isCollapsing guard 擋住
+    await activeCard.trigger("click");
+
+    // stack 仍保持 collapsing（不應再次進入 collapse 邏輯重設狀態）
+    expect(stack.classes()).toContain("collapsing");
+
+    // 推進時間讓動畫結束（多次 nextTick 確保 async 函式內的連鎖 Promise 全部 settled）
+    vi.advanceTimersByTime(COLLAPSE_ANIMATION_MS);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    // 動畫結束後 collapsing 消失
+    expect(stack.classes()).not.toContain("collapsing");
+
+    wrapper.unmount();
+  });
+});
+
+// -----------------------------------------------------------------------
+// 測試 10：provider 為未知字串時 fallback 為 currentModel 單卡
+// -----------------------------------------------------------------------
+
+describe("PodModelSelector - 測試 10：provider 未知字串時 fallback 為 currentModel 單卡", () => {
+  beforeEach(() => {
+    setupPinia();
+  });
+
+  it("provider 為未知字串（store 無對應 availableModels）時，只顯示 currentModel 一張卡片且套用 card-single", () => {
+    // 不 seed 任何 models（unknown-provider 在 store 中無對應資料）
+    // allOptions 回傳 EMPTY_AVAILABLE_MODELS（空陣列），effectiveOptions fallback 為 [currentModel]
+    const wrapper = mountSelector({
+      provider:
+        "unknown-provider" as unknown as import("@/types/pod").PodProvider,
+      currentModel: "my-model",
+    });
+
+    const cards = wrapper.findAll(".model-card");
+    // 只有 currentModel 一張 fallback 卡片
+    expect(cards.length).toBe(1);
+    expect(cards[0]!.text()).toBe("my-model");
+
+    // isSingleOption → card-single class 套用
+    expect(cards[0]!.classes()).toContain("card-single");
+    // 同時是 active 卡片
+    expect(cards[0]!.classes()).toContain("active");
+
+    wrapper.unmount();
+  });
+});

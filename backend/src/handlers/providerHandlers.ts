@@ -23,10 +23,15 @@ export async function handleProviderList(
   const providers = (Object.keys(providerRegistry) as ProviderName[]).map(
     (name) => {
       const { metadata } = getProvider(name);
+      // 移除 pathToClaudeCodeExecutable：此為伺服器絕對路徑，不應洩漏給前端
+      const { pathToClaudeCodeExecutable: _stripped, ...safeDefaultOptions } =
+        metadata.defaultOptions as Record<string, unknown> & {
+          pathToClaudeCodeExecutable?: unknown;
+        };
       return {
         name,
         capabilities: metadata.capabilities,
-        defaultOptions: metadata.defaultOptions as Record<string, unknown>,
+        defaultOptions: safeDefaultOptions,
         availableModels: metadata.availableModels,
       };
     },

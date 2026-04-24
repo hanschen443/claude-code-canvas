@@ -27,6 +27,11 @@ export interface ProviderMetadata<TOptions = unknown> {
    * 不需要修改前端選擇器的硬編碼。
    */
   availableModels: ReadonlyArray<{ label: string; value: string }>;
+  /**
+   * 合法 model value 的 Set，從 availableModels 衍生。
+   * 供 podStore 以 O(1) Set.has 驗證，避免每次呼叫都 .map().includes()。
+   */
+  availableModelValues: ReadonlySet<string>;
 }
 
 /** Provider 支援的功能能力矩陣 */

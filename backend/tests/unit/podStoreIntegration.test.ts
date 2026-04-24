@@ -5,6 +5,23 @@ import {
   getStatements,
 } from "../../src/database/statements.js";
 import { podStore } from "../../src/services/podStore.js";
+
+/**
+ * 清除 podStore 內部以 DB 實例為基礎的 PreparedStatement 快取。
+ * 跨測試時 DB 實例會重建（initTestDb + closeDb），舊 statement 快取必須清除，
+ * 否則重用已關閉 DB 的 statement 會導致查詢失效或崩潰。
+ */
+function clearPodStoreCache(): void {
+  type PodStoreTestHooks = {
+    relationsStmtCache: Map<string, unknown>;
+    bindingsStmtCache: Map<string, unknown>;
+    joinTableStmtCache: Map<string, unknown>;
+  };
+  const store = podStore as unknown as PodStoreTestHooks;
+  store.relationsStmtCache.clear();
+  store.bindingsStmtCache.clear();
+  store.joinTableStmtCache.clear();
+}
 import { integrationAppStore } from "../../src/services/integration/integrationAppStore.js";
 import { integrationRegistry } from "../../src/services/integration/integrationRegistry.js";
 import { logger } from "../../src/utils/logger.js";
@@ -109,18 +126,7 @@ describe("PodStore - Integration Binding", () => {
   beforeEach(() => {
     initTestDb();
     resetStatements();
-
-    // 清除 podStore 內部以 DB 實例為基礎的 PreparedStatement 快取，
-    // 避免跨測試重用已關閉 DB 的 statement 導致 binding 查詢回傳空結果
-    type PodStoreTestHooks = {
-      relationsStmtCache: Map<string, unknown>;
-      bindingsStmtCache: Map<number, unknown>;
-      joinTableStmtCache: Map<string, unknown>;
-    };
-    const store = podStore as unknown as PodStoreTestHooks;
-    store.relationsStmtCache.clear();
-    store.bindingsStmtCache.clear();
-    store.joinTableStmtCache.clear();
+    clearPodStoreCache();
 
     (
       integrationRegistry as unknown as {
@@ -367,16 +373,7 @@ describe("PodStore - providerConfig 白名單過濾", () => {
   beforeEach(() => {
     initTestDb();
     resetStatements();
-
-    type PodStoreTestHooks = {
-      relationsStmtCache: Map<string, unknown>;
-      bindingsStmtCache: Map<number, unknown>;
-      joinTableStmtCache: Map<string, unknown>;
-    };
-    const store = podStore as unknown as PodStoreTestHooks;
-    store.relationsStmtCache.clear();
-    store.bindingsStmtCache.clear();
-    store.joinTableStmtCache.clear();
+    clearPodStoreCache();
 
     const stmts = getStatements(getDb());
     canvasId = "test-canvas-sanitize";
@@ -498,18 +495,7 @@ describe("PodStore - resetAllBusyPods", () => {
   beforeEach(() => {
     initTestDb();
     resetStatements();
-
-    // 清除 podStore 內部以 DB 實例為基礎的 PreparedStatement 快取，
-    // 避免跨測試重用已關閉 DB 的 statement 導致查詢失效
-    type PodStoreTestHooks = {
-      relationsStmtCache: Map<string, unknown>;
-      bindingsStmtCache: Map<number, unknown>;
-      joinTableStmtCache: Map<string, unknown>;
-    };
-    const store = podStore as unknown as PodStoreTestHooks;
-    store.relationsStmtCache.clear();
-    store.bindingsStmtCache.clear();
-    store.joinTableStmtCache.clear();
+    clearPodStoreCache();
 
     const stmts = getStatements(getDb());
     canvasId = "test-canvas-reset";
@@ -578,16 +564,7 @@ describe("PodStore - hasName", () => {
   beforeEach(() => {
     initTestDb();
     resetStatements();
-
-    type PodStoreTestHooks = {
-      relationsStmtCache: Map<string, unknown>;
-      bindingsStmtCache: Map<number, unknown>;
-      joinTableStmtCache: Map<string, unknown>;
-    };
-    const store = podStore as unknown as PodStoreTestHooks;
-    store.relationsStmtCache.clear();
-    store.bindingsStmtCache.clear();
-    store.joinTableStmtCache.clear();
+    clearPodStoreCache();
 
     const stmts = getStatements(getDb());
     canvasId = "test-canvas-hasname";
@@ -662,16 +639,7 @@ describe("PodStore - create 回傳 integrationBindings", () => {
   beforeEach(() => {
     initTestDb();
     resetStatements();
-
-    type PodStoreTestHooks = {
-      relationsStmtCache: Map<string, unknown>;
-      bindingsStmtCache: Map<number, unknown>;
-      joinTableStmtCache: Map<string, unknown>;
-    };
-    const store = podStore as unknown as PodStoreTestHooks;
-    store.relationsStmtCache.clear();
-    store.bindingsStmtCache.clear();
-    store.joinTableStmtCache.clear();
+    clearPodStoreCache();
 
     const stmts = getStatements(getDb());
     canvasId = "test-canvas-create-bindings";
@@ -710,18 +678,7 @@ describe("PodStore - Provider / Model 驗證", () => {
   beforeEach(() => {
     initTestDb();
     resetStatements();
-
-    // 清除 podStore 內部以 DB 實例為基礎的 PreparedStatement 快取，
-    // 避免跨測試重用已關閉 DB 的 statement 導致查詢失效
-    type PodStoreTestHooks = {
-      relationsStmtCache: Map<string, unknown>;
-      bindingsStmtCache: Map<number, unknown>;
-      joinTableStmtCache: Map<string, unknown>;
-    };
-    const store = podStore as unknown as PodStoreTestHooks;
-    store.relationsStmtCache.clear();
-    store.bindingsStmtCache.clear();
-    store.joinTableStmtCache.clear();
+    clearPodStoreCache();
 
     // 清除 logger mock 的歷史呼叫紀錄，避免跨測試污染 warn 斷言
     vi.clearAllMocks();
