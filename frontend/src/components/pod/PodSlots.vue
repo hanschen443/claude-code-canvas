@@ -32,16 +32,9 @@ const props = defineProps<{
   boundMcpServerNotes: McpServerNote[];
 }>();
 
-const {
-  podId,
-  podRotation,
-  boundOutputStyleNote,
-  boundSkillNotes,
-  boundSubAgentNotes,
-  boundRepositoryNote,
-  boundCommandNote,
-  boundMcpServerNotes,
-} = props;
+// 注意：不要解構 props，Vue3 的 defineProps 回傳值是 reactive proxy，
+// 解構後的個別變數會失去響應性（reactive proxy 的 getter 不再被追蹤）。
+// 所有模板與邏輯一律透過 props.xxx 存取。
 
 const emit = defineEmits<{
   "output-style-dropped": [noteId: string];
@@ -81,12 +74,12 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 <template>
   <div class="pod-notch-area-base pod-notch-area">
     <PodSingleBindSlot
-      :pod-id="podId"
-      :bound-note="boundOutputStyleNote"
+      :pod-id="props.podId"
+      :bound-note="props.boundOutputStyleNote"
       :store="outputStyleStore"
       label="Style"
       slot-class="pod-output-style-slot"
-      :pod-rotation="podRotation"
+      :pod-rotation="props.podRotation"
       :disabled="!isOutputStyleEnabled"
       :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('output-style-dropped', noteId)"
@@ -96,8 +89,8 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 
   <div class="pod-notch-area-base pod-skill-notch-area">
     <PodMultiBindSlot
-      :pod-id="podId"
-      :bound-notes="boundSkillNotes"
+      :pod-id="props.podId"
+      :bound-notes="props.boundSkillNotes"
       :store="skillStore"
       label="Skills"
       :duplicate-toast-title="t('pod.slot.duplicateTitle')"
@@ -113,8 +106,8 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 
   <div class="pod-notch-area-base pod-subagent-notch-area">
     <PodMultiBindSlot
-      :pod-id="podId"
-      :bound-notes="boundSubAgentNotes"
+      :pod-id="props.podId"
+      :bound-notes="props.boundSubAgentNotes"
       :store="subAgentStore"
       label="SubAgents"
       :duplicate-toast-title="t('pod.slot.duplicateTitle')"
@@ -130,12 +123,12 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 
   <div class="pod-notch-area-base pod-repository-notch-area">
     <PodSingleBindSlot
-      :pod-id="podId"
-      :bound-note="boundRepositoryNote"
+      :pod-id="props.podId"
+      :bound-note="props.boundRepositoryNote"
       :store="repositoryStore"
       label="Repo"
       slot-class="pod-repository-slot"
-      :pod-rotation="podRotation"
+      :pod-rotation="props.podRotation"
       :disabled="!isRepositoryEnabled"
       :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('repository-dropped', noteId)"
@@ -145,12 +138,12 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 
   <div class="pod-notch-area-base pod-command-notch-area">
     <PodSingleBindSlot
-      :pod-id="podId"
-      :bound-note="boundCommandNote"
+      :pod-id="props.podId"
+      :bound-note="props.boundCommandNote"
       :store="commandStore"
       label="Command"
       slot-class="pod-command-slot"
-      :pod-rotation="podRotation"
+      :pod-rotation="props.podRotation"
       :disabled="!isCommandEnabled"
       :disabled-tooltip="DISABLED_TOOLTIP"
       @note-dropped="(noteId) => emit('command-dropped', noteId)"
@@ -160,8 +153,8 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 
   <div class="pod-notch-area-base pod-mcp-server-notch-area">
     <PodMultiBindSlot
-      :pod-id="podId"
-      :bound-notes="boundMcpServerNotes"
+      :pod-id="props.podId"
+      :bound-notes="props.boundMcpServerNotes"
       :store="mcpServerStore"
       label="MCPs"
       :duplicate-toast-title="t('pod.slot.duplicateTitle')"

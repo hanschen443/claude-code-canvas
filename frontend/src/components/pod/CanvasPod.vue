@@ -281,8 +281,15 @@ const handleContextMenu = (e: MouseEvent): void => {
     }"
     @mousedown="handleMouseDown"
   >
+    <!-- 光暈層：放在 pod-with-notch 之外，不受 transform: rotate 影響 -->
+    <!-- position: absolute; inset: 0 讓此層與外層 wrapper 等大（即 pod-doodle 等大） -->
     <div
-      class="relative pod-with-notch pod-with-skill-notch pod-with-subagent-notch pod-with-model-notch pod-with-repository-notch pod-with-mcp-server-notch"
+      class="pod-glow-layer"
+      :class="[podStatusClass, { 'pod-glow-selected': isSelected }]"
+    />
+
+    <div
+      class="relative pod-with-notch pod-with-skill-notch pod-with-subagent-notch pod-with-mcp-server-notch"
       :class="{ dragging: isDragging || isBatchDragging }"
       :style="{ '--pod-rotation': `${pod.rotation}deg` }"
     >
@@ -318,7 +325,6 @@ const handleContextMenu = (e: MouseEvent): void => {
       <div
         class="pod-doodle w-56 overflow-visible relative"
         :class="[
-          podStatusClass,
           podProviderClass,
           { selected: isSelected, dragging: isDragging || isBatchDragging },
         ]"

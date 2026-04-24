@@ -320,57 +320,54 @@
 }
 
 /* ===========================================
-   POD Status Animation Styles（#34）
+   POD Status Glow Layer（光暈層）
 
-   改寫說明：原實作直接在 .pod-status-chatting /
-   .pod-status-summarizing 上動畫 box-shadow，每幀觸發
-   Main Thread Paint，Pod 數量多時效能成本高。
+   實作說明：
+   - 光暈渲染改為獨立的 .pod-glow-layer div，位於 CanvasPod.vue
+     最外層 wrapper（.absolute.select-none）內，作為 .pod-with-notch
+     的前一個兄弟元素
+   - 此層不在任何 transform: rotate 容器內，故 box-shadow 渲染
+     位置不受祖先 transform 影響，完整包覆 Pod 四周
+   - 動畫只動 opacity（Compositor Thread 可加速，無 Main Thread Paint）
 
-   新實作：改用 ::after pseudo-element 承載靜態 box-shadow
-   光暈色，動畫只動 ::after 的 opacity 或 transform（Compositor
-   Thread 可加速的屬性），不需要每幀 Paint。
-
-   注意：.pod-doodle 已設 position: relative，::after 的
-   position: absolute; inset: 0 可正確定位在 Pod 外框上。
-
-   選擇器使用 .pod-doodle.pod-status-chatting::after（雙 class）
-   以確保 specificity（0,2,1）不低於 .pod-with-skill-notch
-   .pod-doodle::after，保證狀態光暈在有 Skill 凹槽時仍正確顯示。
-
-   視覺節奏維持原樣（2s ease-in-out infinite）。
+   定位說明：
+   - position: absolute; inset: 0 讓此層與外層 wrapper 等大
+   - 外層 wrapper（.absolute.select-none）size 由 .pod-with-notch
+     內容撐起（即 pod-doodle 的大小），故 inset: 0 剛好覆蓋整個 Pod
+   - pointer-events: none 確保不影響點擊事件
+   - border-radius 與 pod-doodle 一致（6px）
    =========================================== */
 
-/* Chatting 狀態：藍色脈衝光暈，只動 ::after 的 opacity */
-.pod-doodle.pod-status-chatting::after {
-  content: "";
+.pod-glow-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border-radius: inherit;
-  /* 靜態光暈色（等同原 50% keyframe 的最亮值），透過 opacity 控制亮暗 */
+  border-radius: 6px;
+  /* 預設無光暈 */
+}
+
+/* Chatting 狀態：藍色脈衝光暈，只動 opacity */
+.pod-glow-layer.pod-status-chatting {
   box-shadow:
     0 0 20px oklch(0.75 0.22 220 / 0.8),
     0 0 32px oklch(0.65 0.2 220 / 0.5);
   animation: pod-chatting-glow-opacity 2s ease-in-out infinite;
-  z-index: 1;
 }
 
-/* Summarizing 狀態：金黃色收縮光暈，用 opacity + scale 模擬收縮彈開 */
-.pod-doodle.pod-status-summarizing::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  /* 靜態光暈色（等同原最亮值），透過 opacity + scale 控制節奏 */
+/* Summarizing 狀態：金黃色呼吸光暈，只動 opacity */
+.pod-glow-layer.pod-status-summarizing {
   box-shadow:
     0 0 20px 8px oklch(0.8 0.18 85 / 0.7),
     0 0 30px 12px oklch(0.75 0.15 85 / 0.5);
-  animation: pod-summarizing-glow-scale 2s ease-in-out infinite;
-  z-index: 1;
+  animation: pod-summarizing-glow-opacity 2s ease-in-out infinite;
 }
 
-/* #34 新 keyframes：只動 opacity（Compositor Thread 可加速，無 Paint） */
+/* Selected 狀態：薄荷綠外圈光暈 */
+.pod-glow-layer.pod-glow-selected {
+  box-shadow: 0 0 0 3px oklch(0.65 0.15 170 / 0.6);
+}
+
+/* keyframes：只動 opacity（Compositor Thread 可加速，無 Paint） */
 @keyframes pod-chatting-glow-opacity {
   0%,
   100% {
@@ -381,29 +378,19 @@
   }
 }
 
-/* #34 新 keyframes：opacity + transform scale 模擬向內收縮彈開效果 */
-@keyframes pod-summarizing-glow-scale {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  /* 慢慢收縮到很小 */
-  85% {
-    opacity: 0.6;
-    transform: scale(0.6);
-  }
-  /* 快速彈開 */
+@keyframes pod-summarizing-glow-opacity {
+  0%,
   100% {
+    opacity: 0.4;
+  }
+  50% {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
-/* Error 狀態樣式 */
-.pod-status-error {
-  box-shadow:
-    2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-    0 0 8px oklch(0.65 0.2 25 / 0.5);
+/* Error 狀態：紅色光暈，由 .pod-glow-layer.pod-status-error 負責渲染 */
+.pod-glow-layer.pod-status-error {
+  box-shadow: 0 0 8px oklch(0.65 0.2 25 / 0.5);
 }
 
 /* 排程觸發動畫狀態 - 作用於整個按鈕（包含背景） */
@@ -415,12 +402,12 @@
 
 /* 無障礙支援：減少動態效果 */
 @media (prefers-reduced-motion: reduce) {
-  .pod-doodle.pod-status-chatting::after {
+  .pod-glow-layer.pod-status-chatting {
     animation: none;
     opacity: 0.7;
   }
 
-  .pod-doodle.pod-status-summarizing::after {
+  .pod-glow-layer.pod-status-summarizing {
     animation: none;
     opacity: 0.7;
   }
@@ -447,8 +434,8 @@
      padding 區完成，Mini screen 以下完全維持 var(--card) 奶油白，
      保持閱讀對比度
    - 靜態漸層，無 transition/animation（效能考量）
-   - 狀態光暈（chatting/summarizing/error）為 ::after box-shadow，
-     不受 background 影響
+   - 狀態光暈（chatting/summarizing）由外層 .pod-glow-layer div 負責，
+     不受 .pod-with-notch 的 transform: rotate 影響
 
    class 與後端 PodProvider 枚舉的耦合說明詳見檔案頂部註解。
    =========================================== */
