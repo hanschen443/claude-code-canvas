@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import type { PodProvider } from "@/types/pod";
-import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 
 const props = defineProps<{
   podId: string;
@@ -22,19 +21,17 @@ const isAnimating = ref(false);
 const isCollapsing = ref(false);
 const hoverTimeoutId = ref<number | null>(null);
 
-const providerCapabilityStore = useProviderCapabilityStore();
+/** Codex 可選模型清單：label 為顯示名稱（大寫），value 為實際傳給後端的小寫字串 */
+const CODEX_OPTIONS = [
+  { label: "GPT-5.4", value: "gpt-5.4" },
+  { label: "GPT-5.5", value: "gpt-5.5" },
+  { label: "GPT-5.4-mini", value: "gpt-5.4-mini" },
+] as const;
 
 /** 依 provider 動態決定可選模型清單 */
 const allOptions = computed(() => {
   if (props.provider === "codex") {
-    // 從 store 動態讀取 Codex 預設 model；若 metadata 尚未載入則顯示 "—" 作為 placeholder
-    const codexDefaultModel =
-      (providerCapabilityStore.getDefaultOptions("codex")?.["model"] as
-        | string
-        | undefined) ?? "";
-    const displayValue = codexDefaultModel || "—";
-    // TODO: 待後端 metadata 擴充 availableModels 後，改為從 store 動態拿可切換 model 清單
-    return [{ label: "GPT 5.4", value: displayValue }];
+    return [...CODEX_OPTIONS];
   }
   // claude（預設）
   // TODO: 待後端 metadata 擴充 availableModels 後，改為從 store 動態拿可切換 model 清單
@@ -105,14 +102,21 @@ const selectModel = (model: string): void => {
 </script>
 
 <template>
+  <!-- 上方中央定位錨點；Phase 2 B 會對齊 CSS -->
   <div
     class="pod-model-slot"
     @mouseleave="handleMouseLeave"
   >
+    <!--
+      model-cards-stack：垂直堆疊容器。
+      flex-direction: column-reverse → sortedOptions[0]（active）視覺上固定在最底部貼近 Pod，
+      非 active 選項從上方依序堆疊，hover 時展開。
+      Phase 2 B 負責定義此 class 的 CSS。
+    -->
     <TransitionGroup
-      name="card-swap"
+      name="stack-slide"
       tag="div"
-      class="model-cards-container"
+      class="model-cards-stack"
       :class="{ expanded: isHovered, collapsing: isCollapsing }"
     >
       <button
@@ -137,82 +141,167 @@ const selectModel = (model: string): void => {
 </template>
 
 <style scoped>
+/*
+  Pod Model Selector — Phase 2 B 完整橫向寬版 CSS
+  ====================================================
+  .pod-model-slot     : 定位錨點，絕對定位在 Pod 上方中央
+  .model-cards-stack  : 垂直堆疊容器（column-reverse；active 在底部貼 Pod）
+  .model-card         : 橫向 tag 卡片，等寬、padding 水平排列
+*/
+
+/* --------------------------------
+   定位錨點：Pod 上方中央
+   --------------------------------
+   bottom: 100% 讓整個 selector 在 Pod 上緣外。
+   left: 50% + translateX(-50%) 對齊 Pod 水平中心。
+   width: fit-content 讓錨點自然跟隨 stack 內容寬度，
+   避免撐滿 50% Pod 寬造成視覺過寬。
+   margin-bottom: -2px 下推 2px 讓 active card 底邊與 Pod 邊框對齊 notch
+   （配合 .model-cards-stack 預設 translateY(2px)，共下推 4px，
+   剛好讓卡片底部邊框與 Pod 上邊框微微重疊產生「插槽」視覺）。
+   z-index: -1 讓 selector 插入 Pod 內（被 Pod 本體遮住底部），
+   只露出上方部分，產生「插進 Pod」的視覺感。
+   pointer-events 由子元素 .model-cards-stack 與 .model-card 各自控制，
+   z-index 負值不影響 click 事件觸發。
+   padding 向上與左右延伸作為 hover 容錯區（搭配 ::before 偽元素）。
+*/
 .pod-model-slot {
   position: absolute;
   bottom: 100%;
-  left: 12px;
-  margin-bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* fit-content 讓錨點隨 stack 內容寬縮小，避免撐滿 50% Pod 寬 */
+  width: fit-content;
+  /* 下推 2px 讓底邊與 Pod 邊框對齊 notch */
+  margin-bottom: -2px;
+  z-index: -1;
+  /* 向上與左右延伸 hover 容錯區，使 mouseleave 不在縫隙處誤觸 */
+  padding: 8px 12px 0 12px;
+}
+
+/*
+  model-cards-stack：垂直堆疊容器。
+  column-reverse 讓 sortedOptions[0]（active）視覺固定在最底部貼近 Pod；
+  非 active 卡片從上方往下堆疊，hover 展開時向上顯現。
+  預設輕微往下位移（貼 Pod）；展開時整體上提讓選項有空間展開。
+  ::before 偽元素向上、左右擴展 hover 判定區，防止卡片縫隙間誤觸 mouseleave。
+  寬度：由 --model-notch-width × 0.85 決定（notch 與 card 永遠保持 15% 差距規則）。
+*/
+.model-cards-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: stretch;
+  gap: 4px;
+  position: relative;
+  /* notch 與 card 永遠保持 15% 差距：card = notch × 0.85
+     --model-notch-width 定義於 .pod-with-notch（共同祖先），
+     PodModelSelector 與 .pod-doodle 皆可繼承此變數 */
+  width: calc(var(--model-notch-width) * 0.85);
+  /* 預設只有 active 卡片可互動；.expanded 後開放整個容器 */
+  pointer-events: none;
+  transition: transform 0.3s ease;
+  /* 下推 2px 配合 margin-bottom: -2px，讓底邊與 Pod 邊框剛好重疊 */
+  transform: translateY(2px);
+}
+
+/* 上方容錯 hover 區：透明，防止滑鼠在卡片縫隙間誤觸 mouseleave */
+.model-cards-stack::before {
+  content: "";
+  position: absolute;
+  top: -16px;
+  left: -16px;
+  right: -16px;
+  bottom: 0;
+  pointer-events: auto;
+  background: transparent;
   z-index: -1;
 }
 
-.model-cards-container {
-  display: inline-flex;
-  /* 底部對齊：高度不同的卡片以底部為錨點，避免高度變化時卡片位置亂跳 */
-  align-items: flex-end;
-  gap: 6px;
-  transition: transform 0.3s ease;
-  position: relative;
-  z-index: 1;
-  transform: translateY(20px);
-}
-
-.model-cards-container.expanded {
+/* 展開狀態：整體上提讓選項展開空間（從 2px 往上移到 -12px，共 14px 行程） */
+.model-cards-stack.expanded {
   transform: translateY(-12px);
+  pointer-events: auto;
 }
 
+/* --------------------------------
+   model-card：橫向 tag 樣式
+   --------------------------------
+   移除所有垂直文字規則（writing-mode / text-orientation / letter-spacing hack）。
+   改為水平 tag 形式：padding 4px 10px、等寬填滿 selector。
+   對齊 .pod-slot-has-item 的實線 doodle 風格。
+*/
 .model-card {
-  /* 固定窄寬度，垂直文字排列 */
-  width: 24px;
-  /* min-height 保底高度，height: max-content 讓字數多的 card 自然撐高 */
-  min-height: 70px;
-  height: max-content;
-  padding: 8px 4px;
+  /* 直接寫死 notch × 0.85，避免依賴 width: 100% 在 button 上失效
+     --model-notch-width 定義於 .pod-with-notch（共同祖先，pod.css） */
+  width: calc(var(--model-notch-width) * 0.85);
+  /* border-box 確保 padding 不增加視覺寬度 */
+  box-sizing: border-box;
+  /* column-reverse flex 容器內防止 button 被 flex-shrink 壓縮 */
+  flex-shrink: 0;
+  /* text-align: center 確保名稱文字始終置中（無論文字長度） */
+  text-align: center;
+  padding: 4px 10px;
   border: 2px solid var(--doodle-ink);
   border-radius: 2px;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
+  letter-spacing: normal;
   color: oklch(0.3 0.02 50);
   box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.3);
   cursor: pointer;
+  /* 預設隱藏：稍微往下位移，展開時滑上來 */
   opacity: 0;
-  transition: all 0.3s ease;
+  transform: translateY(8px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.15s ease;
   white-space: nowrap;
   user-select: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 垂直文字：字符直立排列，字數越多 card 越高 */
-  writing-mode: vertical-lr;
-  text-orientation: upright;
-  letter-spacing: -2px;
   pointer-events: none;
 }
 
+/* active 卡片永遠可見，位移回零（貼底部） */
 .model-card.active {
   opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
-.model-cards-container.expanded .model-card {
+/* hover 展開時，非 active 卡片從下方滑入並可互動 */
+.model-cards-stack.expanded .model-card:not(.active) {
   opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
-.model-cards-container.collapsing .model-card:not(.active) {
+/* 收合動畫：非 active 卡片淡出並往下滑出 */
+.model-cards-stack.collapsing .model-card:not(.active) {
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transform: translateY(8px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 
 .model-card:hover {
   box-shadow: 3px 3px 0 oklch(0.4 0.02 50 / 0.4);
 }
 
-/* 單一選項：cursor 提示無法切換，但仍允許 hover 事件觸發展開動畫 */
+/* 單一選項：cursor 提示無法切換，但仍允許 hover 事件 */
 .model-card.card-single {
   cursor: default;
 }
 
+/* --------------------------------
+   Provider / Model 背景色
+   --------------------------------
+   保留各 model 特色色彩；移除垂直文字時代的 letter-spacing hack。
+*/
 .card-opus {
   background: var(--doodle-yellow);
 }
@@ -225,9 +314,31 @@ const selectModel = (model: string): void => {
   background: oklch(0.85 0.1 150);
 }
 
-/* Codex 使用中性灰色背景；字間距微調，讓垂直文字較整齊 */
+/* Codex：中性灰色背景 */
 .card-codex {
   background: oklch(0.9 0.005 240);
-  letter-spacing: -1px;
+}
+
+/* --------------------------------
+   TransitionGroup stack-slide 動畫
+   --------------------------------
+   整組 stack 新增/移除選項時（目前 options 是靜態的，
+   僅保留做未來動態 availableModels 用途）。
+*/
+.stack-slide-enter-active,
+.stack-slide-leave-active {
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.stack-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.stack-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

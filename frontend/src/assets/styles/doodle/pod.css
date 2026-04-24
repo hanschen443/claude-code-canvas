@@ -34,6 +34,8 @@
 }
 
 .pod-doodle {
+  /* --model-notch-width 已移至 .pod-with-notch（共同祖先），
+     讓 PodModelSelector 與此處的 .model-notch 都能讀到同一變數 */
   background: var(--card);
   border: 2px solid var(--doodle-ink);
   border-radius: 6px;
@@ -73,6 +75,9 @@
    =========================================== */
 
 .pod-with-notch {
+  /* notch 與 card 寬度的單一真相來源；定義在此讓 PodModelSelector（兄弟層）
+     與 .pod-doodle（子層）都能透過 CSS 繼承讀到此變數 */
+  --model-notch-width: 110px;
   position: relative;
   transition: transform 0.15s ease;
   transform: rotate(var(--pod-rotation, 0deg));
@@ -88,12 +93,18 @@
   transform: rotate(calc(var(--pod-rotation, 0deg) - 1deg));
 }
 
-/* Model 凹槽（POD 上方） */
+/* Model 凹槽（POD 上方中央）
+   寬度配合 .model-cards-stack max-width 140px + 左右各 8px buffer = 156px，
+   確保 notch 比 card 略寬，視覺上完整包住 selector 底邊 border。
+   height: 8px 覆蓋 Pod 上邊 border 產生「挖槽」視覺。
+   z-index: -1 確保被 Pod 本體遮住底部，只露出上方。 */
 .model-notch {
   position: absolute;
   top: -6px;
-  left: 8px;
-  width: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* 使用 .pod-doodle 上定義的 --model-notch-width；card 為 notch 的 95%，保持 5% 差距 */
+  width: var(--model-notch-width);
   height: 8px;
   background: var(--card);
   border: 2px solid var(--doodle-ink);
