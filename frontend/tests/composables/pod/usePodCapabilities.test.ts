@@ -47,7 +47,7 @@ const CODEX_CAPABILITIES = {
   skill: false,
   subAgent: false,
   repository: false,
-  command: false,
+  command: true,
   mcp: false,
   integration: false,
   runMode: false,
@@ -152,12 +152,12 @@ describe("usePodCapabilities", () => {
       expect(isRepositoryEnabled.value).toBe(false);
     });
 
-    it("isCommandEnabled 應為 false（Codex 不支援）", () => {
+    it("isCommandEnabled 應為 true（codex 已開放 command）", () => {
       injectAllCapabilities();
       const podId = setupPod("codex");
       const { isCommandEnabled } = usePodCapabilities(podId);
 
-      expect(isCommandEnabled.value).toBe(false);
+      expect(isCommandEnabled.value).toBe(true);
     });
 
     it("isMcpEnabled 應為 false（Codex 不支援）", () => {

@@ -219,6 +219,16 @@ function handleCompleteEvent(
   });
 }
 
+/**
+ * 可直接顯示給使用者的錯誤代碼白名單。
+ * 白名單內的 code 代表「可恢復的使用者操作錯誤」，訊息已在產生端組裝成使用者友善格式，
+ * 可直接推送給前端；不在白名單內的 code 一律以通用警告文字取代，避免洩漏系統內部細節。
+ */
+const RECOVERABLE_CODES = new Set(["COMMAND_NOT_FOUND"]);
+
+/** 訊息長度上限，避免惡意長訊息灌版 */
+const MAX_USER_FACING_MSG_LENGTH = 500;
+
 function handleErrorEvent(
   event: ErrorStreamEvent,
   context: StreamContext,
@@ -229,14 +239,29 @@ function handleErrorEvent(
   logger.error(
     "Chat",
     "Error",
-    `Provider 串流錯誤（podId=${podId}, canvasId=${canvasId}, fatal=${event.fatal}）：${event.error}`,
+    `Provider 串流錯誤（podId=${podId}, canvasId=${canvasId}, fatal=${event.fatal}, code=${event.code ?? "無"}）：${event.error}`,
   );
 
-  // 前端僅收到通用警告，不含原始訊息
-  const genericMessage = event.fatal
-    ? "\n\n⚠️ 發生嚴重錯誤，對話已中斷"
-    : "\n\n⚠️ 發生錯誤，請稍後再試";
-  streamingCallback({ type: "text", content: genericMessage });
+  // 判斷是否為可直接顯示給使用者的可恢復錯誤
+  const isRecoverable =
+    event.code !== undefined && RECOVERABLE_CODES.has(event.code);
+
+  let displayMessage: string;
+  if (isRecoverable) {
+    // 白名單內的 code：使用產生端組裝的使用者友善訊息，並限制長度防止灌版
+    const truncated =
+      event.error.length > MAX_USER_FACING_MSG_LENGTH
+        ? event.error.slice(0, MAX_USER_FACING_MSG_LENGTH) + "…"
+        : event.error;
+    displayMessage = `\n\n⚠️ ${truncated}`;
+  } else {
+    // 無 code 或不在白名單：使用通用警告，不洩漏原始訊息
+    displayMessage = event.fatal
+      ? "\n\n⚠️ 發生嚴重錯誤，對話已中斷"
+      : "\n\n⚠️ 發生錯誤，請稍後再試";
+  }
+
+  streamingCallback({ type: "text", content: displayMessage });
 
   if (event.fatal) {
     throw new Error("串流處理發生嚴重錯誤");
@@ -486,7 +511,12 @@ function normalizedEventToStreamEvent(ev: NormalizedEvent): StreamEvent | null {
     case "turn_complete":
       return { type: "complete" };
     case "error":
-      return { type: "error", error: ev.message, fatal: ev.fatal };
+      return {
+        type: "error",
+        error: ev.message,
+        fatal: ev.fatal,
+        code: ev.code,
+      };
     case "session_started":
       // 由呼叫端自行暫存，不直接轉成 StreamEvent
       return null;
@@ -664,6 +694,7 @@ export async function executeStreamingChat(
     const providerOptions = await provider.buildOptions(pod, runContext);
 
     // 組裝 ChatRequestContext（不含 abortSignal，由 runProviderStream 內部注入）
+    // message 已由上層 handler 展開 Command 內容（或為原始訊息，若無 Command）
     const ctxWithoutSignal: Omit<ChatRequestContext, "abortSignal"> = {
       podId,
       message,

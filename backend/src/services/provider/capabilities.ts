@@ -22,7 +22,7 @@ export const CODEX_CAPABILITIES: Readonly<ProviderCapabilities> = Object.freeze(
     skill: false,
     subAgent: false,
     repository: false,
-    command: false,
+    command: true,
     mcp: false,
     integration: false,
     runMode: false,

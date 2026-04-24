@@ -1,6 +1,5 @@
 import { repositoryService } from "./repositoryService.js";
 import { podStore } from "./podStore.js";
-import { commandService } from "./commandService.js";
 import { skillService } from "./skillService.js";
 import { subAgentService } from "./subAgentService.js";
 import { podManifestService } from "./podManifestService.js";
@@ -94,12 +93,6 @@ class RepositorySyncService {
   ): Promise<void> {
     await podManifestService.deleteManagedFiles(repositoryId, podId);
 
-    const copyCommands = resources.commandIds.map((commandId) =>
-      fsOperation(
-        () => commandService.copyCommandToRepository(commandId, repositoryPath),
-        `複製 command ${commandId} 到 repository ${repositoryId} 失敗`,
-      ),
-    );
     const copySkills = resources.skillIds.map((skillId) =>
       fsOperation(
         () => skillService.copySkillToRepository(skillId, repositoryPath),
@@ -114,7 +107,7 @@ class RepositorySyncService {
       ),
     );
 
-    await Promise.all([...copyCommands, ...copySkills, ...copySubAgents]);
+    await Promise.all([...copySkills, ...copySubAgents]);
 
     const managedFiles = await this.collectPodManagedFiles(resources);
     podManifestService.writeManifest(repositoryId, podId, managedFiles);

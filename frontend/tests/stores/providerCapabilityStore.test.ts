@@ -32,14 +32,14 @@ const CLAUDE_TEST_CAPABILITIES = {
   runMode: true,
 };
 
-/** 測試用 Codex capabilities（僅 chat） */
+/** 測試用 Codex capabilities（chat + command 開啟） */
 const CODEX_TEST_CAPABILITIES = {
   chat: true,
   outputStyle: false,
   skill: false,
   subAgent: false,
   repository: false,
-  command: false,
+  command: true,
   mcp: false,
   integration: false,
   runMode: false,

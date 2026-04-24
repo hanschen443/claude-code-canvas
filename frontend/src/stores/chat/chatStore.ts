@@ -20,14 +20,11 @@ import type {
   PodErrorPayload,
   PodMessagesClearedPayload,
 } from "@/types/websocket";
-import type { Command } from "@/types/command";
-import type { Pod } from "@/types/pod";
 import { createMessageActions } from "./chatMessageActions";
 import { createConnectionActions } from "./chatConnectionActions";
 import { createHistoryActions } from "./chatHistoryActions";
 import { abortSafetyTimers } from "./abortSafetyTimers";
 import { usePodStore } from "../pod/podStore";
-import { useCommandStore } from "../note/commandStore";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
 import { isMultiInstanceSourcePod } from "@/utils/multiInstanceGuard";
 import { t } from "@/i18n";
@@ -51,50 +48,6 @@ function hasMessageContent(
   contentBlocks: ContentBlock[] | undefined,
 ): boolean {
   return (contentBlocks?.length ?? 0) > 0 || content.trim().length > 0;
-}
-
-function resolveCommandForPod(
-  podId: string,
-  pods: Pod[],
-  availableCommands: Command[],
-): Command | null {
-  const pod = pods.find((podItem) => podItem.id === podId);
-  if (!pod?.commandId) return null;
-  return (
-    availableCommands.find((command) => command.id === pod.commandId) ?? null
-  );
-}
-
-function buildTextPayload(
-  content: string,
-  command: Command | null | undefined,
-): string {
-  return command ? `/${command.name} ${content}` : content;
-}
-
-function buildBlockPayload(
-  contentBlocks: ContentBlock[],
-  command: Command | null | undefined,
-): ContentBlock[] {
-  let prefixApplied = false;
-  return contentBlocks.map((block) => {
-    if (block.type === "text" && command && !prefixApplied) {
-      prefixApplied = true;
-      return { ...block, text: `/${command.name} ${block.text}` };
-    }
-    return block;
-  });
-}
-
-function buildMessagePayload(
-  content: string,
-  contentBlocks: ContentBlock[] | undefined,
-  command: Command | null | undefined,
-): string | ContentBlock[] {
-  if (!contentBlocks || contentBlocks.length === 0) {
-    return buildTextPayload(content, command);
-  }
-  return buildBlockPayload(contentBlocks, command);
 }
 
 export type ChatStoreInstance = ReturnType<typeof useChatStore>;
@@ -273,19 +226,11 @@ export const useChatStore = defineStore("chat", {
 
       if (!hasMessageContent(content, contentBlocks)) return;
 
-      const podStore = usePodStore();
-      const commandStore = useCommandStore();
-      const command = resolveCommandForPod(
-        podId,
-        podStore.pods,
-        commandStore.typedAvailableItems,
-      );
-      const messagePayload = buildMessagePayload(
-        content,
-        contentBlocks,
-        command,
-      );
+      // 後端會根據 pod 綁定的 commandId 自行展開指令，前端直接送原文
+      const messagePayload: string | ContentBlock[] =
+        contentBlocks && contentBlocks.length > 0 ? contentBlocks : content;
 
+      const podStore = usePodStore();
       const canvasId = getActiveCanvasIdOrWarn("ChatStore");
       if (!canvasId) return;
 

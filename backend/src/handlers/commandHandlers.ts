@@ -62,8 +62,6 @@ const commandBindConfig: BindResourceConfig<typeof commandService> = {
     unbind: (canvasId, podId) => podStore.setCommandId(canvasId, podId, null),
   },
   getPodResourceIds: (pod) => pod.commandId,
-  copyResourceToPod: (commandId, pod) =>
-    commandService.copyCommandToPod(commandId, pod.id, pod.workspacePath),
   deleteResourceFromPath: (workspacePath) =>
     commandService.deleteCommandFromPath(workspacePath),
   requiredCapability: "command",

@@ -30,9 +30,9 @@ chat(ctx)
 
 ### 1. 組裝 prompt
 
-`buildPrompt(message, commandId, resumeSessionId)` 根據 message 型別：
+`buildPrompt(message, resumeSessionId)` 根據 message 型別：
 
-- `string`：直接使用（若有 `commandId` 則加 `/${commandId}` 前綴）
+- `string`：直接使用（Command 展開已在上層 `streamingChatExecutor` 完成，Provider 不再處理 `/name` 前綴）
 - `ContentBlock[]`：呼叫 `buildClaudeContentBlocks` 轉換，再包入 `createUserMessageStream`（支援圖片附件）
 
 ### 2. 組裝 SDK Options

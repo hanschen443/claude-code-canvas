@@ -12,6 +12,11 @@ const mockValidatePod = vi.fn();
 const mockExecuteStreamingChat = vi.fn();
 const mockInjectUserMessage = vi.fn();
 const mockLaunchMultiInstanceRun = vi.fn();
+const mockCommandServiceRead = vi.fn();
+const mockExpandCommandMessage = vi.fn();
+const mockBuildCommandNotFoundMessage = vi.fn();
+const mockSocketServiceEmitToCanvas = vi.fn();
+const mockLoggerWarn = vi.fn();
 
 // --- vi.mock ---
 
@@ -94,6 +99,35 @@ vi.mock("../../src/schemas/index.js", () => ({
   WebSocketResponseEvents: {
     POD_ERROR: "pod:error",
     POD_CHAT_HISTORY_RESULT: "pod:chat:history:result",
+    POD_CLAUDE_CHAT_MESSAGE: "pod:claude:chat:message",
+  },
+}));
+
+vi.mock("../../src/services/commandService.js", () => ({
+  commandService: {
+    read: (...args: unknown[]) => mockCommandServiceRead(...args),
+  },
+}));
+
+vi.mock("../../src/services/commandExpander.js", () => ({
+  expandCommandMessage: (...args: unknown[]) =>
+    mockExpandCommandMessage(...args),
+  buildCommandNotFoundMessage: (...args: unknown[]) =>
+    mockBuildCommandNotFoundMessage(...args),
+}));
+
+vi.mock("../../src/services/socketService.js", () => ({
+  socketService: {
+    emitToCanvas: (...args: unknown[]) =>
+      mockSocketServiceEmitToCanvas(...args),
+  },
+}));
+
+vi.mock("../../src/utils/logger.js", () => ({
+  logger: {
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+    error: vi.fn(),
+    log: vi.fn(),
   },
 }));
 
@@ -119,6 +153,22 @@ function makePod(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 預設：commandService.read 回傳 null（無 command 內容）
+  mockCommandServiceRead.mockResolvedValue(null);
+  // 預設：expandCommandMessage 回傳展開版字串
+  mockExpandCommandMessage.mockImplementation(
+    (params: { message: string; markdown: string }) =>
+      `<command>\n${params.markdown}\n</command>\n${params.message}`,
+  );
+  // 預設：buildCommandNotFoundMessage 回傳錯誤訊息
+  mockBuildCommandNotFoundMessage.mockImplementation(
+    (commandId: string) =>
+      `Command 「${commandId}」已不存在，請至 Pod 設定重新選擇或解除綁定。`,
+  );
+  // 預設：injectUserMessage 成功
+  mockInjectUserMessage.mockResolvedValue(undefined);
+  // 預設：executeStreamingChat 成功
+  mockExecuteStreamingChat.mockResolvedValue(undefined);
 });
 
 // ================================================================
@@ -411,6 +461,111 @@ describe("handleChatSend", () => {
       POD_ID,
       "POD_BUSY",
     );
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+  });
+
+  // ================================================================
+  // Command 展開邏輯（在 injectUserMessage 之前）
+  // ================================================================
+
+  it("pod.commandId 為 null 時，injectUserMessage 收到原始訊息，commandService.read 不被呼叫", async () => {
+    const pod = makePod({ status: "idle", commandId: null });
+    mockValidatePod.mockReturnValue(pod);
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "原始訊息" },
+      REQUEST_ID,
+    );
+
+    // commandService.read 不應被呼叫
+    expect(mockCommandServiceRead).not.toHaveBeenCalled();
+    // injectUserMessage 收到原始訊息
+    expect(mockInjectUserMessage).toHaveBeenCalledWith({
+      canvasId: CANVAS_ID,
+      podId: POD_ID,
+      content: "原始訊息",
+    });
+    // executeStreamingChat 收到原始訊息
+    expect(mockExecuteStreamingChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "原始訊息" }),
+      expect.anything(),
+    );
+  });
+
+  it("pod.commandId 存在且 commandService.read 成功時，injectUserMessage 和 executeStreamingChat 收到展開版訊息", async () => {
+    const commandId = "my-cmd";
+    const pod = makePod({ status: "idle", commandId });
+    mockValidatePod.mockReturnValue(pod);
+    mockCommandServiceRead.mockResolvedValue("## Command 內容");
+    mockExpandCommandMessage.mockReturnValue(
+      `<command>\n## Command 內容\n</command>\n使用者訊息`,
+    );
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "使用者訊息" },
+      REQUEST_ID,
+    );
+
+    // commandService.read 應被呼叫
+    expect(mockCommandServiceRead).toHaveBeenCalledWith(commandId);
+    // expandCommandMessage 應被呼叫
+    expect(mockExpandCommandMessage).toHaveBeenCalledWith({
+      message: "使用者訊息",
+      markdown: "## Command 內容",
+    });
+    // injectUserMessage 收到展開版
+    expect(mockInjectUserMessage).toHaveBeenCalledWith({
+      canvasId: CANVAS_ID,
+      podId: POD_ID,
+      content: expect.stringContaining("<command"),
+    });
+    // executeStreamingChat 收到展開版
+    expect(mockExecuteStreamingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("<command"),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("pod.commandId 存在但 commandService.read 回 null 時，原文進 injectUserMessage，推送錯誤文字，不呼叫 executeStreamingChat", async () => {
+    const commandId = "missing-cmd";
+    const pod = makePod({ status: "idle", commandId });
+    mockValidatePod.mockReturnValue(pod);
+    // read 回 null（command 不存在）
+    mockCommandServiceRead.mockResolvedValue(null);
+    mockBuildCommandNotFoundMessage.mockReturnValue(
+      `Command 「${commandId}」已不存在，請至 Pod 設定重新選擇或解除綁定。`,
+    );
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "original text" },
+      REQUEST_ID,
+    );
+
+    // injectUserMessage 收到原始訊息（command 讀取失敗）
+    expect(mockInjectUserMessage).toHaveBeenCalledWith({
+      canvasId: CANVAS_ID,
+      podId: POD_ID,
+      content: "original text",
+    });
+
+    // socketService.emitToCanvas 應推送含 ⚠️ 的錯誤文字
+    expect(mockSocketServiceEmitToCanvas).toHaveBeenCalledWith(
+      CANVAS_ID,
+      "pod:claude:chat:message",
+      expect.objectContaining({
+        content: expect.stringContaining("⚠️"),
+      }),
+    );
+
+    // podStore.setStatus 應回到 idle
+    expect(mockSetStatus).toHaveBeenCalledWith(CANVAS_ID, POD_ID, "idle");
+
+    // executeStreamingChat 不應被呼叫
     expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
   });
 });

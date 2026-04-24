@@ -1,5 +1,6 @@
+import { v4 as uuidv4 } from "uuid";
 import { WebSocketResponseEvents } from "../schemas";
-import type { Pod } from "../types";
+import type { Pod, ContentBlock } from "../types";
 import { isPodBusy } from "../types/index.js";
 import type {
   ChatSendPayload,
@@ -22,6 +23,13 @@ import { injectUserMessage } from "../utils/chatHelpers.js";
 import { launchMultiInstanceRun } from "../utils/runChatHelpers.js";
 import { NormalModeExecutionStrategy } from "../services/normalExecutionStrategy.js";
 import { getProvider } from "../services/provider/index.js";
+import { commandService } from "../services/commandService.js";
+import {
+  buildCommandNotFoundMessage,
+  expandCommandMessage,
+} from "../services/commandExpander.js";
+import { socketService } from "../services/socketService.js";
+import { logger } from "../utils/logger.js";
 
 function validateIntegrationBindings(
   connectionId: string,
@@ -115,12 +123,54 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
 
     if (!validatePodNotBusy(connectionId, pod, requestId)) return;
 
+    // 展開 Command 內容（在 injectUserMessage 之前執行，確保 DB 存入展開版）
+    let finalMessage: string | ContentBlock[] = message;
+    let commandReadFailed = false;
+
+    if (pod.commandId) {
+      const commandId = pod.commandId;
+      const markdown = await commandService.read(commandId);
+      if (markdown !== null) {
+        finalMessage = expandCommandMessage({
+          message,
+          markdown,
+        });
+      } else {
+        logger.warn(
+          "Chat",
+          "Check",
+          `[handleChatSend] Command 不存在，回傳錯誤給前端（commandId=${commandId}, podId=${podId}）`,
+        );
+        commandReadFailed = true;
+      }
+    }
+
     const strategy = new NormalModeExecutionStrategy(canvasId);
 
-    await injectUserMessage({ canvasId, podId, content: message });
+    // DB 存入展開版（或原文，若 command 讀不到）
+    await injectUserMessage({ canvasId, podId, content: finalMessage });
+
+    if (commandReadFailed) {
+      // Command 檔案已消失：推送錯誤文字讓前端顯示，並將 pod 回到 idle
+      const errorText = buildCommandNotFoundMessage(pod.commandId!);
+      socketService.emitToCanvas(
+        canvasId,
+        WebSocketResponseEvents.POD_CLAUDE_CHAT_MESSAGE,
+        {
+          canvasId,
+          podId,
+          messageId: uuidv4(),
+          content: `\n\n⚠️ ${errorText}`,
+          isPartial: false,
+          role: "assistant",
+        },
+      );
+      podStore.setStatus(canvasId, podId, "idle");
+      return;
+    }
 
     await executeStreamingChat(
-      { canvasId, podId, message, abortable: true, strategy },
+      { canvasId, podId, message: finalMessage, abortable: true, strategy },
       {
         onComplete: onChatComplete,
         onAborted: (abortedCanvasId, abortedPodId, messageId) =>

@@ -1,469 +1,554 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { v4 as uuidv4 } from 'uuid';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { v4 as uuidv4 } from "uuid";
 import {
-    closeTestServer,
-    createSocketClient,
-    createTestServer,
-    disconnectSocket,
-    emitAndWaitResponse,
-    type TestServerInstance,
-    type TestWebSocketClient,
-    testConfig,
-} from '../setup';
+  closeTestServer,
+  createSocketClient,
+  createTestServer,
+  disconnectSocket,
+  emitAndWaitResponse,
+  type TestServerInstance,
+  type TestWebSocketClient,
+  testConfig,
+} from "../setup";
 import {
-    createPod,
-    createCommand,
-    createRepository,
-    createSkillFile,
-    createSubAgent,
-    getCanvasId,
-} from '../helpers';
+  createPod,
+  createRepository,
+  createSkillFile,
+  createSubAgent,
+  getCanvasId,
+} from "../helpers";
 import {
-    WebSocketRequestEvents,
-    WebSocketResponseEvents,
-    type PodBindRepositoryPayload,
-    type PodUnbindRepositoryPayload,
-    type PodBindCommandPayload,
-    type PodDeletePayload,
-} from '../../src/schemas/index.js';
+  WebSocketRequestEvents,
+  WebSocketResponseEvents,
+  type PodBindRepositoryPayload,
+  type PodUnbindRepositoryPayload,
+  type PodDeletePayload,
+} from "../../src/schemas/index.js";
 import {
-    type PodRepositoryBoundPayload,
-    type PodRepositoryUnboundPayload,
-    type PodCommandBoundPayload,
-    type PodDeletedPayload,
-} from '../../src/types';
-import { podManifestService } from '../../src/services/podManifestService.js';
+  type PodRepositoryBoundPayload,
+  type PodRepositoryUnboundPayload,
+  type PodDeletedPayload,
+} from "../../src/types";
+import { podManifestService } from "../../src/services/podManifestService.js";
 
-describe('Repository Sync Manifest 整合測試', () => {
-    let server: TestServerInstance;
-    let client: TestWebSocketClient;
+describe("Repository Sync Manifest 整合測試", () => {
+  let server: TestServerInstance;
+  let client: TestWebSocketClient;
 
-    beforeAll(async () => {
-        server = await createTestServer();
-        client = await createSocketClient(server.baseUrl, server.canvasId);
+  beforeAll(async () => {
+    server = await createTestServer();
+    client = await createSocketClient(server.baseUrl, server.canvasId);
+  });
+
+  afterAll(async () => {
+    if (client?.connected) await disconnectSocket(client);
+    if (server) await closeTestServer(server);
+  });
+
+  async function bindRepositoryToPod(podId: string, repositoryId: string) {
+    const canvasId = await getCanvasId(client);
+    return emitAndWaitResponse<
+      PodBindRepositoryPayload,
+      PodRepositoryBoundPayload
+    >(
+      client,
+      WebSocketRequestEvents.POD_BIND_REPOSITORY,
+      WebSocketResponseEvents.POD_REPOSITORY_BOUND,
+      { requestId: uuidv4(), canvasId, podId, repositoryId },
+    );
+  }
+
+  async function unbindRepositoryFromPod(podId: string) {
+    const canvasId = await getCanvasId(client);
+    return emitAndWaitResponse<
+      PodUnbindRepositoryPayload,
+      PodRepositoryUnboundPayload
+    >(
+      client,
+      WebSocketRequestEvents.POD_UNBIND_REPOSITORY,
+      WebSocketResponseEvents.POD_REPOSITORY_UNBOUND,
+      { requestId: uuidv4(), canvasId, podId },
+    );
+  }
+
+  async function bindSkillToPod(podId: string, skillId: string) {
+    const canvasId = await getCanvasId(client);
+    return emitAndWaitResponse(
+      client,
+      WebSocketRequestEvents.POD_BIND_SKILL,
+      WebSocketResponseEvents.POD_SKILL_BOUND,
+      { requestId: uuidv4(), canvasId, podId, skillId },
+    );
+  }
+
+  async function deletePod(podId: string) {
+    const canvasId = await getCanvasId(client);
+    return emitAndWaitResponse<PodDeletePayload, PodDeletedPayload>(
+      client,
+      WebSocketRequestEvents.POD_DELETE,
+      WebSocketResponseEvents.POD_DELETED,
+      { requestId: uuidv4(), canvasId, podId },
+    );
+  }
+
+  function getRepoPath(repositoryId: string): string {
+    return path.join(testConfig.repositoriesRoot, repositoryId);
+  }
+
+  async function fileExists(filePath: string): Promise<boolean> {
+    return fs
+      .access(filePath)
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  function hasManifestRecord(repositoryId: string, podId: string): boolean {
+    return podManifestService.readManifest(repositoryId, podId).length > 0;
+  }
+
+  function readManifestFiles(repositoryId: string, podId: string): string[] {
+    return podManifestService.readManifest(repositoryId, podId);
+  }
+
+  describe("場景一：Pod 有資源綁定 repo", () => {
+    it("資源被複製且 manifest 正確記錄", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s1-${uuidv4()}`);
+      const skillId = await createSkillFile(`skill-${uuidv4()}`, "# Skill");
+
+      await bindSkillToPod(pod.id, skillId);
+      await bindRepositoryToPod(pod.id, repo.id);
+
+      const repoPath = getRepoPath(repo.id);
+      const skillPath = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skillId,
+        "SKILL.md",
+      );
+
+      expect(await fileExists(skillPath)).toBe(true);
+      expect(hasManifestRecord(repo.id, pod.id)).toBe(true);
+
+      const managedFiles = readManifestFiles(repo.id, pod.id);
+      expect(managedFiles).toContain(`.claude/skills/${skillId}/SKILL.md`);
     });
+  });
 
-    afterAll(async () => {
-        if (client?.connected) await disconnectSocket(client);
-        if (server) await closeTestServer(server);
+  describe("場景二：Pod 沒有資源綁定 repo", () => {
+    it("repo 原有 .claude/ 內容不被清空", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s2-${uuidv4()}`);
+
+      // 在 repo 先手動建立一個原有檔案
+      const repoPath = getRepoPath(repo.id);
+      const userOwnDir = path.join(repoPath, ".claude", "commands");
+      await fs.mkdir(userOwnDir, { recursive: true });
+      await fs.writeFile(
+        path.join(userOwnDir, "user-own.md"),
+        "# User Own Command",
+      );
+
+      // Pod 沒有資源，綁定 repo
+      await bindRepositoryToPod(pod.id, repo.id);
+
+      // 原有檔案應該仍然存在
+      const userOwnPath = path.join(userOwnDir, "user-own.md");
+      expect(await fileExists(userOwnPath)).toBe(true);
     });
+  });
 
-    async function bindRepositoryToPod(podId: string, repositoryId: string) {
-        const canvasId = await getCanvasId(client);
-        return emitAndWaitResponse<PodBindRepositoryPayload, PodRepositoryBoundPayload>(
-            client,
-            WebSocketRequestEvents.POD_BIND_REPOSITORY,
-            WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-            { requestId: uuidv4(), canvasId, podId, repositoryId }
-        );
-    }
+  describe("場景三：Pod 新增資源後 sync", () => {
+    it("新檔案加入 manifest 且舊檔案不受影響", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s3-${uuidv4()}`);
+      const skill1Id = await createSkillFile(`skill-${uuidv4()}`, "# Skill 1");
 
-    async function unbindRepositoryFromPod(podId: string) {
-        const canvasId = await getCanvasId(client);
-        return emitAndWaitResponse<PodUnbindRepositoryPayload, PodRepositoryUnboundPayload>(
-            client,
-            WebSocketRequestEvents.POD_UNBIND_REPOSITORY,
-            WebSocketResponseEvents.POD_REPOSITORY_UNBOUND,
-            { requestId: uuidv4(), canvasId, podId }
-        );
-    }
+      await bindSkillToPod(pod.id, skill1Id);
+      await bindRepositoryToPod(pod.id, repo.id);
 
-    async function bindCommandToPod(podId: string, commandId: string) {
-        const canvasId = await getCanvasId(client);
-        return emitAndWaitResponse<PodBindCommandPayload, PodCommandBoundPayload>(
-            client,
-            WebSocketRequestEvents.POD_BIND_COMMAND,
-            WebSocketResponseEvents.POD_COMMAND_BOUND,
-            { requestId: uuidv4(), canvasId, podId, commandId }
-        );
-    }
+      const managedFilesBefore = readManifestFiles(repo.id, pod.id);
+      expect(managedFilesBefore).toContain(
+        `.claude/skills/${skill1Id}/SKILL.md`,
+      );
 
-    async function bindSkillToPod(podId: string, skillId: string) {
-        const canvasId = await getCanvasId(client);
-        return emitAndWaitResponse(
-            client,
-            WebSocketRequestEvents.POD_BIND_SKILL,
-            WebSocketResponseEvents.POD_SKILL_BOUND,
-            { requestId: uuidv4(), canvasId, podId, skillId }
-        );
-    }
+      // 解綁再綁回 repo，模擬換新 skill 後的 sync
+      await unbindRepositoryFromPod(pod.id);
 
-    async function unbindCommandFromPod(podId: string) {
-        const canvasId = await getCanvasId(client);
-        return emitAndWaitResponse(
-            client,
-            WebSocketRequestEvents.POD_UNBIND_COMMAND,
-            WebSocketResponseEvents.POD_COMMAND_UNBOUND,
-            { requestId: uuidv4(), canvasId, podId }
-        );
-    }
+      // 綁定新的 skill
+      const skill2Id = await createSkillFile(`skill-${uuidv4()}`, "# Skill 2");
+      const canvasId = await getCanvasId(client);
+      await emitAndWaitResponse(
+        client,
+        WebSocketRequestEvents.POD_BIND_SKILL,
+        WebSocketResponseEvents.POD_SKILL_BOUND,
+        { requestId: uuidv4(), canvasId, podId: pod.id, skillId: skill2Id },
+      );
 
-    async function deletePod(podId: string) {
-        const canvasId = await getCanvasId(client);
-        return emitAndWaitResponse<PodDeletePayload, PodDeletedPayload>(
-            client,
-            WebSocketRequestEvents.POD_DELETE,
-            WebSocketResponseEvents.POD_DELETED,
-            { requestId: uuidv4(), canvasId, podId }
-        );
-    }
+      // 綁回 repo，觸發新 sync
+      await bindRepositoryToPod(pod.id, repo.id);
 
-    function getRepoPath(repositoryId: string): string {
-        return path.join(testConfig.repositoriesRoot, repositoryId);
-    }
+      const managedFilesAfter = readManifestFiles(repo.id, pod.id);
+      expect(managedFilesAfter).toContain(
+        `.claude/skills/${skill2Id}/SKILL.md`,
+      );
 
-    async function fileExists(filePath: string): Promise<boolean> {
-        return fs.access(filePath).then(() => true).catch(() => false);
-    }
-
-    function hasManifestRecord(repositoryId: string, podId: string): boolean {
-        return podManifestService.readManifest(repositoryId, podId).length > 0;
-    }
-
-    function readManifestFiles(repositoryId: string, podId: string): string[] {
-        return podManifestService.readManifest(repositoryId, podId);
-    }
-
-    describe('場景一：Pod 有資源綁定 repo', () => {
-        it('資源被複製且 manifest 正確記錄', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s1-${uuidv4()}`);
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command');
-
-            await bindCommandToPod(pod.id, command.id);
-            await bindRepositoryToPod(pod.id, repo.id);
-
-            const repoPath = getRepoPath(repo.id);
-            const commandPath = path.join(repoPath, '.claude', 'commands', `${command.id}.md`);
-
-            expect(await fileExists(commandPath)).toBe(true);
-            expect(hasManifestRecord(repo.id, pod.id)).toBe(true);
-
-            const managedFiles = readManifestFiles(repo.id, pod.id);
-            expect(managedFiles).toContain(`.claude/commands/${command.id}.md`);
-        });
+      const repoPath = getRepoPath(repo.id);
+      const skill2Path = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skill2Id,
+        "SKILL.md",
+      );
+      expect(await fileExists(skill2Path)).toBe(true);
     });
+  });
 
-    describe('場景二：Pod 沒有資源綁定 repo', () => {
-        it('repo 原有 .claude/ 內容不被清空', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s2-${uuidv4()}`);
+  describe("場景四：Pod 解綁 repo 後資源從 repo 清除且 manifest 更新", () => {
+    it("解綁 repo 後 Pod 管理的 skill 檔案從 repo 刪除且 manifest 清除", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s4-${uuidv4()}`);
+      const skillId = await createSkillFile(`skill-${uuidv4()}`, "# Skill");
 
-            // 在 repo 先手動建立一個原有檔案
-            const repoPath = getRepoPath(repo.id);
-            const userOwnDir = path.join(repoPath, '.claude', 'commands');
-            await fs.mkdir(userOwnDir, { recursive: true });
-            await fs.writeFile(path.join(userOwnDir, 'user-own.md'), '# User Own Command');
+      await bindSkillToPod(pod.id, skillId);
+      await bindRepositoryToPod(pod.id, repo.id);
 
-            // Pod 沒有資源，綁定 repo
-            await bindRepositoryToPod(pod.id, repo.id);
+      const repoPath = getRepoPath(repo.id);
+      const skillPath = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skillId,
+        "SKILL.md",
+      );
 
-            // 原有檔案應該仍然存在
-            const userOwnPath = path.join(userOwnDir, 'user-own.md');
-            expect(await fileExists(userOwnPath)).toBe(true);
-        });
+      // 綁定後 skill 應存在於 repo
+      expect(await fileExists(skillPath)).toBe(true);
+      expect(hasManifestRecord(repo.id, pod.id)).toBe(true);
+
+      // 解綁 repo
+      await unbindRepositoryFromPod(pod.id);
+
+      // skill 檔案應已從 repo 刪除，manifest 應清除
+      expect(await fileExists(skillPath)).toBe(false);
+      expect(hasManifestRecord(repo.id, pod.id)).toBe(false);
     });
+  });
 
-    describe('場景三：Pod 新增資源後 sync', () => {
-        it('新檔案加入 manifest 且舊檔案不受影響', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s3-${uuidv4()}`);
-            const cmd1 = await createCommand(client, `cmd-${uuidv4()}`, '# Command 1');
+  describe("場景五：Pod 解綁 repo", () => {
+    it("只刪除該 Pod manifest 中的檔案，manifest 本身也刪除", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s5-${uuidv4()}`);
+      const skillId = await createSkillFile(`skill-${uuidv4()}`, "# Skill");
 
-            await bindCommandToPod(pod.id, cmd1.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      // 手動建立 repo 原有的檔案
+      const repoPath = getRepoPath(repo.id);
+      const userOwnDir = path.join(repoPath, ".claude", "skills");
+      await fs.mkdir(userOwnDir, { recursive: true });
+      await fs.writeFile(
+        path.join(userOwnDir, "user-own-skill.md"),
+        "# User Own Skill",
+      );
 
-            const managedFilesBefore = readManifestFiles(repo.id, pod.id);
-            expect(managedFilesBefore).toContain(`.claude/commands/${cmd1.id}.md`);
+      await bindSkillToPod(pod.id, skillId);
+      await bindRepositoryToPod(pod.id, repo.id);
 
-            // 解綁 command，再綁定新 command（模擬換新資源後的 sync）
-            // 先透過解綁 repo 再重綁 repo 的方式觸發帶新 command 的 sync
-            await unbindCommandFromPod(pod.id);
+      const skillPath = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skillId,
+        "SKILL.md",
+      );
+      expect(await fileExists(skillPath)).toBe(true);
 
-            // 綁定新的 command
-            const cmd2 = await createCommand(client, `cmd-${uuidv4()}`, '# Command 2');
-            await bindCommandToPod(pod.id, cmd2.id);
+      // 解綁 repo
+      await unbindRepositoryFromPod(pod.id);
 
-            // 解綁再綁回 repo，觸發新 sync
-            await unbindRepositoryFromPod(pod.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      // Pod 管理的 skill 應被刪除
+      expect(await fileExists(skillPath)).toBe(false);
 
-            const managedFilesAfter = readManifestFiles(repo.id, pod.id);
-            expect(managedFilesAfter).toContain(`.claude/commands/${cmd2.id}.md`);
+      // manifest 記錄應被刪除
+      expect(hasManifestRecord(repo.id, pod.id)).toBe(false);
 
-            const repoPath = getRepoPath(repo.id);
-            const cmd2Path = path.join(repoPath, '.claude', 'commands', `${cmd2.id}.md`);
-            expect(await fileExists(cmd2Path)).toBe(true);
-        });
+      // 原有的 user-own-skill.md 應保留
+      const userOwnPath = path.join(userOwnDir, "user-own-skill.md");
+      expect(await fileExists(userOwnPath)).toBe(true);
     });
+  });
 
-    describe('場景四：Pod 解綁資源後 sync', () => {
-        it('被解綁的 command 檔案從 repo 刪除且 manifest 更新', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s4-${uuidv4()}`);
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command');
+  describe("場景六：Pod 被刪除", () => {
+    it("Pod 管理的資源被清除，manifest 被刪除，repo 原有檔案保留", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s6-${uuidv4()}`);
+      const skillId = await createSkillFile(`skill-${uuidv4()}`, "# Skill");
 
-            await bindCommandToPod(pod.id, command.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      // 手動建立 repo 原有的檔案
+      const repoPath = getRepoPath(repo.id);
+      const userOwnDir = path.join(repoPath, ".claude", "skills");
+      await fs.mkdir(userOwnDir, { recursive: true });
+      await fs.writeFile(
+        path.join(userOwnDir, "user-own-skill.md"),
+        "# User Own Skill",
+      );
 
-            const repoPath = getRepoPath(repo.id);
-            const commandPath = path.join(repoPath, '.claude', 'commands', `${command.id}.md`);
+      await bindSkillToPod(pod.id, skillId);
+      await bindRepositoryToPod(pod.id, repo.id);
 
-            expect(await fileExists(commandPath)).toBe(true);
+      const skillPath = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skillId,
+        "SKILL.md",
+      );
+      expect(await fileExists(skillPath)).toBe(true);
 
-            // 解綁 command，sync 時需要解綁 repo 才能觸發（command 解綁本身不觸發 repo sync）
-            await unbindCommandFromPod(pod.id);
-            await unbindRepositoryFromPod(pod.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      // 刪除 Pod
+      await deletePod(pod.id);
 
-            // command 檔案應已從 repo 刪除
-            expect(await fileExists(commandPath)).toBe(false);
+      // Pod 管理的 skill 應被刪除
+      expect(await fileExists(skillPath)).toBe(false);
 
-            const managedFiles = readManifestFiles(repo.id, pod.id);
-            expect(managedFiles).not.toContain(`.claude/commands/${command.id}.md`);
-        });
+      // manifest 記錄應被刪除
+      expect(hasManifestRecord(repo.id, pod.id)).toBe(false);
+
+      // 原有的 user-own-skill.md 應保留
+      const userOwnPath = path.join(userOwnDir, "user-own-skill.md");
+      expect(await fileExists(userOwnPath)).toBe(true);
     });
+  });
 
-    describe('場景五：Pod 解綁 repo', () => {
-        it('只刪除該 Pod manifest 中的檔案，manifest 本身也刪除', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s5-${uuidv4()}`);
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command');
+  describe("場景七：多 Pod 共享 repo", () => {
+    it("各自 manifest 獨立，解綁一個不影響另一個", async () => {
+      const podA = await createPod(client);
+      const podB = await createPod(client);
+      const repo = await createRepository(client, `manifest-s7-${uuidv4()}`);
+      const skillAId = await createSkillFile(`skill-${uuidv4()}`, "# Skill A");
+      const skillBId = await createSkillFile(`skill-${uuidv4()}`, "# Skill B");
 
-            // 手動建立 repo 原有的檔案
-            const repoPath = getRepoPath(repo.id);
-            const userOwnDir = path.join(repoPath, '.claude', 'commands');
-            await fs.mkdir(userOwnDir, { recursive: true });
-            await fs.writeFile(path.join(userOwnDir, 'user-own.md'), '# User Own');
+      await bindSkillToPod(podA.id, skillAId);
+      await bindSkillToPod(podB.id, skillBId);
 
-            await bindCommandToPod(pod.id, command.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      await bindRepositoryToPod(podA.id, repo.id);
+      await bindRepositoryToPod(podB.id, repo.id);
 
-            const commandPath = path.join(repoPath, '.claude', 'commands', `${command.id}.md`);
-            expect(await fileExists(commandPath)).toBe(true);
+      const repoPath = getRepoPath(repo.id);
+      const skillAPath = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skillAId,
+        "SKILL.md",
+      );
+      const skillBPath = path.join(
+        repoPath,
+        ".claude",
+        "skills",
+        skillBId,
+        "SKILL.md",
+      );
 
-            // 解綁 repo
-            await unbindRepositoryFromPod(pod.id);
+      // 兩個 skill 都應存在
+      expect(await fileExists(skillAPath)).toBe(true);
+      expect(await fileExists(skillBPath)).toBe(true);
 
-            // Pod 管理的 command 應被刪除
-            expect(await fileExists(commandPath)).toBe(false);
+      // 各自的 manifest 應獨立存在
+      expect(hasManifestRecord(repo.id, podA.id)).toBe(true);
+      expect(hasManifestRecord(repo.id, podB.id)).toBe(true);
 
-            // manifest 記錄應被刪除
-            expect(hasManifestRecord(repo.id, pod.id)).toBe(false);
+      const manifestA = readManifestFiles(repo.id, podA.id);
+      const manifestB = readManifestFiles(repo.id, podB.id);
 
-            // 原有的 user-own.md 應保留
-            const userOwnPath = path.join(userOwnDir, 'user-own.md');
-            expect(await fileExists(userOwnPath)).toBe(true);
-        });
+      expect(manifestA).toContain(`.claude/skills/${skillAId}/SKILL.md`);
+      expect(manifestA).not.toContain(`.claude/skills/${skillBId}/SKILL.md`);
+      expect(manifestB).toContain(`.claude/skills/${skillBId}/SKILL.md`);
+      expect(manifestB).not.toContain(`.claude/skills/${skillAId}/SKILL.md`);
+
+      // 解綁 podA
+      await unbindRepositoryFromPod(podA.id);
+
+      // podA 的 skill 應被刪除，manifest 應被刪除
+      expect(await fileExists(skillAPath)).toBe(false);
+      expect(hasManifestRecord(repo.id, podA.id)).toBe(false);
+
+      // podB 的 skill 應仍然存在
+      expect(await fileExists(skillBPath)).toBe(true);
+      expect(hasManifestRecord(repo.id, podB.id)).toBe(true);
     });
+  });
 
-    describe('場景六：Pod 被刪除', () => {
-        it('Pod 管理的資源被清除，manifest 被刪除，repo 原有檔案保留', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s6-${uuidv4()}`);
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command');
+  describe("場景八：同名衝突", () => {
+    it("Pod skill 覆蓋 repo 原有同名 skill 目錄，解綁後該目錄被刪除", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-s8-${uuidv4()}`);
 
-            // 手動建立 repo 原有的檔案
-            const repoPath = getRepoPath(repo.id);
-            const userOwnDir = path.join(repoPath, '.claude', 'commands');
-            await fs.mkdir(userOwnDir, { recursive: true });
-            await fs.writeFile(path.join(userOwnDir, 'user-own.md'), '# User Own');
+      // 建立 skill
+      const skillId = `skill-${uuidv4().slice(0, 8)}`;
+      await createSkillFile(skillId, "# Skill Content");
 
-            await bindCommandToPod(pod.id, command.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      // 在 repo 手動建立同名的原有 skill 目錄
+      const repoPath = getRepoPath(repo.id);
+      const skillsDir = path.join(repoPath, ".claude", "skills", skillId);
+      await fs.mkdir(skillsDir, { recursive: true });
+      const sameNamePath = path.join(skillsDir, "SKILL.md");
+      await fs.writeFile(sameNamePath, "# Original Skill");
 
-            const commandPath = path.join(repoPath, '.claude', 'commands', `${command.id}.md`);
-            expect(await fileExists(commandPath)).toBe(true);
+      const originalContent = await fs.readFile(sameNamePath, "utf-8");
+      expect(originalContent).toBe("# Original Skill");
 
-            // 刪除 Pod
-            await deletePod(pod.id);
+      // Pod 綁定同名的 skill 到 repo，應覆蓋原有檔案
+      await bindSkillToPod(pod.id, skillId);
+      await bindRepositoryToPod(pod.id, repo.id);
 
-            // Pod 管理的 command 應被刪除
-            expect(await fileExists(commandPath)).toBe(false);
+      expect(await fileExists(sameNamePath)).toBe(true);
+      const newContent = await fs.readFile(sameNamePath, "utf-8");
+      expect(newContent).toBe("# Skill Content");
 
-            // manifest 記錄應被刪除
-            expect(hasManifestRecord(repo.id, pod.id)).toBe(false);
+      // manifest 應記錄該路徑
+      const managedFiles = readManifestFiles(repo.id, pod.id);
+      expect(managedFiles).toContain(`.claude/skills/${skillId}/SKILL.md`);
 
-            // 原有的 user-own.md 應保留
-            const userOwnPath = path.join(userOwnDir, 'user-own.md');
-            expect(await fileExists(userOwnPath)).toBe(true);
-        });
+      // Pod 解綁後，該檔案應被刪除
+      await unbindRepositoryFromPod(pod.id);
+      expect(await fileExists(sameNamePath)).toBe(false);
     });
+  });
 
-    describe('場景七：多 Pod 共享 repo', () => {
-        it('各自 manifest 獨立，解綁一個不影響另一個', async () => {
-            const podA = await createPod(client);
-            const podB = await createPod(client);
-            const repo = await createRepository(client, `manifest-s7-${uuidv4()}`);
-            const cmdA = await createCommand(client, `cmd-${uuidv4()}`, '# Command A');
-            const cmdB = await createCommand(client, `cmd-${uuidv4()}`, '# Command B');
+  describe("場景九：Pod 從 repo A 切換到 repo B", () => {
+    it("repo A 的資源和 manifest 被清除，repo B 有 Pod 的資源和 manifest", async () => {
+      const pod = await createPod(client);
+      const skillId = await createSkillFile(`skill-${uuidv4()}`, "# Skill");
 
-            await bindCommandToPod(podA.id, cmdA.id);
-            await bindCommandToPod(podB.id, cmdB.id);
+      await bindSkillToPod(pod.id, skillId);
 
-            await bindRepositoryToPod(podA.id, repo.id);
-            await bindRepositoryToPod(podB.id, repo.id);
+      const repoA = await createRepository(client, `manifest-s9-a-${uuidv4()}`);
+      await bindRepositoryToPod(pod.id, repoA.id);
 
-            const repoPath = getRepoPath(repo.id);
-            const cmdAPath = path.join(repoPath, '.claude', 'commands', `${cmdA.id}.md`);
-            const cmdBPath = path.join(repoPath, '.claude', 'commands', `${cmdB.id}.md`);
+      const repoAPath = getRepoPath(repoA.id);
+      const skillPathInA = path.join(
+        repoAPath,
+        ".claude",
+        "skills",
+        skillId,
+        "SKILL.md",
+      );
 
-            // 兩個 command 都應存在
-            expect(await fileExists(cmdAPath)).toBe(true);
-            expect(await fileExists(cmdBPath)).toBe(true);
+      expect(await fileExists(skillPathInA)).toBe(true);
+      expect(hasManifestRecord(repoA.id, pod.id)).toBe(true);
 
-            // 各自的 manifest 應獨立存在
-            expect(hasManifestRecord(repo.id, podA.id)).toBe(true);
-            expect(hasManifestRecord(repo.id, podB.id)).toBe(true);
+      const repoB = await createRepository(client, `manifest-s9-b-${uuidv4()}`);
+      await bindRepositoryToPod(pod.id, repoB.id);
 
-            const manifestA = readManifestFiles(repo.id, podA.id);
-            const manifestB = readManifestFiles(repo.id, podB.id);
+      expect(await fileExists(skillPathInA)).toBe(false);
+      expect(hasManifestRecord(repoA.id, pod.id)).toBe(false);
 
-            expect(manifestA).toContain(`.claude/commands/${cmdA.id}.md`);
-            expect(manifestA).not.toContain(`.claude/commands/${cmdB.id}.md`);
-            expect(manifestB).toContain(`.claude/commands/${cmdB.id}.md`);
-            expect(manifestB).not.toContain(`.claude/commands/${cmdA.id}.md`);
+      const repoBPath = getRepoPath(repoB.id);
+      const skillPathInB = path.join(
+        repoBPath,
+        ".claude",
+        "skills",
+        skillId,
+        "SKILL.md",
+      );
+      expect(await fileExists(skillPathInB)).toBe(true);
+      expect(hasManifestRecord(repoB.id, pod.id)).toBe(true);
 
-            // 解綁 podA
-            await unbindRepositoryFromPod(podA.id);
-
-            // podA 的 command 應被刪除，manifest 應被刪除
-            expect(await fileExists(cmdAPath)).toBe(false);
-            expect(hasManifestRecord(repo.id, podA.id)).toBe(false);
-
-            // podB 的 command 應仍然存在
-            expect(await fileExists(cmdBPath)).toBe(true);
-            expect(hasManifestRecord(repo.id, podB.id)).toBe(true);
-        });
+      const managedFiles = readManifestFiles(repoB.id, pod.id);
+      expect(managedFiles).toContain(`.claude/skills/${skillId}/SKILL.md`);
     });
+  });
 
-    describe('場景八：同名衝突', () => {
-        it('Pod 資源覆蓋 repo 原有同名檔案，解綁後該檔案被刪除', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-s8-${uuidv4()}`);
+  describe("場景十：孤兒 manifest 清理", () => {
+    it("孤兒 manifest 對應的檔案和 DB 記錄都被清除", async () => {
+      const repo = await createRepository(client, `manifest-s10-${uuidv4()}`);
+      const repoPath = getRepoPath(repo.id);
 
-            // 建立 command
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command Content');
+      // 使用合法的 UUID 格式作為假的 podId，才能通過 validatePodId 檢查
+      const fakePodId = uuidv4();
 
-            // 在 repo 手動建立同名的原有檔案
-            const repoPath = getRepoPath(repo.id);
-            const commandsDir = path.join(repoPath, '.claude', 'commands');
-            await fs.mkdir(commandsDir, { recursive: true });
-            const sameNamePath = path.join(commandsDir, `${command.id}.md`);
-            await fs.writeFile(sameNamePath, '# Original Content');
+      // 在 repo 建立假的 command 檔案
+      const fakeCommandRelPath = `.claude/commands/fake-cmd-${uuidv4()}.md`;
+      const fakeCommandAbsPath = path.join(repoPath, fakeCommandRelPath);
+      await fs.mkdir(path.dirname(fakeCommandAbsPath), { recursive: true });
+      await fs.writeFile(fakeCommandAbsPath, "# Fake Command");
 
-            const originalContent = await fs.readFile(sameNamePath, 'utf-8');
-            expect(originalContent).toBe('# Original Content');
+      // 在 DB 插入孤兒 manifest 記錄（模擬已刪除的 Pod 遺留的記錄）
+      podManifestService.writeManifest(repo.id, fakePodId, [
+        fakeCommandRelPath,
+      ]);
 
-            // Pod 綁定同名的 command 到 repo，應覆蓋原有檔案
-            await bindCommandToPod(pod.id, command.id);
-            await bindRepositoryToPod(pod.id, repo.id);
+      expect(hasManifestRecord(repo.id, fakePodId)).toBe(true);
+      expect(await fileExists(fakeCommandAbsPath)).toBe(true);
 
-            expect(await fileExists(sameNamePath)).toBe(true);
-            const newContent = await fs.readFile(sameNamePath, 'utf-8');
-            expect(newContent).toBe('# Command Content');
+      // 綁定一個新 Pod，觸發 sync 時會清理孤兒
+      const pod = await createPod(client);
+      await bindRepositoryToPod(pod.id, repo.id);
 
-            // manifest 應記錄該路徑
-            const managedFiles = readManifestFiles(repo.id, pod.id);
-            expect(managedFiles).toContain(`.claude/commands/${command.id}.md`);
-
-            // Pod 解綁後，該檔案應被刪除
-            await unbindRepositoryFromPod(pod.id);
-            expect(await fileExists(sameNamePath)).toBe(false);
-        });
+      expect(await fileExists(fakeCommandAbsPath)).toBe(false);
+      expect(hasManifestRecord(repo.id, fakePodId)).toBe(false);
     });
+  });
 
-    describe('場景九：Pod 從 repo A 切換到 repo B', () => {
-        it('repo A 的資源和 manifest 被清除，repo B 有 Pod 的資源和 manifest', async () => {
-            const pod = await createPod(client);
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command');
+  describe("場景：多種資源類型同時 sync", () => {
+    it("skill、subAgent 都被正確複製且記錄在 manifest 中（command 不再同步至 repo）", async () => {
+      const pod = await createPod(client);
+      const repo = await createRepository(client, `manifest-multi-${uuidv4()}`);
+      const skillId = await createSkillFile(
+        `skill-${uuidv4()}`,
+        "# Test Skill",
+      );
+      const subAgent = await createSubAgent(
+        client,
+        `agent-${uuidv4()}`,
+        "# Agent Content",
+      );
 
-            await bindCommandToPod(pod.id, command.id);
+      const canvasId = await getCanvasId(client);
 
-            const repoA = await createRepository(client, `manifest-s9-a-${uuidv4()}`);
-            await bindRepositoryToPod(pod.id, repoA.id);
+      await emitAndWaitResponse(
+        client,
+        WebSocketRequestEvents.POD_BIND_SKILL,
+        WebSocketResponseEvents.POD_SKILL_BOUND,
+        {
+          requestId: uuidv4(),
+          canvasId,
+          podId: pod.id,
+          skillId,
+        },
+      );
+      await emitAndWaitResponse(
+        client,
+        WebSocketRequestEvents.POD_BIND_SUBAGENT,
+        WebSocketResponseEvents.POD_SUBAGENT_BOUND,
+        {
+          requestId: uuidv4(),
+          canvasId,
+          podId: pod.id,
+          subAgentId: subAgent.id,
+        },
+      );
+      await bindRepositoryToPod(pod.id, repo.id);
 
-            const repoAPath = getRepoPath(repoA.id);
-            const commandPathInA = path.join(repoAPath, '.claude', 'commands', `${command.id}.md`);
+      const repoPath = getRepoPath(repo.id);
 
-            expect(await fileExists(commandPathInA)).toBe(true);
-            expect(hasManifestRecord(repoA.id, pod.id)).toBe(true);
+      expect(
+        await fileExists(
+          path.join(repoPath, ".claude", "skills", skillId, "SKILL.md"),
+        ),
+      ).toBe(true);
+      expect(
+        await fileExists(
+          path.join(repoPath, ".claude", "agents", `${subAgent.id}.md`),
+        ),
+      ).toBe(true);
 
-            const repoB = await createRepository(client, `manifest-s9-b-${uuidv4()}`);
-            await bindRepositoryToPod(pod.id, repoB.id);
-
-            expect(await fileExists(commandPathInA)).toBe(false);
-            expect(hasManifestRecord(repoA.id, pod.id)).toBe(false);
-
-            const repoBPath = getRepoPath(repoB.id);
-            const commandPathInB = path.join(repoBPath, '.claude', 'commands', `${command.id}.md`);
-            expect(await fileExists(commandPathInB)).toBe(true);
-            expect(hasManifestRecord(repoB.id, pod.id)).toBe(true);
-
-            const managedFiles = readManifestFiles(repoB.id, pod.id);
-            expect(managedFiles).toContain(`.claude/commands/${command.id}.md`);
-        });
+      const managedFiles = readManifestFiles(repo.id, pod.id);
+      expect(managedFiles).toContain(`.claude/skills/${skillId}/SKILL.md`);
+      expect(managedFiles).toContain(`.claude/agents/${subAgent.id}.md`);
     });
-
-    describe('場景十：孤兒 manifest 清理', () => {
-        it('孤兒 manifest 對應的檔案和 DB 記錄都被清除', async () => {
-            const repo = await createRepository(client, `manifest-s10-${uuidv4()}`);
-            const repoPath = getRepoPath(repo.id);
-
-            // 使用合法的 UUID 格式作為假的 podId，才能通過 validatePodId 檢查
-            const fakePodId = uuidv4();
-
-            // 在 repo 建立假的 command 檔案
-            const fakeCommandRelPath = `.claude/commands/fake-cmd-${uuidv4()}.md`;
-            const fakeCommandAbsPath = path.join(repoPath, fakeCommandRelPath);
-            await fs.mkdir(path.dirname(fakeCommandAbsPath), { recursive: true });
-            await fs.writeFile(fakeCommandAbsPath, '# Fake Command');
-
-            // 在 DB 插入孤兒 manifest 記錄（模擬已刪除的 Pod 遺留的記錄）
-            podManifestService.writeManifest(repo.id, fakePodId, [fakeCommandRelPath]);
-
-            expect(hasManifestRecord(repo.id, fakePodId)).toBe(true);
-            expect(await fileExists(fakeCommandAbsPath)).toBe(true);
-
-            // 綁定一個新 Pod，觸發 sync 時會清理孤兒
-            const pod = await createPod(client);
-            await bindRepositoryToPod(pod.id, repo.id);
-
-            expect(await fileExists(fakeCommandAbsPath)).toBe(false);
-            expect(hasManifestRecord(repo.id, fakePodId)).toBe(false);
-        });
-    });
-
-    describe('場景：多種資源類型同時 sync', () => {
-        it('command、skill、subAgent 都被正確複製且記錄在 manifest 中', async () => {
-            const pod = await createPod(client);
-            const repo = await createRepository(client, `manifest-multi-${uuidv4()}`);
-            const skillId = await createSkillFile(`skill-${uuidv4()}`, '# Test Skill');
-            const subAgent = await createSubAgent(client, `agent-${uuidv4()}`, '# Agent Content');
-            const command = await createCommand(client, `cmd-${uuidv4()}`, '# Command Content');
-
-            const canvasId = await getCanvasId(client);
-
-            await emitAndWaitResponse(client, WebSocketRequestEvents.POD_BIND_SKILL, WebSocketResponseEvents.POD_SKILL_BOUND, {
-                requestId: uuidv4(), canvasId, podId: pod.id, skillId
-            });
-            await emitAndWaitResponse(client, WebSocketRequestEvents.POD_BIND_SUBAGENT, WebSocketResponseEvents.POD_SUBAGENT_BOUND, {
-                requestId: uuidv4(), canvasId, podId: pod.id, subAgentId: subAgent.id
-            });
-            await bindCommandToPod(pod.id, command.id);
-            await bindRepositoryToPod(pod.id, repo.id);
-
-            const repoPath = getRepoPath(repo.id);
-
-            expect(await fileExists(path.join(repoPath, '.claude', 'commands', `${command.id}.md`))).toBe(true);
-            expect(await fileExists(path.join(repoPath, '.claude', 'skills', skillId, 'SKILL.md'))).toBe(true);
-            expect(await fileExists(path.join(repoPath, '.claude', 'agents', `${subAgent.id}.md`))).toBe(true);
-
-            const managedFiles = readManifestFiles(repo.id, pod.id);
-            expect(managedFiles).toContain(`.claude/commands/${command.id}.md`);
-            expect(managedFiles).toContain(`.claude/skills/${skillId}/SKILL.md`);
-            expect(managedFiles).toContain(`.claude/agents/${subAgent.id}.md`);
-        });
-    });
+  });
 });

@@ -217,15 +217,6 @@ function buildCopyOperations(pod: Pod): Promise<unknown>[] {
     ...pod.subAgentIds.map((id) =>
       subAgentService.copySubAgentToPod(id, pod.id, pod.workspacePath),
     ),
-    ...(pod.commandId
-      ? [
-          commandService.copyCommandToPod(
-            pod.commandId,
-            pod.id,
-            pod.workspacePath,
-          ),
-        ]
-      : []),
   ];
 }
 

@@ -79,18 +79,14 @@ interface QueryState {
 /** 組裝 Claude SDK prompt（文字或 ContentBlock 陣列） */
 function buildPrompt(
   message: string | import("../../../types/message.js").ContentBlock[],
-  commandId: string | null,
   resumeSessionId: string | null,
 ): string | AsyncIterable<SDKUserMessage> {
   if (typeof message === "string") {
-    let prompt = commandId ? `/${commandId} ${message}` : message;
-    if (prompt.trim().length === 0) {
-      prompt = "請開始執行";
-    }
+    const prompt = message.trim().length === 0 ? "請開始執行" : message;
     return prompt;
   }
 
-  const contentArray = buildClaudeContentBlocks(message, commandId);
+  const contentArray = buildClaudeContentBlocks(message);
   const sessionId = resumeSessionId ?? "";
   return createUserMessageStream(contentArray, sessionId);
 }
@@ -333,10 +329,7 @@ export async function* runClaudeQuery(
     return;
   }
 
-  // 取得 pod commandId（僅 normal mode 有 commandId，run mode 無）
-  // commandId 需從外部傳入；暫時以 null 處理（ctx 未傳 pod 物件）
-  const commandId: string | null = null;
-  const prompt = buildPrompt(message, commandId, resumeSessionId);
+  const prompt = buildPrompt(message, resumeSessionId);
 
   // 組裝 SDK Options（將 ClaudeOptions 展開至 SDK 的 Options 格式）
   const sdkOptions: Options & { abortController: AbortController } = {

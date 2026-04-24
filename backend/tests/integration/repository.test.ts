@@ -116,7 +116,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
   });
 
@@ -149,28 +151,12 @@ describe("Repository 管理", () => {
       );
     }
 
-    async function bindCommandToPod(
-      client: any,
-      podId: string,
-      commandId: string,
-    ) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_COMMAND,
-        WebSocketResponseEvents.POD_COMMAND_BOUND,
-        { requestId: uuidv4(), canvasId, podId, commandId },
-      );
-    }
-
     it("綁定 Repository 後 Pod 資源被刪除", async () => {
       const client = getClient();
       const pod = await createPod(client);
       const repo = await createRepository(client, `sync-delete-${uuidv4()}`);
 
-      const { createSkillFile, createSubAgent, createCommand } =
+      const { createSkillFile, createSubAgent } =
         await import("../helpers/index.js");
       const skillId = await createSkillFile(
         `skill-${uuidv4()}`,
@@ -181,15 +167,9 @@ describe("Repository 管理", () => {
         `subagent-${uuidv4()}`,
         "Test SubAgent",
       );
-      const command = await createCommand(
-        client,
-        `command-${uuidv4()}`,
-        "Test Command",
-      );
 
       await bindSkillToPod(client, pod.id, skillId);
       await bindSubAgentToPod(client, pod.id, subAgent.id);
-      await bindCommandToPod(client, pod.id, command.id);
 
       const path = await import("path");
       const fs = await import("fs/promises");
@@ -208,12 +188,6 @@ describe("Repository 管理", () => {
         "agents",
         `${subAgent.id}.md`,
       );
-      const commandPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "commands",
-        `${command.id}.md`,
-      );
 
       const skillExistsBefore = await fs
         .access(skillPath)
@@ -223,14 +197,9 @@ describe("Repository 管理", () => {
         .access(subAgentPath)
         .then(() => true)
         .catch(() => false);
-      const commandExistsBefore = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
 
       expect(skillExistsBefore).toBe(true);
       expect(subAgentExistsBefore).toBe(true);
-      expect(commandExistsBefore).toBe(true);
 
       const canvasId = await getCanvasId(client);
       await emitAndWaitResponse<
@@ -251,14 +220,9 @@ describe("Repository 管理", () => {
         .access(subAgentPath)
         .then(() => true)
         .catch(() => false);
-      const commandExistsAfter = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
 
       expect(skillExistsAfter).toBe(false);
       expect(subAgentExistsAfter).toBe(false);
-      expect(commandExistsAfter).toBe(false);
     });
 
     it("綁定後 Repository 資源同步成功", async () => {
@@ -266,7 +230,7 @@ describe("Repository 管理", () => {
       const pod = await createPod(client);
       const repo = await createRepository(client, `sync-add-${uuidv4()}`);
 
-      const { createSkillFile, createSubAgent, createCommand } =
+      const { createSkillFile, createSubAgent } =
         await import("../helpers/index.js");
       const skillId = await createSkillFile(
         `skill-${uuidv4()}`,
@@ -277,15 +241,9 @@ describe("Repository 管理", () => {
         `subagent-${uuidv4()}`,
         "Test SubAgent",
       );
-      const command = await createCommand(
-        client,
-        `command-${uuidv4()}`,
-        "Test Command",
-      );
 
       await bindSkillToPod(client, pod.id, skillId);
       await bindSubAgentToPod(client, pod.id, subAgent.id);
-      await bindCommandToPod(client, pod.id, command.id);
 
       const canvasId = await getCanvasId(client);
       await emitAndWaitResponse<
@@ -316,12 +274,6 @@ describe("Repository 管理", () => {
         "agents",
         `${subAgent.id}.md`,
       );
-      const commandPath = path.join(
-        repoPath,
-        ".claude",
-        "commands",
-        `${command.id}.md`,
-      );
 
       const skillExists = await fs
         .access(skillPath)
@@ -331,14 +283,9 @@ describe("Repository 管理", () => {
         .access(subAgentPath)
         .then(() => true)
         .catch(() => false);
-      const commandExists = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
 
       expect(skillExists).toBe(true);
       expect(subAgentExists).toBe(true);
-      expect(commandExists).toBe(true);
     });
 
     it("重新綁定後舊 Repository 同步成功", async () => {
@@ -471,7 +418,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
   });
 
@@ -504,28 +453,12 @@ describe("Repository 管理", () => {
       );
     }
 
-    async function bindCommandToPod(
-      client: any,
-      podId: string,
-      commandId: string,
-    ) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_COMMAND,
-        WebSocketResponseEvents.POD_COMMAND_BOUND,
-        { requestId: uuidv4(), canvasId, podId, commandId },
-      );
-    }
-
     it("解除綁定後資源複製到 Pod", async () => {
       const client = getClient();
       const pod = await createPod(client);
       const repo = await createRepository(client, `unbind-copy-${uuidv4()}`);
 
-      const { createSkillFile, createSubAgent, createCommand } =
+      const { createSkillFile, createSubAgent } =
         await import("../helpers/index.js");
       const skillId = await createSkillFile(
         `skill-${uuidv4()}`,
@@ -536,15 +469,9 @@ describe("Repository 管理", () => {
         `subagent-${uuidv4()}`,
         "Test SubAgent",
       );
-      const command = await createCommand(
-        client,
-        `command-${uuidv4()}`,
-        "Test Command",
-      );
 
       await bindSkillToPod(client, pod.id, skillId);
       await bindSubAgentToPod(client, pod.id, subAgent.id);
-      await bindCommandToPod(client, pod.id, command.id);
 
       const canvasId = await getCanvasId(client);
       await emitAndWaitResponse<
@@ -597,12 +524,6 @@ describe("Repository 管理", () => {
         "agents",
         `${subAgent.id}.md`,
       );
-      const commandPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "commands",
-        `${command.id}.md`,
-      );
 
       const skillExists = await fs
         .access(skillPath)
@@ -612,14 +533,9 @@ describe("Repository 管理", () => {
         .access(subAgentPath)
         .then(() => true)
         .catch(() => false);
-      const commandExists = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
 
       expect(skillExists).toBe(true);
       expect(subAgentExists).toBe(true);
-      expect(commandExists).toBe(true);
     });
 
     it("解除綁定後舊 Repository 清理完成", async () => {
@@ -715,7 +631,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("使用中時刪除失敗", async () => {
@@ -745,7 +663,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
   });
 
@@ -783,7 +703,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
   });
 
@@ -807,7 +729,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("非 Git Repository 時建立失敗", async () => {
@@ -834,7 +758,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("無 commit 時建立失敗", async () => {
@@ -867,7 +793,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("分支已存在時建立失敗", async () => {
@@ -918,7 +846,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("成功建立並包含父 Repository 資訊", async () => {

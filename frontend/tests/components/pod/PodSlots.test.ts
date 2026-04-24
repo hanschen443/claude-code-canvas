@@ -125,32 +125,32 @@ function mountPodSlots(overrides: Record<string, unknown> = {}) {
 }
 
 // -----------------------------------------------------------------------
-// 測試：Codex provider Pod（全部 slot 應為 disabled）
+// 測試：Codex provider Pod（Command 以外的 slot 應為 disabled）
 // -----------------------------------------------------------------------
 
-describe("PodSlots - Codex provider Pod：全部 slot 為 disabled", () => {
+describe("PodSlots - Codex provider Pod：Command 以外 slot 為 disabled", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 切換成 Codex capabilities：所有 slot disabled
+    // 切換成 Codex capabilities：Command 為 enabled，其餘 slot disabled
     Object.assign(mockCapabilities, {
       isOutputStyleEnabled: computed(() => false),
       isSkillEnabled: computed(() => false),
       isSubAgentEnabled: computed(() => false),
       isRepositoryEnabled: computed(() => false),
-      isCommandEnabled: computed(() => false),
+      isCommandEnabled: computed(() => true),
       isMcpEnabled: computed(() => false),
     });
   });
 
-  it("所有 single-bind slot 的 disabled 屬性應為 true", () => {
+  it("OutputStyle 與 Repository 的 single-bind slot disabled 應為 true，Command 應為 false", () => {
     const wrapper = mountPodSlots();
     const singleSlots = wrapper.findAll(".single-bind-slot-stub");
 
-    // OutputStyle、Repository、Command 共 3 個 single-bind slot
+    // OutputStyle（0）、Repository（1）、Command（2）共 3 個 single-bind slot
     expect(singleSlots.length).toBe(3);
-    for (const slot of singleSlots) {
-      expect(slot.attributes("data-disabled")).toBe("true");
-    }
+    expect(singleSlots[0]!.attributes("data-disabled")).toBe("true"); // OutputStyle disabled
+    expect(singleSlots[1]!.attributes("data-disabled")).toBe("true"); // Repository disabled
+    expect(singleSlots[2]!.attributes("data-disabled")).toBe("false"); // Command enabled
 
     wrapper.unmount();
   });
@@ -159,7 +159,7 @@ describe("PodSlots - Codex provider Pod：全部 slot 為 disabled", () => {
     const wrapper = mountPodSlots();
     const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
 
-    // Skill、SubAgent、MCP 共 3 個 multi-bind slot
+    // Skill（0）、SubAgent（1）、MCP（2）共 3 個 multi-bind slot
     expect(multiSlots.length).toBe(3);
     for (const slot of multiSlots) {
       expect(slot.attributes("data-disabled")).toBe("true");
@@ -168,18 +168,39 @@ describe("PodSlots - Codex provider Pod：全部 slot 為 disabled", () => {
     wrapper.unmount();
   });
 
-  it("disabled-tooltip 應為 i18n key pod.slot.codexDisabled", () => {
+  it("OutputStyle、Repository、Skill、SubAgent、MCP 的 disabled-tooltip 應為 pod.slot.codexDisabled", () => {
     const wrapper = mountPodSlots();
-    const allSlots = [
-      ...wrapper.findAll(".single-bind-slot-stub"),
-      ...wrapper.findAll(".multi-bind-slot-stub"),
-    ];
+    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+    const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
 
-    for (const slot of allSlots) {
+    // 真正會 disabled 的 slot：OutputStyle（0）、Repository（1）
+    expect(singleSlots[0]!.attributes("data-disabled-tooltip")).toBe(
+      "pod.slot.codexDisabled",
+    );
+    expect(singleSlots[1]!.attributes("data-disabled-tooltip")).toBe(
+      "pod.slot.codexDisabled",
+    );
+
+    // Skill（0）、SubAgent（1）、MCP（2）
+    for (const slot of multiSlots) {
       expect(slot.attributes("data-disabled-tooltip")).toBe(
         "pod.slot.codexDisabled",
       );
     }
+
+    wrapper.unmount();
+  });
+
+  it("Codex capabilities 下 Command slot 不應呈現 disabled tooltip", () => {
+    const wrapper = mountPodSlots();
+    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+
+    // Command slot 為 single-bind slots 中的 index 2
+    const commandSlot = singleSlots[2]!;
+    expect(commandSlot.attributes("data-disabled")).toBe("false");
+    // disabled 為 false 時，disabled-tooltip 雖然仍傳入但不應影響 UI；
+    // 重點是 disabled 屬性正確，確認其值非 "true"
+    expect(commandSlot.attributes("data-disabled")).not.toBe("true");
 
     wrapper.unmount();
   });

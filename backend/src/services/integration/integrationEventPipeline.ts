@@ -10,10 +10,7 @@ import { integrationRegistry } from "./integrationRegistry.js";
 import type { NormalizedEvent } from "./types.js";
 import { shouldFilterJiraEvent } from "./providers/jiraProvider.js";
 import { isPodBusy } from "../../types/index.js";
-import {
-  injectUserMessage,
-  buildDisplayContentWithCommand,
-} from "../../utils/chatHelpers.js";
+import { injectUserMessage } from "../../utils/chatHelpers.js";
 import { launchMultiInstanceRun } from "../../utils/runChatHelpers.js";
 import { onRunChatComplete } from "../../utils/chatCallbacks.js";
 import {
@@ -251,12 +248,8 @@ class IntegrationEventPipeline {
     if (!currentPod) return;
 
     const podName = currentPod.name;
-    const displayText = buildDisplayContentWithCommand(
-      event.text,
-      currentPod.commandId ?? null,
-    );
 
-    await injectUserMessage({ canvasId, podId, content: displayText });
+    await injectUserMessage({ canvasId, podId, content: event.text });
 
     logger.log(
       "Integration",
@@ -304,18 +297,12 @@ class IntegrationEventPipeline {
     event: NormalizedEvent,
   ): Promise<void> {
     let replyKey: string | undefined;
-    const currentPod = podStore.getById(canvasId, podId);
-    const displayMessage = buildDisplayContentWithCommand(
-      event.text,
-      currentPod?.commandId ?? null,
-    );
 
     try {
       await launchMultiInstanceRun({
         canvasId,
         podId,
         message: event.text,
-        displayMessage,
         abortable: false,
         onRunContextCreated: (runContext) => {
           replyKey = buildReplyContextKey(runContext, podId);

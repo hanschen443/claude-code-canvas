@@ -73,10 +73,6 @@ vi.mock("../../src/utils/chatCallbacks.js", () => ({
 vi.mock("../../src/utils/chatHelpers.js", () => ({
   injectUserMessage: vi.fn(() => Promise.resolve()),
   extractDisplayContent: vi.fn((text: string) => text),
-  buildDisplayContentWithCommand: vi.fn(
-    (content: string, commandId: string | null) =>
-      commandId ? `/${commandId} ${content}` : content,
-  ),
 }));
 
 vi.mock("../../src/services/integration/replyContextStore.js", () => ({
@@ -102,10 +98,7 @@ import { isWorkflowChainBusy } from "../../src/utils/workflowChainTraversal.js";
 import { integrationRegistry } from "../../src/services/integration/integrationRegistry.js";
 import { launchMultiInstanceRun } from "../../src/utils/runChatHelpers.js";
 import { onRunChatComplete } from "../../src/utils/chatCallbacks.js";
-import {
-  injectUserMessage,
-  buildDisplayContentWithCommand,
-} from "../../src/utils/chatHelpers.js";
+import { injectUserMessage } from "../../src/utils/chatHelpers.js";
 import {
   replyContextStore,
   setReplyContextIfPresent,
@@ -759,75 +752,6 @@ describe("IntegrationEventPipeline", () => {
         );
         expect(replyContextStore.delete).toHaveBeenCalledWith("pod:pod-1");
       });
-    });
-  });
-
-  describe("command 前綴", () => {
-    it("Pod 有 commandId 時，injectUserMessage 收到的 content 帶有前綴", async () => {
-      const pod = makePod({ commandId: "greet" });
-      asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([
-        { canvasId, pod },
-      ]);
-      asMock(podStore.getById).mockReturnValue(pod);
-
-      const event = makeEvent({ text: "你好" });
-      await integrationEventPipeline.processEvent("slack", "app-1", event);
-
-      expect(buildDisplayContentWithCommand).toHaveBeenCalledWith(
-        "你好",
-        "greet",
-      );
-      expect(injectUserMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ content: "/greet 你好" }),
-      );
-    });
-
-    it("Pod 無 commandId 時，injectUserMessage 收到的 content 保持原始內容", async () => {
-      const pod = makePod({ commandId: null });
-      asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([
-        { canvasId, pod },
-      ]);
-      asMock(podStore.getById).mockReturnValue(pod);
-
-      const event = makeEvent({ text: "你好" });
-      await integrationEventPipeline.processEvent("slack", "app-1", event);
-
-      expect(injectUserMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ content: "你好" }),
-      );
-    });
-
-    it("multiInstance Pod 有 commandId 時，launchMultiInstanceRun 的 displayMessage 帶有前綴", async () => {
-      const pod = makePod({ multiInstance: true, commandId: "greet" });
-      asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([
-        { canvasId, pod },
-      ]);
-      asMock(podStore.getById).mockReturnValue(pod);
-
-      const event = makeEvent({ text: "你好" });
-      await integrationEventPipeline.processEvent("slack", "app-1", event);
-
-      expect(launchMultiInstanceRun).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: "你好",
-          displayMessage: "/greet 你好",
-        }),
-      );
-    });
-
-    it("multiInstance Pod 無 commandId 時，launchMultiInstanceRun 的 displayMessage 為原始文字", async () => {
-      const pod = makePod({ multiInstance: true, commandId: null });
-      asMock(podStore.findByIntegrationAppAndResource).mockReturnValue([
-        { canvasId, pod },
-      ]);
-      asMock(podStore.getById).mockReturnValue(pod);
-
-      const event = makeEvent({ text: "你好" });
-      await integrationEventPipeline.processEvent("slack", "app-1", event);
-
-      expect(launchMultiInstanceRun).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "你好", displayMessage: "你好" }),
-      );
     });
   });
 

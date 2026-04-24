@@ -33,7 +33,7 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.runMode).toBe(true);
   });
 
-  it("codex 的 capabilities 中 chat=true，其餘全部 false", () => {
+  it("codex 的 capabilities 中 chat=true、command=true，其餘全部 false", () => {
     const caps = getProvider("codex").metadata.capabilities;
 
     expect(caps.chat).toBe(true);
@@ -41,7 +41,7 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.skill).toBe(false);
     expect(caps.subAgent).toBe(false);
     expect(caps.repository).toBe(false);
-    expect(caps.command).toBe(false);
+    expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(false);
     expect(caps.integration).toBe(false);
     expect(caps.runMode).toBe(false);
