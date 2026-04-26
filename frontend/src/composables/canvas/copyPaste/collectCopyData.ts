@@ -242,16 +242,17 @@ function collectBoundNotesByPodIds(
 }
 
 /**
- * 從 selectedElements 中收集 unbound notes（依 id→note Map O(1) 查找）。
- * 分離自 collectSelectedNotes，單一職責：只處理 unbound note 收集。
- * 結果合併進傳入的 arrays（in-place append）。
+ * 建立 noteCollectorMap：將各 NoteStoreConfig 轉為 { collector, array } 查找表。
+ * 讓 collectUnboundNotesByElements 只需負責「取 map → 遍歷」兩步，單一抽象層級。
  */
-function collectUnboundNotesByElements(
-  elements: SelectableElement[],
+function buildNoteCollectorMap(
   stores: NoteStores,
   arrays: CollectedNoteArrays,
-): void {
-  const noteCollectorMap = Object.fromEntries(
+): Record<
+  string,
+  { collector: (id: string) => AnyNote | null; array: AnyNote[] }
+> {
+  return Object.fromEntries(
     NOTE_STORE_CONFIGS.map((config) => [
       config.key,
       {
@@ -266,6 +267,19 @@ function collectUnboundNotesByElements(
     string,
     { collector: (id: string) => AnyNote | null; array: AnyNote[] }
   >;
+}
+
+/**
+ * 從 selectedElements 中收集 unbound notes（依 id→note Map O(1) 查找）。
+ * 分離自 collectSelectedNotes，單一職責：只處理 unbound note 收集。
+ * 結果合併進傳入的 arrays（in-place append）。
+ */
+function collectUnboundNotesByElements(
+  elements: SelectableElement[],
+  stores: NoteStores,
+  arrays: CollectedNoteArrays,
+): void {
+  const noteCollectorMap = buildNoteCollectorMap(stores, arrays);
 
   for (const element of elements) {
     collectNoteFromElement(element, noteCollectorMap);

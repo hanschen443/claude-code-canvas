@@ -174,6 +174,8 @@ describe("CodexProvider", () => {
     ]);
     // resume 模式不應含 --cd（codex exec resume 不接受此 flag）
     expect(spawnArgs).not.toContain("--cd");
+    // resume 模式由 session 決定 model，不應含 --model 旗標
+    expect(spawnArgs).not.toContain("--model");
   });
 
   // ── Case 3：abortSignal 觸發後 subprocess.kill() 被呼叫 ───────────
@@ -444,6 +446,30 @@ describe("CodexProvider", () => {
 
     // resume 模式不含 --cd
     expect(spawnArgs).not.toContain("--cd");
+  });
+
+  // ── 補充：model 不合法時 prepareExecution 直接 yield error，不走 spawn / readCodexMcpServers ──
+  it("不合法 model 傳入時 readCodexMcpServers 不應被呼叫（prepareExecution 提早回傳 null）", async () => {
+    // 重置 readCodexMcpServers spy，確保呼叫次數從 0 開始
+    vi.mocked(readCodexMcpServers).mockClear();
+    // 不設定 spawnSpy：若走到 spawn 會使用真實 Bun.spawn（但 prepareExecution 失敗應在此之前 return）
+
+    const provider = new CodexProvider();
+    // 含空格的 model 名稱不合法（不通過 MODEL_RE）
+    const ctx = makeCtx({
+      options: { model: "invalid model name!", resumeMode: "cli" },
+    });
+
+    const events = await collectEvents(provider.chat(ctx));
+
+    // 應 yield 一個 error event
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("error");
+    const e = events[0] as Extract<NormalizedEvent, { type: "error" }>;
+    expect(e.fatal).toBe(true);
+
+    // prepareExecution 失敗後應提早 return，不走 readCodexMcpServers
+    expect(readCodexMcpServers).not.toHaveBeenCalled();
   });
 
   // ── MCP auto-approve：無 MCP server 時 args 不含 default_tools_approval_mode ──

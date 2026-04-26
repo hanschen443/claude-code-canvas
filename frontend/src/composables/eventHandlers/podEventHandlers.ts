@@ -126,6 +126,22 @@ const handleWorkflowClearResult = createUnifiedHandler<
   { toastMessage: () => t("composable.eventHandler.workflowCleared") },
 );
 
+/**
+ * 多人協作同步：當其他 client 更新 Pod 的 MCP server 名稱清單時，
+ * 更新本地 podStore 狀態，避免各 client 之間狀態不同步。
+ */
+const handlePodMcpServerNamesUpdated = (payload: {
+  requestId?: string;
+  canvasId?: string;
+  podId?: string;
+  success?: boolean;
+  mcpServerNames?: string[];
+}): void => {
+  // 非廣播事件（requestId 對應自己的請求）由 mcpApi.ts 處理，此處統一更新所有來源
+  if (!payload.podId || !Array.isArray(payload.mcpServerNames)) return;
+  usePodStore().updatePodMcpServers(payload.podId, payload.mcpServerNames);
+};
+
 export const handlePodChatUserMessage = (payload: {
   podId: string;
   messageId: string;
@@ -193,6 +209,10 @@ export function getPodEventListeners(): Array<{
     {
       event: WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT,
       handler: handleWorkflowClearResult as (payload: unknown) => void,
+    },
+    {
+      event: WebSocketResponseEvents.POD_MCP_SERVER_NAMES_UPDATED,
+      handler: handlePodMcpServerNamesUpdated as (payload: unknown) => void,
     },
   ];
 }

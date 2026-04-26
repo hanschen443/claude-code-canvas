@@ -7,9 +7,14 @@ export type PodStatus = "idle" | "chatting" | "summarizing" | "error";
 
 /**
  * Pod 所屬的 Provider 名稱。
- * 改為寬鬆字串，執行時以 providerCapabilityStore 的 key 集合為真值來源。
- * 舊版 "claude" | "codex" literal union 已移除，compile-time 限縮改由
- * providerOptions.ts 的 narrow helper（getClaudeOptions / getCodexOptions）達成。
+ * 刻意保持寬鬆 string，不使用 "claude" | "codex" literal union，原因如下：
+ *   1. 後端 providerCapabilityStore 動態建構 ALLOWED_PROVIDERS；
+ *      若前端 compile-time 釘死 union，每次後端新增 provider 時
+ *      兩端的 union 容易不同步，導致型別錯誤或靜默地拒絕合法值。
+ *   2. 前端執行時驗證（透過 providerCapabilityStore 的 key 集合）
+ *      即可有效過濾無效 provider，無需 compile-time 限制。
+ * compile-time 的型別縮窄由 providerOptions.ts 的 narrow helper
+ *   （getClaudeOptions / getCodexOptions）在需要的地方達成。
  *
  * 鏡射自後端 backend/src/services/provider/types.ts（ProviderName）；
  * 修改時請同步。

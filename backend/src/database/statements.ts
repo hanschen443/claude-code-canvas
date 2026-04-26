@@ -570,10 +570,10 @@ function buildStatements(db: Database): {
         "DELETE FROM run_pod_instances WHERE run_id = ?",
       ),
       settleAutoPathway: db.prepare(
-        "UPDATE run_pod_instances SET auto_pathway_settled = 1 WHERE id = $id",
+        "UPDATE run_pod_instances SET auto_pathway_settled = 1 WHERE id = $id", // 1 = settled（已結算）
       ),
       settleDirectPathway: db.prepare(
-        "UPDATE run_pod_instances SET direct_pathway_settled = 1 WHERE id = $id",
+        "UPDATE run_pod_instances SET direct_pathway_settled = 1 WHERE id = $id", // 1 = settled（已結算）
       ),
       selectWorktreePathsByRunId: db.prepare(
         "SELECT pod_id, worktree_path FROM run_pod_instances WHERE run_id = ? AND worktree_path IS NOT NULL",

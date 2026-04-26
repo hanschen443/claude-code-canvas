@@ -115,10 +115,11 @@ describe("selectionStore", () => {
     describe("isElementSelected", () => {
       it("元素在 selectedElements 中時應回傳 true", () => {
         const store = useSelectionStore();
-        store.selectedElements = [
+        // 使用 mutation action 以確保 _selectedElementSet 同步維護
+        store.setSelectedElements([
           { type: "pod", id: "pod-1" },
           { type: "repositoryNote", id: "note-1" },
-        ];
+        ]);
 
         expect(store.isElementSelected("pod", "pod-1")).toBe(true);
         expect(store.isElementSelected("repositoryNote", "note-1")).toBe(true);
@@ -126,7 +127,8 @@ describe("selectionStore", () => {
 
       it("元素不在 selectedElements 中時應回傳 false", () => {
         const store = useSelectionStore();
-        store.selectedElements = [{ type: "pod", id: "pod-1" }];
+        // 使用 mutation action 以確保 _selectedElementSet 同步維護
+        store.setSelectedElements([{ type: "pod", id: "pod-1" }]);
 
         expect(store.isElementSelected("pod", "pod-2")).toBe(false);
         expect(store.isElementSelected("repositoryNote", "note-1")).toBe(false);
@@ -134,7 +136,8 @@ describe("selectionStore", () => {
 
       it("應依 type 和 id 同時判斷", () => {
         const store = useSelectionStore();
-        store.selectedElements = [{ type: "pod", id: "pod-1" }];
+        // 使用 mutation action 以確保 _selectedElementSet 同步維護
+        store.setSelectedElements([{ type: "pod", id: "pod-1" }]);
 
         expect(store.isElementSelected("pod", "pod-1")).toBe(true);
         expect(store.isElementSelected("repositoryNote", "pod-1")).toBe(false);

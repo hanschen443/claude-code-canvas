@@ -444,6 +444,111 @@ describe("McpPopover", () => {
     });
   });
 
+  // ── 案例 7：listMcpServers 失敗時顯示空狀態（loadFailed=true）────────────
+
+  describe("案例 7：listMcpServers 失敗時顯示空狀態", () => {
+    it("listMcpServers reject 時 loadFailed 應為 true，並顯示空狀態 UI", async () => {
+      // mock listMcpServers reject
+      mockListMcpServers.mockRejectedValue(new Error("Network error"));
+
+      const wrapper = mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      // 透過存取 component expose 取得 loadFailed ref 或斷言 UI
+      // 因 loadFailed 未 expose，改斷言空狀態文字（與 installedMcpServers.length === 0 同 UI）
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover).not.toBeNull();
+      // 空狀態時顯示 mcpEmpty
+      expect(popover!.textContent).toContain("pod.slot.mcpEmpty");
+      // Switch 不應出現
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).toBeNull();
+    });
+  });
+
+  // ── 案例 8：getActiveCanvasIdOrWarn 回傳 undefined 時回滾 ─────────────────
+
+  describe("案例 8：getActiveCanvasIdOrWarn 回傳 undefined 時回滾 localMcpServerNames", () => {
+    it("canvasId 取不到時，localMcpServerNames 應回滾，podStore 也應回滾", async () => {
+      mockListMcpServers.mockResolvedValue([MOCK_MCP_SERVER]);
+      mockGetPodById.mockReturnValue({ id: "pod-1", mcpServerNames: [] });
+      // mock getActiveCanvasIdOrWarn 回傳 undefined
+      mockGetActiveCanvasIdOrWarn.mockReturnValue(undefined);
+
+      mountPopover();
+      await flushPromises();
+
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+
+      // 點擊 toggle 觸發啟用
+      switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await nextTick();
+
+      // 樂觀更新後因 canvasId 不存在應立即回滾
+      // podStore 最後一次呼叫應傳入空陣列（回滾值）
+      const calls = mockUpdatePodMcpServers.mock.calls;
+      // 第一次呼叫（樂觀更新），第二次呼叫（回滾）
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      const lastCall = calls.at(-1);
+      expect(lastCall).toBeDefined();
+      expect(lastCall![0]).toBe("pod-1");
+      expect(lastCall![1]).toEqual([]);
+
+      // API 不應被呼叫（canvasId 不存在，直接 return 前就回滾）
+      expect(mockUpdatePodMcpServersApi).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 案例 9：busy=true 時強行觸發 toggle 不應呼叫 API ────────────────────
+
+  describe("案例 9：busy=true 時強行觸發 toggle 不呼叫 updatePodMcpServersApi", () => {
+    it("busy=true 時直接呼叫 toggle handler，updatePodMcpServersApi 不應被呼叫", async () => {
+      mockListMcpServers.mockResolvedValue([MOCK_MCP_SERVER]);
+      mockGetPodById.mockReturnValue({ id: "pod-1", mcpServerNames: [] });
+
+      const wrapper = mountPopover({ busy: true });
+      await flushPromises();
+
+      // 找到 Switch stub（disabled 狀態）
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+
+      // 強行觸發 click（即使 disabled，仍能用 dispatchEvent 送出事件）
+      switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushPromises();
+
+      // busy=true 時 handleToggle 有 early return，API 不應被呼叫
+      expect(mockUpdatePodMcpServersApi).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 案例 15：Codex provider 空狀態顯示 mcpCodexEmptyHint ─────────────────
+
+  describe("案例 15：Codex provider 空狀態顯示 mcpCodexEmptyHint", () => {
+    it("Codex provider + listMcpServers 回空陣列時應顯示 pod.slot.mcpCodexEmptyHint", async () => {
+      mockListMcpServers.mockResolvedValue([]);
+      mountPopover({ provider: "codex" });
+      await flushPromises();
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover).not.toBeNull();
+      // 空狀態提示
+      expect(popover!.textContent).toContain("pod.slot.mcpEmpty");
+      // Codex 專屬空狀態 hint
+      expect(popover!.textContent).toContain("pod.slot.mcpCodexEmptyHint");
+    });
+
+    it("Codex provider 空狀態時不應顯示 Switch（唯讀）", async () => {
+      mockListMcpServers.mockResolvedValue([]);
+      mountPopover({ provider: "codex" });
+      await flushPromises();
+
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).toBeNull();
+    });
+  });
+
   // ── 案例 14：ESC 與點擊外部可關閉 ────────────────────────────────────────
 
   describe("案例 14：ESC 鍵與點擊外部可關閉 popover", () => {

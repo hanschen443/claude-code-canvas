@@ -449,7 +449,7 @@ describe("Paste Helpers", () => {
       expect(createCall?.[1]?.name).toBe("Unique Pod");
     });
 
-    it("名稱衝突時自動加後綴 (2)", async () => {
+    it("名稱衝突時自動加隨機後綴（格式為 name-XXXXXX）", async () => {
       const { createPastedPods } =
         await import("../../src/handlers/paste/pasteHelpers.js");
       const { workspaceService } =
@@ -458,7 +458,8 @@ describe("Paste Helpers", () => {
 
       const originalPodId = uuidv4();
       const existingPod = makeMockPod({ name: "Pod 1" });
-      const mockPod = makeMockPod({ name: "Pod 1 (2)" });
+      // mockPod 的 name 隨便給，實際 create 呼叫的 name 才是驗證重點
+      const mockPod = makeMockPod({ name: "Pod 1-aabbcc" });
 
       vi.spyOn(podStore, "list").mockReturnValue([existingPod] as any);
       vi.spyOn(podStore, "create").mockReturnValue({
@@ -480,32 +481,30 @@ describe("Paste Helpers", () => {
 
       await createPastedPods(canvasId, pods, podIdMapping, errors);
 
-      // 驗證 create 被呼叫時帶的名稱帶有後綴
+      // 驗證 create 被呼叫時帶的名稱格式為「Pod 1-XXXXXX」（6 碼 hex 後綴）
       const createCall = (podStore.create as ReturnType<typeof vi.spyOn>).mock
         .calls[0];
-      expect(createCall?.[1]?.name).toBe("Pod 1 (2)");
+      const resolvedName = createCall?.[1]?.name as string;
+      expect(resolvedName).toMatch(/^Pod 1-[0-9a-f]{6}$/);
     });
 
-    it("多個衝突時依序加後綴 (2)、(3)…", async () => {
+    it("多個衝突時各自加隨機後綴，不重複", async () => {
       const { createPastedPods } =
         await import("../../src/handlers/paste/pasteHelpers.js");
       const { workspaceService } =
         await import("../../src/services/workspace/index.js");
       const { podStore } = await import("../../src/services/podStore.js");
 
-      const originalPodId = uuidv4();
-      const existingPod1 = makeMockPod({ name: "Pod 1" });
-      const existingPod2 = makeMockPod({ name: "Pod 1 (2)" });
-      const mockPod = makeMockPod({ name: "Pod 1 (3)" });
+      const originalPodId1 = uuidv4();
+      const originalPodId2 = uuidv4();
+      const existingPod = makeMockPod({ name: "Pod 1" });
+      const mockPod1 = makeMockPod({ name: "Pod 1-aabbcc" });
+      const mockPod2 = makeMockPod({ name: "Pod 1-ddeeff" });
 
-      vi.spyOn(podStore, "list").mockReturnValue([
-        existingPod1,
-        existingPod2,
-      ] as any);
-      vi.spyOn(podStore, "create").mockReturnValue({
-        pod: mockPod,
-        persisted: Promise.resolve(),
-      });
+      vi.spyOn(podStore, "list").mockReturnValue([existingPod] as any);
+      vi.spyOn(podStore, "create")
+        .mockReturnValueOnce({ pod: mockPod1, persisted: Promise.resolve() })
+        .mockReturnValueOnce({ pod: mockPod2, persisted: Promise.resolve() });
       vi.spyOn(podStore, "getById").mockReturnValue(undefined);
       vi.spyOn(workspaceService, "createWorkspace").mockResolvedValue({
         success: true,
@@ -513,7 +512,20 @@ describe("Paste Helpers", () => {
       });
 
       const pods: PastePodItem[] = [
-        { originalId: originalPodId, name: "Pod 1", x: 0, y: 0, rotation: 0 },
+        {
+          originalId: originalPodId1,
+          name: "Pod 1",
+          x: 0,
+          y: 0,
+          rotation: 0,
+        },
+        {
+          originalId: originalPodId2,
+          name: "Pod 1",
+          x: 10,
+          y: 0,
+          rotation: 0,
+        },
       ];
 
       const podIdMapping: Record<string, string> = {};
@@ -521,16 +533,20 @@ describe("Paste Helpers", () => {
 
       await createPastedPods(canvasId, pods, podIdMapping, errors);
 
-      const createCall = (podStore.create as ReturnType<typeof vi.spyOn>).mock
-        .calls[0];
-      expect(createCall?.[1]?.name).toBe("Pod 1 (3)");
+      const createMock = podStore.create as ReturnType<typeof vi.spyOn>;
+      const name1 = createMock.mock.calls[0]?.[1]?.name as string;
+      const name2 = createMock.mock.calls[1]?.[1]?.name as string;
+      // 兩次 create 的名稱都應符合隨機後綴格式，且不相同
+      expect(name1).toMatch(/^Pod 1-[0-9a-f]{6}$/);
+      expect(name2).toMatch(/^Pod 1-[0-9a-f]{6}$/);
+      expect(name1).not.toBe(name2);
     });
   });
 
   // ── copyClaudeDir ──────────────────────────────────────────────────────────
 
   describe("copyClaudeDir - 觸發複製路徑", () => {
-    it("originalPod 存在時 createPastedPods 不應拋例外（即使 .claude 目錄不存在）", async () => {
+    it("originalPod 存在但路徑驗證失敗時，createPastedPods 不應拋例外，但應產生 PasteError", async () => {
       const { createPastedPods } =
         await import("../../src/handlers/paste/pasteHelpers.js");
       const { workspaceService } =
@@ -538,6 +554,8 @@ describe("Paste Helpers", () => {
       const { podStore } = await import("../../src/services/podStore.js");
 
       const originalPodId = uuidv4();
+      // workspacePath 為 /test/workspace，不在 canvasRoot/repositoriesRoot 範圍內，
+      // 路徑驗證會失敗，copyClaudeDir 會 throw，safeExecuteAsync 收集成 PasteError
       const originalPod = makeMockPod({ id: originalPodId });
       const mockPod = makeMockPod();
 
@@ -566,12 +584,14 @@ describe("Paste Helpers", () => {
       const podIdMapping: Record<string, string> = {};
       const errors: PasteError[] = [];
 
-      // copyClaudeDir 內部 directoryExists 會回傳 false（路徑不存在），應靜默跳過而非拋例外
+      // 路徑驗證失敗會以 PasteError 形式收集，不拋例外給呼叫端
       await expect(
         createPastedPods(canvasId, pods, podIdMapping, errors),
       ).resolves.not.toThrow();
-      // Pod 仍應建立成功
-      expect(errors).toHaveLength(0);
+      // 路徑不合法時，Pod 建立失敗並記錄 PasteError（前端可感知）
+      expect(errors).toHaveLength(1);
+      expect(errors[0].type).toBe("pod");
+      expect(errors[0].originalId).toBe(originalPodId);
     });
   });
 

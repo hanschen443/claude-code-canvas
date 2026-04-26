@@ -13,7 +13,7 @@ import type { CreatePodRequest } from "../types/api.js";
 import type { Result } from "../types/index.js";
 import { ok, err } from "../types/index.js";
 import type { Pod } from "../types/pod.js";
-import { isPodBusy } from "../types/pod.js";
+import { isPodBusy, toPodPublicView } from "../types/pod.js";
 import { logger } from "../utils/logger.js";
 import { createI18nError } from "../utils/i18nError.js";
 import { abortRegistry } from "./provider/abortRegistry.js";
@@ -163,7 +163,7 @@ export async function createPodWithWorkspace(
   socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_CREATED, {
     requestId,
     success: true,
-    pod,
+    pod: toPodPublicView(pod),
   });
 
   return { success: true, data: { pod } };

@@ -197,6 +197,91 @@ describe("buildClaudeOptions", () => {
   });
 });
 
+describe("applyIntegrationToolOptions：integrationBinding provider 名稱含非法字元時跳過", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
+    vi.mocked(scanInstalledPlugins).mockReturnValue([]);
+    // 確保 registry 可以找到 provider（但 provider 名稱本身非法才是測試重點）
+    vi.mocked(integrationRegistry.get).mockReturnValue({
+      displayName: "Test",
+      sendMessage: vi.fn().mockResolvedValue({ success: true }),
+    } as any);
+  });
+
+  it("provider 名稱含空格（'open ai'）時，該 binding 應被略過、不出現在 mcpServers", async () => {
+    const pod = createBasePod({
+      integrationBindings: [
+        {
+          provider: "open ai",
+          appId: "app-1",
+          resourceId: "resource-1",
+        },
+      ],
+    });
+
+    const result = await buildClaudeOptions(pod);
+
+    // 非法 provider 名稱被略過，不應產出 mcpServers
+    expect(result).not.toHaveProperty("mcpServers");
+    expect(result.allowedTools).toEqual([...BASE_ALLOWED_TOOLS]);
+  });
+
+  it("provider 名稱含分號（'foo;bar'）時，該 binding 應被略過、不出現在 mcpServers", async () => {
+    const pod = createBasePod({
+      integrationBindings: [
+        {
+          provider: "foo;bar",
+          appId: "app-1",
+          resourceId: "resource-1",
+        },
+      ],
+    });
+
+    const result = await buildClaudeOptions(pod);
+
+    // 非法 provider 名稱被略過，不應產出 mcpServers
+    expect(result).not.toHaveProperty("mcpServers");
+    expect(result.allowedTools).toEqual([...BASE_ALLOWED_TOOLS]);
+  });
+
+  it("合法與非法 provider 混合時，只有合法 provider 的 binding 出現在 mcpServers", async () => {
+    vi.mocked(integrationRegistry.get).mockImplementation((name) => {
+      if (name === "slack") {
+        return {
+          displayName: "Slack",
+          sendMessage: vi.fn().mockResolvedValue({ success: true }),
+        } as any;
+      }
+      return undefined;
+    });
+
+    const pod = createBasePod({
+      integrationBindings: [
+        {
+          // 合法 provider
+          provider: "slack",
+          appId: "app-1",
+          resourceId: "channel-1",
+        },
+        {
+          // 非法 provider 名稱（含特殊字元）
+          provider: "foo;bar",
+          appId: "app-2",
+          resourceId: "resource-2",
+        },
+      ],
+    });
+
+    const result = await buildClaudeOptions(pod);
+
+    // 合法的 slack 應出現
+    expect(result.mcpServers).toHaveProperty("slack-reply");
+    // 非法的 foo;bar 不應出現（key 格式為 provider + '-reply'）
+    expect(result.mcpServers).not.toHaveProperty("foo;bar-reply");
+  });
+});
+
 describe("applyIntegrationToolOptions：provider 不存在時跳過（不 crash）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -311,6 +396,35 @@ describe("buildClaudeOptions mcpServerNames 過濾行為", () => {
       command: "npx",
       args: ["-y", "@scope/mcp-server"],
       env: { TOKEN: "secret" },
+    });
+  });
+
+  it("mcpServerNames 部分存在、部分不存在的混合情境：只注入 reader 有回傳的 server（self-healing 過濾掉不存在的）", async () => {
+    // reader 只有 a 和 c，沒有 b
+    vi.mocked(readClaudeMcpServers).mockReturnValue([
+      { name: "a", command: "node", args: ["a.js"], env: {} },
+      { name: "c", command: "python3", args: ["c.py"], env: { FOO: "bar" } },
+    ]);
+
+    // pod 要求 a、b、c，其中 b 在 reader 中不存在
+    const pod = createBasePod({ mcpServerNames: ["a", "b", "c"] });
+    const result = await buildClaudeOptions(pod);
+
+    // mcpServers 應含 a 和 c，不含 b
+    expect(result.mcpServers).toBeDefined();
+    expect(result.mcpServers).toHaveProperty("a");
+    expect(result.mcpServers).toHaveProperty("c");
+    expect(result.mcpServers).not.toHaveProperty("b");
+
+    // 確認各 server 的設定值正確
+    expect(result.mcpServers?.["a"]).toMatchObject({
+      command: "node",
+      args: ["a.js"],
+    });
+    expect(result.mcpServers?.["c"]).toMatchObject({
+      command: "python3",
+      args: ["c.py"],
+      env: { FOO: "bar" },
     });
   });
 });

@@ -26,7 +26,16 @@ export const pastePodItemSchema = z
      * Zod strip 會靜默丟失未宣告欄位，前端型別若有變動會讓 model 資訊消失，曾真實發生 bug。
      */
     providerConfig: providerConfigSchema.optional(),
-    mcpServerNames: z.array(z.string().min(1).max(200)).optional(),
+    /** MCP server 名稱清單，每筆名稱只允許字母、數字、底線、點、連字號 */
+    mcpServerNames: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(200)
+          .regex(/^[a-zA-Z0-9_.][a-zA-Z0-9_.-]*$/),
+      )
+      .optional(),
     pluginIds: z
       .array(
         z
@@ -62,10 +71,10 @@ export const canvasPasteSchema = z
   .object({
     requestId: requestIdSchema,
     canvasId: canvasIdSchema,
-    pods: z.array(pastePodItemSchema).max(100),
-    repositoryNotes: z.array(pasteRepositoryNoteItemSchema).max(100),
-    commandNotes: z.array(pasteCommandNoteItemSchema).max(100).optional(),
-    connections: z.array(pasteConnectionItemSchema).max(200).optional(),
+    pods: z.array(pastePodItemSchema).max(50),
+    repositoryNotes: z.array(pasteRepositoryNoteItemSchema).max(50),
+    commandNotes: z.array(pasteCommandNoteItemSchema).max(50).optional(),
+    connections: z.array(pasteConnectionItemSchema).max(100).optional(),
   })
   .strict();
 

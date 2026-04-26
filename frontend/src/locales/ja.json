@@ -419,8 +419,7 @@
       "pasted": "貼り付けました",
       "worktreeCreated": "Worktree を作成しました",
       "repositoryDeleted": "Repository を削除しました",
-      "commandDeleted": "Command を削除しました",
-      "mcpToggleSuccess": "MCP の設定を更新しました"
+      "commandDeleted": "Command を削除しました"
     },
     "deleteSelection": {
       "partialFailed": "一部の削除に失敗しました",

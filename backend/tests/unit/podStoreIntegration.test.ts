@@ -5,6 +5,10 @@ import {
   getStatements,
 } from "../../src/database/statements.js";
 import { podStore } from "../../src/services/podStore.js";
+import {
+  resolveProvider,
+  resolveProviderConfig,
+} from "../../src/services/pod/providerConfigResolver.js";
 
 /**
  * 清除 podStore 內部以 DB 實例為基礎的 PreparedStatement 快取。
@@ -692,36 +696,6 @@ describe("PodStore - Provider / Model 驗證", () => {
     closeDb();
   });
 
-  /**
-   * private 方法存取用的測試 hook 型別。
-   * resolveProvider / resolveProviderConfig 是 PodStore 內部實作，
-   * 透過 type assertion 存取以避開 TS private modifier 限制。
-   * 注意：這些方法內部會呼叫 this.sanitizeProviderConfig，必須用 bind 保留 this。
-   */
-  type PodStorePrivateHooks = {
-    resolveProvider: (row: {
-      id: string;
-      provider: string;
-      provider_config_json: string | null;
-    }) => string;
-    resolveProviderConfig: (
-      row: {
-        id: string;
-        provider: string;
-        provider_config_json: string | null;
-      },
-      provider: string,
-    ) => Record<string, unknown>;
-  };
-
-  function getPrivateHooks(): PodStorePrivateHooks {
-    const store = podStore as unknown as PodStorePrivateHooks;
-    return {
-      resolveProvider: store.resolveProvider.bind(podStore),
-      resolveProviderConfig: store.resolveProviderConfig.bind(podStore),
-    };
-  }
-
   // ─── create / update + model 驗證 ─────────────────────────────────────────
 
   it("create 傳入非法 model 時應 throw，且 DB 不應寫入新紀錄", () => {
@@ -825,34 +799,15 @@ describe("PodStore - Provider / Model 驗證", () => {
   // ─── resolveProvider ─────────────────────────────────────────────────────
 
   it("resolveProvider 傳入合法 provider 字串時應回傳原值且不呼叫 logger.warn", () => {
-    const { resolveProvider } = getPrivateHooks();
-
-    expect(
-      resolveProvider({
-        id: "test-1",
-        provider: "claude",
-        provider_config_json: null,
-      }),
-    ).toBe("claude");
-    expect(
-      resolveProvider({
-        id: "test-2",
-        provider: "codex",
-        provider_config_json: null,
-      }),
-    ).toBe("codex");
+    // 直接呼叫純函式，傳入 provider 字串
+    expect(resolveProvider("claude")).toBe("claude");
+    expect(resolveProvider("codex")).toBe("codex");
 
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("resolveProvider 傳入未知 provider 字串時應 fallback 為 claude 並呼叫 logger.warn 至少一次", () => {
-    const { resolveProvider } = getPrivateHooks();
-
-    const result = resolveProvider({
-      id: "test-unknown",
-      provider: "gemini",
-      provider_config_json: null,
-    });
+    const result = resolveProvider("gemini");
 
     expect(result).toBe("claude");
     expect(logger.warn).toHaveBeenCalled();
@@ -869,15 +824,10 @@ describe("PodStore - Provider / Model 驗證", () => {
   // ─── resolveProviderConfig ───────────────────────────────────────────────
 
   it("resolveProviderConfig 在 DB row 缺少 model 時應補上 provider 的 defaultOptions.model", () => {
-    const { resolveProviderConfig } = getPrivateHooks();
-
     // 模擬 DB row：provider_config_json 為空物件，沒有 model 欄位
-    const row = {
-      id: "row-missing-model",
-      provider: "claude",
-      provider_config_json: "{}",
-    };
-    const cfg = resolveProviderConfig(row, "claude");
+    // 純函式接受已 JSON.parse 的 rawConfig，需先解析 provider_config_json
+    const rawConfig = JSON.parse("{}") as Record<string, unknown>;
+    const cfg = resolveProviderConfig(rawConfig, "claude", "row-missing-model");
 
     // claude 的 defaultOptions.model 為 "opus"
     expect(cfg.model).toBe("opus");
@@ -886,18 +836,19 @@ describe("PodStore - Provider / Model 驗證", () => {
   });
 
   it("resolveProviderConfig 在 DB row 帶有非法 model 時應保留原值不 throw 並呼叫 logger.warn 至少一次", () => {
-    const { resolveProviderConfig } = getPrivateHooks();
-
     // 模擬舊資料：providerConfig.model 為 availableModels 外的歷史值
-    const row = {
-      id: "row-legacy-illegal-model",
-      provider: "claude",
-      provider_config_json: JSON.stringify({ model: "legacy-unknown-model" }),
-    };
+    // 純函式接受已 JSON.parse 的 rawConfig，需先解析 provider_config_json
+    const rawConfig = JSON.parse(
+      JSON.stringify({ model: "legacy-unknown-model" }),
+    ) as Record<string, unknown>;
 
     let cfg: Record<string, unknown> = {};
     expect(() => {
-      cfg = resolveProviderConfig(row, "claude");
+      cfg = resolveProviderConfig(
+        rawConfig,
+        "claude",
+        "row-legacy-illegal-model",
+      );
     }).not.toThrow();
 
     // 保留原值，讓舊 pod 仍能被開啟

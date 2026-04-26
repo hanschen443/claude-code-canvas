@@ -165,6 +165,34 @@ describe("handleMcpList", () => {
       expect.objectContaining({ items: [] }),
     );
   });
+
+  /**
+   * 非法 provider 行為說明：
+   * mcpListRequestSchema 使用 z.enum(["claude", "codex"]) 限制 provider 值。
+   * 非法值（如 "openai"）在 schema 驗證層就會被拒，handler 不會收到此類 payload。
+   * 此測試模擬 schema 已通過（型別強制轉型）的情況下，handler 的 else 分支
+   * 會走 codex reader 路徑，確認 handler 的防禦性處理行為符合當前設計。
+   */
+  it("非法 provider（如 openai）傳入時，handler else 分支走 codex reader（schema 層應擋住此情境）", async () => {
+    mockReadCodexMcpServers.mockReturnValue([]);
+
+    // 注意：在正常使用下 schema 會擋住非法 provider；此處以型別強制轉型模擬 bypass 情境
+    // 驗證 handler 本身的 else 分支行為（非 "claude" 一律走 codex reader）
+    await handleMcpList(
+      CONNECTION_ID,
+      { requestId: REQUEST_ID, provider: "openai" as "codex" },
+      REQUEST_ID,
+    );
+
+    // handler 的 else 分支會呼叫 codex reader，而非 claude reader
+    expect(mockReadCodexMcpServers).toHaveBeenCalledTimes(1);
+    expect(mockReadClaudeMcpServers).not.toHaveBeenCalled();
+    expect(mockEmitToConnection).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "mcp:list:result",
+      expect.objectContaining({ success: true, provider: "openai" }),
+    );
+  });
 });
 
 describe("handlePodSetMcpServerNames", () => {
@@ -327,6 +355,44 @@ describe("handlePodSetMcpServerNames", () => {
         mcpServerNames: ["server-a", "server-b"],
       }),
     );
+  });
+
+  /**
+   * 設計選擇說明：
+   * handlePodSetMcpServerNames 固定呼叫 readClaudeMcpServers() 過濾，
+   * 無論 pod 本身是 claude provider 還是 codex provider。
+   * 這是當前設計選擇：MCP server name 的「地面真實」來源統一使用 claude reader，
+   * 不依賴 pod 的 provider 類型做分流。
+   */
+  it("codex provider pod 呼叫 handlePodSetMcpServerNames 時，filter 仍走 claudeMcpReader（當前設計選擇）", async () => {
+    // 模擬 codex provider 的 pod（provider 欄位為 codex）
+    mockPodStoreGetById.mockReturnValue(
+      makeIdlePod({ providerConfig: { provider: "codex", model: "gpt-5.4" } }),
+    );
+    // claudeMcpReader 有 server-a
+    mockReadClaudeMcpServers.mockReturnValue([
+      { name: "server-a", command: "node", args: [], env: {} },
+    ]);
+
+    await handlePodSetMcpServerNames(
+      CONNECTION_ID,
+      {
+        requestId: REQUEST_ID,
+        canvasId: CANVAS_ID,
+        podId: POD_ID,
+        mcpServerNames: ["server-a"],
+      },
+      REQUEST_ID,
+    );
+
+    // 無論 pod 是 codex provider，filter 都走 claudeMcpReader
+    expect(mockReadClaudeMcpServers).toHaveBeenCalledWith();
+    // codexMcpReader 不應被呼叫
+    expect(mockReadCodexMcpServers).not.toHaveBeenCalled();
+    // 有效名稱應寫入
+    expect(mockPodStoreSetMcpServerNames).toHaveBeenCalledWith(POD_ID, [
+      "server-a",
+    ]);
   });
 
   it("getCanvasId 回傳 undefined 時應提早結束，不呼叫 podStore", async () => {

@@ -21,6 +21,7 @@ import { createI18nError, type I18nError } from "../../utils/i18nError.js";
 import { logger } from "../../utils/logger.js";
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 import { directoryExists } from "../../services/shared/fileResourceHelpers.js";
 import { isPathWithinDirectory } from "../../utils/pathValidator.js";
 import { config } from "../../config/index.js";
@@ -77,51 +78,58 @@ function recordError(
   logger.error("Paste", "Error", `${context}：${logMessage}`);
 }
 
-async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
-  // 先解析 symlink 真實路徑，防止符號連結繞過 startsWith 路徑驗證
-  // 若路徑不存在（realpath 失敗），維持原始路徑繼續做 isPathWithinDirectory 檢查
-  let realSrcCwd = srcCwd;
-  let realDestCwd = destCwd;
-  let realCanvasRoot = config.canvasRoot;
-  let realRepositoriesRoot = config.repositoriesRoot;
+/**
+ * 安全解析 realpath：失敗時（路徑不存在或無權限）回傳原始路徑。
+ * 避免四層 try-catch 重複巢狀。
+ */
+async function safeRealpath(p: string): Promise<string> {
+  try {
+    return await fs.realpath(p);
+  } catch {
+    // 路徑不存在時維持原值，繼續做 isPathWithinDirectory 檢查
+    return p;
+  }
+}
 
-  try {
-    realSrcCwd = await fs.realpath(srcCwd);
-  } catch {
-    // 路徑不存在時維持原值
-  }
-  try {
-    realDestCwd = await fs.realpath(destCwd);
-  } catch {
-    // 路徑不存在時維持原值
-  }
-  try {
-    realCanvasRoot = await fs.realpath(config.canvasRoot);
-  } catch {
-    // 路徑不存在時維持原值
-  }
-  try {
-    realRepositoriesRoot = await fs.realpath(config.repositoriesRoot);
-  } catch {
-    // 路徑不存在時維持原值
-  }
+/**
+ * 驗證 src 與 dest 路徑的安全性：
+ * 1. 透過 realpath 解析 symlink，防止符號連結繞過路徑驗證
+ * 2. 確認兩個路徑均在 canvasRoot 或 repositoriesRoot 範圍內
+ *
+ * 驗證通過時回傳已解析的真實路徑 { realSrc, realDest }；
+ * 任一路徑不合法時 throw Error（呼叫端可 try/catch 決定如何處理）。
+ */
+async function validateCopyPaths(
+  src: string,
+  dest: string,
+): Promise<{ realSrc: string; realDest: string }> {
+  // 平行解析所有路徑的 symlink 真實路徑
+  const [realSrc, realDest, realCanvasRoot, realRepositoriesRoot] =
+    await Promise.all([
+      safeRealpath(src),
+      safeRealpath(dest),
+      safeRealpath(config.canvasRoot),
+      safeRealpath(config.repositoriesRoot),
+    ]);
 
-  // 驗證來源與目標路徑必須在 canvasRoot 或 repositoriesRoot 範圍內，防止路徑穿越
   const isValidSrc =
-    isPathWithinDirectory(realSrcCwd, realCanvasRoot) ||
-    isPathWithinDirectory(realSrcCwd, realRepositoriesRoot);
+    isPathWithinDirectory(realSrc, realCanvasRoot) ||
+    isPathWithinDirectory(realSrc, realRepositoriesRoot);
   const isValidDest =
-    isPathWithinDirectory(realDestCwd, realCanvasRoot) ||
-    isPathWithinDirectory(realDestCwd, realRepositoriesRoot);
+    isPathWithinDirectory(realDest, realCanvasRoot) ||
+    isPathWithinDirectory(realDest, realRepositoriesRoot);
 
   if (!isValidSrc || !isValidDest) {
-    logger.error(
-      "Paste",
-      "Error",
-      `copyClaudeDir：路徑不在允許範圍內 src=${srcCwd} dest=${destCwd}`,
-    );
-    return;
+    throw new Error(`路徑不在允許範圍內：src=${src} dest=${dest}`);
   }
+
+  return { realSrc, realDest };
+}
+
+async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
+  // 驗證路徑安全性（realpath 解析 + isPathWithinDirectory 範圍驗證）
+  // 驗證失敗時直接 throw，讓 createSinglePod 的 safeExecuteAsync 收集成 PasteError 回傳前端
+  await validateCopyPaths(srcCwd, destCwd);
 
   const srcClaudeDir = path.join(srcCwd, ".claude");
   const destClaudeDir = path.join(destCwd, ".claude");
@@ -141,17 +149,23 @@ async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
  * 在記憶體中（Set 查找）決定唯一 Pod 名稱，避免 DB UNIQUE (canvas_id, name) 約束衝突。
  * 與並發建立場景配合：進入 Promise.all 前先同步決定所有名稱並寫入 Set，
  * 確保兩個 Pod 不會取到相同名稱。
+ *
+ * 碰撞時直接附加 6 碼隨機後綴（hex），避免 counter++ 迴圈造成 O(n²) 問題。
+ * 極罕見的隨機碰撞情境下重試一次，實際期望複雜度仍為 O(1)。
  */
 function resolveUniquePodName(
   existingNames: Set<string>,
   candidateName: string,
 ): string {
   if (!existingNames.has(candidateName)) return candidateName;
-  let counter = 2;
-  while (existingNames.has(`${candidateName} (${counter})`)) {
-    counter++;
+  // 碰撞：附加 6 碼隨機 hex 後綴，避免 O(n²) counter 迴圈
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const suffix = crypto.randomBytes(3).toString("hex"); // 6 碼 hex
+    const candidate = `${candidateName}-${suffix}`;
+    if (!existingNames.has(candidate)) return candidate;
   }
-  return `${candidateName} (${counter})`;
+  // 極不可能發生：10 次碰撞後 fallback（理論上幾乎不會發生）
+  return `${candidateName}-${Date.now()}`;
 }
 
 async function createSinglePod(
@@ -246,52 +260,43 @@ export async function createPastedPods(
   const repoExistsMap = await prefetchRepositoryExistence(pods);
   const resolvedPodNames = resolveAllPodNames(pods, existingNames);
 
-  // 並發建立所有 Pod I/O
-  const results = await Promise.all(
-    pods.map(async (podItem, idx) => {
-      const resolvedName = resolvedPodNames[idx]!;
-
-      // 若 repositoryId 已預查過且不存在，直接失敗，不進 DB
-      if (
-        podItem.repositoryId &&
-        repoExistsMap.get(podItem.repositoryId) === false
-      ) {
-        return {
-          success: false as const,
-          error: createI18nError("errors.repoNotExists"),
-          originalId: podItem.originalId,
-        };
-      }
-
-      const createResult = await safeExecuteAsync(() =>
-        createSinglePod(canvasId, podItem, resolvedName),
-      );
-
-      if (!createResult.success) {
-        return {
-          success: false as const,
-          error: createResult.error,
-          originalId: podItem.originalId,
-        };
-      }
-
-      return { success: true as const, data: createResult.data };
-    }),
-  );
-
+  // 序列化建立所有 Pod，避免並發競爭 DB UNIQUE(canvas_id, name) 約束
   const createdPods: Pod[] = [];
-  for (const result of results) {
-    if (!result.success) {
+  for (let idx = 0; idx < pods.length; idx++) {
+    const podItem = pods[idx]!;
+    const resolvedName = resolvedPodNames[idx]!;
+
+    // 若 repositoryId 已預查過且不存在，直接失敗，不進 DB
+    if (
+      podItem.repositoryId &&
+      repoExistsMap.get(podItem.repositoryId) === false
+    ) {
       recordError(
         errors,
         "pod",
-        result.originalId,
-        result.error,
+        podItem.originalId,
+        createI18nError("errors.repoNotExists"),
         "建立 Pod 失敗",
       );
       continue;
     }
-    const { pod, originalId } = result.data;
+
+    const createResult = await safeExecuteAsync(() =>
+      createSinglePod(canvasId, podItem, resolvedName),
+    );
+
+    if (!createResult.success) {
+      recordError(
+        errors,
+        "pod",
+        podItem.originalId,
+        createResult.error,
+        "建立 Pod 失敗",
+      );
+      continue;
+    }
+
+    const { pod, originalId } = createResult.data;
     createdPods.push(pod);
     podIdMapping[originalId] = pod.id;
     logger.log("Paste", "Create", `已建立 Pod「${pod.name}」`);

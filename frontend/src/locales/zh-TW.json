@@ -572,8 +572,7 @@
       "pasted": "貼上成功",
       "worktreeCreated": "Worktree 建立成功",
       "repositoryDeleted": "Repository 已刪除",
-      "commandDeleted": "Command 已刪除",
-      "mcpToggleSuccess": "已更新 MCP 啟用設定"
+      "commandDeleted": "Command 已刪除"
     },
     "deleteSelection": {
       "partialFailed": "刪除部分失敗",

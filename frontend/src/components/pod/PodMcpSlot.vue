@@ -31,6 +31,14 @@ const mcpLabel = computed(() =>
     ? t("pod.slot.mcpLabel")
     : `${t("pod.slot.mcpLabel")} (${props.activeCount})`,
 );
+
+/**
+ * 反向旋轉 button，使文字在 Pod 旋轉時仍保持可讀。
+ * 例如 Pod 旋轉 5deg，button 反轉 -5deg 讓標籤維持水平。
+ */
+const buttonStyle = computed(() => ({
+  transform: `rotate(${-props.podRotation}deg)`,
+}));
 </script>
 
 <template>
@@ -44,6 +52,7 @@ const mcpLabel = computed(() =>
             ? 'pod-mcp-slot--active'
             : '',
       ]"
+      :style="buttonStyle"
       :aria-disabled="capabilityDisabled || undefined"
       :title="capabilityDisabled ? disabledTooltip : undefined"
       @click="handleClick"

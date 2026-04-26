@@ -56,7 +56,10 @@ describe("Pod 管理", () => {
       expect(pod.x).toBe(100);
       expect(pod.y).toBe(200);
       expect(pod.rotation).toBe(5);
-      expect(pod.workspacePath).toBeDefined();
+      // workspacePath 與 sessionId 已從 WebSocket broadcast 中移除（PodPublicView），
+      // 前端不應收到這些伺服器側敏感欄位
+      expect((pod as Record<string, unknown>).workspacePath).toBeUndefined();
+      expect((pod as Record<string, unknown>).sessionId).toBeUndefined();
     });
 
     it("新建立的 Pod 預設狀態為 idle", async () => {

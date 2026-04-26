@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, ref } from "vue";
+import { useToast } from "@/composables/useToast";
 import { useCanvasContext } from "./useCanvasContext";
 import {
   createWebSocketRequest,
@@ -82,6 +83,20 @@ export function useCopyPaste(): void {
   };
 
   const handlePaste = async (event: KeyboardEvent): Promise<boolean> => {
+    try {
+      return await handlePasteInner(event);
+    } catch (err: unknown) {
+      const { showErrorToast } = useToast();
+      showErrorToast(
+        "Paste",
+        "貼上失敗",
+        err instanceof Error ? err.message : "發生未預期錯誤",
+      );
+      return false;
+    }
+  };
+
+  const handlePasteInner = async (event: KeyboardEvent): Promise<boolean> => {
     if (clipboardStore.isEmpty) return false;
 
     event.preventDefault();
@@ -139,7 +154,9 @@ export function useCopyPaste(): void {
       if (hasTextSelection()) return;
       handleCopy(event);
     },
-    v: handlePaste,
+    // handlePaste 回傳 Promise<boolean>，但 catch 已在函式內部處理，
+    // 此處以 void 呼叫符合 Record 型別宣告，rejection 不會靜默吞掉
+    v: (event) => void handlePaste(event),
   };
 
   const handleKeyDown = (event: KeyboardEvent): void => {

@@ -41,6 +41,19 @@ describe("claudeMcpReader", () => {
     });
   });
 
+  describe("非 ENOENT 的 readFileSync 錯誤時", () => {
+    it("拋出 EACCES 錯誤時應靜默回傳空陣列且不拋例外", () => {
+      // 權限不足等非「檔案不存在」的錯誤，實作對任何 readFileSync 拋錯都應靜默回空陣列
+      mockReadFileSync.mockImplementation(() => {
+        throw new Error("EACCES");
+      });
+
+      expect(() => readClaudeMcpServers()).not.toThrow();
+      const result = readClaudeMcpServers();
+      expect(result).toEqual([]);
+    });
+  });
+
   describe("JSON parse 失敗時", () => {
     it("應回傳空陣列", () => {
       mockReadFileSync.mockReturnValue("this is not valid json{{{");
@@ -243,6 +256,52 @@ describe("claudeMcpReader", () => {
 
       expect(result1).toEqual(result2);
       expect(mockReadFileSync).toHaveBeenCalledTimes(1);
+    });
+
+    it("TTL 自然過期後應重新讀取磁碟", () => {
+      const BASE_TIME = 1000000;
+      // 模擬 Date.now() 初始時間
+      const dateSpy = vi.spyOn(Date, "now").mockReturnValue(BASE_TIME);
+
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          projects: {
+            [FAKE_HOME]: {
+              mcpServers: {
+                "first-server": { command: "node", args: [], env: {} },
+              },
+            },
+          },
+        }),
+      );
+
+      // 第一次呼叫，建立快取
+      const result1 = readClaudeMcpServers();
+      expect(result1[0].name).toBe("first-server");
+      expect(mockReadFileSync).toHaveBeenCalledTimes(1);
+
+      // 模擬時間推進超過 5 秒 TTL
+      dateSpy.mockReturnValue(BASE_TIME + 5001);
+
+      // 更新 mock 回傳值，模擬磁碟檔案已變更
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          projects: {
+            [FAKE_HOME]: {
+              mcpServers: {
+                "updated-server": { command: "python3", args: [], env: {} },
+              },
+            },
+          },
+        }),
+      );
+
+      // TTL 過期後應重新讀取
+      const result2 = readClaudeMcpServers();
+      expect(result2[0].name).toBe("updated-server");
+      expect(mockReadFileSync).toHaveBeenCalledTimes(2);
+
+      dateSpy.mockRestore();
     });
 
     it("resetClaudeMcpCache 後應重新讀取快取", () => {

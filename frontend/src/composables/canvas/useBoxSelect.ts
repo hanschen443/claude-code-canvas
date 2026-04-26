@@ -22,6 +22,11 @@ export function useBoxSelect(): {
   let startClientX = 0;
   let startClientY = 0;
 
+  // noteGroups 快照：在 startBoxSelect 時建立，onMove 期間直接重用，避免每幀分配新陣列
+  let noteGroupsSnapshot: Parameters<
+    typeof selectionStore.calculateSelectedElements
+  >[0]["noteGroups"] = [];
+
   const { startDrag } = useDragHandler({
     onMove: (moveEvent: MouseEvent): void => {
       const moveCanvasX =
@@ -31,10 +36,7 @@ export function useBoxSelect(): {
       selectionStore.updateSelection(moveCanvasX, moveCanvasY);
       selectionStore.calculateSelectedElements({
         pods: podStore.pods,
-        noteGroups: [
-          { notes: repositoryStore.notes, type: "repositoryNote" as const },
-          { notes: commandStore.notes, type: "commandNote" as const },
-        ],
+        noteGroups: noteGroupsSnapshot,
       });
     },
     onEnd: (upEvent: MouseEvent): void => {
@@ -90,6 +92,12 @@ export function useBoxSelect(): {
     const isCtrlPressed = isCtrlOrCmdPressed(event);
     selectionStore.startSelection(canvasX, canvasY, isCtrlPressed);
     isBoxSelecting.value = true;
+
+    // 建立 noteGroups 快照，後續 onMove 直接重用，不再每幀重組陣列
+    noteGroupsSnapshot = [
+      { notes: repositoryStore.notes, type: "repositoryNote" as const },
+      { notes: commandStore.notes, type: "commandNote" as const },
+    ];
 
     startDrag(event);
   };

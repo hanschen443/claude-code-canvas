@@ -41,6 +41,7 @@ import {
   isValidModelName,
 } from "@/lib/podValidation";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
+import { logger } from "@/utils/logger";
 
 const MAX_COORD = 100000;
 
@@ -62,15 +63,26 @@ export const usePodStore = defineStore("pod", () => {
   });
   const scheduleFiredPodIds = ref<Set<string>>(new Set());
 
+  /**
+   * Pod id → Pod 的 Map，隨 pods 陣列自動更新。
+   * 讓 selectedPod 與 getPodById 查找由 O(n) 降為 O(1)。
+   */
+  const podMap = computed((): Map<string, Pod> => {
+    const map = new Map<string, Pod>();
+    for (const pod of pods.value) {
+      map.set(pod.id, pod);
+    }
+    return map;
+  });
+
   const selectedPod = computed(
-    (): Pod | null =>
-      pods.value.find((pod) => pod.id === selectedPodId.value) || null,
+    (): Pod | null => podMap.value.get(selectedPodId.value ?? "") ?? null,
   );
 
   const podCount = computed((): number => pods.value.length);
 
   const getPodById = computed(() => (id: string): Pod | undefined => {
-    return pods.value.find((pod) => pod.id === id);
+    return podMap.value.get(id);
   });
 
   const getNextPodName = computed(() => (): string => {
@@ -87,7 +99,7 @@ export const usePodStore = defineStore("pod", () => {
   });
 
   function findPodById(podId: string): Pod | undefined {
-    return pods.value.find((pod) => pod.id === podId);
+    return podMap.value.get(podId);
   }
 
   function enrichPod(pod: Pod, existingOutput?: string[]): Pod {
@@ -117,7 +129,7 @@ export const usePodStore = defineStore("pod", () => {
     };
 
     if (!isValidPod(mergedPod)) {
-      console.warn("[PodStore] updatePod 驗證失敗，已忽略更新");
+      logger.warn("[PodStore] updatePod 驗證失敗，已忽略更新");
       return;
     }
     pods.value.splice(index, 1, mergedPod);
@@ -358,7 +370,7 @@ export const usePodStore = defineStore("pod", () => {
 
     // 驗證 model 名稱格式，防止非法字串（例如 CLI 旗標注入）
     if (!isValidModelName(model)) {
-      console.warn(`[PodStore] model 不合法，已拒絕更新：${model}`);
+      logger.warn(`[PodStore] model 不合法，已拒絕更新：${model}`);
       return;
     }
 

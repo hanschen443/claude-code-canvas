@@ -463,6 +463,63 @@ describe("CanvasPod MCP popover 整合測試", () => {
     });
   });
 
+  // ── provider 切換後 popover 行為 ─────────────────────────────────────────
+
+  describe("provider 切換後 popover 行為", () => {
+    it("開啟 MCP popover 後，pod.provider 改為 codex，popover 仍保持開著但 data-provider 更新為 codex", async () => {
+      // 初始為 claude pod，開啟 popover
+      const pod = createMockPod({ provider: "claude" });
+      const wrapper = mountCanvasPod(pod);
+
+      const mcpTrigger = wrapper.find(".mcp-trigger");
+      await mcpTrigger.trigger("click");
+      expect(wrapper.find(".mcp-popover-stub").exists()).toBe(true);
+
+      // 更新 props（模擬 provider 從 claude 切換到 codex）
+      await wrapper.setProps({ pod: createMockPod({ provider: "codex" }) });
+      await wrapper.vm.$nextTick();
+
+      // 實作沒有自動關閉邏輯，popover 仍開著
+      expect(wrapper.find(".mcp-popover-stub").exists()).toBe(true);
+      // provider prop 已更新為 codex（唯讀模式）
+      expect(
+        wrapper.find(".mcp-popover-stub").attributes("data-provider"),
+      ).toBe("codex");
+
+      wrapper.unmount();
+    });
+  });
+
+  // ── mcp-trigger 連按兩次 toggle 行為 ─────────────────────────────────────
+
+  describe("mcp-trigger 連按兩次 toggle 行為", () => {
+    it("第一次點擊 mcp-trigger 開啟 popover", async () => {
+      const pod = createMockPod();
+      const wrapper = mountCanvasPod(pod);
+
+      await wrapper.find(".mcp-trigger").trigger("click");
+
+      expect(wrapper.find(".mcp-popover-stub").exists()).toBe(true);
+
+      wrapper.unmount();
+    });
+
+    it("第二次點擊 mcp-trigger 不會關閉 popover（必須點外部才關）", async () => {
+      const pod = createMockPod();
+      const wrapper = mountCanvasPod(pod);
+
+      // 第一次點擊：開啟
+      await wrapper.find(".mcp-trigger").trigger("click");
+      expect(wrapper.find(".mcp-popover-stub").exists()).toBe(true);
+
+      // 第二次點擊：實作沒有 toggle close，popover 仍保持開啟
+      await wrapper.find(".mcp-trigger").trigger("click");
+      expect(wrapper.find(".mcp-popover-stub").exists()).toBe(true);
+
+      wrapper.unmount();
+    });
+  });
+
   // ── PodSlots mcpActiveCount 傳遞 ─────────────────────────────────────────
 
   describe("PodSlots mcpActiveCount 傳遞", () => {

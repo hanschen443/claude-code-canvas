@@ -2,8 +2,10 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { Switch } from "@/components/ui/switch";
-import { listMcpServers } from "@/services/mcpApi";
-import { updatePodMcpServers as updatePodMcpServersApi } from "@/services/mcpApi";
+import {
+  listMcpServers,
+  updatePodMcpServers as updatePodMcpServersApi,
+} from "@/services/mcpApi";
 import { usePodStore } from "@/stores/pod";
 import { useToast } from "@/composables/useToast";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";

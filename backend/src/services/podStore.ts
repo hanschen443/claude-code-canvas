@@ -9,15 +9,23 @@ import type {
 } from "../types";
 import type { IntegrationBinding } from "../types/integration.js";
 import type { ProviderName } from "./provider/types.js";
-import { getProvider, providerRegistry } from "./provider/index.js";
+import {
+  resolveProvider,
+  resolveProviderConfig,
+  sanitizeProviderConfigStrict,
+} from "./pod/providerConfigResolver.js";
 import { socketService } from "./socketService.js";
 import { canvasStore } from "./canvasStore.js";
 import { getStmts } from "../database/stmtsHelper.js";
 import { getDb } from "../database/index.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
-import { logger } from "../utils/logger.js";
 
-/** LRU 快取上限（entry 數） */
+/**
+ * LRU statement cache 上限（entry 數）。
+ * 典型 Canvas 中 Pod 數量約 10–20，32 提供約 1.5 倍餘裕，
+ * 可避免熱點 Pod 頻繁驅逐影響效能。
+ * 若日後 Pod 規模顯著增加（例如超過 50），可考慮調高至 64。
+ */
 const STMT_CACHE_MAX = 32;
 
 /**
@@ -185,16 +193,18 @@ class PodStore {
   }
 
   /**
-   * 通用 relation 查詢輔助函式：取得 PreparedStatement、執行查詢、透過 batchGroupBy 組裝 Map。
+   * 通用 relation 查詢輔助函式：自行計算 placeholders、取得 PreparedStatement、
+   * 執行查詢、透過 batchGroupBy 組裝 Map。
    * 消除 batchLoadRelations 內四段重複的「getRelationStmt → all → batchGroupBy」流程。
+   * placeholders 在此統一計算，呼叫端不需重複計算。
    */
   private loadRelation(
     tableName: string,
     valueColumn: string,
     podIds: string[],
-    placeholders: string,
   ): Map<string, string[]> {
     const n = podIds.length;
+    const placeholders = podIds.map(() => "?").join(", ");
     const stmt = this.getRelationStmt(tableName, valueColumn, n, placeholders);
     // 以 unknown 接收 DB 回傳值，過濾 null/undefined 後再 narrow 為字串型別，
     // 避免 DB 回傳 null 時被斷言為字串 "null" 造成靜默錯誤
@@ -225,21 +235,13 @@ class PodStore {
       };
     }
 
-    const placeholders = podIds.map(() => "?").join(", ");
-
     return {
       mcpServerNames: this.loadRelation(
         "pod_mcp_server_names",
         "mcp_server_name",
         podIds,
-        placeholders,
       ),
-      pluginIds: this.loadRelation(
-        "pod_plugin_ids",
-        "plugin_id",
-        podIds,
-        placeholders,
-      ),
+      pluginIds: this.loadRelation("pod_plugin_ids", "plugin_id", podIds),
     };
   }
 
@@ -247,6 +249,7 @@ class PodStore {
    * 批次載入多個 Pod 的 integration binding 資料。
    * 使用 WHERE pod_id IN (...) 一次查詢，避免 N+1 問題。
    * PreparedStatement 以 "bindings:n" 為 key 快取，避免重複 prepare。
+   * placeholders 計算委託給 getCachedStmt 閉包內部，與 loadRelation 一致。
    * 僅用於列表查詢（如 list()），單筆查詢請改用 loadBindingsForPod()。
    */
   private batchLoadBindings(
@@ -258,18 +261,17 @@ class PodStore {
 
     const n = podIds.length;
     const cacheKey = `bindings:${n}`;
-    const placeholders = podIds.map(() => "?").join(", ");
-    const stmt = this.getCachedStmt(
-      this.stmtCache,
-      cacheKey,
-      () =>
-        `SELECT id, pod_id, canvas_id, provider, app_id, resource_id, extra_json FROM integration_bindings WHERE pod_id IN (${placeholders})`,
-    );
+    // placeholders 在 buildSql 閉包內計算，與 loadRelation → getRelationStmt 的模式一致
+    const stmt = this.getCachedStmt(this.stmtCache, cacheKey, () => {
+      const placeholders = podIds.map(() => "?").join(", ");
+      return `SELECT id, pod_id, canvas_id, provider, app_id, resource_id, extra_json FROM integration_bindings WHERE pod_id IN (${placeholders})`;
+    });
 
     const rows = stmt.all(...podIds) as IntegrationBindingRow[];
 
+    // batchGroupBy 僅適用於單一字串 value column，integration_bindings 為多欄位物件，
+    // 故此處仍以 for-loop 組裝，保持型別正確性
     const result = new Map<string, IntegrationBinding[]>();
-
     for (const row of rows) {
       if (!result.has(row.pod_id)) result.set(row.pod_id, []);
       result.get(row.pod_id)!.push({
@@ -286,130 +288,15 @@ class PodStore {
     return result;
   }
 
-  /**
-   * 解析 DB row 的 provider 欄位，不合法值 fallback 為 'claude'。
-   * DB 欄位可能為空或含歷史非法值，需 fallback 以保持向後相容。
-   */
-  private resolveProvider(row: PodRow): ProviderName {
-    // 以 providerRegistry 的 key 作為白名單，未來新增 provider 時自動涵蓋，不需回頭改這個函式
-    const isValidProvider = (value: unknown): value is ProviderName =>
-      typeof value === "string" && value in providerRegistry;
-
-    if (!isValidProvider(row.provider)) {
-      const rawValue = String(row.provider);
-      const safeValue = /^[a-z0-9_-]{1,32}$/.test(rawValue)
-        ? rawValue
-        : `<invalid format, len=${rawValue.length}>`;
-      logger.warn(
-        "Pod",
-        "Warn",
-        `收到未知 provider 值：${safeValue}，已 fallback 為 claude`,
-      );
-      return "claude";
-    }
-    return row.provider;
-  }
-
-  /**
-   * 白名單過濾 providerConfig，只保留合法欄位（目前僅 model）。
-   * 不驗證 model 值是否在 provider 的 availableModels 內，供讀取路徑（DB → Pod 物件）使用，
-   * 避免舊 pod 中可能存在的不合法 model 值造成 Pod 打不開。寫入路徑請改用 sanitizeProviderConfigStrict。
-   * 歷史 DB 舊格式 {provider, model} 需淨化為 {model} 以符合 .strict() schema，前端型別曾為 discriminated union 導致多餘 key 流入。
-   */
-  private sanitizeProviderConfig(
-    raw: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const sanitized: Record<string, unknown> = {};
-    if ("model" in raw) {
-      sanitized.model = raw.model;
-    }
-    return sanitized;
-  }
-
-  /**
-   * 嚴格版的 providerConfig 白名單過濾：在保留 model 欄位後，
-   * 會檢查 model 值是否在指定 provider 的 metadata.availableModels 清單內，
-   * 不合法時 throw Error（不 fallback），供寫入路徑（create / update）使用。
-   */
-  private sanitizeProviderConfigStrict(
-    raw: Record<string, unknown>,
-    provider: ProviderName,
-  ): Record<string, unknown> {
-    const sanitized = this.sanitizeProviderConfig(raw);
-
-    if ("model" in sanitized) {
-      const { availableModelValues } = getProvider(provider).metadata;
-      if (!availableModelValues.has(sanitized.model as string)) {
-        throw new Error(`Provider ${provider} 不支援此 model`);
-      }
-    } else {
-      // 補填預設 model：寫入路徑若未指定 model，自動補入 provider 預設值
-      const defaultOptions = getProvider(provider).metadata
-        .defaultOptions as Record<string, unknown>;
-      sanitized.model = defaultOptions.model;
-    }
-
-    return sanitized;
-  }
-
-  /**
-   * 讀取路徑下的 warn log：若 DB 中的 model 不在 provider 的 availableModels 內，
-   * 記錄一次 warn log 但不丟棄原值（不影響 Pod 載入）。
-   */
-  private warnIfModelOutOfRange(
-    model: unknown,
-    provider: ProviderName,
-    podId: string,
-  ): void {
-    if (typeof model !== "string") {
-      logger.warn(
-        "Pod",
-        "Warn",
-        `DB 中 Pod ${podId} 的 providerConfig.model 非字串值（typeof=${typeof model}），略過範圍檢查`,
-      );
-      return;
-    }
-    const { availableModelValues } = getProvider(provider).metadata;
-    if (!availableModelValues.has(model)) {
-      logger.warn(
-        "Pod",
-        "Warn",
-        `DB 中 Pod ${podId} 的 providerConfig.model 值 ${model} 不在 provider ${provider} 的 availableModels 內，保留原值`,
-      );
-    }
-  }
-
-  /**
-   * 確保 sanitized 物件含有 model 欄位：
-   * 若缺少則補入 provider 預設值；若已有則做 availableModels 範圍檢查並 warn log（保留原值）。
-   */
-  private ensureModelField(
-    sanitized: Record<string, unknown>,
-    provider: ProviderName,
-    podId: string,
-  ): void {
-    if (!("model" in sanitized)) {
-      const defaultOptions = getProvider(provider).metadata
-        .defaultOptions as Record<string, unknown>;
-      sanitized.model = defaultOptions.model;
-    } else {
-      this.warnIfModelOutOfRange(sanitized.model, provider, podId);
-    }
-  }
-
   /** 解析 DB row 的 providerConfig，缺少 model 時補入對應 provider 的預設值 */
-  private resolveProviderConfig(
+  private resolveProviderConfigFromRow(
     row: PodRow,
     provider: ProviderName,
   ): Record<string, unknown> {
     const raw =
       safeJsonParse<Record<string, unknown>>(row.provider_config_json ?? "") ??
       {};
-    // 讀取路徑：使用 relaxed 版本白名單過濾，丟棄舊格式中的 provider 等多餘 key；
-    // 不驗證 model 是否在 availableModels 內，避免舊 pod 的歷史 model 值導致 Pod 打不開
-    const sanitized = this.sanitizeProviderConfig(raw);
-    this.ensureModelField(sanitized, provider, row.id);
-    return sanitized;
+    return resolveProviderConfig(raw, provider, row.id);
   }
 
   /**
@@ -439,8 +326,8 @@ class PodStore {
     },
     bindingsMap: Map<string, IntegrationBinding[]>,
   ): Pod {
-    const provider = this.resolveProvider(row);
-    const providerConfig = this.resolveProviderConfig(row, provider);
+    const provider = resolveProvider(row.provider);
+    const providerConfig = this.resolveProviderConfigFromRow(row, provider);
     const pod: Pod = {
       id: row.id,
       name: row.name,
@@ -571,10 +458,7 @@ class PodStore {
       ? { ...data.providerConfig }
       : {};
     // sanitizeProviderConfigStrict 已含「補填預設 model」邏輯，此處不需額外補填
-    const providerConfig = this.sanitizeProviderConfigStrict(
-      rawConfig,
-      provider,
-    );
+    const providerConfig = sanitizeProviderConfigStrict(rawConfig, provider);
     const pod = this.buildPodObject(
       id,
       canvasId,
@@ -598,6 +482,31 @@ class PodStore {
       | undefined;
     if (!row) return undefined;
     return this.toPodWithBindings(row);
+  }
+
+  /**
+   * 批次依 ID 查詢多個 Pod（同一 canvas），回傳 Map<podId, Pod>。
+   * 使用 WHERE id IN (...) 一次查詢，避免 N 次 getById 呼叫。
+   * podIds 為空時直接回傳空 Map，不觸發 DB 查詢。
+   */
+  getByIds(canvasId: string, podIds: string[]): Map<string, Pod> {
+    if (podIds.length === 0) return new Map();
+
+    const n = podIds.length;
+    const cacheKey = `pods:byIds:${n}`;
+    const stmt = this.getCachedStmt(this.stmtCache, cacheKey, () => {
+      const placeholders = Array.from({ length: n }, () => "?").join(", ");
+      return `SELECT * FROM pods WHERE canvas_id = ? AND id IN (${placeholders})`;
+    });
+
+    const rows = stmt.all(canvasId, ...podIds) as PodRow[];
+    const pods = this.rowsToPods(rows);
+
+    const result = new Map<string, Pod>();
+    for (const pod of pods) {
+      result.set(pod.id, pod);
+    }
+    return result;
   }
 
   getByIdGlobal(podId: string): { canvasId: string; pod: Pod } | undefined {
@@ -696,7 +605,7 @@ class PodStore {
     // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
     const sanitizedProviderConfigJson = updatedPod.providerConfig
       ? JSON.stringify(
-          this.sanitizeProviderConfigStrict(
+          sanitizeProviderConfigStrict(
             updatedPod.providerConfig,
             updatedPod.provider,
           ),

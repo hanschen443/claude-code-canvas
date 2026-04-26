@@ -36,8 +36,16 @@ export const podSetMcpServerNamesSchema = z
     requestId: requestIdSchema,
     canvasId: canvasIdSchema,
     podId: podIdSchema,
-    /** MCP server 名稱清單，最多 50 筆，每筆名稱最長 200 字元 */
-    mcpServerNames: z.array(z.string().min(1).max(200)).max(50),
+    /** MCP server 名稱清單，最多 50 筆，每筆名稱最長 200 字元，只允許字母、數字、底線、點、連字號 */
+    mcpServerNames: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(200)
+          .regex(/^[a-zA-Z0-9_.][a-zA-Z0-9_.-]*$/),
+      )
+      .max(50),
   })
   .strict();
 

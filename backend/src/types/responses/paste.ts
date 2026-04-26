@@ -1,4 +1,4 @@
-import type { Pod } from "../pod.js";
+import type { PodPublicView } from "../pod.js";
 import type { RepositoryNote } from "../repositoryNote.js";
 import type { CommandNote } from "../commandNote.js";
 import type { Connection } from "../connection.js";
@@ -13,7 +13,7 @@ export interface PasteError {
 export interface CanvasPasteResultPayload {
   requestId: string;
   success: boolean;
-  createdPods: Pod[];
+  createdPods: PodPublicView[];
   createdRepositoryNotes: RepositoryNote[];
   createdCommandNotes: CommandNote[];
   createdConnections: Connection[];

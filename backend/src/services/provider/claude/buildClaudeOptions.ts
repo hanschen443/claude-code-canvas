@@ -63,6 +63,11 @@ export interface ClaudeOptions {
 /**
  * Claude 預設允許的工具清單。
  * 對應 claudeService.buildQueryOptions 裡的 baseAllowedTools。
+ *
+ * ⚠️ 安全警告：此清單搭配 permissionMode: "bypassPermissions" 使用，
+ * 代表清單內所有工具均可在無需用戶確認的情況下被 Claude 呼叫。
+ * 每次新增或移除工具時，必須在 PR description 中明確列出 security 影響評估，
+ * 包含：該工具可存取的資源範圍、最壞情況下的系統風險、以及是否需要縮小 bypassPermissions 範圍。
  */
 export const BASE_ALLOWED_TOOLS: readonly string[] = [
   "Read",

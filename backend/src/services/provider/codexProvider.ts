@@ -469,6 +469,92 @@ async function* streamCodexOutput(
   );
 }
 
+/** setupSubprocess 成功結果 */
+type SubprocessSuccess = {
+  ok: true;
+  proc: Bun.Subprocess<"pipe", "pipe", "pipe">;
+  /** 必須在 try-finally 中呼叫，確保 abort listener 被移除 */
+  cleanup: () => void;
+};
+
+/** setupSubprocess 失敗結果，含使用者可見的 error event */
+type SubprocessFailure = {
+  ok: false;
+  errorEvent: NormalizedEvent & { type: "error" };
+};
+
+/**
+ * Spawn codex subprocess 並設置 abort signal 處理。
+ * 以 discriminated union 回傳結果，讓 chat() 以單一 if 分支處理失敗，不混 try-catch。
+ * 成功時回傳 { ok: true, proc, cleanup }；失敗時回傳 { ok: false, errorEvent }。
+ */
+function setupSubprocess(
+  codexArgs: string[],
+  workspacePath: string,
+  abortSignal: AbortSignal,
+): SubprocessSuccess | SubprocessFailure {
+  // ── Spawn subprocess ───────────────────────────────────────────
+  let proc: Bun.Subprocess<"pipe", "pipe", "pipe">;
+  try {
+    proc = spawnCodexProcess(codexArgs, workspacePath);
+  } catch (err: unknown) {
+    if (isEnoentError(err)) {
+      return {
+        ok: false,
+        errorEvent: {
+          type: "error",
+          message: "codex CLI 尚未安裝或不在 PATH 中，請執行 codex login",
+          fatal: true,
+        },
+      };
+    }
+    // 非 ENOENT 的啟動失敗：原始訊息寫進 logger，不暴露給前端
+    logger.error("Chat", "Error", "[CodexProvider] 啟動 codex 子程序失敗", err);
+    return {
+      ok: false,
+      errorEvent: {
+        type: "error",
+        message: "啟動 codex 子程序失敗，請查 server log",
+        fatal: true,
+      },
+    };
+  }
+
+  // ── abort signal 處理 ──────────────────────────────────────────
+  const onAbort = (): void => {
+    try {
+      proc.kill();
+    } catch (err: unknown) {
+      // ESRCH：subprocess 已結束，屬正常情況直接忽略
+      if (
+        err instanceof Error &&
+        (err as NodeJS.ErrnoException).code === "ESRCH"
+      ) {
+        return;
+      }
+      logger.error(
+        "Chat",
+        "Warn",
+        "[CodexProvider] kill subprocess 時發生非預期錯誤",
+        err,
+      );
+    }
+  };
+
+  abortSignal.addEventListener("abort", onAbort, { once: true });
+
+  // spawn 前已 abort：listener 不會自動觸發，需主動呼叫 onAbort
+  if (abortSignal.aborted) {
+    onAbort();
+  }
+
+  const cleanup = (): void => {
+    abortSignal.removeEventListener("abort", onAbort);
+  };
+
+  return { ok: true, proc, cleanup };
+}
+
 export class CodexProvider implements AgentProvider<CodexOptions> {
   /**
    * Codex provider 的 metadata，包含 name、capabilities 與預設執行時選項。
@@ -547,66 +633,28 @@ export class CodexProvider implements AgentProvider<CodexOptions> {
 
     const { codexArgs, promptText } = execution;
 
-    // ── Spawn subprocess ───────────────────────────────────────────
-    let proc: Bun.Subprocess<"pipe", "pipe", "pipe"> | null = null;
-
-    try {
-      proc = spawnCodexProcess(codexArgs, workspacePath);
-    } catch (err: unknown) {
-      if (isEnoentError(err)) {
-        yield {
-          type: "error",
-          message: "codex CLI 尚未安裝或不在 PATH 中，請執行 codex login",
-          fatal: true,
-        };
-      } else {
-        // 非 ENOENT 的啟動失敗：原始訊息寫進 logger，不暴露給前端
-        logger.error(
-          "Chat",
-          "Error",
-          "[CodexProvider] 啟動 codex 子程序失敗",
-          err,
-        );
-        yield {
-          type: "error",
-          message: "啟動 codex 子程序失敗，請查 server log",
-          fatal: true,
-        };
-      }
+    // ── Spawn subprocess + abort signal 設置 ──────────────────────
+    const subprocessResult = setupSubprocess(
+      codexArgs,
+      workspacePath,
+      abortSignal,
+    );
+    if (!subprocessResult.ok) {
+      yield subprocessResult.errorEvent;
       return;
     }
 
-    // ── abort signal 處理 ──────────────────────────────────────────
-    const onAbort = (): void => {
-      try {
-        proc?.kill();
-      } catch (err: unknown) {
-        // ESRCH：subprocess 已結束，屬正常情況直接忽略
-        if (
-          err instanceof Error &&
-          (err as NodeJS.ErrnoException).code === "ESRCH"
-        ) {
-          return;
-        }
-        logger.error(
-          "Chat",
-          "Warn",
-          "[CodexProvider] kill subprocess 時發生非預期錯誤",
-          err,
-        );
-      }
-    };
-
+    const { proc, cleanup } = subprocessResult;
     if (abortSignal.aborted) {
-      onAbort();
+      cleanup();
       return;
     }
-    abortSignal.addEventListener("abort", onAbort, { once: true });
 
+    // ── 串流輸出 ───────────────────────────────────────────────────
     try {
       yield* streamCodexOutput(proc, promptText, abortSignal, podId);
     } finally {
-      abortSignal.removeEventListener("abort", onAbort);
+      cleanup();
     }
   }
 }

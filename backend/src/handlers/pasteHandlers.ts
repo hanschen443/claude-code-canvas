@@ -6,6 +6,7 @@ import type {
   CommandNote,
   Pod,
 } from "../types";
+import { toPodPublicView } from "../types/index.js";
 import type { CanvasPastePayload } from "../schemas";
 import { socketService } from "../services/socketService.js";
 import { logger } from "../utils/logger.js";
@@ -17,6 +18,11 @@ import {
 } from "./paste/pasteHelpers.js";
 import { podStore } from "../services/podStore.js";
 
+/**
+ * 批次同步 bound notes 到對應的 Pod。
+ * 先收集所有不重複的 boundToPodId，一次 getByIds 查回所有 Pod，
+ * 建立 Map 後對每個 note 做 O(1) 查找，避免 N 次 DB 查詢。
+ */
 function syncBoundNotesToPod<TNote extends { boundToPodId: string | null }>(
   canvasId: string,
   notes: TNote[],
@@ -24,9 +30,21 @@ function syncBoundNotesToPod<TNote extends { boundToPodId: string | null }>(
   shouldUpdate: (pod: Pod, resourceId: string) => boolean,
   updatePod: (canvasId: string, podId: string, resourceId: string) => void,
 ): void {
+  // 收集去重後的 podId 列表
+  const podIds = [
+    ...new Set(
+      notes
+        .map((note) => note.boundToPodId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+
+  // 一次批次查詢，避免 N 次 getById
+  const podMap = podStore.getByIds(canvasId, podIds);
+
   for (const note of notes) {
     if (!note.boundToPodId) continue;
-    const pod = podStore.getById(canvasId, note.boundToPodId);
+    const pod = podMap.get(note.boundToPodId);
     if (pod && shouldUpdate(pod, getResourceId(note))) {
       updatePod(canvasId, note.boundToPodId, getResourceId(note));
     }
@@ -87,7 +105,7 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
     const response: CanvasPasteResultPayload = {
       requestId,
       success: errors.length === 0,
-      createdPods,
+      createdPods: createdPods.map(toPodPublicView),
       createdRepositoryNotes: noteResultMap.repository
         .notes as RepositoryNote[],
       createdCommandNotes: noteResultMap.command.notes as CommandNote[],

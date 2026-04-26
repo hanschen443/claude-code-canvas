@@ -237,6 +237,7 @@ export type TypedNoteStore<
 function buildNoteStoreGetters<TItem, TNote extends BaseNote>(
   config: Pick<NoteStoreConfig<TItem>, "relationship" | "itemIdField">,
   getItemName: (item: TItem) => string,
+  getItemId: (item: TItem) => string,
 ) {
   return {
     typedAvailableItems: (state: BaseNoteState): TItem[] =>
@@ -244,16 +245,55 @@ function buildNoteStoreGetters<TItem, TNote extends BaseNote>(
     typedNotes: (state: BaseNoteState): TNote[] =>
       state.notes as unknown as TNote[],
 
+    /**
+     * id → TItem 的 Map 索引，隨 availableItems 狀態自動更新。
+     * 供 O(1) 查找使用，取代 Array.find 線性掃描。
+     */
+    itemById: (state: BaseNoteState): Map<string, TItem> => {
+      const map = new Map<string, TItem>();
+      for (const item of state.availableItems) {
+        const typed = item as TItem;
+        map.set(getItemId(typed), typed);
+      }
+      return map;
+    },
+
     getUnboundNotes: (state: BaseNoteState): NoteItem[] =>
       state.notes.filter((note) => note.boundToPodId === null),
+
+    /**
+     * pod id → TNote[] 的分組 Map，隨 notes 狀態自動更新（Pinia getter 有快取）。
+     * one-to-many 模式下讓多次查找由 O(n) 降為 O(1)；
+     * one-to-one 模式也整合在同一 Map，保持介面一致。
+     */
+    notesByPodId: (state: BaseNoteState): Map<string, TNote[]> => {
+      const map = new Map<string, TNote[]>();
+      for (const note of state.notes) {
+        if (note.boundToPodId === null || note.boundToPodId === undefined) {
+          continue;
+        }
+        const existing = map.get(note.boundToPodId);
+        if (existing) {
+          existing.push(note as unknown as TNote);
+        } else {
+          map.set(note.boundToPodId, [note as unknown as TNote]);
+        }
+      }
+      return map;
+    },
 
     getNotesByPodId:
       (state: BaseNoteState) =>
       (podId: string): TNote[] => {
         if (config.relationship === "one-to-one") {
+          // one-to-one：只取第一筆（若有多筆視為資料異常，取第一筆相容舊行為）
           const note = state.notes.find((note) => note.boundToPodId === podId);
           return note ? [note as unknown as TNote] : [];
         }
+        // one-to-many：直接從 state.notes 建立 Map 後查找（O(n) 建 Map + O(1) 查找）。
+        // 多次呼叫由 notesByPodId getter（Pinia 有快取）取用，
+        // 呼叫端透過 store.notesByPodId.get(podId) 可達到真正 O(1)。
+        // 此函式保留 O(n) filter 以維持向下相容，效能優化請直接使用 notesByPodId。
         return state.notes.filter(
           (note) => note.boundToPodId === podId,
         ) as unknown as TNote[];
@@ -336,6 +376,153 @@ function buildNoteStoreGetters<TItem, TNote extends BaseNote>(
   };
 }
 
+/**
+ * 封裝 deleteItem 的 payload 組裝與型別 workaround：
+ * payload 使用動態 key（config.itemIdField），無法以靜態型別表達，故使用 DynamicKeyPayload。
+ * 將此隔離後，deleteItem action 只需呼叫 API → filter state → toast 三步。
+ */
+function buildDeletePayload(
+  config: Pick<
+    NoteStoreConfig<unknown>,
+    "deleteItemEvents" | "itemIdField" | "storeName"
+  >,
+  itemId: string,
+): {
+  requestEvent: string;
+  responseEvent: string;
+  payload: { canvasId: string } & { [key: string]: string };
+} {
+  // DynamicKeyPayload：payload 使用動態 key（config.itemIdField），無法以靜態型別表達
+  type DynamicKeyPayload = { canvasId: string } & { [key: string]: string };
+  const canvasId = requireActiveCanvas();
+  return {
+    requestEvent: config.deleteItemEvents!.request,
+    responseEvent: config.deleteItemEvents!.response,
+    payload: {
+      canvasId,
+      [config.itemIdField]: itemId,
+    } as DynamicKeyPayload,
+  };
+}
+
+/**
+ * 封裝四個 core actions（fetchWithActiveCanvasId / loadItems / loadNotesFromBackend / createNote）。
+ * 與 createEventSyncActions / createGroupActions 同模式，降低 createNoteStore 工廠函式行數。
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function createCoreActions<TItem>(
+  config: Pick<
+    NoteStoreConfig<TItem>,
+    "storeName" | "events" | "responseItemsKey" | "createNotePayload"
+  >,
+  getItemId: (item: TItem) => string,
+  getItemName: (item: TItem) => string,
+) {
+  return {
+    async fetchWithActiveCanvasId(
+      this: { isLoading: boolean; error: string | null },
+      requestEvent: string,
+      responseEvent: string,
+    ): Promise<BaseResponse | null> {
+      this.isLoading = true;
+      this.error = null;
+
+      const { wrapWebSocketRequest } = useWebSocketErrorHandler();
+      const canvasId = getActiveCanvasIdOrWarn(config.storeName);
+
+      if (!canvasId) {
+        this.isLoading = false;
+        return null;
+      }
+
+      const response = await wrapWebSocketRequest(
+        createWebSocketRequest<BasePayload, BaseResponse>({
+          requestEvent,
+          responseEvent,
+          payload: { canvasId },
+        }),
+      );
+
+      this.isLoading = false;
+
+      if (!response) {
+        this.error = t("store.resource.loadFailed");
+      }
+
+      return response ?? null;
+    },
+
+    async loadItems(this: {
+      availableItems: unknown[];
+      fetchWithActiveCanvasId(
+        req: string,
+        res: string,
+      ): Promise<BaseResponse | null>;
+    }): Promise<void> {
+      const response = await this.fetchWithActiveCanvasId(
+        config.events.listItems.request,
+        config.events.listItems.response,
+      );
+
+      if (!response) return;
+
+      if (response[config.responseItemsKey]) {
+        this.availableItems = response[config.responseItemsKey] as unknown[];
+      }
+    },
+
+    async loadNotesFromBackend(this: {
+      notes: NoteItem[];
+      fetchWithActiveCanvasId(
+        req: string,
+        res: string,
+      ): Promise<BaseResponse | null>;
+    }): Promise<void> {
+      const response = await this.fetchWithActiveCanvasId(
+        config.events.listNotes.request,
+        config.events.listNotes.response,
+      );
+
+      if (!response) return;
+
+      if (response.notes) {
+        this.notes = response.notes as NoteItem[];
+      }
+    },
+
+    async createNote(
+      this: { availableItems: unknown[] },
+      itemId: string,
+      x: number,
+      y: number,
+    ): Promise<void> {
+      const item = this.availableItems.find(
+        (candidate) => getItemId(candidate as TItem) === itemId,
+      );
+      if (!item) return;
+
+      const itemName = getItemName(item as TItem);
+      const canvasId = requireActiveCanvas();
+
+      const payload = {
+        canvasId,
+        ...config.createNotePayload(item as TItem, x, y),
+        name: itemName,
+        x,
+        y,
+        boundToPodId: null,
+        originalPosition: null,
+      };
+
+      await createWebSocketRequest<BasePayload, BaseResponse>({
+        requestEvent: config.events.createNote.request,
+        responseEvent: config.events.createNote.response,
+        payload,
+      });
+    },
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNoteStore<
   TItem,
@@ -363,96 +550,19 @@ export function createNoteStore<
   });
 
   // getters 獨立建構
-  const getters = buildNoteStoreGetters<TItem, TNote>(config, getItemName);
+  const getters = buildNoteStoreGetters<TItem, TNote>(
+    config,
+    getItemName,
+    getItemId,
+  );
 
   return defineStore(config.storeName, {
     state,
     getters,
 
     actions: {
-      async fetchWithActiveCanvasId(
-        requestEvent: string,
-        responseEvent: string,
-      ): Promise<BaseResponse | null> {
-        this.isLoading = true;
-        this.error = null;
-
-        const { wrapWebSocketRequest } = useWebSocketErrorHandler();
-        const canvasId = getActiveCanvasIdOrWarn(config.storeName);
-
-        if (!canvasId) {
-          this.isLoading = false;
-          return null;
-        }
-
-        const response = await wrapWebSocketRequest(
-          createWebSocketRequest<BasePayload, BaseResponse>({
-            requestEvent,
-            responseEvent,
-            payload: { canvasId },
-          }),
-        );
-
-        this.isLoading = false;
-
-        if (!response) {
-          this.error = t("store.resource.loadFailed");
-        }
-
-        return response ?? null;
-      },
-
-      async loadItems(): Promise<void> {
-        const response = await this.fetchWithActiveCanvasId(
-          config.events.listItems.request,
-          config.events.listItems.response,
-        );
-
-        if (!response) return;
-
-        if (response[config.responseItemsKey]) {
-          this.availableItems = response[config.responseItemsKey] as unknown[];
-        }
-      },
-
-      async loadNotesFromBackend(): Promise<void> {
-        const response = await this.fetchWithActiveCanvasId(
-          config.events.listNotes.request,
-          config.events.listNotes.response,
-        );
-
-        if (!response) return;
-
-        if (response.notes) {
-          this.notes = response.notes as NoteItem[];
-        }
-      },
-
-      async createNote(itemId: string, x: number, y: number): Promise<void> {
-        const item = this.availableItems.find(
-          (candidate) => getItemId(candidate as TItem) === itemId,
-        );
-        if (!item) return;
-
-        const itemName = getItemName(item as TItem);
-        const canvasId = requireActiveCanvas();
-
-        const payload = {
-          canvasId,
-          ...config.createNotePayload(item as TItem, x, y),
-          name: itemName,
-          x,
-          y,
-          boundToPodId: null,
-          originalPosition: null,
-        };
-
-        await createWebSocketRequest<BasePayload, BaseResponse>({
-          requestEvent: config.events.createNote.request,
-          responseEvent: config.events.createNote.response,
-          payload,
-        });
-      },
+      // core actions：fetchWithActiveCanvasId / loadItems / loadNotesFromBackend / createNote
+      ...createCoreActions(config, getItemId, getItemName),
 
       ...createNotePositionActions(config),
 
@@ -492,7 +602,6 @@ export function createNoteStore<
         if (!config.deleteItemEvents) return;
 
         const { deleteItem } = useDeleteItem();
-        const canvasId = requireActiveCanvas();
         const { showSuccessToast } = useToast();
 
         const item = this.availableItems.find(
@@ -502,22 +611,24 @@ export function createNoteStore<
         const category: ToastCategory =
           STORE_TO_CATEGORY_MAP[config.storeName] ?? "Note";
 
-        // payload 使用動態 key（config.itemIdField），無法以靜態型別表達，故使用 DynamicKeyPayload
-        type DynamicKeyPayload = { canvasId: string } & {
-          [key: string]: string;
-        };
-        const response = await deleteItem<DynamicKeyPayload, BaseResponse>({
-          requestEvent: config.deleteItemEvents.request,
-          responseEvent: config.deleteItemEvents.response,
-          payload: {
-            canvasId,
-            [config.itemIdField]: itemId,
-          } as DynamicKeyPayload,
+        // buildDeletePayload 封裝 DynamicKeyPayload 型別 workaround，讓 deleteItem action 只剩三步
+        const { requestEvent, responseEvent, payload } = buildDeletePayload(
+          config,
+          itemId,
+        );
+        const response = await deleteItem<
+          ReturnType<typeof buildDeletePayload>["payload"],
+          BaseResponse
+        >({
+          requestEvent,
+          responseEvent,
+          payload,
           errorMessage: t("store.resource.deleteFailed"),
         });
 
         if (!response) return;
 
+        // filter state
         const index = this.availableItems.findIndex(
           (i) => getItemId(i as TItem) === itemId,
         );
@@ -534,6 +645,8 @@ export function createNoteStore<
             ...this.notes.filter((note) => !deletedIdSet.has(note.id)),
           );
         }
+
+        // toast
         showSuccessToast(category, t("store.resource.deleteSuccess"), itemName);
       },
 

@@ -15,6 +15,7 @@ import { HTTP_STATUS } from "../constants.js";
 import { socketService } from "../services/socketService.js";
 import { WebSocketResponseEvents } from "../schemas/index.js";
 import { getResultErrorString } from "../types/result.js";
+import { toPodPublicView } from "../types/pod.js";
 
 /** REST API 的 model 便捷欄位：Claude provider 僅允許短名，方便向後相容 */
 const VALID_CLAUDE_MODELS = ["opus", "sonnet", "haiku"] as const;
@@ -283,7 +284,7 @@ export async function handleRenamePod(
     requestId: "system",
     canvasId: canvas.id,
     success: true,
-    pod: result.pod,
+    pod: toPodPublicView(result.pod),
     podId: result.pod.id,
     name: result.pod.name,
   });

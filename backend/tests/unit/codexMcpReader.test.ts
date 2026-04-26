@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
+import os from "os";
+import path from "path";
 
 // mock fs 模組（需在 import 之前設定）
 vi.mock("fs");
@@ -44,6 +46,45 @@ describe("codexMcpReader", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe("讀取路徑驗證", () => {
+    it("未設定 CODEX_CONFIG_PATH 時，readFileSync 第一個參數應為 ~/.codex/config.toml", () => {
+      // 確保環境變數不存在，測試預設路徑邏輯
+      delete process.env.CODEX_CONFIG_PATH;
+
+      // 讓 readFileSync 拋 ENOENT，只是要確認被呼叫的路徑
+      mockReadFileSync.mockImplementation(() => {
+        const err = new Error("ENOENT: no such file or directory");
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      });
+
+      readCodexMcpServers();
+
+      // 驗證呼叫時第一個參數是預設路徑（使用真實 os.homedir()）
+      const expectedPath = path.join(os.homedir(), ".codex", "config.toml");
+      expect(mockReadFileSync).toHaveBeenCalled();
+      expect(mockReadFileSync.mock.calls[0][0]).toBe(expectedPath);
+    });
+  });
+
+  describe("非 ENOENT 的 readFileSync 錯誤時", () => {
+    it("拋出 EACCES 錯誤時應回傳空陣列、且 logger.warn 被呼叫", async () => {
+      // 非「檔案不存在」的錯誤，實作應呼叫 logger.warn 並靜默回空陣列
+      mockReadFileSync.mockImplementation(() => {
+        const err = new Error("EACCES: permission denied");
+        (err as NodeJS.ErrnoException).code = "EACCES";
+        throw err;
+      });
+
+      const { logger } = await import("../../src/utils/logger.js");
+
+      const result = readCodexMcpServers();
+
+      expect(result).toEqual([]);
+      expect(logger.warn).toHaveBeenCalled();
+    });
   });
 
   describe("~/.codex/config.toml 不存在時", () => {
@@ -145,7 +186,93 @@ describe("codexMcpReader", () => {
     });
   });
 
+  describe("server name 字元集驗證", () => {
+    it("合法名稱（字母、數字、底線、連字號）應正常回傳", () => {
+      mockReadFileSync.mockReturnValue(
+        makeStdioToml("valid_server-123", "npx"),
+      );
+
+      const result = readCodexMcpServers();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("valid_server-123");
+    });
+
+    it("含 = 號的 server name 應被略過，防止 CLI 旗標注入", () => {
+      mockReadFileSync.mockReturnValue(
+        '[mcp_servers."bad=name"]\ncommand = "npx"\n',
+      );
+
+      const result = readCodexMcpServers();
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("含空格的 server name 應被略過", () => {
+      mockReadFileSync.mockReturnValue(
+        '[mcp_servers."bad name"]\ncommand = "npx"\n',
+      );
+
+      const result = readCodexMcpServers();
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("含 -- 的 server name 應被略過，防止 CLI 旗標注入", () => {
+      // TOML 中以純字串 key 方式注入 --inject
+      // Bun.TOML.parse 對含特殊字元的 key 需加引號，此處驗證解析後字元驗證邏輯
+      mockReadFileSync.mockReturnValue(
+        '[mcp_servers."--inject"]\ncommand = "npx"\n',
+      );
+
+      const result = readCodexMcpServers();
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("含合法與不合法 name 混合時，只回傳合法的", () => {
+      const toml =
+        '[mcp_servers.good]\ncommand = "npx"\n\n' +
+        '[mcp_servers."bad=name"]\ncommand = "node"\n';
+      mockReadFileSync.mockReturnValue(toml);
+
+      const result = readCodexMcpServers();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("good");
+    });
+  });
+
   describe("5 秒 TTL 快取", () => {
+    it("TTL 自然過期後應重新讀取磁碟", () => {
+      const BASE_TIME = 2000000;
+      // 模擬 Date.now() 初始時間
+      const dateSpy = vi.spyOn(Date, "now").mockReturnValue(BASE_TIME);
+
+      mockReadFileSync.mockReturnValue(makeStdioToml("first-server", "node"));
+
+      // 第一次呼叫，建立快取
+      const result1 = readCodexMcpServers();
+      expect(result1[0].name).toBe("first-server");
+      expect(mockReadFileSync).toHaveBeenCalledTimes(1);
+
+      // 模擬時間推進超過 5 秒 TTL
+      dateSpy.mockReturnValue(BASE_TIME + 5001);
+
+      // 更新 mock 回傳值，模擬磁碟設定檔已變更
+      mockReadFileSync.mockReturnValue(
+        makeHttpToml("updated-server", "https://example.com/mcp"),
+      );
+
+      // TTL 過期後應重新讀取
+      const result2 = readCodexMcpServers();
+      expect(result2[0].name).toBe("updated-server");
+      expect(result2[0].type).toBe("http");
+      expect(mockReadFileSync).toHaveBeenCalledTimes(2);
+
+      dateSpy.mockRestore();
+    });
+
     it("5 秒內重複呼叫應走快取，只讀一次磁碟", () => {
       mockReadFileSync.mockReturnValue(makeStdioToml("cached-server", "node"));
 

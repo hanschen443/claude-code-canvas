@@ -681,12 +681,14 @@ describe("貼上功能", () => {
       );
 
       expect(secondResponse.createdPods).toHaveLength(1);
-      // 驗證 DB 中寫入的名稱帶有後綴而非重名
+      // 驗證 DB 中寫入的名稱帶有隨機後綴（格式：Pod 1-XXXXXX）而非重名
       const { podStore } = await import("../../src/services/podStore.js");
       const allPods = podStore.list(canvasId);
       const podNames = allPods.map((p) => p.name);
       expect(podNames).toContain("Pod 1");
-      expect(podNames).toContain("Pod 1 (2)");
+      // 衝突時加 6 碼 hex 隨機後綴
+      const dedupedPod = podNames.find((n) => /^Pod 1-[0-9a-f]{6}$/.test(n));
+      expect(dedupedPod).toBeDefined();
     });
 
     it("貼上帶合法 pluginIds 的 Pod 後 DB 正確寫入 pluginIds", async () => {

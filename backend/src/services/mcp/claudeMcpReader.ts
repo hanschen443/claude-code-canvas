@@ -16,6 +16,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { logger } from "../../utils/logger.js";
 
 /**
  * 取得 ~/.claude.json 的讀取路徑。
@@ -30,9 +31,18 @@ function getClaudeJsonPath(): string {
 
 /** 5 秒 TTL 快取，避免每次請求都重讀磁碟 */
 const CACHE_TTL_MS = 5000;
+
+/**
+ * Module-level 快取，跨呼叫共用狀態。
+ * @internal 工具鏈限制匯出，不應在測試以外的生產程式碼中直接操作。
+ *   正常消費請透過 {@link readClaudeMcpServers}；清除快取請透過 {@link resetClaudeMcpCache}。
+ */
 let cache: { servers: McpServerEntry[]; expiresAt: number } | null = null;
 
-/** 僅供測試使用：清除快取，讓下一次呼叫重新讀檔 */
+/**
+ * 僅供測試使用：清除快取，讓下一次呼叫重新讀檔。
+ * @internal 工具鏈限制匯出，不應在生產程式碼中呼叫。
+ */
 export function resetClaudeMcpCache(): void {
   cache = null;
 }
@@ -63,8 +73,22 @@ interface ClaudeJsonFile {
 }
 
 /**
+ * env key 黑名單：拒絕可能被濫用注入動態連結器或修改系統路徑的高風險變數。
+ * 以前綴比對（startsWith）涵蓋 LD_PRELOAD、LD_LIBRARY_PATH、DYLD_INSERT_LIBRARIES 等衍生 key。
+ */
+const ENV_KEY_BLACKLIST_PREFIXES = ["LD_", "DYLD_"];
+const ENV_KEY_BLACKLIST_EXACT = new Set(["PATH"]);
+
+/** 判斷 env key 是否屬於黑名單 */
+function isBlockedEnvKey(key: string): boolean {
+  if (ENV_KEY_BLACKLIST_EXACT.has(key)) return true;
+  return ENV_KEY_BLACKLIST_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/**
  * 將 mcpServers 物件（Record<name, value>）轉換為 McpServerEntry 陣列。
  * command 必須是非空字串，否則略過該筆。
+ * env key 若屬黑名單（LD_*、DYLD_*、PATH 等高風險變數）則自動過濾，其餘保留。
  */
 function parseMcpServersRecord(
   record: Record<string, RawMcpServerValue>,
@@ -83,6 +107,7 @@ function parseMcpServersRecord(
       : [];
 
     // env 必須是 string → string 的物件，否則預設空物件
+    // 黑名單 key（LD_*、DYLD_*、PATH 等）一律過濾，防止注入動態連結器或覆蓋系統路徑
     const env: Record<string, string> = {};
     if (
       value.env &&
@@ -93,6 +118,15 @@ function parseMcpServersRecord(
         value.env as Record<string, unknown>,
       )) {
         if (typeof v === "string") {
+          if (isBlockedEnvKey(k)) {
+            // 黑名單 key：記錄 warn 後略過，不傳入 SDK
+            logger.warn(
+              "McpServer",
+              "Warn",
+              `claudeMcpReader：MCP server「${name}」的 env key「${k}」屬高風險黑名單，已略過`,
+            );
+            continue;
+          }
           env[k] = v;
         }
       }

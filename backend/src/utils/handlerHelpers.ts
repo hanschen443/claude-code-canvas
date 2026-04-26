@@ -1,5 +1,6 @@
 import type { WebSocketResponseEvents } from "../schemas/index.js";
 import type { Pod, Result } from "../types/index.js";
+import { toPodPublicView } from "../types/index.js";
 import { podStore } from "../services/podStore.js";
 import { canvasStore } from "../services/canvasStore.js";
 import { socketService } from "../services/socketService.js";
@@ -165,7 +166,7 @@ export function emitPodUpdated(
     requestId,
     canvasId,
     success: true,
-    pod: updatedPod,
+    pod: updatedPod ? toPodPublicView(updatedPod) : undefined,
   });
 }
 

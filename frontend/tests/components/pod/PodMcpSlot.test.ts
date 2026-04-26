@@ -129,6 +129,43 @@ describe("PodMcpSlot", () => {
     });
   });
 
+  // ── podRotation transform ────────────────────────────────────────────────
+
+  describe("podRotation prop 套用反向旋轉 transform", () => {
+    it("podRotation=0 時 button 的 transform 應為 rotate(0deg)", () => {
+      const wrapper = mountSlot({ podRotation: 0 });
+      const button = wrapper.find("button");
+      // style attribute 應含 rotate(0deg)（或等效的 rotate(-0deg)）
+      const style = button.attributes("style") ?? "";
+      expect(style).toContain("rotate(0deg)");
+      wrapper.unmount();
+    });
+
+    it("podRotation=5 時 button 的 transform 應為 rotate(-5deg)（counter-rotation）", () => {
+      const wrapper = mountSlot({ podRotation: 5 });
+      const button = wrapper.find("button");
+      const style = button.attributes("style") ?? "";
+      expect(style).toContain("rotate(-5deg)");
+      wrapper.unmount();
+    });
+
+    it("podRotation=-5 時 button 的 transform 應為 rotate(5deg)（counter-rotation）", () => {
+      const wrapper = mountSlot({ podRotation: -5 });
+      const button = wrapper.find("button");
+      const style = button.attributes("style") ?? "";
+      expect(style).toContain("rotate(5deg)");
+      wrapper.unmount();
+    });
+
+    it("podRotation=10 時 button 的 transform 應為 rotate(-10deg)", () => {
+      const wrapper = mountSlot({ podRotation: 10 });
+      const button = wrapper.find("button");
+      const style = button.attributes("style") ?? "";
+      expect(style).toContain("rotate(-10deg)");
+      wrapper.unmount();
+    });
+  });
+
   describe("capabilityDisabled = false", () => {
     it("button 不應有 aria-disabled 屬性", () => {
       const wrapper = mountSlot({ capabilityDisabled: false });

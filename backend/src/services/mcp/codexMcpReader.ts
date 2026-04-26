@@ -21,10 +21,18 @@ import os from "os";
 import path from "path";
 import { logger } from "../../utils/logger.js";
 
-/** Codex config.toml 的預設路徑，可透過環境變數覆寫（測試用） */
-const CODEX_CONFIG_PATH =
-  process.env.CODEX_CONFIG_PATH ??
-  path.join(os.homedir(), ".codex", "config.toml");
+/**
+ * 取得 Codex config.toml 的讀取路徑。
+ * 使用函式（lazy）而非 module 頂層常數，避免 module 初始化時過早呼叫 os.homedir()，
+ * 方便測試中 mock os.homedir() 後仍能正確套用。
+ * 與 claudeMcpReader 的 getClaudeJsonPath() 保持一致模式。
+ */
+function getCodexConfigPath(): string {
+  return (
+    process.env.CODEX_CONFIG_PATH ??
+    path.join(os.homedir(), ".codex", "config.toml")
+  );
+}
 
 /** 5 秒 TTL 快取，避免每次請求都重讀磁碟 */
 const CACHE_TTL_MS = 5000;
@@ -75,7 +83,7 @@ function parseCodexConfig(): CodexMcpServer[] {
   // 讀取檔案內容
   let raw: string;
   try {
-    raw = fs.readFileSync(CODEX_CONFIG_PATH, "utf-8");
+    raw = fs.readFileSync(getCodexConfigPath(), "utf-8");
   } catch (error) {
     const isNotFound =
       error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -122,8 +130,21 @@ function parseCodexConfig(): CodexMcpServer[] {
   const mcpServers = config.mcp_servers as Record<string, unknown>;
   const result: CodexMcpServer[] = [];
 
+  /** 安全字元集：首字必須是字母、數字或底線；後續可含連字號，防止 -- 開頭的 CLI 旗標注入 */
+  const SAFE_SERVER_NAME_RE = /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/;
+
   for (const [serverName, serverConfig] of Object.entries(mcpServers)) {
     if (!serverConfig || typeof serverConfig !== "object") continue;
+
+    // 驗證 server name 字元集，含 =、空格、換行、-- 等特殊字元者略過
+    if (!SAFE_SERVER_NAME_RE.test(serverName)) {
+      logger.warn(
+        "McpServer",
+        "Warn",
+        `codex MCP server name 含不合法字元，已略過（name 長度：${serverName.length}）`,
+      );
+      continue;
+    }
 
     const entry = serverConfig as RawMcpServerEntry;
 

@@ -5,9 +5,10 @@ import type {
   PodScheduleSetPayload,
   PodPluginsSetPayload,
   Pod,
+  PodPublicView,
   ScheduleConfig,
 } from "../types";
-import { isPodBusy } from "../types/index.js";
+import { isPodBusy, toPodPublicView } from "../types/index.js";
 import type {
   PodCreatePayload,
   PodListPayload,
@@ -74,7 +75,7 @@ export const handlePodList = withCanvasId<PodListPayload>(
     _payload: PodListPayload,
     requestId: string,
   ): Promise<void> => {
-    const pods = podStore.list(canvasId);
+    const pods = podStore.list(canvasId).map(toPodPublicView);
 
     const response: PodListResultPayload = {
       requestId,
@@ -111,7 +112,7 @@ export async function handlePodGet(
   const response: PodGetResultPayload = {
     requestId,
     success: true,
-    pod,
+    pod: toPodPublicView(pod),
   };
 
   emitSuccess(connectionId, WebSocketResponseEvents.POD_GET_RESULT, response);
@@ -145,7 +146,7 @@ function handlePodUpdate<TResponse>(
   updates: Partial<Omit<Pod, "id">>,
   requestId: string,
   responseEvent: WebSocketResponseEvents,
-  createResponse: (pod: Pod) => TResponse,
+  createResponse: (pod: PodPublicView) => TResponse,
 ): void {
   const existingPod = validatePod(
     connectionId,
@@ -170,7 +171,7 @@ function handlePodUpdate<TResponse>(
     return;
   }
 
-  const response = createResponse(result.pod);
+  const response = createResponse(toPodPublicView(result.pod));
   socketService.emitToCanvas(canvasId, responseEvent, response);
 }
 
@@ -300,7 +301,7 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
       requestId,
       canvasId,
       success: true,
-      pod: result.pod,
+      pod: toPodPublicView(result.pod),
       podId: result.pod.id,
       name: result.pod.name,
     });
@@ -450,7 +451,7 @@ export const handlePodSetSchedule = withCanvasId<PodSetSchedulePayload>(
       requestId,
       canvasId,
       success: true,
-      pod: updateResult.pod,
+      pod: toPodPublicView(updateResult.pod),
     };
 
     socketService.emitToCanvas(
@@ -529,7 +530,7 @@ export const handlePodSetPlugins = withCanvasId<PodSetPluginsPayload>(
       requestId,
       canvasId,
       success: true,
-      pod: result.pod,
+      pod: toPodPublicView(result.pod),
     };
     socketService.emitToCanvas(
       canvasId,

@@ -1,25 +1,25 @@
-import type { Pod, PodStatus } from "../pod.js";
+import type { PodPublicView, PodStatus } from "../pod.js";
 import type { MessageRole } from "../message.js";
 
 export interface PodCreatedPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
 export interface PodListResultPayload {
   requestId: string;
   success: boolean;
-  pods?: Pod[];
+  pods?: PodPublicView[];
   error?: string;
 }
 
 export interface PodGetResultPayload {
   requestId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -27,7 +27,7 @@ export interface PodMovedPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -35,7 +35,7 @@ export interface PodRenamedPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   podId?: string;
   name?: string;
   error?: string;
@@ -45,7 +45,7 @@ export interface PodModelSetPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -53,7 +53,7 @@ export interface PodScheduleSetPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -62,7 +62,7 @@ export interface PodPluginsSetPayload {
   canvasId: string;
   success: boolean;
   podId?: string;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
   reason?: "pod-busy";
 }
@@ -153,7 +153,7 @@ export interface PodRepositoryBoundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -161,7 +161,7 @@ export interface PodRepositoryUnboundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -169,7 +169,7 @@ export interface PodMultiInstanceSetPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -177,7 +177,7 @@ export interface PodCommandBoundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -185,7 +185,7 @@ export interface PodCommandUnboundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 

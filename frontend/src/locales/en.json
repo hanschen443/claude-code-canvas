@@ -572,8 +572,7 @@
       "pasted": "Pasted successfully",
       "worktreeCreated": "Worktree created",
       "repositoryDeleted": "Repository deleted",
-      "commandDeleted": "Command deleted",
-      "mcpToggleSuccess": "MCP servers updated"
+      "commandDeleted": "Command deleted"
     },
     "deleteSelection": {
       "partialFailed": "Some deletions failed",

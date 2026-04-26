@@ -10,6 +10,7 @@ import type {
   TriggerMode,
   ModelType,
 } from "../types";
+import { toPodPublicView } from "../types/index.js";
 import type {
   ConnectionCreatePayload,
   ConnectionListPayload,
@@ -66,7 +67,7 @@ function findPodsOrEmitError(
     emitError(
       wsConnectionId,
       responseEvent,
-      createI18nError('errors.sourcePodNotFound', { id: sourcePodId }),
+      createI18nError("errors.sourcePodNotFound", { id: sourcePodId }),
       requestId,
       undefined,
       "NOT_FOUND",
@@ -80,7 +81,7 @@ function findPodsOrEmitError(
     emitError(
       wsConnectionId,
       responseEvent,
-      createI18nError('errors.targetPodNotFound', { id: targetPodId }),
+      createI18nError("errors.targetPodNotFound", { id: targetPodId }),
       requestId,
       undefined,
       "NOT_FOUND",
@@ -150,7 +151,7 @@ export const handleConnectionCreate = withCanvasId<ConnectionCreatePayload>(
           requestId: "",
           canvasId,
           success: true,
-          pod: result.pod,
+          pod: toPodPublicView(result.pod),
         };
         socketService.emitToCanvas(
           canvasId,
@@ -225,7 +226,7 @@ export const handleConnectionDelete = withCanvasId<ConnectionDeletePayload>(
       emitError(
         wsConnectionId,
         WebSocketResponseEvents.CONNECTION_DELETED,
-        createI18nError('errors.connectionDeleteFailed', { id: connectionId }),
+        createI18nError("errors.connectionDeleteFailed", { id: connectionId }),
         requestId,
         undefined,
         "INTERNAL_ERROR",
@@ -298,7 +299,7 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
       emitError(
         wsConnectionId,
         WebSocketResponseEvents.CONNECTION_UPDATED,
-        createI18nError('errors.connectionUpdateFailed', { id: connectionId }),
+        createI18nError("errors.connectionUpdateFailed", { id: connectionId }),
         requestId,
         undefined,
         "INTERNAL_ERROR",
