@@ -202,6 +202,9 @@ function buildIntegrationTool(
  * 收集 pod 所有 integrationBindings 並建構 IntegrationTool 清單。
  * 無 sendMessage 或 provider 不存在的 binding 自動略過。
  */
+/** binding.provider 格式白名單：只允許字母、數字、底線、連字號 */
+const PROVIDER_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 function collectIntegrationTools(
   pod: Pod,
   runContext?: RunContext,
@@ -210,6 +213,15 @@ function collectIntegrationTools(
 
   return pod.integrationBindings
     .map((binding) => {
+      // 驗證 provider 格式，防止動態 mcp tool 名稱注入不合法字元
+      if (!PROVIDER_NAME_PATTERN.test(binding.provider)) {
+        logger.warn(
+          "Integration",
+          "Warn",
+          `略過不合法格式的 integration provider（名稱已遮罩）`,
+        );
+        return null;
+      }
       const provider = integrationRegistry.get(binding.provider);
       if (!provider?.sendMessage) return null;
       return buildIntegrationTool(binding, provider, pod.id, runContext);

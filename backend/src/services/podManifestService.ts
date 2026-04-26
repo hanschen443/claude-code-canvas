@@ -34,15 +34,40 @@ class PodManifestService {
     return parsed;
   }
 
+  /**
+   * 驗證相對路徑合法性：
+   * - 必須以 .claude/ 開頭
+   * - 不得包含 .. 元件（防路徑穿越）
+   * - 不得以絕對路徑前綴開頭
+   */
+  private isValidManagedFilePath(relPath: string): boolean {
+    if (!relPath.startsWith(".claude/")) return false;
+    if (path.isAbsolute(relPath)) return false;
+    const segments = relPath.split("/");
+    return !segments.includes("..");
+  }
+
   writeManifest(
     repositoryId: string,
     podId: string,
     managedFiles: string[],
   ): void {
+    const safeFiles = managedFiles.filter((f) => {
+      if (!this.isValidManagedFilePath(f)) {
+        logger.warn(
+          "Pod",
+          "Warn",
+          `writeManifest：略過不合法的相對路徑（已遮罩）`,
+        );
+        return false;
+      }
+      return true;
+    });
+
     this.stmts.podManifest.upsert.run({
       $podId: podId,
       $repositoryId: repositoryId,
-      $filesJson: JSON.stringify(managedFiles),
+      $filesJson: JSON.stringify(safeFiles),
     });
   }
 
@@ -86,15 +111,19 @@ class PodManifestService {
     const claudeDir = path.join(repositoryPath, CLAUDE_DIR);
     const dirsToCheck = new Set<string>();
 
-    for (const relPath of managedFiles) {
-      const absPath = path.join(repositoryPath, relPath);
-      await this.deleteSingleManagedFile(
-        absPath,
-        repositoryPath,
-        claudeDir,
-        dirsToCheck,
-      );
-    }
+    // 各檔案互相獨立，改用 Promise.all 並行刪除；
+    // cleanEmptyDirectories 依賴刪除結果，保留串行（await 在後）
+    await Promise.all(
+      managedFiles.map((relPath) => {
+        const absPath = path.join(repositoryPath, relPath);
+        return this.deleteSingleManagedFile(
+          absPath,
+          repositoryPath,
+          claudeDir,
+          dirsToCheck,
+        );
+      }),
+    );
 
     await this.cleanEmptyDirectories(dirsToCheck);
     this.deleteManifestRecord(repositoryId, podId);

@@ -172,13 +172,20 @@ export function useCopyPaste(): void {
     handler?.(event);
   };
 
+  // 頁面卸載時清除 clipboardStore，防止敏感資料（如 providerConfig）殘留於記憶體
+  const handleBeforeUnload = (): void => {
+    clipboardStore.clear();
+  };
+
   onMounted(() => {
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("mousemove", updateMousePosition);
+    window.addEventListener("beforeunload", handleBeforeUnload);
   });
 
   onUnmounted(() => {
     document.removeEventListener("keydown", handleKeyDown);
     document.removeEventListener("mousemove", updateMousePosition);
+    window.removeEventListener("beforeunload", handleBeforeUnload);
   });
 }

@@ -25,6 +25,11 @@ const mockViewportStore = {
 const mockSelectionStore = {
   hasSelection: false,
   selectedElements: [] as Array<{ type: string; id: string }>,
+  isElementSelected: vi.fn((type: string, id: string): boolean => {
+    return mockSelectionStore.selectedElements.some(
+      (el) => el.type === type && el.id === id,
+    );
+  }),
 };
 
 const mockRepositoryStore = {
@@ -63,6 +68,23 @@ const mockCommandStore = {
   updateNotePosition: vi.fn(),
 };
 
+const mockMcpServerStore = {
+  notes: [] as Array<{
+    id?: string;
+    x: number;
+    y: number;
+    boundToPodId?: string | null;
+  }>,
+  updateNotePositionLocal: vi.fn((noteId: string, x: number, y: number) => {
+    const note = mockMcpServerStore.notes.find((n) => n.id === noteId);
+    if (note) {
+      note.x = x;
+      note.y = y;
+    }
+  }),
+  updateNotePosition: vi.fn(),
+};
+
 vi.mock("@/composables/canvas/useCanvasContext", () => ({
   useCanvasContext: () => ({
     podStore: mockPodStore,
@@ -71,6 +93,7 @@ vi.mock("@/composables/canvas/useCanvasContext", () => ({
     repositoryStore: mockRepositoryStore,
     subAgentStore: mockSubAgentStore,
     commandStore: mockCommandStore,
+    mcpServerStore: mockMcpServerStore,
   }),
 }));
 
@@ -85,6 +108,7 @@ describe("useBatchDrag", () => {
     mockViewportStore.zoom = 1;
     mockSelectionStore.hasSelection = false;
     mockSelectionStore.selectedElements = [];
+    mockSelectionStore.isElementSelected.mockClear();
     mockRepositoryStore.notes = [];
     mockRepositoryStore.updateNotePositionLocal.mockClear();
     mockRepositoryStore.updateNotePosition.mockClear();
@@ -94,6 +118,9 @@ describe("useBatchDrag", () => {
     mockCommandStore.notes = [];
     mockCommandStore.updateNotePositionLocal.mockClear();
     mockCommandStore.updateNotePosition.mockClear();
+    mockMcpServerStore.notes = [];
+    mockMcpServerStore.updateNotePositionLocal.mockClear();
+    mockMcpServerStore.updateNotePosition.mockClear();
   });
 
   afterEach(() => {

@@ -5,6 +5,7 @@ const mockValidatePod = vi.fn();
 const mockPodStoreUpdate = vi.fn();
 const mockEmitError = vi.fn();
 const mockEmitToCanvas = vi.fn();
+const mockScanInstalledPlugins = vi.fn();
 
 // --- vi.mock ---
 
@@ -69,6 +70,11 @@ vi.mock("../../src/services/repositoryService.js", () => ({
   repositoryService: { getById: vi.fn() },
 }));
 
+vi.mock("../../src/services/pluginScanner.js", () => ({
+  scanInstalledPlugins: (...args: unknown[]) =>
+    mockScanInstalledPlugins(...args),
+}));
+
 const { handlePodSetPlugins } =
   await import("../../src/handlers/podHandlers.js");
 
@@ -89,6 +95,27 @@ function makePod(overrides: Record<string, unknown> = {}) {
 describe("handlePodSetPlugins", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 預設回傳包含測試用 plugin ids，讓它們通過「已安裝」驗證
+    mockScanInstalledPlugins.mockReturnValue([
+      {
+        id: "plugin-1",
+        name: "Plugin 1",
+        version: "1.0.0",
+        description: "",
+        installPath: "/tmp/p1",
+        repo: "",
+        compatibleProviders: ["claude"],
+      },
+      {
+        id: "plugin-2",
+        name: "Plugin 2",
+        version: "1.0.0",
+        description: "",
+        installPath: "/tmp/p2",
+        repo: "",
+        compatibleProviders: ["claude"],
+      },
+    ]);
   });
 
   it("設定 Pod Plugin 成功，應廣播 POD_PLUGINS_SET 事件", async () => {

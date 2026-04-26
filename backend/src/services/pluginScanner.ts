@@ -1,20 +1,29 @@
+/**
+ * PluginScanner 模組：掃描 Claude 與 Codex 已安裝的 plugin 清單，回傳 InstalledPlugin[]。
+ *
+ * 主要 entry point：
+ *   - {@link scanInstalledPlugins}（provider?: "claude" | "codex"）
+ *     → 掃描並合併兩個來源，套用 5 秒 TTL 快取後回傳符合 provider 的清單。
+ *   - {@link clearScanInstalledPluginsCache}（僅供測試使用）
+ *     → 清除快取，強制下次呼叫重新讀檔。
+ *
+ * 資料來源：
+ *   - Claude：~/.claude/plugins/installed_plugins.json（version 2 格式）
+ *   - Codex：~/.codex/plugins/cache/<marketplace>/<pluginName>/<version>/
+ */
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { logger } from "../utils/logger.js";
+import { isPathWithinDirectory } from "../utils/pathValidator.js";
 
-const INSTALLED_PLUGINS_PATH = path.join(
-  os.homedir(),
-  ".claude",
-  "plugins",
-  "installed_plugins.json",
-);
+const INSTALLED_PLUGINS_PATH =
+  process.env.CLAUDE_PLUGINS_INSTALLED_PATH ??
+  path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
 
-const CODEX_PLUGINS_CACHE_DIR = path.join(
-  os.homedir(),
-  ".codex",
-  "plugins",
-  "cache",
-);
+const CODEX_PLUGINS_CACHE_DIR =
+  process.env.CODEX_PLUGINS_CACHE_DIR ??
+  path.join(os.homedir(), ".codex", "plugins", "cache");
 
 // 5 秒 TTL 快取，避免每次 buildClaudeOptions 都重讀磁碟
 // 快取保存全集（不分 provider），provider 過濾在取值後做，避免快取碎片化
@@ -66,7 +75,18 @@ function readManifest(manifestPath: string): PluginManifest | null {
   try {
     const content = fs.readFileSync(manifestPath, "utf-8");
     return JSON.parse(content) as PluginManifest;
-  } catch {
+  } catch (error) {
+    // 檔案不存在屬正常情況（plugin 可能尚未安裝），靜默略過；
+    // 其他錯誤（如 JSON 解析失敗）則記錄 warn 以便排查
+    const isNotFound =
+      error instanceof Error && "code" in error && error.code === "ENOENT";
+    if (!isNotFound) {
+      logger.warn(
+        "Run",
+        "Warn",
+        `讀取 manifest 失敗，路徑：${manifestPath}，錯誤：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     return null;
   }
 }
@@ -118,12 +138,23 @@ function scanClaudeInstalledPlugins(): InstalledPlugin[] {
     if (!Array.isArray(entries)) continue;
 
     if (!PLUGIN_ID_PATTERN.test(pluginId)) {
-      console.warn(`[pluginScanner] 略過不合法的 plugin id：${pluginId}`);
+      logger.warn("Run", "Check", `略過不合法的 plugin id（已遮罩）`);
       continue;
     }
 
     for (const entry of entries) {
       if (!entry.installPath || seenPaths.has(entry.installPath)) continue;
+
+      // 驗證 installPath 必須在允許的 Claude plugins 目錄內，防止惡意路徑注入
+      const claudePluginsRoot = path.join(os.homedir(), ".claude", "plugins");
+      if (!isPathWithinDirectory(entry.installPath, claudePluginsRoot)) {
+        logger.warn(
+          "Run",
+          "Warn",
+          `略過不在允許路徑範圍內的 Claude plugin installPath（pluginId 已遮罩）`,
+        );
+        continue;
+      }
 
       seenPaths.add(entry.installPath);
 
@@ -180,9 +211,7 @@ function scanCodexInstalledPlugins(): InstalledPlugin[] {
       const pluginId = `${pluginName}@${marketplaceName}`;
 
       if (!PLUGIN_ID_PATTERN.test(pluginId)) {
-        console.warn(
-          `[pluginScanner] 略過不合法的 codex plugin id：${pluginId}`,
-        );
+        logger.warn("Run", "Check", `略過不合法的 codex plugin id（已遮罩）`);
         continue;
       }
 

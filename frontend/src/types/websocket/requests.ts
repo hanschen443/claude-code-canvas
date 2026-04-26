@@ -142,6 +142,8 @@ export interface PastePodItem {
   /** Provider 對應的設定（含 model 等參數） */
   providerConfig: ProviderConfig;
   subAgentIds?: string[];
+  mcpServerIds?: string[];
+  pluginIds?: string[];
   repositoryId?: string | null;
   commandId?: string | null;
 }

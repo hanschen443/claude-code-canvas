@@ -5,8 +5,7 @@ import { podManifestService } from "./podManifestService.js";
 import { logger } from "../utils/logger.js";
 import { fsOperation } from "../utils/operationHelpers.js";
 import { validatePodId } from "../utils/pathValidator.js";
-import { getDb } from "../database/index.js";
-import { getStatements } from "../database/statements.js";
+import { getStmts } from "../database/stmtsHelper.js";
 
 interface PodResources {
   commandIds: string[];
@@ -58,16 +57,17 @@ class RepositorySyncService {
     existingLock: Promise<void>,
   ): Promise<void> {
     let currentLock: Promise<void> = existingLock;
-    while (true) {
+    let isLockReleased = false;
+
+    do {
       await currentLock;
       const nextLock = this.locks.get(repositoryId);
-      if (!nextLock || nextLock === currentLock) {
-        // 沒有新的 lock 排入，結束等待
-        break;
+      // 沒有新的 lock 排入時結束等待；有新的 lock 排入（在等待期間又有新的 sync 啟動）則繼續等待
+      isLockReleased = !nextLock || nextLock === currentLock;
+      if (!isLockReleased) {
+        currentLock = nextLock!;
       }
-      // 有新的 lock 排入（在等待期間又有新的 sync 啟動），繼續等待
-      currentLock = nextLock;
-    }
+    } while (!isLockReleased);
   }
 
   private collectPodResources(repositoryId: string): Map<string, PodResources> {
@@ -127,7 +127,18 @@ class RepositorySyncService {
       ),
     );
 
-    await Promise.all(copySubAgents);
+    // 使用 allSettled 確保單一 subAgent 複製失敗不影響其他項目，
+    // 失敗項目 log 後跳過，避免 partial state 污染整體 sync
+    const copyResults = await Promise.allSettled(copySubAgents);
+    copyResults.forEach((r, i) => {
+      if (r.status === "rejected") {
+        logger.warn(
+          "Repository",
+          "Warn",
+          `writeSinglePodManifest：複製 subAgent 第 ${i + 1} 筆失敗，略過此項`,
+        );
+      }
+    });
 
     const managedFiles = await this.collectPodManagedFiles(resources);
     podManifestService.writeManifest(repositoryId, podId, managedFiles);
@@ -159,13 +170,10 @@ class RepositorySyncService {
     repositoryId: string,
     activePodResourcesMap: Map<string, PodResources>,
   ): Promise<void> {
-    const db = getDb();
-    const stmts = getStatements(db);
-
     interface ManifestRow {
       pod_id: string;
     }
-    const rows = stmts.podManifest.selectByRepositoryId.all(
+    const rows = getStmts().podManifest.selectByRepositoryId.all(
       repositoryId,
     ) as ManifestRow[];
 

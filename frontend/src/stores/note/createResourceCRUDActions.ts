@@ -107,6 +107,33 @@ export interface ResourceCRUDActions<
   read: (itemId: string) => Promise<TReadResult | null>;
 }
 
+/**
+ * 通用 CRUD response 處理 helper。
+ * 封裝「檢查 response → 提取 item → toast → 回傳結果」的重複骨架。
+ */
+function handleCRUDResponse<T extends { id: string; name: string }>(
+  response: unknown,
+  extractor: (resp: unknown) => T | undefined,
+  onSuccess: (item: T) => void,
+  onError: (error: string) => void,
+  fallbackError: string,
+): { success: boolean; item?: T; error?: string } {
+  if (!response) {
+    onError(fallbackError);
+    return { success: false, error: fallbackError };
+  }
+
+  const item = extractor(response);
+  if (!item) {
+    const error = (response as { error?: string }).error || fallbackError;
+    onError(error);
+    return { success: false, error };
+  }
+
+  onSuccess(item);
+  return { success: true, item };
+}
+
 export function createResourceCRUDActions<
   TItem extends { id: string; name: string },
   TCreateInput = string,
@@ -152,36 +179,22 @@ export function createResourceCRUDActions<
         }),
       );
 
-      if (!response) {
-        if (toastCategory) {
-          showErrorToast(
-            toastCategory,
-            t("common.error.create"),
-            t("store.resource.createFailed"),
-          );
-        }
-        return { success: false, error: t("store.resource.createFailed") };
-      }
-
-      const item = config.extractItemFromResponse.create(response);
-      if (!item) {
-        const error =
-          (response as { error?: string }).error ||
-          t("store.resource.createFailed");
-        if (toastCategory) {
-          showErrorToast(toastCategory, t("common.error.create"), error);
-        }
-        return {
-          success: false,
-          error,
-        };
-      }
-
-      items.push(item as TItem);
-      if (toastCategory) {
-        showSuccessToast(toastCategory, t("common.success.create"), name);
-      }
-      return { success: true, item };
+      return handleCRUDResponse(
+        response,
+        config.extractItemFromResponse.create,
+        (item) => {
+          items.push(item as TItem);
+          if (toastCategory) {
+            showSuccessToast(toastCategory, t("common.success.create"), name);
+          }
+        },
+        (error) => {
+          if (toastCategory) {
+            showErrorToast(toastCategory, t("common.error.create"), error);
+          }
+        },
+        t("store.resource.createFailed"),
+      );
     },
 
     async update(
@@ -206,37 +219,27 @@ export function createResourceCRUDActions<
         }),
       );
 
-      if (!response) {
-        if (toastCategory) {
-          showErrorToast(
-            toastCategory,
-            t("common.error.update"),
-            t("store.resource.updateFailed"),
-          );
-        }
-        return { success: false, error: t("store.resource.updateFailed") };
-      }
-
-      const item = config.extractItemFromResponse.update(response);
-      if (!item) {
-        const error =
-          (response as { error?: string }).error ||
-          t("store.resource.updateFailed");
-        if (toastCategory) {
-          showErrorToast(toastCategory, t("common.error.update"), error);
-        }
-        return {
-          success: false,
-          error,
-        };
-      }
-
-      const updateFn = config.updateItemsList ?? defaultReplaceItemInList;
-      updateFn(items, itemId, item);
-      if (toastCategory) {
-        showSuccessToast(toastCategory, t("common.success.update"), item.name);
-      }
-      return { success: true, item };
+      return handleCRUDResponse(
+        response,
+        config.extractItemFromResponse.update,
+        (item) => {
+          const updateFn = config.updateItemsList ?? defaultReplaceItemInList;
+          updateFn(items, itemId, item);
+          if (toastCategory) {
+            showSuccessToast(
+              toastCategory,
+              t("common.success.update"),
+              item.name,
+            );
+          }
+        },
+        (error) => {
+          if (toastCategory) {
+            showErrorToast(toastCategory, t("common.error.update"), error);
+          }
+        },
+        t("store.resource.updateFailed"),
+      );
     },
 
     async read(itemId: string): Promise<TReadResult | null> {

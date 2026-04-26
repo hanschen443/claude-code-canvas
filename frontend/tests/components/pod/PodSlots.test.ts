@@ -341,4 +341,21 @@ describe("PodSlots - emit 事件轉發", () => {
 
     wrapper.unmount();
   });
+
+  it("Plugin slot click → emit plugin-clicked 帶 MouseEvent", async () => {
+    const wrapper = mountPodSlots();
+    const pluginSlot = wrapper.find(".pod-plugin-slot");
+
+    expect(pluginSlot.exists()).toBe(true);
+
+    await pluginSlot.trigger("click");
+
+    expect(wrapper.emitted("plugin-clicked")).toBeTruthy();
+    const [emittedEvent] = wrapper.emitted("plugin-clicked")![0] as [
+      MouseEvent,
+    ];
+    expect(emittedEvent).toBeInstanceOf(MouseEvent);
+
+    wrapper.unmount();
+  });
 });

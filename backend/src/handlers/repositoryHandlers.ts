@@ -215,6 +215,36 @@ function buildCopyOperations(pod: Pod): Promise<unknown>[] {
   ];
 }
 
+/**
+ * 解除 Repository 綁定後的資源清理：
+ * 1. 刪除該 Pod 在舊 repository 的 managed files
+ * 2. 重新同步舊 repository 的資源
+ * 3. 執行 Pod 的 subAgent 複製操作
+ */
+async function unbindRepositoryCleanup(
+  canvasId: string,
+  pod: Pod,
+  oldRepositoryId: string | null,
+): Promise<void> {
+  if (oldRepositoryId) {
+    await podManifestService.deleteManagedFiles(oldRepositoryId, pod.id);
+    await repositorySyncService.syncRepositoryResources(oldRepositoryId);
+  }
+
+  const results = await Promise.allSettled(buildCopyOperations(pod));
+
+  results.forEach((result) => {
+    if (result.status === "rejected") {
+      logger.error(
+        "Repository",
+        "Unbind",
+        `複製資源至 Pod「${getPodDisplayName(canvasId, pod.id)}」失敗`,
+        result.reason,
+      );
+    }
+  });
+}
+
 export const handlePodUnbindRepository =
   withCanvasId<PodUnbindRepositoryPayload>(
     WebSocketResponseEvents.POD_REPOSITORY_UNBOUND,
@@ -241,23 +271,7 @@ export const handlePodUnbindRepository =
       podStore.setRepositoryId(canvasId, podId, null);
       podStore.resetClaudeSession(canvasId, podId);
 
-      if (oldRepositoryId) {
-        await podManifestService.deleteManagedFiles(oldRepositoryId, podId);
-        await repositorySyncService.syncRepositoryResources(oldRepositoryId);
-      }
-
-      const results = await Promise.allSettled(buildCopyOperations(pod));
-
-      results.forEach((result) => {
-        if (result.status === "rejected") {
-          logger.error(
-            "Repository",
-            "Unbind",
-            `複製資源至 Pod「${getPodDisplayName(canvasId, podId)}」失敗`,
-            result.reason,
-          );
-        }
-      });
+      await unbindRepositoryCleanup(canvasId, pod, oldRepositoryId);
 
       await clearPodMessages(connectionId, podId);
 

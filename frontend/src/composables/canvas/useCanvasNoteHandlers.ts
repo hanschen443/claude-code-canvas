@@ -1,6 +1,7 @@
 import { computed } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import { useNoteEventHandlers } from "@/composables/canvas/useNoteEventHandlers";
+import { useNoteDoubleClick } from "@/composables/canvas/useNoteDoubleClick";
 import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
 import type { usePodStore } from "@/stores/pod";
 import type { useViewportStore } from "@/stores/pod";
@@ -12,8 +13,8 @@ import type {
 } from "@/stores/note";
 import TrashZone from "@/components/canvas/TrashZone.vue";
 import type { McpServerConfig } from "@/types";
-import { useToast } from "@/composables/useToast";
 
+// EditableNoteType 供 UseCanvasNoteHandlersOptions.handleOpenEditModal 型別引用
 type EditableNoteType = "subAgent" | "command";
 
 interface McpServerModalState {
@@ -83,8 +84,6 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
     mcpServerModal,
   } = options;
 
-  const { showErrorToast } = useToast();
-
   const noteConfigs = [
     { store: subAgentStore as NoteStoreBase, type: "subAgent" as const },
     { store: repositoryStore as NoteStoreBase, type: "repository" as const },
@@ -151,64 +150,11 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
     return repository?.currentBranch ?? repository?.branchName;
   };
 
-  const editableNoteResourceIdGetters: Record<
-    EditableNoteType,
-    (noteId: string) => string | undefined
-  > = {
-    subAgent: (noteId) =>
-      subAgentStore.typedNotes.find((note) => note.id === noteId)?.subAgentId,
-    command: (noteId) =>
-      commandStore.typedNotes.find((note) => note.id === noteId)?.commandId,
-  };
-
-  const handleMcpServerDoubleClick = async (noteId: string): Promise<void> => {
-    const note = mcpServerStore.typedNotes.find((n) => n.id === noteId);
-    if (!note) return;
-
-    const mcpServerId = note.mcpServerId;
-    const mcpServerData = await mcpServerStore.readMcpServer(mcpServerId);
-
-    if (!mcpServerData) {
-      showErrorToast("McpServer", "讀取 MCP Server 失敗");
-      return;
-    }
-
-    mcpServerModal.value = {
-      visible: true,
-      mode: "edit",
-      mcpServerId,
-      initialName: mcpServerData.name,
-      initialConfig: mcpServerData.config,
-    };
-  };
-
-  const handleNoteDoubleClick = async (data: {
-    noteId: string;
-    noteType: NoteType;
-  }): Promise<void> => {
-    const { noteId, noteType } = data;
-
-    if (noteType === "mcpServer") {
-      await handleMcpServerDoubleClick(noteId);
-      return;
-    }
-
-    const getResourceId =
-      editableNoteResourceIdGetters[noteType as EditableNoteType];
-    if (!getResourceId) return;
-
-    const resourceId = getResourceId(noteId);
-
-    if (resourceId) {
-      await handleOpenEditModal(noteType as EditableNoteType, resourceId);
-    } else {
-      if (import.meta.env.DEV) {
-        console.error(
-          `無法找到 Note (id: ${noteId}, type: ${noteType}) 的資源 ID`,
-        );
-      }
-    }
-  };
+  const { handleNoteDoubleClick } = useNoteDoubleClick(
+    { subAgentStore, commandStore, mcpServerStore },
+    mcpServerModal,
+    handleOpenEditModal,
+  );
 
   return {
     noteHandlerMap,

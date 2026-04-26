@@ -164,7 +164,10 @@ const handleToggle = async (
       </div>
 
       <!-- Plugin 列表（Claude：可 toggle；Codex：唯讀展示） -->
-      <div v-else class="space-y-1">
+      <div
+        v-else
+        class="space-y-1"
+      >
         <!-- Codex 唯讀模式：顯示 name vX.Y.Z + 已啟用勾勾標籤 -->
         <template v-if="isCodex">
           <div
@@ -196,7 +199,9 @@ const handleToggle = async (
             :title="busy ? t('pod.slot.pluginsBusyTooltip') : undefined"
           >
             <div>
-              <p class="text-xs font-mono">{{ plugin.name }}</p>
+              <p class="text-xs font-mono">
+                {{ plugin.name }}
+              </p>
               <p class="text-xs font-mono text-muted-foreground">
                 v{{ plugin.version }}
               </p>

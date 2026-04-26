@@ -34,6 +34,7 @@ interface RepositoryStoreCustomActions {
     repository?: { id: string; name: string };
     error?: string;
   }>;
+  updateCurrentBranch(repositoryId: string, branchName: string): void;
   deleteRepository(repositoryId: string): Promise<void>;
   loadRepositories(): Promise<void>;
   checkIsGit(repositoryId: string): Promise<boolean>;
@@ -175,8 +176,13 @@ function createRepositoryCustomActions(): RepositoryStoreCustomActions {
       if (!result.success) return result;
 
       if (!result.data.success) {
-        const error = result.data.error || t("store.repository.worktreeCreateFailed");
-        showErrorToast("Repository", t("store.repository.worktreeCreateFailed"), error);
+        const error =
+          result.data.error || t("store.repository.worktreeCreateFailed");
+        showErrorToast(
+          "Repository",
+          t("store.repository.worktreeCreateFailed"),
+          error,
+        );
         return { success: false, error };
       }
 
@@ -190,7 +196,11 @@ function createRepositoryCustomActions(): RepositoryStoreCustomActions {
         );
       }
 
-      showSuccessToast("Repository", t("store.repository.worktreeCreateSuccess"), worktreeName);
+      showSuccessToast(
+        "Repository",
+        t("store.repository.worktreeCreateSuccess"),
+        worktreeName,
+      );
       return { success: true };
     },
 
@@ -308,9 +318,17 @@ function createRepositoryCustomActions(): RepositoryStoreCustomActions {
       if (!result.success) return result;
 
       if (result.data.success) {
-        showSuccessToast("Git", t("store.repository.deleteBranchSuccess"), branchName);
+        showSuccessToast(
+          "Git",
+          t("store.repository.deleteBranchSuccess"),
+          branchName,
+        );
       } else if (result.data.error) {
-        showErrorToast("Git", t("store.repository.deleteBranchFailed"), result.data.error);
+        showErrorToast(
+          "Git",
+          t("store.repository.deleteBranchFailed"),
+          result.data.error,
+        );
       }
 
       return {
@@ -337,6 +355,19 @@ function createRepositoryCustomActions(): RepositoryStoreCustomActions {
       );
 
       return { requestId };
+    },
+
+    updateCurrentBranch(
+      this: NoteStoreContext<Repository>,
+      repositoryId: string,
+      branchName: string,
+    ): void {
+      const item = this.availableItems.find(
+        (r: Repository) => r.id === repositoryId,
+      );
+      if (item) {
+        item.currentBranch = branchName;
+      }
     },
 
     isWorktree(

@@ -42,7 +42,7 @@ const CLAUDE_FULL_CAPABILITIES = {
 /** Phase 2 後，Codex 的 capabilities（需由 syncFromPayload 注入） */
 const CODEX_CAPABILITIES = {
   chat: true,
-  plugin: false,
+  plugin: true,
   subAgent: false,
   repository: false,
   command: true,
@@ -117,12 +117,12 @@ describe("usePodCapabilities", () => {
       expect(isRunModeEnabled.value).toBe(false);
     });
 
-    it("isPluginEnabled 應為 false（Codex 不支援）", () => {
+    it("isPluginEnabled 應為 true（Codex 支援 plugin）", () => {
       injectAllCapabilities();
       const podId = setupPod("codex");
       const { isPluginEnabled } = usePodCapabilities(podId);
 
-      expect(isPluginEnabled.value).toBe(false);
+      expect(isPluginEnabled.value).toBe(true);
     });
 
     it("isSubAgentEnabled 應為 false（Codex 不支援）", () => {
@@ -279,7 +279,7 @@ describe("usePodCapabilities", () => {
       expect(isCodex.value).toBe(true);
     });
 
-    it("從 codex Pod 切換到 claude Pod 後，isPluginEnabled 應從 false 變為 true", async () => {
+    it("從 codex Pod 切換到 claude Pod 後，isPluginEnabled 應維持 true（兩者皆支援）", async () => {
       injectAllCapabilities();
       const podStore = usePodStore();
       const claudePod = createMockPod({ id: "pod-claude", provider: "claude" });
@@ -289,8 +289,8 @@ describe("usePodCapabilities", () => {
       const podId = ref("pod-codex");
       const { isPluginEnabled } = usePodCapabilities(podId);
 
-      // 初始為 codex → isPluginEnabled false
-      expect(isPluginEnabled.value).toBe(false);
+      // 初始為 codex → isPluginEnabled true（codex 支援 plugin）
+      expect(isPluginEnabled.value).toBe(true);
 
       // 切換到 claude pod
       podId.value = "pod-claude";

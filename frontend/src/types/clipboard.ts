@@ -12,6 +12,8 @@ export interface CopiedPod {
   /** Provider 對應的設定（複製時保留，貼上時還原） */
   providerConfig: ProviderConfig;
   subAgentIds?: string[];
+  mcpServerIds?: string[];
+  pluginIds?: string[];
   repositoryId?: string | null;
   commandId?: string | null;
 }

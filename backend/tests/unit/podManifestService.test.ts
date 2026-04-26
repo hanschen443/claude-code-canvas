@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { podManifestService } from "../../src/services/podManifestService.js";
+import { isPathWithinDirectory } from "../../src/utils/pathValidator.js";
 import { initTestDb, resetDb } from "../../src/database/index.js";
 import { resetStatements } from "../../src/database/statements.js";
 
@@ -97,5 +98,39 @@ describe("PodManifestService", () => {
       const result = podManifestService.collectSubAgentFiles("my-agent");
       expect(result).toEqual([".claude/agents/my-agent.md"]);
     });
+  });
+});
+
+describe("isPathWithinDirectory — 邊界案例", () => {
+  it("absPath 恰好等於 repositoryPath 時回傳 true", () => {
+    const dir = "/tmp/repo";
+    expect(isPathWithinDirectory(dir, dir)).toBe(true);
+  });
+
+  it("absPath 在 repositoryPath 子目錄下回傳 true", () => {
+    expect(isPathWithinDirectory("/tmp/repo/sub/file.md", "/tmp/repo")).toBe(
+      true,
+    );
+  });
+
+  it("absPath 包含 .. 但解析後仍在範圍內時回傳 true", () => {
+    // /tmp/repo/sub/../file.md 解析後為 /tmp/repo/file.md
+    expect(isPathWithinDirectory("/tmp/repo/sub/../file.md", "/tmp/repo")).toBe(
+      true,
+    );
+  });
+
+  it("absPath 包含 .. 且解析後逸出範圍時回傳 false", () => {
+    // /tmp/repo/../other/file.md 解析後為 /tmp/other/file.md
+    expect(
+      isPathWithinDirectory("/tmp/repo/../other/file.md", "/tmp/repo"),
+    ).toBe(false);
+  });
+
+  it("目錄名稱為另一目錄前綴時不誤判（prefix attack）", () => {
+    // /tmp/repo-evil 不在 /tmp/repo 內，但字串前綴相符
+    expect(isPathWithinDirectory("/tmp/repo-evil/file.md", "/tmp/repo")).toBe(
+      false,
+    );
   });
 });

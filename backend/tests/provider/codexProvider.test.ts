@@ -109,7 +109,7 @@ describe("CodexProvider", () => {
   });
 
   // ── Case 1：首次對話 spawn 指令 ───────────────────────────────────
-  it("首次對話時 spawn 指令應包含 --json --skip-git-repo-check --cd <workspacePath> --full-auto -c sandbox_workspace_write.network_access=true --model <model>", async () => {
+  it("首次對話時 spawn 指令應包含必要的 CLI 參數（--json、--cd、--full-auto、--model 等）", async () => {
     const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
     spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
 
@@ -140,7 +140,7 @@ describe("CodexProvider", () => {
   });
 
   // ── Case 2：resume 時 spawn 指令包含 resume <id> ───────────────────
-  it("resumeSessionId 存在時 spawn 指令應包含 exec resume <id> - --json --cd <workspacePath> --full-auto -c sandbox_workspace_write.network_access=true", async () => {
+  it("resumeSessionId 存在時 spawn 指令應包含 exec resume <id> 及必要的 CLI 參數", async () => {
     const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
     spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
 

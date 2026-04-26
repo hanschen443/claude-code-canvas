@@ -93,7 +93,7 @@ class PodStore {
     ReturnType<Database["prepare"]>
   >();
 
-  /** 以 n（長度）為 key 快取 findByJoinTableId 用的 PreparedStatement（LRU 上限 32） */
+  /** 以 "joinFetch:n" 為 key 快取 findByJoinTableId 用的 PreparedStatement（LRU 上限 32） */
   private readonly joinFetchStmtCache = new Map<
     string,
     ReturnType<Database["prepare"]>
@@ -161,6 +161,25 @@ class PodStore {
     "plugin_id",
   ]);
 
+  /**
+   * 通用快取 PreparedStatement 輔助函式。
+   * 若 cacheKey 已在 cache 中存在，直接回傳；否則呼叫 buildSql() 建立並以 LRU 策略存入 cache。
+   * 消除 batchLoadBindings / findByJoinTableId / fetchPodsByIds / getRelationStmt 四處重複的
+   * 「cache.get → if (!stmt) { prepare → lruSet }」結構。
+   */
+  private getCachedStmt(
+    cache: Map<string, ReturnType<Database["prepare"]>>,
+    cacheKey: string,
+    buildSql: () => string,
+  ): ReturnType<Database["prepare"]> {
+    let stmt = cache.get(cacheKey);
+    if (!stmt) {
+      stmt = getDb().prepare(buildSql());
+      lruSet(cache, cacheKey, stmt);
+    }
+    return stmt;
+  }
+
   /** 取得或建立指定 tableName 與 podIds 數量的 PreparedStatement（LRU 快取） */
   private getRelationStmt(
     tableName: string,
@@ -175,14 +194,12 @@ class PodStore {
       throw new Error(`非法的 relation valueColumn：${valueColumn}`);
     }
     const cacheKey = `relations:${tableName}:${n}`;
-    let stmt = this.relationsStmtCache.get(cacheKey);
-    if (!stmt) {
-      stmt = getDb().prepare(
+    return this.getCachedStmt(
+      this.relationsStmtCache,
+      cacheKey,
+      () =>
         `SELECT pod_id, ${valueColumn} FROM ${tableName} WHERE pod_id IN (${placeholders})`,
-      );
-      lruSet(this.relationsStmtCache, cacheKey, stmt);
-    }
-    return stmt;
+    );
   }
 
   /**
@@ -197,7 +214,12 @@ class PodStore {
   ): Map<string, string[]> {
     const n = podIds.length;
     const stmt = this.getRelationStmt(tableName, valueColumn, n, placeholders);
-    const rows = stmt.all(...podIds) as Array<Record<string, string>>;
+    // 以 unknown 接收 DB 回傳值，過濾 null/undefined 後再 narrow 為字串型別，
+    // 避免 DB 回傳 null 時被斷言為字串 "null" 造成靜默錯誤
+    const rawRows = stmt.all(...podIds) as Array<Record<string, unknown>>;
+    const rows = rawRows.filter(
+      (r) => r.pod_id != null && r[valueColumn] != null,
+    ) as Array<Record<string, string>>;
     return this.batchGroupBy(
       rows,
       (r) => r.pod_id,
@@ -262,15 +284,13 @@ class PodStore {
 
     const n = podIds.length;
     const cacheKey = `bindings:${n}`;
-    let stmt = this.bindingsStmtCache.get(cacheKey);
-    if (!stmt) {
-      const db = getDb();
-      const placeholders = podIds.map(() => "?").join(", ");
-      stmt = db.prepare(
+    const placeholders = podIds.map(() => "?").join(", ");
+    const stmt = this.getCachedStmt(
+      this.bindingsStmtCache,
+      cacheKey,
+      () =>
         `SELECT id, pod_id, canvas_id, provider, app_id, resource_id, extra_json FROM integration_bindings WHERE pod_id IN (${placeholders})`,
-      );
-      lruSet(this.bindingsStmtCache, cacheKey, stmt);
-    }
+    );
 
     const rows = stmt.all(...podIds) as IntegrationBindingRow[];
 
@@ -496,10 +516,41 @@ class PodStore {
     }
   }
 
-  create(
+  /**
+   * 組裝 Pod 物件（不含 DB 操作）。
+   * providerConfig 必須已經過 sanitizeProviderConfigStrict 驗證並補齊預設 model。
+   */
+  private buildPodObject(
+    id: string,
     canvasId: string,
     data: CreatePodRequest,
-  ): { pod: Pod; persisted: Promise<void> } {
+    provider: ProviderName,
+    providerConfig: Record<string, unknown>,
+  ): Pod {
+    const canvasDir = canvasStore.getCanvasDir(canvasId)!;
+    return {
+      id,
+      name: data.name,
+      status: "idle",
+      workspacePath: `${canvasDir}/pod-${id}`,
+      x: data.x,
+      y: data.y,
+      rotation: data.rotation,
+      sessionId: null,
+      subAgentIds: data.subAgentIds ?? [],
+      mcpServerIds: data.mcpServerIds ?? [],
+      pluginIds: data.pluginIds ?? [],
+      provider,
+      providerConfig,
+      repositoryId: data.repositoryId ?? null,
+      commandId: data.commandId ?? null,
+      multiInstance: false,
+      // create 路徑直接回傳空陣列，與 getById/list（走 batchLoadBindings 路徑）保持結構一致
+      integrationBindings: [],
+    };
+  }
+
+  create(canvasId: string, data: CreatePodRequest): { pod: Pod } {
     const id = randomUUID();
     const canvasDir = canvasStore.getCanvasDir(canvasId);
 
@@ -524,26 +575,13 @@ class PodStore {
       providerConfig.model = defaultOptions.model;
     }
 
-    const pod: Pod = {
+    const pod = this.buildPodObject(
       id,
-      name: data.name,
-      status: "idle",
-      workspacePath: `${canvasDir}/pod-${id}`,
-      x: data.x,
-      y: data.y,
-      rotation: data.rotation,
-      sessionId: null,
-      subAgentIds: data.subAgentIds ?? [],
-      mcpServerIds: data.mcpServerIds ?? [],
-      pluginIds: data.pluginIds ?? [],
+      canvasId,
+      data,
       provider,
       providerConfig,
-      repositoryId: data.repositoryId ?? null,
-      commandId: data.commandId ?? null,
-      multiInstance: false,
-      // create 路徑直接回傳空陣列，與 getById/list（走 batchLoadBindings 路徑）保持結構一致
-      integrationBindings: [],
-    };
+    );
 
     // 使用 transaction 確保主表 insert 與 join table insert 的原子性
     getDb().transaction(() => {
@@ -568,7 +606,7 @@ class PodStore {
       this.insertJoinTableIds(id, pod);
     })();
 
-    return { pod, persisted: Promise.resolve() };
+    return { pod };
   }
 
   getById(canvasId: string, id: string): Pod | undefined {
@@ -685,17 +723,16 @@ class PodStore {
     };
   }
 
-  update(
-    canvasId: string,
-    id: string,
+  /**
+   * 合併 Pod 與 updates 並驗證 providerConfig，回傳寫入 DB 前準備好的資料。
+   * sanitizeProviderConfigStrict 在 transaction 外先驗證，不合法時直接 throw（transaction 不會啟動）。
+   */
+  private prepareUpdatePayload(
+    pod: Pod,
     updates: PodUpdates,
-  ): { pod: Pod; persisted: Promise<void> } | undefined {
-    const pod = this.getById(canvasId, id);
-    if (!pod) return undefined;
-
+  ): { updatedPod: Pod; sanitizedProviderConfigJson: string | null } {
     const updatedPod = this.buildUpdatedPod(pod, updates);
-
-    // sanitizeProviderConfigStrict 在 transaction 外先驗證，不合法時直接 throw（transaction 不會啟動）
+    // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
     const sanitizedProviderConfigJson = updatedPod.providerConfig
       ? JSON.stringify(
           this.sanitizeProviderConfigStrict(
@@ -704,6 +741,19 @@ class PodStore {
           ),
         )
       : null;
+    return { updatedPod, sanitizedProviderConfigJson };
+  }
+
+  update(
+    canvasId: string,
+    id: string,
+    updates: PodUpdates,
+  ): { pod: Pod } | undefined {
+    const pod = this.getById(canvasId, id);
+    if (!pod) return undefined;
+
+    const { updatedPod, sanitizedProviderConfigJson } =
+      this.prepareUpdatePayload(pod, updates);
 
     // 使用 transaction 確保主表 update 與 join table update 的原子性
     getDb().transaction(() => {
@@ -720,14 +770,13 @@ class PodStore {
         $multiInstance: updatedPod.multiInstance ? 1 : 0,
         $scheduleJson: serializeSchedule(updatedPod.schedule),
         $provider: updatedPod.provider,
-        // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
         $providerConfigJson: sanitizedProviderConfigJson,
       });
 
       this.updateJoinTables(id, updates);
     })();
 
-    return { pod: updatedPod, persisted: Promise.resolve() };
+    return { pod: updatedPod };
   }
 
   delete(canvasId: string, id: string): boolean {
@@ -813,15 +862,14 @@ class PodStore {
     if (podIds.length === 0) return [];
 
     // 用 WHERE id IN (...) 一次取得所有 Pod，再過濾 canvas，避免 N+1
-    const cacheKey = `${podIds.length}`;
-    let stmt = this.joinFetchStmtCache.get(cacheKey);
-    if (!stmt) {
-      const placeholders = podIds.map(() => "?").join(", ");
-      stmt = getDb().prepare(
+    const cacheKey = `joinFetch:${podIds.length}`;
+    const placeholders = podIds.map(() => "?").join(", ");
+    const stmt = this.getCachedStmt(
+      this.joinFetchStmtCache,
+      cacheKey,
+      () =>
         `SELECT * FROM pods WHERE canvas_id = ? AND id IN (${placeholders})`,
-      );
-      lruSet(this.joinFetchStmtCache, cacheKey, stmt);
-    }
+    );
     const rows = stmt.all(canvasId, ...podIds) as PodRow[];
     return this.rowsToPods(rows);
   }
@@ -925,14 +973,12 @@ class PodStore {
     podIds: string[],
   ): Array<{ canvasId: string; pod: Pod }> {
     const cacheKey = `${podIds.length}`;
-    let stmt = this.podsByIdsStmtCache.get(cacheKey);
-    if (!stmt) {
-      const placeholders = podIds.map(() => "?").join(", ");
-      stmt = getDb().prepare(
-        `SELECT * FROM pods WHERE id IN (${placeholders})`,
-      );
-      lruSet(this.podsByIdsStmtCache, cacheKey, stmt);
-    }
+    const placeholders = podIds.map(() => "?").join(", ");
+    const stmt = this.getCachedStmt(
+      this.podsByIdsStmtCache,
+      cacheKey,
+      () => `SELECT * FROM pods WHERE id IN (${placeholders})`,
+    );
     const rows = stmt.all(...podIds) as PodRow[];
     const canvasIdMap = new Map(rows.map((r) => [r.id, r.canvas_id]));
     const pods = this.rowsToPods(rows);

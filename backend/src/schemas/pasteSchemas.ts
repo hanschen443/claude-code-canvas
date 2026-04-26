@@ -26,6 +26,7 @@ export const pastePodItemSchema = z.object({
    */
   providerConfig: providerConfigSchema.optional(),
   subAgentIds: z.array(resourceIdSchema).optional(),
+  mcpServerIds: z.array(resourceIdSchema).optional(),
   pluginIds: z
     .array(
       z

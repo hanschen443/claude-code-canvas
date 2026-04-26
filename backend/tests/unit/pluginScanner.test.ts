@@ -97,7 +97,7 @@ describe("pluginScanner", () => {
 
   describe("正常解析 Plugin 列表", () => {
     it("應正確解析 Plugin 的 id、name、version、description、installPath，且 compatibleProviders 含 claude", () => {
-      const installPath = "/home/user/.claude/plugins/cache/my-plugin/1.0.0";
+      const installPath = `${HOME}/.claude/plugins/cache/my-plugin/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -134,7 +134,7 @@ describe("pluginScanner", () => {
     });
 
     it("Claude plugin 同時有 .codex-plugin/plugin.json 時 compatibleProviders 應含兩者", () => {
-      const installPath = "/home/user/.claude/plugins/cache/dual/1.0.0";
+      const installPath = `${HOME}/.claude/plugins/cache/dual/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -167,8 +167,7 @@ describe("pluginScanner", () => {
     });
 
     it("應正確從 plugin ID 解析 repo（@ 後面的部分）", () => {
-      const installPath =
-        "/home/user/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7";
+      const installPath = `${HOME}/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -197,8 +196,7 @@ describe("pluginScanner", () => {
     });
 
     it("plugin ID 沒有 @ 時 repo 應為空字串", () => {
-      const installPath =
-        "/home/user/.claude/plugins/cache/no-repo-plugin/1.0.0";
+      const installPath = `${HOME}/.claude/plugins/cache/no-repo-plugin/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -224,7 +222,7 @@ describe("pluginScanner", () => {
     });
 
     it("plugin.json 不存在時應使用 plugin key 作為 name", () => {
-      const installPath = "/home/user/.claude/plugins/cache/my-plugin/1.0.0";
+      const installPath = `${HOME}/.claude/plugins/cache/my-plugin/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -253,7 +251,7 @@ describe("pluginScanner", () => {
     });
 
     it("plugin id 含不合法字元應略過", () => {
-      const validPath = "/home/user/.claude/plugins/cache/valid/1.0.0";
+      const validPath = `${HOME}/.claude/plugins/cache/valid/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -293,8 +291,7 @@ describe("pluginScanner", () => {
 
   describe("多 scope 安裝相同 installPath 時去重", () => {
     it("相同 installPath 的多個 scope 只應列一次", () => {
-      const installPath =
-        "/home/user/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7";
+      const installPath = `${HOME}/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -332,10 +329,8 @@ describe("pluginScanner", () => {
     });
 
     it("不同 installPath 的多個 scope 應分別列出", () => {
-      const installPath1 =
-        "/home/user/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7";
-      const installPath2 =
-        "/home/user/.claude/plugins/cache/soap-toolkit/soap-dev/2.0.0";
+      const installPath1 = `${HOME}/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7`;
+      const installPath2 = `${HOME}/.claude/plugins/cache/soap-toolkit/soap-dev/2.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -378,10 +373,8 @@ describe("pluginScanner", () => {
 
   describe("多個不同 plugin", () => {
     it("應正確列出所有 plugin", () => {
-      const path1 =
-        "/home/user/.claude/plugins/cache/official/skill-creator/abc123";
-      const path2 =
-        "/home/user/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7";
+      const path1 = `${HOME}/.claude/plugins/cache/official/skill-creator/abc123`;
+      const path2 = `${HOME}/.claude/plugins/cache/soap-toolkit/soap-dev/1.0.7`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -715,7 +708,7 @@ describe("pluginScanner", () => {
     });
 
     it("不傳 provider 時回傳全集", () => {
-      const installPath = "/home/user/.claude/plugins/cache/myplugin/1.0.0";
+      const installPath = `${HOME}/.claude/plugins/cache/myplugin/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {
         if (filePath === INSTALLED_PLUGINS_PATH) {
@@ -745,8 +738,7 @@ describe("pluginScanner", () => {
 
   describe("Claude 與 Codex 來源同 id 合併", () => {
     it("同 id 的 plugin 兩邊都有時應合併 compatibleProviders", () => {
-      const claudeInstallPath =
-        "/home/user/.claude/plugins/cache/shared/shared-plugin/1.0.0";
+      const claudeInstallPath = `${HOME}/.claude/plugins/cache/shared/shared-plugin/1.0.0`;
       const codexInstallPath = `${CODEX_CACHE_DIR}/shared-marketplace/shared-plugin/1.0.0`;
 
       mockReadFileSync.mockImplementation((filePath) => {

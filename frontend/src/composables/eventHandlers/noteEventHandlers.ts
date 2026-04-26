@@ -158,13 +158,10 @@ const handleRepositoryBranchChanged = createUnifiedHandler<
     if (!payload.branchName || !/^[a-zA-Z0-9_\-/]+$/.test(payload.branchName))
       return;
 
-    const repositoryStore = useRepositoryStore();
-    const repository = repositoryStore.typedAvailableItems.find(
-      (item) => item.id === payload.repositoryId,
+    useRepositoryStore().updateCurrentBranch(
+      payload.repositoryId,
+      payload.branchName,
     );
-    if (repository) {
-      repository.currentBranch = payload.branchName;
-    }
   },
   { skipCanvasCheck: true },
 );

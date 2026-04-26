@@ -514,97 +514,20 @@ export function createNoteStore<
         }
         if (response.deletedNoteIds) {
           const deletedIds = response.deletedNoteIds as string[];
+          // Set 查找 O(1)，避免 O(n×k) 的 Array.includes
+          const deletedIdSet = new Set(deletedIds);
           this.notes.splice(
             0,
             this.notes.length,
-            ...this.notes.filter((note) => !deletedIds.includes(note.id)),
+            ...this.notes.filter((note) => !deletedIdSet.has(note.id)),
           );
         }
         showSuccessToast(category, t("store.resource.deleteSuccess"), itemName);
       },
 
-      addNoteFromEvent(note: TNote): void {
-        const exists = this.notes.some(
-          (existingNote) => existingNote.id === note.id,
-        );
-        if (!exists) {
-          // TNote extends BaseNote，NoteItem 也 extends BaseNote 且加上 index signature。
-          // 兩者在 runtime 結構相同，此轉換僅為適配 state 的內部型別。
-          this.notes.push(note as unknown as NoteItem);
-        }
-      },
+      ...createEventSyncActions<TItem, TNote>(getItemId),
 
-      updateNoteFromEvent(note: TNote): void {
-        const index = this.notes.findIndex(
-          (existingNote) => existingNote.id === note.id,
-        );
-        if (index !== -1) {
-          // 同 addNoteFromEvent，TNote 與 NoteItem 在 runtime 結構相同。
-          this.notes.splice(index, 1, note as unknown as NoteItem);
-        }
-      },
-
-      removeNoteFromEvent(noteId: string): void {
-        this.notes = removeById(this.notes, noteId);
-      },
-
-      addItemFromEvent(item: TItem): void {
-        const exists = this.availableItems.some(
-          (i) => getItemId(i as TItem) === getItemId(item),
-        );
-        if (!exists) {
-          this.availableItems.push(item);
-        }
-      },
-
-      updateItemFromEvent(item: TItem): void {
-        const index = this.availableItems.findIndex(
-          (i) => getItemId(i as TItem) === getItemId(item),
-        );
-        if (index !== -1) {
-          this.availableItems.splice(index, 1, item);
-        }
-      },
-
-      removeItemFromEvent(itemId: string, deletedNoteIds?: string[]): void {
-        this.availableItems = this.availableItems.filter(
-          (item) => getItemId(item as TItem) !== itemId,
-        );
-
-        if (deletedNoteIds) {
-          this.notes = this.notes.filter(
-            (note) => !deletedNoteIds.includes(note.id),
-          );
-        }
-      },
-
-      toggleGroupExpand(groupId: string): void {
-        if (this.expandedGroupIds.has(groupId)) {
-          this.expandedGroupIds.delete(groupId);
-        } else {
-          this.expandedGroupIds.add(groupId);
-        }
-      },
-
-      addGroupFromEvent(group: Group): void {
-        const exists = this.groups.some((g) => g.id === group.id);
-        if (!exists) {
-          this.groups.push(group);
-        }
-      },
-
-      removeGroupFromEvent(groupId: string): void {
-        this.groups = removeById(this.groups, groupId);
-      },
-
-      updateItemGroupId(itemId: string, groupId: string | null): void {
-        const item = this.availableItems.find(
-          (candidate) => getItemId(candidate as TItem) === itemId,
-        ) as (TItem & { groupId?: string | null }) | undefined;
-        if (item) {
-          item.groupId = groupId;
-        }
-      },
+      ...createGroupActions<TItem>(getItemId),
 
       // 切換 canvas 時重設 note store 狀態
       resetForCanvasSwitch(): void {
@@ -616,4 +539,144 @@ export function createNoteStore<
       ...buildCRUDActions(config),
     },
   });
+}
+
+/**
+ * 封裝 event-based note/item 同步 actions（addNoteFromEvent / updateNoteFromEvent
+ * / removeNoteFromEvent / addItemFromEvent / updateItemFromEvent / removeItemFromEvent）。
+ */
+function createEventSyncActions<TItem, TNote extends BaseNote>(
+  getItemId: (item: TItem) => string,
+): {
+  addNoteFromEvent(this: { notes: NoteItem[] }, note: TNote): void;
+  updateNoteFromEvent(this: { notes: NoteItem[] }, note: TNote): void;
+  removeNoteFromEvent(this: { notes: NoteItem[] }, noteId: string): void;
+  addItemFromEvent(this: { availableItems: unknown[] }, item: TItem): void;
+  updateItemFromEvent(this: { availableItems: unknown[] }, item: TItem): void;
+  removeItemFromEvent(
+    this: { availableItems: unknown[]; notes: NoteItem[] },
+    itemId: string,
+    deletedNoteIds?: string[],
+  ): void;
+} {
+  return {
+    addNoteFromEvent(this: { notes: NoteItem[] }, note: TNote): void {
+      const exists = this.notes.some(
+        (existingNote) => existingNote.id === note.id,
+      );
+      if (!exists) {
+        // TNote extends BaseNote，NoteItem 也 extends BaseNote 且加上 index signature。
+        // 兩者在 runtime 結構相同，此轉換僅為適配 state 的內部型別。
+        this.notes.push(note as unknown as NoteItem);
+      }
+    },
+
+    updateNoteFromEvent(this: { notes: NoteItem[] }, note: TNote): void {
+      const index = this.notes.findIndex(
+        (existingNote) => existingNote.id === note.id,
+      );
+      if (index !== -1) {
+        // 同 addNoteFromEvent，TNote 與 NoteItem 在 runtime 結構相同。
+        this.notes.splice(index, 1, note as unknown as NoteItem);
+      }
+    },
+
+    removeNoteFromEvent(this: { notes: NoteItem[] }, noteId: string): void {
+      this.notes = removeById(this.notes, noteId);
+    },
+
+    addItemFromEvent(this: { availableItems: unknown[] }, item: TItem): void {
+      const exists = this.availableItems.some(
+        (i) => getItemId(i as TItem) === getItemId(item),
+      );
+      if (!exists) {
+        this.availableItems.push(item);
+      }
+    },
+
+    updateItemFromEvent(
+      this: { availableItems: unknown[] },
+      item: TItem,
+    ): void {
+      const index = this.availableItems.findIndex(
+        (i) => getItemId(i as TItem) === getItemId(item),
+      );
+      if (index !== -1) {
+        this.availableItems.splice(index, 1, item);
+      }
+    },
+
+    removeItemFromEvent(
+      this: { availableItems: unknown[]; notes: NoteItem[] },
+      itemId: string,
+      deletedNoteIds?: string[],
+    ): void {
+      this.availableItems = this.availableItems.filter(
+        (item) => getItemId(item as TItem) !== itemId,
+      );
+
+      if (deletedNoteIds) {
+        // Set 查找 O(1)，避免 O(n×k) 的 Array.includes
+        const deletedNoteIdSet = new Set(deletedNoteIds);
+        this.notes = this.notes.filter(
+          (note) => !deletedNoteIdSet.has(note.id),
+        );
+      }
+    },
+  };
+}
+
+/**
+ * 封裝 group 相關 actions（addGroupFromEvent / removeGroupFromEvent
+ * / updateItemGroupId / toggleGroupExpand）。
+ */
+function createGroupActions<TItem>(getItemId: (item: TItem) => string): {
+  toggleGroupExpand(
+    this: { expandedGroupIds: Set<string> },
+    groupId: string,
+  ): void;
+  addGroupFromEvent(this: { groups: Group[] }, group: Group): void;
+  removeGroupFromEvent(this: { groups: Group[] }, groupId: string): void;
+  updateItemGroupId(
+    this: { availableItems: unknown[] },
+    itemId: string,
+    groupId: string | null,
+  ): void;
+} {
+  return {
+    toggleGroupExpand(
+      this: { expandedGroupIds: Set<string> },
+      groupId: string,
+    ): void {
+      if (this.expandedGroupIds.has(groupId)) {
+        this.expandedGroupIds.delete(groupId);
+      } else {
+        this.expandedGroupIds.add(groupId);
+      }
+    },
+
+    addGroupFromEvent(this: { groups: Group[] }, group: Group): void {
+      const exists = this.groups.some((g) => g.id === group.id);
+      if (!exists) {
+        this.groups.push(group);
+      }
+    },
+
+    removeGroupFromEvent(this: { groups: Group[] }, groupId: string): void {
+      this.groups = removeById(this.groups, groupId);
+    },
+
+    updateItemGroupId(
+      this: { availableItems: unknown[] },
+      itemId: string,
+      groupId: string | null,
+    ): void {
+      const item = this.availableItems.find(
+        (candidate) => getItemId(candidate as TItem) === itemId,
+      ) as (TItem & ItemWithGroupId) | undefined;
+      if (item) {
+        item.groupId = groupId;
+      }
+    },
+  };
 }

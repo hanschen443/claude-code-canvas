@@ -1392,6 +1392,51 @@ describe("podStore", () => {
       });
     });
 
+    describe("updatePodPlugins", () => {
+      it("應更新 Pod 的 pluginIds", () => {
+        const store = usePodStore();
+        const pod = createMockPod({ id: "pod-1" });
+        store.pods = [pod];
+
+        store.updatePodPlugins("pod-1", ["plugin-a", "plugin-b"]);
+
+        expect(store.pods[0]?.pluginIds).toEqual(["plugin-a", "plugin-b"]);
+      });
+
+      it("可以清空 pluginIds（傳入空陣列）", () => {
+        const store = usePodStore();
+        const pod = createMockPod({ id: "pod-1", pluginIds: ["plugin-a"] });
+        store.pods = [pod];
+
+        store.updatePodPlugins("pod-1", []);
+
+        expect(store.pods[0]?.pluginIds).toEqual([]);
+      });
+
+      it("可模擬樂觀更新後回滾（先更新再還原）", () => {
+        const store = usePodStore();
+        const pod = createMockPod({ id: "pod-1", pluginIds: ["plugin-a"] });
+        store.pods = [pod];
+
+        // 樂觀更新
+        store.updatePodPlugins("pod-1", ["plugin-a", "plugin-b"]);
+        expect(store.pods[0]?.pluginIds).toEqual(["plugin-a", "plugin-b"]);
+
+        // 模擬 API 失敗（success: false），回滾到舊值
+        store.updatePodPlugins("pod-1", ["plugin-a"]);
+        expect(store.pods[0]?.pluginIds).toEqual(["plugin-a"]);
+      });
+
+      it("Pod 不存在時應 early return（pod-busy 路徑也適用）", () => {
+        const store = usePodStore();
+
+        expect(() =>
+          store.updatePodPlugins("non-existent", ["plugin-a"]),
+        ).not.toThrow();
+        expect(store.pods).toHaveLength(0);
+      });
+    });
+
     describe("clearPodOutputsByIds", () => {
       it("應清空指定多個 Pod 的 output", () => {
         const store = usePodStore();

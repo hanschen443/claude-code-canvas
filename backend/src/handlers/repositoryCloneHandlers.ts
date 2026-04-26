@@ -35,6 +35,11 @@ function validateRepoUrl(repoUrl: string): Result<void> {
     return errI18n(createI18nError("errors.repoUrlTooLong"));
   }
 
+  // CRLF 注入防護：URL 中包含 \r 或 \n 可能被用於 HTTP header 注入攻擊
+  if (/[\r\n]/.test(repoUrl)) {
+    return errI18n(createI18nError("errors.repoUrlInvalidFormat"));
+  }
+
   const isHttpsUrl = /^https:\/\/[^\s]+$/.test(repoUrl);
   const isSshUrl = /^git@[^\s:]+:[^\s]+$/.test(repoUrl);
 
@@ -54,7 +59,13 @@ async function executeAndValidateClone(
   repoName: string,
   branch: string | undefined,
   emitProgress: (progress: number, message: string) => void,
-): Promise<{ success: true } | { success: false; error: string | import("../utils/i18nError.js").I18nError }> {
+): Promise<
+  | { success: true }
+  | {
+      success: false;
+      error: string | import("../utils/i18nError.js").I18nError;
+    }
+> {
   const targetPath = repositoryService.getRepositoryPath(repoName);
   const throttledEmit = throttle(emitProgress, 500);
 
@@ -143,7 +154,11 @@ export async function handleRepositoryGitClone(
     emitCloneProgress,
   );
   if (!cloneResult.success) {
-    logger.error('Repository', 'Error', `複製儲存庫失敗：${getResultErrorString(cloneResult.error)}`);
+    logger.error(
+      "Repository",
+      "Error",
+      `複製儲存庫失敗：${getResultErrorString(cloneResult.error)}`,
+    );
     emitError(
       connectionId,
       WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT,

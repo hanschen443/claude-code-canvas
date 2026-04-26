@@ -70,12 +70,9 @@ describe("noteEventHandlers", () => {
   describe("handleRepositoryBranchChanged（skipCanvasCheck: true）", () => {
     it("branchName 合法時應更新 repository 的 currentBranch", () => {
       const store = useRepositoryStore();
-      // 模擬已存在的 repository item
+      // 直接寫入 availableItems，updateCurrentBranch 使用 this.availableItems 查找
       const mockItem = { id: "repo-1", name: "repo", currentBranch: "main" };
-      Object.defineProperty(store, "typedAvailableItems", {
-        get: () => [mockItem],
-        configurable: true,
-      });
+      store.availableItems = [mockItem as unknown];
 
       findHandler("repository:branch:changed")({
         repositoryId: "repo-1",
@@ -88,10 +85,7 @@ describe("noteEventHandlers", () => {
     it("branchName 包含不合法字元時不應更新", () => {
       const store = useRepositoryStore();
       const mockItem = { id: "repo-1", name: "repo", currentBranch: "main" };
-      Object.defineProperty(store, "typedAvailableItems", {
-        get: () => [mockItem],
-        configurable: true,
-      });
+      store.availableItems = [mockItem as unknown];
 
       findHandler("repository:branch:changed")({
         repositoryId: "repo-1",

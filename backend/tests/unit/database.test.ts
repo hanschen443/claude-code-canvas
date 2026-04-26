@@ -119,16 +119,22 @@ describe("Database", () => {
         "INSERT INTO integration_apps (id, provider, name, config_json) VALUES ('ia1', 'slack', 'app', '{}')",
       );
       db.exec(
-        "INSERT INTO integration_bindings (id, pod_id, canvas_id, provider, app_id, resource_id) VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')",
+        `INSERT INTO integration_bindings
+          (id, pod_id, canvas_id, provider, app_id, resource_id)
+          VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')`,
       );
       db.exec(
-        "INSERT INTO connections (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor) VALUES ('conn1', 'c1', 'p1', 'bottom', 'p1', 'top')",
+        `INSERT INTO connections
+          (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor)
+          VALUES ('conn1', 'c1', 'p1', 'bottom', 'p1', 'top')`,
       );
       db.exec(
         "INSERT INTO notes (id, canvas_id, type, name) VALUES ('n1', 'c1', 'skill', 'note1')",
       );
       db.exec(
-        "INSERT INTO messages (id, pod_id, canvas_id, role, content, timestamp) VALUES ('m1', 'p1', 'c1', 'user', 'hello', '2024-01-01')",
+        `INSERT INTO messages
+          (id, pod_id, canvas_id, role, content, timestamp)
+          VALUES ('m1', 'p1', 'c1', 'user', 'hello', '2024-01-01')`,
       );
       db.exec(
         "INSERT INTO pod_sub_agent_ids (pod_id, sub_agent_id) VALUES ('p1', 'sa1')",
@@ -204,7 +210,9 @@ describe("Database", () => {
         "INSERT INTO integration_apps (id, provider, name, config_json) VALUES ('ia1', 'slack', 'app', '{}')",
       );
       db.exec(
-        "INSERT INTO integration_bindings (id, pod_id, canvas_id, provider, app_id, resource_id) VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')",
+        `INSERT INTO integration_bindings
+          (id, pod_id, canvas_id, provider, app_id, resource_id)
+          VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')`,
       );
       db.exec(
         "INSERT INTO pod_sub_agent_ids (pod_id, sub_agent_id) VALUES ('p1', 'sa1')",

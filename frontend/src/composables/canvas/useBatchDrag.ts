@@ -51,44 +51,52 @@ function createStoreConfigMap(
     movedCommandNoteIds,
     movedMcpServerNoteIds,
   } = movedSets;
+
+  // 預建 Map 查找表，將每個 store 的 items 轉為 O(1) 查找，避免每幀拖曳的 O(n) Array.find
+  const podMap = new Map(podStore.pods.map((p) => [p.id, p]));
+  const repositoryMap = new Map(
+    repositoryStore.notes.map((n) => [n.id ?? "", n]),
+  );
+  const subAgentMap = new Map(subAgentStore.notes.map((n) => [n.id ?? "", n]));
+  const commandMap = new Map(commandStore.notes.map((n) => [n.id ?? "", n]));
+  const mcpServerMap = new Map(
+    mcpServerStore.notes.map((n) => [n.id ?? "", n]),
+  );
+
   return {
     pod: {
       movedSet: movedPodIds,
       moveItem: (id: string, x: number, y: number) =>
         podStore.movePod(id, x, y),
-      getItem: (id: string) => podStore.pods.find((pod) => pod.id === id),
+      getItem: (id: string) => podMap.get(id),
       isPod: true,
     },
     repositoryNote: {
       movedSet: movedRepositoryNoteIds,
       moveItem: (id: string, x: number, y: number) =>
         repositoryStore.updateNotePositionLocal(id, x, y),
-      getItem: (id: string) =>
-        repositoryStore.notes.find((note) => note.id === id),
+      getItem: (id: string) => repositoryMap.get(id),
       isPod: false,
     },
     subAgentNote: {
       movedSet: movedSubAgentNoteIds,
       moveItem: (id: string, x: number, y: number) =>
         subAgentStore.updateNotePositionLocal(id, x, y),
-      getItem: (id: string) =>
-        subAgentStore.notes.find((note) => note.id === id),
+      getItem: (id: string) => subAgentMap.get(id),
       isPod: false,
     },
     commandNote: {
       movedSet: movedCommandNoteIds,
       moveItem: (id: string, x: number, y: number) =>
         commandStore.updateNotePositionLocal(id, x, y),
-      getItem: (id: string) =>
-        commandStore.notes.find((note) => note.id === id),
+      getItem: (id: string) => commandMap.get(id),
       isPod: false,
     },
     mcpServerNote: {
       movedSet: movedMcpServerNoteIds,
       moveItem: (id: string, x: number, y: number) =>
         mcpServerStore.updateNotePositionLocal(id, x, y),
-      getItem: (id: string) =>
-        mcpServerStore.notes.find((note) => note.id === id),
+      getItem: (id: string) => mcpServerMap.get(id),
       isPod: false,
     },
   };
@@ -266,9 +274,8 @@ export function useBatchDrag(): {
       | "mcpServerNote",
     id: string,
   ): boolean => {
-    return selectionStore.selectedElements.some(
-      (el) => el.type === type && el.id === id,
-    );
+    // selectionStore.isElementSelected 內部使用 Set，O(1) 查找
+    return selectionStore.isElementSelected(type, id);
   };
 
   return {

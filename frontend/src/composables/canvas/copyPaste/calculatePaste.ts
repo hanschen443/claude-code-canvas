@@ -163,6 +163,8 @@ export function transformPods(
       provider: pod.provider,
       providerConfig: pod.providerConfig,
       subAgentIds: pod.subAgentIds,
+      mcpServerIds: pod.mcpServerIds,
+      pluginIds: pod.pluginIds,
       repositoryId: pod.repositoryId,
       commandId: pod.commandId,
     };

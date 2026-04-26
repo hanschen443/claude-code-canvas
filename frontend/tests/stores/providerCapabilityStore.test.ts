@@ -31,10 +31,10 @@ const CLAUDE_TEST_CAPABILITIES = {
   runMode: true,
 };
 
-/** 測試用 Codex capabilities（chat + command 開啟） */
+/** 測試用 Codex capabilities（chat + command + plugin 開啟） */
 const CODEX_TEST_CAPABILITIES = {
   chat: true,
-  plugin: false,
+  plugin: true,
   subAgent: false,
   repository: false,
   command: true,

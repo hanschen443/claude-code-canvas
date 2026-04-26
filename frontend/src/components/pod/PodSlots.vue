@@ -205,7 +205,10 @@ const slotConfigs = computed((): SlotConfig[] => [
     :disabled-tooltip="DISABLED_TOOLTIP"
     @click="(ev) => emit('plugin-clicked', ev)"
   />
-  <template v-for="slot in slotConfigs" :key="slot.slotClass">
+  <template
+    v-for="slot in slotConfigs"
+    :key="slot.slotClass"
+  >
     <div :class="slot.areaClass">
       <PodSingleBindSlot
         v-if="slot.kind === 'single'"

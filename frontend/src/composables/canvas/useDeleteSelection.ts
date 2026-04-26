@@ -5,7 +5,10 @@ import { isEditingElement } from "@/utils/domHelpers";
 import { DEFAULT_TOAST_DURATION_MS } from "@/lib/constants";
 import { t } from "@/i18n";
 
-async function deleteSelectedElements(): Promise<void> {
+async function deleteSelectedElements(
+  canvasContext: ReturnType<typeof useCanvasContext>,
+  toast: ReturnType<typeof useToast>["toast"],
+): Promise<void> {
   const {
     podStore,
     selectionStore,
@@ -13,8 +16,7 @@ async function deleteSelectedElements(): Promise<void> {
     subAgentStore,
     commandStore,
     mcpServerStore,
-  } = useCanvasContext();
-  const { toast } = useToast();
+  } = canvasContext;
 
   const selectedElements = selectionStore.selectedElements;
   if (selectedElements.length === 0) return;
@@ -62,19 +64,21 @@ async function deleteSelectedElements(): Promise<void> {
   selectionStore.clearSelection();
 }
 
-function handleKeyDown(e: KeyboardEvent): void {
-  if (e.key !== "Delete") return;
-  if (isEditingElement()) return;
-
-  const { selectionStore } = useCanvasContext();
-  if (!selectionStore.hasSelection) return;
-
-  deleteSelectedElements();
-}
-
 export function useDeleteSelection(): {
   deleteSelectedElements: () => Promise<void>;
 } {
+  const canvasContext = useCanvasContext();
+  const { toast } = useToast();
+
+  function handleKeyDown(e: KeyboardEvent): void {
+    if (e.key !== "Delete") return;
+    if (isEditingElement()) return;
+
+    if (!canvasContext.selectionStore.hasSelection) return;
+
+    deleteSelectedElements(canvasContext, toast);
+  }
+
   onMounted(() => {
     document.addEventListener("keydown", handleKeyDown);
   });
@@ -84,6 +88,6 @@ export function useDeleteSelection(): {
   });
 
   return {
-    deleteSelectedElements,
+    deleteSelectedElements: () => deleteSelectedElements(canvasContext, toast),
   };
 }

@@ -7,6 +7,7 @@ import type {
   Connection,
   PasteError,
 } from "../../types";
+import type { BaseNote } from "../../types/baseNote.js";
 import type { CanvasPastePayload, PastePodItem } from "../../schemas";
 import { podStore } from "../../services/podStore.js";
 import { getPodDisplayName } from "../../utils/handlerHelpers.js";
@@ -35,8 +36,8 @@ import {
 
 // ─── 泛型型別宣告 ─────────────────────────────────────────────────────────────
 
-type NoteStoreType<T> = {
-  create: (canvasId: string, params: T) => T;
+type NoteStoreType<T extends { id: string }> = {
+  create: (canvasId: string, params: Omit<T, "id">) => T;
 };
 
 type NoteCreateParams<
@@ -134,14 +135,9 @@ async function createSinglePod(
   podItem: PastePodItem,
   resolvedName: string,
 ): Promise<{ pod: Pod; originalId: string }> {
-  let finalRepositoryId = podItem.repositoryId ?? null;
-
-  if (finalRepositoryId) {
-    const exists = await repositoryService.exists(finalRepositoryId);
-    if (!exists) {
-      throw createI18nError("errors.repoNotExists");
-    }
-  }
+  // 呼叫端（createPastedPods）已透過 prefetchRepositoryExistence 完成存在性驗證，
+  // 此處直接使用，不重複查詢 DB
+  const finalRepositoryId = podItem.repositoryId ?? null;
 
   const { pod } = podStore.create(canvasId, {
     name: resolvedName,
@@ -151,6 +147,7 @@ async function createSinglePod(
     provider: podItem.provider,
     providerConfig: podItem.providerConfig,
     subAgentIds: podItem.subAgentIds ?? [],
+    mcpServerIds: podItem.mcpServerIds ?? [],
     pluginIds: podItem.pluginIds ?? [],
     repositoryId: finalRepositoryId,
     commandId: podItem.commandId ?? null,
@@ -175,6 +172,43 @@ async function createSinglePod(
   return { pod, originalId: podItem.originalId };
 }
 
+/**
+ * 批次預查 repositoryId 是否存在（去重，避免相同 repositoryId 重複查詢 DB）。
+ * 回傳 Map<repositoryId, exists>。
+ */
+async function prefetchRepositoryExistence(
+  pods: PastePodItem[],
+): Promise<Map<string, boolean>> {
+  const uniqueRepoIds = [
+    ...new Set(pods.map((p) => p.repositoryId).filter(Boolean) as string[]),
+  ];
+  const repoExistsMap = new Map<string, boolean>();
+  await Promise.all(
+    uniqueRepoIds.map(async (repoId) => {
+      const exists = await repositoryService.exists(repoId);
+      repoExistsMap.set(repoId, exists);
+    }),
+  );
+  return repoExistsMap;
+}
+
+/**
+ * 同步決定所有 Pod 的唯一名稱，避免並發時兩個 Pod 取到相同名稱。
+ * 每決定一個名稱後立即加入 existingNames，確保後續 Pod 不重複。
+ */
+function resolveAllPodNames(
+  pods: PastePodItem[],
+  existingNames: Set<string>,
+): string[] {
+  const resolvedNames: string[] = [];
+  for (const podItem of pods) {
+    const uniqueName = resolveUniquePodName(existingNames, podItem.name);
+    existingNames.add(uniqueName);
+    resolvedNames.push(uniqueName);
+  }
+  return resolvedNames;
+}
+
 export async function createPastedPods(
   canvasId: string,
   pods: PastePodItem[],
@@ -186,25 +220,8 @@ export async function createPastedPods(
     podStore.list(canvasId).map((p) => p.name),
   );
 
-  // 去重預查 repositoryId：相同 repositoryId 只查一次 DB
-  const uniqueRepoIds = [
-    ...new Set(pods.map((p) => p.repositoryId).filter(Boolean) as string[]),
-  ];
-  const repoExistsMap = new Map<string, boolean>();
-  await Promise.all(
-    uniqueRepoIds.map(async (repoId) => {
-      const exists = await repositoryService.exists(repoId);
-      repoExistsMap.set(repoId, exists);
-    }),
-  );
-
-  // 同步決定所有 Pod 的唯一名稱（避免並發時兩個 Pod 取到同名）
-  const resolvedPodNames: string[] = [];
-  for (const podItem of pods) {
-    const uniqueName = resolveUniquePodName(existingNames, podItem.name);
-    existingNames.add(uniqueName);
-    resolvedPodNames.push(uniqueName);
-  }
+  const repoExistsMap = await prefetchRepositoryExistence(pods);
+  const resolvedPodNames = resolveAllPodNames(pods, existingNames);
 
   // 並發建立所有 Pod I/O
   const results = await Promise.all(
@@ -266,7 +283,7 @@ export async function createPastedPods(
  * 根據 idKey、item、boundToPodId 建立 Note 的 create 參數物件。
  * 抽為獨立函式，讓 makeNoteConfig 只負責組 config 物件。
  */
-function buildNoteParams<K extends string, TNote extends { id: string }>(
+function buildNoteParams<K extends string>(
   idKey: K,
   item: Record<K, string> & {
     name: string;
@@ -275,15 +292,18 @@ function buildNoteParams<K extends string, TNote extends { id: string }>(
     originalPosition: { x: number; y: number } | null;
   },
   boundToPodId: string | null,
-): Omit<TNote, "id"> {
-  return {
+): Omit<BaseNote, "id"> & Record<K, string> {
+  // 物件字面量含動態 key（[idKey]），TypeScript 無法自動驗證其滿足 Record<K, string>，
+  // 因此使用單層 cast；所有欄位均已在 BaseNote 型別約束內明確列舉
+  const params: Record<string, unknown> = {
     [idKey]: item[idKey],
     name: item.name,
     x: item.x,
     y: item.y,
     boundToPodId,
     originalPosition: item.originalPosition,
-  } as unknown as Omit<TNote, "id">;
+  };
+  return params as Omit<BaseNote, "id"> & Record<K, string>;
 }
 
 type NoteItemBase = {
@@ -340,7 +360,11 @@ function makeNoteConfig<
     type,
     getId: (item) => item[idKey],
     createParams: (item, boundToPodId) =>
-      buildNoteParams<K, TNote>(idKey, item, boundToPodId),
+      buildNoteParams<K>(
+        idKey,
+        item,
+        boundToPodId,
+      ) as unknown as NoteCreateParams<TNote>,
   };
 }
 
@@ -409,7 +433,7 @@ function createPastedNotes<
       noteItem.boundToOriginalPodId,
       podIdMapping,
     );
-    const params = createParams(noteItem, boundToPodId) as TNote;
+    const params = createParams(noteItem, boundToPodId);
 
     const noteResult = safeExecute(() => noteStore.create(canvasId, params));
     if (!noteResult.success) {

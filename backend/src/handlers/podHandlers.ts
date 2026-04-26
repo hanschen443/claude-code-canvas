@@ -33,6 +33,7 @@ import {
   handleResultError,
 } from "../utils/handlerHelpers.js";
 import { createI18nError } from "../utils/i18nError.js";
+import { scanInstalledPlugins } from "../services/pluginScanner.js";
 
 export const handlePodCreate = withCanvasId<PodCreatePayload>(
   WebSocketResponseEvents.POD_CREATED,
@@ -195,6 +196,55 @@ export const handlePodMove = withCanvasId<PodMovePayload>(
   },
 );
 
+/**
+ * 封裝「預檢 + UNIQUE 例外」兩道名稱衝突防線。
+ * 回傳 true 表示衝突已透過 emitError 處理，caller 應直接 return。
+ */
+function checkPodNameConflict(
+  connectionId: string,
+  canvasId: string,
+  podId: string,
+  name: string,
+  requestId: string,
+  tryUpdate: () => ReturnType<typeof podStore.update>,
+):
+  | { conflicted: true }
+  | { conflicted: false; result: ReturnType<typeof podStore.update> } {
+  // 預檢：讓常見重複命名情境快速回錯，避免不必要的 DB write fail。
+  // 注意：預檢與 DB 寫入之間存在 TOCTOU 窗口，並發場景下仍可能發生衝突。
+  // 最終判定依賴下方 SQLite UNIQUE constraint catch，預檢僅為效能優化。
+  if (podStore.hasName(canvasId, name)) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_RENAMED,
+      createI18nError("errors.podNameDuplicate"),
+      requestId,
+      podId,
+      "DUPLICATE_NAME",
+    );
+    return { conflicted: true };
+  }
+
+  try {
+    const result = tryUpdate();
+    return { conflicted: false, result };
+  } catch (e) {
+    // SQLite UNIQUE constraint 違反：並發請求造成名稱衝突（TOCTOU 防護）
+    if (e instanceof Error && e.message.includes("UNIQUE constraint failed")) {
+      emitError(
+        connectionId,
+        WebSocketResponseEvents.POD_RENAMED,
+        createI18nError("errors.podNameDuplicate"),
+        requestId,
+        podId,
+        "POD_NAME_DUPLICATE",
+      );
+      return { conflicted: true };
+    }
+    throw e;
+  }
+}
+
 export const handlePodRename = withCanvasId<PodRenamePayload>(
   WebSocketResponseEvents.POD_RENAMED,
   async (
@@ -206,19 +256,6 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
     const { podId, name } = payload;
     const trimmedName = name.trim();
 
-    // 預檢：讓常見重複命名情境快速回錯（非最終保證，SQLite 層才是最終防線）
-    if (podStore.hasName(canvasId, trimmedName)) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_RENAMED,
-        createI18nError("errors.podNameDuplicate"),
-        requestId,
-        podId,
-        "DUPLICATE_NAME",
-      );
-      return;
-    }
-
     const existingPod = validatePod(
       connectionId,
       podId,
@@ -229,27 +266,17 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
 
     const oldName = existingPod.name;
 
-    let result: ReturnType<typeof podStore.update>;
-    try {
-      result = podStore.update(canvasId, podId, { name: trimmedName });
-    } catch (e) {
-      // SQLite UNIQUE constraint 違反：並發請求造成名稱衝突（TOCTOU 防護）
-      if (
-        e instanceof Error &&
-        e.message.includes("UNIQUE constraint failed")
-      ) {
-        emitError(
-          connectionId,
-          WebSocketResponseEvents.POD_RENAMED,
-          createI18nError("errors.podNameDuplicate"),
-          requestId,
-          podId,
-          "POD_NAME_DUPLICATE",
-        );
-        return;
-      }
-      throw e;
-    }
+    const checkResult = checkPodNameConflict(
+      connectionId,
+      canvasId,
+      podId,
+      trimmedName,
+      requestId,
+      () => podStore.update(canvasId, podId, { name: trimmedName }),
+    );
+    if (checkResult.conflicted) return;
+
+    const { result } = checkResult;
 
     if (!result) {
       emitError(
@@ -319,6 +346,34 @@ export const handlePodSetModel = withCanvasId<PodSetModelPayload>(
   },
 );
 
+/**
+ * 決定 lastTriggeredAt 的值。
+ * - 首次啟用或已啟用且排程設定有變更：高頻類型設為 new Date()，其他設為 null。
+ * - 其他情況（停用、未變更）：保留既有值。
+ */
+function resolveLastTriggeredAt(
+  isEnabling: boolean,
+  hasScheduleChanged: boolean,
+  schedule: NonNullable<PodSetSchedulePayload["schedule"]>,
+  existingSchedule: Pod["schedule"],
+): Date | null {
+  // every-day 和 every-week 啟用時設為 null，讓排程在當天指定時間正常觸發
+  // every-second、every-x-minute、every-x-hour 設為 new Date()，防止建立後立即觸發
+  const immediateFrequencies: ScheduleConfig["frequency"][] = [
+    "every-second",
+    "every-x-minute",
+    "every-x-hour",
+  ];
+
+  if (isEnabling || (schedule.enabled && hasScheduleChanged)) {
+    return immediateFrequencies.includes(schedule.frequency)
+      ? new Date()
+      : null;
+  }
+
+  return existingSchedule?.lastTriggeredAt ?? null;
+}
+
 export function buildScheduleUpdates(
   schedule: NonNullable<PodSetSchedulePayload["schedule"]> | null,
   existingSchedule: Pod["schedule"],
@@ -329,14 +384,6 @@ export function buildScheduleUpdates(
 
   const isEnabling =
     schedule.enabled && (!existingSchedule || !existingSchedule.enabled);
-
-  // every-day 和 every-week 啟用時設為 null，讓排程在當天指定時間正常觸發
-  // every-second、every-x-minute、every-x-hour 設為 new Date()，防止建立後立即觸發
-  const immediateFrequencies: ScheduleConfig["frequency"][] = [
-    "every-second",
-    "every-x-minute",
-    "every-x-hour",
-  ];
 
   const hasScheduleChanged = existingSchedule
     ? schedule.frequency !== existingSchedule.frequency ||
@@ -349,19 +396,12 @@ export function buildScheduleUpdates(
         [...existingSchedule.weekdays].sort().join()
     : false;
 
-  let lastTriggeredAt: Date | null;
-
-  if (isEnabling) {
-    lastTriggeredAt = immediateFrequencies.includes(schedule.frequency)
-      ? new Date()
-      : null;
-  } else if (schedule.enabled && hasScheduleChanged) {
-    lastTriggeredAt = immediateFrequencies.includes(schedule.frequency)
-      ? new Date()
-      : null;
-  } else {
-    lastTriggeredAt = existingSchedule?.lastTriggeredAt ?? null;
-  }
+  const lastTriggeredAt = resolveLastTriggeredAt(
+    isEnabling,
+    hasScheduleChanged,
+    schedule,
+    existingSchedule,
+  );
 
   return {
     schedule: {
@@ -457,7 +497,22 @@ export const handlePodSetPlugins = withCanvasId<PodSetPluginsPayload>(
       return;
     }
 
-    const result = podStore.update(canvasId, podId, { pluginIds });
+    // 過濾未安裝的 plugin ID：只保留實際存在的 plugin，無效 ID 以 warn log 記錄但不拒絕整個請求
+    const installedPlugins = scanInstalledPlugins(existingPod.provider);
+    const validPluginIdSet = new Set(installedPlugins.map((p) => p.id));
+    const invalidIds = pluginIds.filter((id) => !validPluginIdSet.has(id));
+    if (invalidIds.length > 0) {
+      logger.warn(
+        "Pod",
+        "Warn",
+        `handlePodSetPlugins：略過不存在的 plugin ID（已遮罩，共 ${invalidIds.length} 筆）`,
+      );
+    }
+    const validPluginIds = pluginIds.filter((id) => validPluginIdSet.has(id));
+
+    const result = podStore.update(canvasId, podId, {
+      pluginIds: validPluginIds,
+    });
     if (!result) {
       emitError(
         connectionId,

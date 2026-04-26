@@ -47,7 +47,7 @@ describe("CodexProvider.buildOptions()", () => {
     const options = await provider.buildOptions(pod);
 
     expect(options).toEqual(provider.metadata.defaultOptions);
-    expect(options.model).toBe("gpt-5.4");
+    expect(options.model).toBe(provider.metadata.defaultOptions.model);
     expect(options.resumeMode).toBe("cli");
   });
 
