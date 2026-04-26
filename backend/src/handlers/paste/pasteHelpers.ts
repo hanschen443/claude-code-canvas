@@ -80,13 +80,41 @@ function recordError(
 }
 
 async function copyClaudeDir(srcCwd: string, destCwd: string): Promise<void> {
+  // 先解析 symlink 真實路徑，防止符號連結繞過 startsWith 路徑驗證
+  // 若路徑不存在（realpath 失敗），維持原始路徑繼續做 isPathWithinDirectory 檢查
+  let realSrcCwd = srcCwd;
+  let realDestCwd = destCwd;
+  let realCanvasRoot = config.canvasRoot;
+  let realRepositoriesRoot = config.repositoriesRoot;
+
+  try {
+    realSrcCwd = await fs.realpath(srcCwd);
+  } catch {
+    // 路徑不存在時維持原值
+  }
+  try {
+    realDestCwd = await fs.realpath(destCwd);
+  } catch {
+    // 路徑不存在時維持原值
+  }
+  try {
+    realCanvasRoot = await fs.realpath(config.canvasRoot);
+  } catch {
+    // 路徑不存在時維持原值
+  }
+  try {
+    realRepositoriesRoot = await fs.realpath(config.repositoriesRoot);
+  } catch {
+    // 路徑不存在時維持原值
+  }
+
   // 驗證來源與目標路徑必須在 canvasRoot 或 repositoriesRoot 範圍內，防止路徑穿越
   const isValidSrc =
-    isPathWithinDirectory(srcCwd, config.canvasRoot) ||
-    isPathWithinDirectory(srcCwd, config.repositoriesRoot);
+    isPathWithinDirectory(realSrcCwd, realCanvasRoot) ||
+    isPathWithinDirectory(realSrcCwd, realRepositoriesRoot);
   const isValidDest =
-    isPathWithinDirectory(destCwd, config.canvasRoot) ||
-    isPathWithinDirectory(destCwd, config.repositoriesRoot);
+    isPathWithinDirectory(realDestCwd, realCanvasRoot) ||
+    isPathWithinDirectory(realDestCwd, realRepositoriesRoot);
 
   if (!isValidSrc || !isValidDest) {
     logger.error(
@@ -398,7 +426,7 @@ type NoteItemForType<K extends NotePasteType> = NoteItemMap[K];
 type NoteForType<K extends NotePasteType> = NoteMap[K];
 
 function createPastedNotes<
-  TNoteItem extends { boundToOriginalPodId: string | null },
+  TNoteItem extends NoteItemBase,
   TNote extends {
     id: string;
     name: string;
@@ -410,14 +438,8 @@ function createPastedNotes<
 >(
   canvasId: string,
   noteItems: TNoteItem[],
-  noteStore: NoteStoreType<TNote>,
   podIdMapping: Record<string, string>,
-  noteType: PasteError["type"],
-  getResourceId: (item: TNoteItem) => string,
-  createParams: (
-    item: TNoteItem,
-    boundToPodId: string | null,
-  ) => NoteCreateParams<TNote>,
+  config: NotePasteConfig<TNoteItem, TNote>,
 ): { notes: TNote[]; errors: PasteError[] } {
   const createdNotes: TNote[] = [];
   const errors: PasteError[] = [];
@@ -427,24 +449,24 @@ function createPastedNotes<
       noteItem.boundToOriginalPodId,
       podIdMapping,
     );
-    const params = createParams(noteItem, boundToPodId);
+    const params = config.createParams(noteItem, boundToPodId);
 
-    const noteResult = safeExecute(() => noteStore.create(canvasId, params));
+    const noteResult = safeExecute(() => config.store.create(canvasId, params));
     if (!noteResult.success) {
-      const resourceId = getResourceId(noteItem);
+      const resourceId = config.getId(noteItem);
       recordError(
         errors,
-        noteType,
+        config.type,
         resourceId,
         noteResult.error,
-        `建立${noteType}失敗`,
+        `建立${config.type}失敗`,
       );
       continue;
     }
 
     const note = noteResult.data;
     createdNotes.push(note);
-    logger.log("Paste", "Create", `已建立${noteType}「${note.name}」`);
+    logger.log("Paste", "Create", `已建立${config.type}「${note.name}」`);
   }
 
   return { notes: createdNotes, errors };
@@ -502,13 +524,5 @@ export function createPastedNotesByType<K extends NotePasteType>(
     NoteItemForType<K>,
     NoteForType<K>
   >;
-  return createPastedNotes(
-    canvasId,
-    noteItems,
-    config.store,
-    podIdMapping,
-    config.type,
-    config.getId,
-    config.createParams,
-  );
+  return createPastedNotes(canvasId, noteItems, podIdMapping, config);
 }

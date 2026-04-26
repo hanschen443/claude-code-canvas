@@ -53,6 +53,9 @@ export interface BoundNotesByType {
   mcpServerNotes: CopiedMcpServerNote[];
 }
 
+/**
+ * @internal 僅供模組內部與測試使用，不應從 index.ts re-export 給外部消費。
+ */
 export function collectBoundNotesFromStore<
   T,
   TNote extends NoteWithIndexSignature,
@@ -122,6 +125,9 @@ const mapToRepositoryNote =
 const mapToCommandNote =
   createOriginalBoundNoteMapper<CopiedCommandNote>("commandId");
 
+/**
+ * @internal 僅供模組內部與測試使用，不應從 index.ts re-export 給外部消費。
+ */
 export function collectBoundNotes(
   podId: string,
   stores: NoteStores,
@@ -255,33 +261,29 @@ type CollectedNoteArrays = {
   mcpServerNote: CopiedMcpServerNote[];
 };
 
-export function collectSelectedNotes(
-  selectedElements: SelectableElement[],
-  selectedPodIds: Set<string>,
-  noteStores: NoteStores,
-): {
-  repositoryNotes: CopiedRepositoryNote[];
-  commandNotes: CopiedCommandNote[];
-  mcpServerNotes: CopiedMcpServerNote[];
-} {
+/**
+ * 收集所有選取 Pod 的 bound notes（依 podId groupBy Map O(1) 查找）。
+ * 分離自 collectSelectedNotes，單一職責：只處理 bound note 收集。
+ */
+function collectBoundNotesByPodIds(
+  podIds: Set<string>,
+  stores: NoteStores,
+): CollectedNoteArrays {
+  const repositoryBoundMap = buildBoundNotesByPodMap(
+    stores.repositoryStore.notes,
+  );
+  const commandBoundMap = buildBoundNotesByPodMap(stores.commandStore.notes);
+  const mcpServerBoundMap = buildBoundNotesByPodMap(
+    stores.mcpServerStore.notes,
+  );
+
   const arrays: CollectedNoteArrays = {
     repositoryNote: [],
     commandNote: [],
     mcpServerNote: [],
   };
 
-  // 各 store 各建一份 groupBy Map（O(N)），供後續 bound note 查找使用（#51）
-  const repositoryBoundMap = buildBoundNotesByPodMap(
-    noteStores.repositoryStore.notes,
-  );
-  const commandBoundMap = buildBoundNotesByPodMap(
-    noteStores.commandStore.notes,
-  );
-  const mcpServerBoundMap = buildBoundNotesByPodMap(
-    noteStores.mcpServerStore.notes,
-  );
-
-  for (const podId of selectedPodIds) {
+  for (const podId of podIds) {
     arrays.repositoryNote.push(
       ...collectBoundNotesFromMap(
         podId,
@@ -297,13 +299,25 @@ export function collectSelectedNotes(
     );
   }
 
-  // 各 store 各建一份 id→note Map（O(N)），供 unbound note 查找使用（#53）
+  return arrays;
+}
+
+/**
+ * 從 selectedElements 中收集 unbound notes（依 id→note Map O(1) 查找）。
+ * 分離自 collectSelectedNotes，單一職責：只處理 unbound note 收集。
+ * 結果合併進傳入的 arrays（in-place append）。
+ */
+function collectUnboundNotesByElements(
+  elements: SelectableElement[],
+  stores: NoteStores,
+  arrays: CollectedNoteArrays,
+): void {
   const noteCollectorMap = Object.fromEntries(
     NOTE_STORE_CONFIGS.map((config) => [
       config.key,
       {
         collector: createUnboundNoteCollectorFromMap<AnyNote>(
-          buildNoteByIdMap(config.getStore(noteStores).notes),
+          buildNoteByIdMap(config.getStore(stores).notes),
           config.mapFn,
         ),
         array: arrays[config.key as keyof CollectedNoteArrays] as AnyNote[],
@@ -314,9 +328,23 @@ export function collectSelectedNotes(
     { collector: (id: string) => AnyNote | null; array: AnyNote[] }
   >;
 
-  for (const element of selectedElements) {
+  for (const element of elements) {
     collectNoteFromElement(element, noteCollectorMap);
   }
+}
+
+export function collectSelectedNotes(
+  selectedElements: SelectableElement[],
+  selectedPodIds: Set<string>,
+  noteStores: NoteStores,
+): {
+  repositoryNotes: CopiedRepositoryNote[];
+  commandNotes: CopiedCommandNote[];
+  mcpServerNotes: CopiedMcpServerNote[];
+} {
+  // 高階組裝：bound notes（Pod 相關） + unbound notes（element 相關）
+  const arrays = collectBoundNotesByPodIds(selectedPodIds, noteStores);
+  collectUnboundNotesByElements(selectedElements, noteStores, arrays);
 
   return {
     repositoryNotes: arrays.repositoryNote,

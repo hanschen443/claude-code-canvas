@@ -261,10 +261,6 @@ describe("useDeleteSelection", () => {
         { type: "repositoryNote", id: "note-1" },
       ] as SelectableElement[];
 
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
       vi.spyOn(podStore, "deletePodWithBackend")
         .mockResolvedValueOnce() // pod-1 成功
         .mockRejectedValueOnce(new Error("Pod 刪除失敗")); // pod-2 失敗
@@ -279,13 +275,7 @@ describe("useDeleteSelection", () => {
         duration: 3000,
       });
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "刪除元素失敗:",
-        expect.any(Error),
-      );
       expect(selectionStore.clearSelection).toHaveBeenCalled();
-
-      consoleErrorSpy.mockRestore();
     });
 
     it("多個刪除失敗時 Toast 顯示正確失敗數量", async () => {

@@ -421,9 +421,16 @@ describe("CanvasPod Provider Pod 漸層 class 綁定", () => {
     mockIsBatchDragging.value = false;
   });
 
-  it('當 pod.provider === "claude" 時，.pod-doodle 元素套用 pod-provider-claude class，不含 pod-provider-codex', () => {
+  it('當 pod.provider === "claude" 時，.pod-doodle 元素套用 pod-provider-claude class，不含 pod-provider-codex', async () => {
     const pod = createMockPod({ provider: "claude" });
     const wrapper = mountCanvasPod(pod);
+    // allowedProviders 由 providerCapabilityStore.capabilitiesByProvider keys 動態建構
+    // 設定後需 await nextTick 讓 computed 重算並觸發 DOM 更新
+    const store = useProviderCapabilityStore();
+    store.capabilitiesByProvider = {
+      claude: { chat: true },
+    } as unknown as typeof store.capabilitiesByProvider;
+    await wrapper.vm.$nextTick();
 
     const podDoodle = wrapper.find(".pod-doodle");
     expect(podDoodle.exists()).toBe(true);
@@ -433,9 +440,17 @@ describe("CanvasPod Provider Pod 漸層 class 綁定", () => {
     wrapper.unmount();
   });
 
-  it('當 pod.provider === "codex" 時，.pod-doodle 元素套用 pod-provider-codex class，不含 pod-provider-claude', () => {
+  it('當 pod.provider === "codex" 時，.pod-doodle 元素套用 pod-provider-codex class，不含 pod-provider-claude', async () => {
     const pod = createMockPod({ provider: "codex" });
     const wrapper = mountCanvasPod(pod);
+    // allowedProviders 由 providerCapabilityStore.capabilitiesByProvider keys 動態建構
+    // 設定後需 await nextTick 讓 computed 重算並觸發 DOM 更新
+    const store = useProviderCapabilityStore();
+    store.capabilitiesByProvider = {
+      claude: { chat: true },
+      codex: { chat: true },
+    } as unknown as typeof store.capabilitiesByProvider;
+    await wrapper.vm.$nextTick();
 
     const podDoodle = wrapper.find(".pod-doodle");
     expect(podDoodle.exists()).toBe(true);
@@ -445,9 +460,14 @@ describe("CanvasPod Provider Pod 漸層 class 綁定", () => {
     wrapper.unmount();
   });
 
-  it("Mini screen stub 區塊不含 pod-provider-* class", () => {
+  it("Mini screen stub 區塊不含 pod-provider-* class", async () => {
     const pod = createMockPod({ provider: "claude" });
     const wrapper = mountCanvasPod(pod);
+    const store = useProviderCapabilityStore();
+    store.capabilitiesByProvider = {
+      claude: { chat: true },
+    } as unknown as typeof store.capabilitiesByProvider;
+    await wrapper.vm.$nextTick();
 
     const miniScreen = wrapper.find(".pod-mini-screen-stub");
     expect(miniScreen.exists()).toBe(true);

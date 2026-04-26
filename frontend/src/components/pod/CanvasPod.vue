@@ -104,13 +104,16 @@ const podStatusClass = computed(() => {
   return status && ALLOWED_STATUSES.has(status) ? `pod-status-${status}` : "";
 });
 
-// 允許的 provider 集合（與 PodProvider type 保持同步）；
+// 依 providerCapabilityStore 的 key 集合動態建構允許的 provider Set（O(1) 查找）；
 // 未知 provider 不注入任意 class，回傳空字串。
-const ALLOWED_PROVIDERS = new Set<string>(["claude", "codex"]);
+// computed 確保 store 載入後自動更新。
+const allowedProviders = computed(
+  () => new Set(Object.keys(providerCapabilityStore.capabilitiesByProvider)),
+);
 
-// 依 provider 動態套用漸層 class，方便未來擴增第三個 provider
+// 依 provider 動態套用漸層 class，方便未來擴增更多 provider
 const podProviderClass = computed(() =>
-  ALLOWED_PROVIDERS.has(props.pod.provider)
+  allowedProviders.value.has(props.pod.provider)
     ? `pod-provider-${props.pod.provider}`
     : "",
 );
@@ -268,8 +271,8 @@ const canActivateEdit = (target: Element | null): boolean => {
   // 未知 provider：封鎖對話入口，顯示提示 toast
   if (isUnknownProvider.value) {
     toast({
-      title: "Provider",
-      description: "此 Provider 已下線或尚未支援，無法開啟對話",
+      title: t("pod.provider.title"),
+      description: t("pod.provider.unknownDescription"),
     });
     return false;
   }

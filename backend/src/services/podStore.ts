@@ -76,31 +76,15 @@ function serializeSchedule(schedule?: ScheduleConfig): string | null {
 
 class PodStore {
   /**
-   * 以 "tableName:n" 為 key 快取 batchLoadRelations 用的 PreparedStatement（LRU 上限 32）。
-   * key 含 tableName 避免不同 relation 類別互相命中；n（長度）決定 IN 佔位符數量，同長度可共用同一 prepared statement。
+   * 統一 PreparedStatement LRU 快取，取代原本分散的四個 cache map。
+   * key 格式：「語意前綴:參數」，例如：
+   *   - "relations:pod_mcp_server_ids:5"（batchLoadRelations）
+   *   - "bindings:5"（batchLoadBindings）
+   *   - "joinFetch:5"（findByJoinTableId）
+   *   - "podsByIds:5"（fetchPodsByIds）
+   * n（IN 佔位符數量）相同時可共用同一 PreparedStatement。
    */
-  private readonly relationsStmtCache = new Map<
-    string,
-    ReturnType<Database["prepare"]>
-  >();
-
-  /**
-   * 以 "bindings:n" 為 key 快取 batchLoadBindings 用的 PreparedStatement（LRU 上限 32）。
-   * key 含語意前綴 "bindings:" 與 n（長度）決定 IN 佔位符數量，同長度可共用同一 prepared statement。
-   */
-  private readonly bindingsStmtCache = new Map<
-    string,
-    ReturnType<Database["prepare"]>
-  >();
-
-  /** 以 "joinFetch:n" 為 key 快取 findByJoinTableId 用的 PreparedStatement（LRU 上限 32） */
-  private readonly joinFetchStmtCache = new Map<
-    string,
-    ReturnType<Database["prepare"]>
-  >();
-
-  /** 以 n（長度）為 key 快取 fetchPodsByIds 用的 PreparedStatement（LRU 上限 32） */
-  private readonly podsByIdsStmtCache = new Map<
+  private readonly stmtCache = new Map<
     string,
     ReturnType<Database["prepare"]>
   >();
@@ -193,7 +177,7 @@ class PodStore {
     }
     const cacheKey = `relations:${tableName}:${n}`;
     return this.getCachedStmt(
-      this.relationsStmtCache,
+      this.stmtCache,
       cacheKey,
       () =>
         `SELECT pod_id, ${valueColumn} FROM ${tableName} WHERE pod_id IN (${placeholders})`,
@@ -276,7 +260,7 @@ class PodStore {
     const cacheKey = `bindings:${n}`;
     const placeholders = podIds.map(() => "?").join(", ");
     const stmt = this.getCachedStmt(
-      this.bindingsStmtCache,
+      this.stmtCache,
       cacheKey,
       () =>
         `SELECT id, pod_id, canvas_id, provider, app_id, resource_id, extra_json FROM integration_bindings WHERE pod_id IN (${placeholders})`,
@@ -358,6 +342,11 @@ class PodStore {
       if (!availableModelValues.has(sanitized.model as string)) {
         throw new Error(`Provider ${provider} 不支援此 model`);
       }
+    } else {
+      // 補填預設 model：寫入路徑若未指定 model，自動補入 provider 預設值
+      const defaultOptions = getProvider(provider).metadata
+        .defaultOptions as Record<string, unknown>;
+      sanitized.model = defaultOptions.model;
     }
 
     return sanitized;
@@ -424,6 +413,59 @@ class PodStore {
   }
 
   /**
+   * 反序列化 DB 儲存的 schedule JSON 字串為 ScheduleConfig，
+   * 轉換 lastTriggeredAt 字串為 Date 物件。
+   */
+  private parseSchedule(scheduleJson: string): ScheduleConfig | undefined {
+    const persisted = safeJsonParse<Record<string, unknown>>(scheduleJson);
+    if (!persisted) return undefined;
+    return {
+      ...persisted,
+      lastTriggeredAt: persisted.lastTriggeredAt
+        ? new Date(persisted.lastTriggeredAt as string)
+        : null,
+    } as ScheduleConfig;
+  }
+
+  /**
+   * 從單一 PodRow 與預載的關聯資料建構 Pod 物件。
+   * relations / bindingsMap 由 rowsToPods 批次查詢後傳入，確保無 N+1。
+   */
+  private buildPodFromRow(
+    row: PodRow,
+    relations: {
+      mcpServerIds: Map<string, string[]>;
+      pluginIds: Map<string, string[]>;
+    },
+    bindingsMap: Map<string, IntegrationBinding[]>,
+  ): Pod {
+    const provider = this.resolveProvider(row);
+    const providerConfig = this.resolveProviderConfig(row, provider);
+    const pod: Pod = {
+      id: row.id,
+      name: row.name,
+      status: row.status as PodStatus,
+      workspacePath: row.workspace_path,
+      x: row.x,
+      y: row.y,
+      rotation: row.rotation,
+      sessionId: row.session_id,
+      mcpServerIds: relations.mcpServerIds.get(row.id) ?? [],
+      pluginIds: relations.pluginIds.get(row.id) ?? [],
+      provider,
+      providerConfig,
+      repositoryId: row.repository_id,
+      commandId: row.command_id,
+      multiInstance: row.multi_instance === 1,
+      integrationBindings: bindingsMap.get(row.id) ?? [],
+    };
+    if (row.schedule_json) {
+      pod.schedule = this.parseSchedule(row.schedule_json);
+    }
+    return pod;
+  }
+
+  /**
    * 將多筆 PodRow 組合為 Pod 陣列，使用批次查詢取代逐筆子查詢。
    * 僅用於列表查詢（如 list()），避免 N+1 問題。
    */
@@ -434,45 +476,7 @@ class PodStore {
     const relations = this.batchLoadRelations(podIds);
     const bindingsMap = this.batchLoadBindings(podIds);
 
-    return rows.map((row) => {
-      const provider = this.resolveProvider(row);
-      const providerConfig = this.resolveProviderConfig(row, provider);
-
-      const pod: Pod = {
-        id: row.id,
-        name: row.name,
-        status: row.status as PodStatus,
-        workspacePath: row.workspace_path,
-        x: row.x,
-        y: row.y,
-        rotation: row.rotation,
-        sessionId: row.session_id,
-        mcpServerIds: relations.mcpServerIds.get(row.id) ?? [],
-        pluginIds: relations.pluginIds.get(row.id) ?? [],
-        provider,
-        providerConfig,
-        repositoryId: row.repository_id,
-        commandId: row.command_id,
-        multiInstance: row.multi_instance === 1,
-        integrationBindings: bindingsMap.get(row.id) ?? [],
-      };
-
-      if (row.schedule_json) {
-        const persisted = safeJsonParse<Record<string, unknown>>(
-          row.schedule_json,
-        );
-        if (persisted) {
-          pod.schedule = {
-            ...persisted,
-            lastTriggeredAt: persisted.lastTriggeredAt
-              ? new Date(persisted.lastTriggeredAt as string)
-              : null,
-          } as ScheduleConfig;
-        }
-      }
-
-      return pod;
-    });
+    return rows.map((row) => this.buildPodFromRow(row, relations, bindingsMap));
   }
 
   /**
@@ -531,31 +535,46 @@ class PodStore {
     };
   }
 
-  create(canvasId: string, data: CreatePodRequest): { pod: Pod } {
-    const id = randomUUID();
-    const canvasDir = canvasStore.getCanvasDir(canvasId);
+  /**
+   * 將 Pod 主表 insert 操作提取為私有方法，供 create() 的 transaction 內呼叫。
+   */
+  private insertPodRow(id: string, canvasId: string, pod: Pod): void {
+    this.stmts.pod.insert.run({
+      $id: id,
+      $canvasId: canvasId,
+      $name: pod.name,
+      $status: pod.status,
+      $x: pod.x,
+      $y: pod.y,
+      $rotation: pod.rotation,
+      $workspacePath: pod.workspacePath,
+      $sessionId: pod.sessionId,
+      $repositoryId: pod.repositoryId,
+      $commandId: pod.commandId,
+      $multiInstance: 0,
+      $scheduleJson: null,
+      $provider: pod.provider,
+      $providerConfigJson: JSON.stringify(pod.providerConfig),
+    });
+  }
 
-    if (!canvasDir) {
+  create(canvasId: string, data: CreatePodRequest): { pod: Pod } {
+    // 步驟一：守門驗證
+    const id = randomUUID();
+    if (!canvasStore.getCanvasDir(canvasId)) {
       throw new Error(`找不到 Canvas：${canvasId}`);
     }
 
+    // 步驟二：準備 provider / providerConfig（transaction 外先驗證，不合法直接 throw）
     const provider: ProviderName = data.provider ?? "claude";
-    const incomingConfig = data.providerConfig ?? null;
-    // 寫入路徑使用 strict 版白名單過濾，model 不合法時直接 throw 由上層回報給 WebSocket 客戶端
-    // 此處在 transaction 外先驗證，避免進入 transaction 後才 throw 導致不必要的 rollback
-    const rawConfig: Record<string, unknown> = incomingConfig
-      ? { ...incomingConfig }
+    const rawConfig: Record<string, unknown> = data.providerConfig
+      ? { ...data.providerConfig }
       : {};
+    // sanitizeProviderConfigStrict 已含「補填預設 model」邏輯，此處不需額外補填
     const providerConfig = this.sanitizeProviderConfigStrict(
       rawConfig,
       provider,
     );
-    if (!("model" in providerConfig)) {
-      const defaultOptions = getProvider(provider).metadata
-        .defaultOptions as Record<string, unknown>;
-      providerConfig.model = defaultOptions.model;
-    }
-
     const pod = this.buildPodObject(
       id,
       canvasId,
@@ -564,26 +583,9 @@ class PodStore {
       providerConfig,
     );
 
-    // 使用 transaction 確保主表 insert 與 join table insert 的原子性
+    // 步驟三：原子寫入 DB
     getDb().transaction(() => {
-      this.stmts.pod.insert.run({
-        $id: id,
-        $canvasId: canvasId,
-        $name: pod.name,
-        $status: pod.status,
-        $x: pod.x,
-        $y: pod.y,
-        $rotation: pod.rotation,
-        $workspacePath: pod.workspacePath,
-        $sessionId: pod.sessionId,
-        $repositoryId: pod.repositoryId,
-        $commandId: pod.commandId,
-        $multiInstance: 0,
-        $scheduleJson: null,
-        $provider: pod.provider,
-        $providerConfigJson: JSON.stringify(pod.providerConfig),
-      });
-
+      this.insertPodRow(id, canvasId, pod);
       this.insertJoinTableIds(id, pod);
     })();
 
@@ -608,11 +610,6 @@ class PodStore {
     const rows = this.stmts.pod.selectByCanvasId.all(canvasId) as PodRow[];
     // 使用批次查詢取代逐筆子查詢，避免 N+1 問題
     return this.rowsToPods(rows);
-  }
-
-  /** @deprecated 請改用 list() */
-  getAll(canvasId: string): Pod[] {
-    return this.list(canvasId);
   }
 
   getByName(canvasId: string, name: string): Pod | undefined {
@@ -830,7 +827,7 @@ class PodStore {
     const cacheKey = `joinFetch:${podIds.length}`;
     const placeholders = podIds.map(() => "?").join(", ");
     const stmt = this.getCachedStmt(
-      this.joinFetchStmtCache,
+      this.stmtCache,
       cacheKey,
       () =>
         `SELECT * FROM pods WHERE canvas_id = ? AND id IN (${placeholders})`,
@@ -929,10 +926,10 @@ class PodStore {
   private fetchPodsByIds(
     podIds: string[],
   ): Array<{ canvasId: string; pod: Pod }> {
-    const cacheKey = `${podIds.length}`;
+    const cacheKey = `podsByIds:${podIds.length}`;
     const placeholders = podIds.map(() => "?").join(", ");
     const stmt = this.getCachedStmt(
-      this.podsByIdsStmtCache,
+      this.stmtCache,
       cacheKey,
       () => `SELECT * FROM pods WHERE id IN (${placeholders})`,
     );

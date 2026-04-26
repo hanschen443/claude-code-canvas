@@ -885,4 +885,278 @@ describe("Paste Helpers", () => {
       expect(createdConnections).toHaveLength(0);
     });
   });
+
+  // ── createPastedNotesByType ────────────────────────────────���───────────────
+
+  describe("createPastedNotesByType - 三種 Note 類型建立", () => {
+    it("repository note：應正確建立並回傳 RepositoryNote", async () => {
+      const { createPastedNotesByType } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { repositoryNoteStore } =
+        await import("../../src/services/noteStores.js");
+
+      const noteId = uuidv4();
+      const repositoryId = uuidv4();
+      const mockNote = {
+        id: noteId,
+        name: "repo-note",
+        x: 10,
+        y: 20,
+        boundToPodId: null,
+        originalPosition: null,
+        repositoryId,
+      };
+
+      vi.spyOn(repositoryNoteStore, "create").mockReturnValue(mockNote as any);
+
+      const result = createPastedNotesByType(
+        "repository",
+        canvasId,
+        [
+          {
+            repositoryId,
+            name: "repo-note",
+            x: 10,
+            y: 20,
+            boundToOriginalPodId: null,
+            originalPosition: null,
+          },
+        ],
+        {},
+      );
+
+      expect(result.notes).toHaveLength(1);
+      expect(result.notes[0].id).toBe(noteId);
+      expect(result.errors).toHaveLength(0);
+      expect(repositoryNoteStore.create).toHaveBeenCalledWith(
+        canvasId,
+        expect.objectContaining({ repositoryId, boundToPodId: null }),
+      );
+    });
+
+    it("command note：應正確建立並回傳 CommandNote", async () => {
+      const { createPastedNotesByType } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { commandNoteStore } =
+        await import("../../src/services/noteStores.js");
+
+      const noteId = uuidv4();
+      const commandId = uuidv4();
+      const mockNote = {
+        id: noteId,
+        name: "cmd-note",
+        x: 5,
+        y: 15,
+        boundToPodId: null,
+        originalPosition: null,
+        commandId,
+      };
+
+      vi.spyOn(commandNoteStore, "create").mockReturnValue(mockNote as any);
+
+      const result = createPastedNotesByType(
+        "command",
+        canvasId,
+        [
+          {
+            commandId,
+            name: "cmd-note",
+            x: 5,
+            y: 15,
+            boundToOriginalPodId: null,
+            originalPosition: null,
+          },
+        ],
+        {},
+      );
+
+      expect(result.notes).toHaveLength(1);
+      expect(result.notes[0].id).toBe(noteId);
+      expect(result.errors).toHaveLength(0);
+      expect(commandNoteStore.create).toHaveBeenCalledWith(
+        canvasId,
+        expect.objectContaining({ commandId, boundToPodId: null }),
+      );
+    });
+
+    it("mcpServer note：應正確建立並回傳 McpServerNote", async () => {
+      const { createPastedNotesByType } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { mcpServerNoteStore } =
+        await import("../../src/services/noteStores.js");
+
+      const noteId = uuidv4();
+      const mcpServerId = uuidv4();
+      const mockNote = {
+        id: noteId,
+        name: "mcp-note",
+        x: 30,
+        y: 40,
+        boundToPodId: null,
+        originalPosition: null,
+        mcpServerId,
+      };
+
+      vi.spyOn(mcpServerNoteStore, "create").mockReturnValue(mockNote as any);
+
+      const result = createPastedNotesByType(
+        "mcpServer",
+        canvasId,
+        [
+          {
+            mcpServerId,
+            name: "mcp-note",
+            x: 30,
+            y: 40,
+            boundToOriginalPodId: null,
+            originalPosition: null,
+          },
+        ],
+        {},
+      );
+
+      expect(result.notes).toHaveLength(1);
+      expect(result.notes[0].id).toBe(noteId);
+      expect(result.errors).toHaveLength(0);
+      expect(mcpServerNoteStore.create).toHaveBeenCalledWith(
+        canvasId,
+        expect.objectContaining({ mcpServerId, boundToPodId: null }),
+      );
+    });
+
+    it("command note：podIdMapping 中找到對應 Pod 時 boundToPodId 應為新 Pod ID", async () => {
+      const { createPastedNotesByType } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { commandNoteStore } =
+        await import("../../src/services/noteStores.js");
+
+      const originalPodId = uuidv4();
+      const newPodId = uuidv4();
+      const commandId = uuidv4();
+      const mockNote = {
+        id: uuidv4(),
+        name: "cmd-note-bound",
+        x: 0,
+        y: 0,
+        boundToPodId: newPodId,
+        originalPosition: null,
+        commandId,
+      };
+
+      vi.spyOn(commandNoteStore, "create").mockReturnValue(mockNote as any);
+
+      const result = createPastedNotesByType(
+        "command",
+        canvasId,
+        [
+          {
+            commandId,
+            name: "cmd-note-bound",
+            x: 0,
+            y: 0,
+            boundToOriginalPodId: originalPodId,
+            originalPosition: null,
+          },
+        ],
+        { [originalPodId]: newPodId },
+      );
+
+      expect(result.notes).toHaveLength(1);
+      expect(result.errors).toHaveLength(0);
+      expect(commandNoteStore.create).toHaveBeenCalledWith(
+        canvasId,
+        expect.objectContaining({ commandId, boundToPodId: newPodId }),
+      );
+    });
+
+    it("mcpServer note：podIdMapping 中找到對應 Pod 時 boundToPodId 應為新 Pod ID", async () => {
+      const { createPastedNotesByType } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { mcpServerNoteStore } =
+        await import("../../src/services/noteStores.js");
+
+      const originalPodId = uuidv4();
+      const newPodId = uuidv4();
+      const mcpServerId = uuidv4();
+      const mockNote = {
+        id: uuidv4(),
+        name: "mcp-note-bound",
+        x: 0,
+        y: 0,
+        boundToPodId: newPodId,
+        originalPosition: null,
+        mcpServerId,
+      };
+
+      vi.spyOn(mcpServerNoteStore, "create").mockReturnValue(mockNote as any);
+
+      const result = createPastedNotesByType(
+        "mcpServer",
+        canvasId,
+        [
+          {
+            mcpServerId,
+            name: "mcp-note-bound",
+            x: 0,
+            y: 0,
+            boundToOriginalPodId: originalPodId,
+            originalPosition: null,
+          },
+        ],
+        { [originalPodId]: newPodId },
+      );
+
+      expect(result.notes).toHaveLength(1);
+      expect(result.errors).toHaveLength(0);
+      expect(mcpServerNoteStore.create).toHaveBeenCalledWith(
+        canvasId,
+        expect.objectContaining({ mcpServerId, boundToPodId: newPodId }),
+      );
+    });
+
+    it("bound note 在 podIdMapping 中找不到對應 Pod 時 boundToPodId 應為 null", async () => {
+      const { createPastedNotesByType } =
+        await import("../../src/handlers/paste/pasteHelpers.js");
+      const { commandNoteStore } =
+        await import("../../src/services/noteStores.js");
+
+      const commandId = uuidv4();
+      const mockNote = {
+        id: uuidv4(),
+        name: "cmd-note-orphan",
+        x: 0,
+        y: 0,
+        boundToPodId: null,
+        originalPosition: null,
+        commandId,
+      };
+
+      vi.spyOn(commandNoteStore, "create").mockReturnValue(mockNote as any);
+
+      const result = createPastedNotesByType(
+        "command",
+        canvasId,
+        [
+          {
+            commandId,
+            name: "cmd-note-orphan",
+            x: 0,
+            y: 0,
+            // 原始 Pod 不在 podIdMapping 中
+            boundToOriginalPodId: uuidv4(),
+            originalPosition: null,
+          },
+        ],
+        {}, // 空 mapping，找不到對應 Pod
+      );
+
+      expect(result.notes).toHaveLength(1);
+      expect(result.errors).toHaveLength(0);
+      // podIdMapping 找不到時 boundToPodId 應為 null
+      expect(commandNoteStore.create).toHaveBeenCalledWith(
+        canvasId,
+        expect.objectContaining({ commandId, boundToPodId: null }),
+      );
+    });
+  });
 });

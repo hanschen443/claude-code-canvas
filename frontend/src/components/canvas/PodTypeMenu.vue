@@ -64,12 +64,8 @@ const emit = defineEmits<{
   /** 開啟 delete 資源 Modal */
   "open-delete-modal": [type: ItemType, id: string, name: string];
   /** 開啟 create/delete group Modal */
-  "open-create-group-modal": [groupType: GroupType, title: string];
-  "open-delete-group-modal": [
-    groupType: GroupType,
-    groupId: string,
-    name: string,
-  ];
+  "open-create-group-modal": [title: string];
+  "open-delete-group-modal": [groupId: string, name: string];
   /** 開啟各種 Modal（repository 建立/clone、MCP Server Modal） */
   "open-modal": [payload: OpenModalPayload];
   close: [];
@@ -193,24 +189,24 @@ const openEditModal = (
 const handleCommandEdit = (id: string, _name: string, event: Event): void =>
   openEditModal("command", id, event);
 
-const openCreateGroupModal = (groupType: GroupType, title: string): void => {
+const openCreateGroupModal = (title: string): void => {
   openMenuType.value = null;
-  emit("open-create-group-modal", groupType, title);
+  emit("open-create-group-modal", title);
   emit("close");
 };
 
 const handleNewCommandGroup = (): void =>
-  openCreateGroupModal("commandGroup", t("canvas.podTypeMenu.newCommandGroup"));
+  openCreateGroupModal(t("canvas.podTypeMenu.newCommandGroup"));
 
 const handleGroupDelete = (
-  groupType: GroupType,
+  _groupType: GroupType,
   groupId: string,
   name: string,
   event: Event,
 ): void => {
   event.stopPropagation();
   openMenuType.value = null;
-  emit("open-delete-group-modal", groupType, groupId, name);
+  emit("open-delete-group-modal", groupId, name);
   emit("close");
 };
 

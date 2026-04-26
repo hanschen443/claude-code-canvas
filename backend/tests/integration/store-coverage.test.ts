@@ -34,7 +34,7 @@ describe("Store 覆蓋率測試", () => {
   describe("PodStore", () => {
     it("Canvas Pods 延遲初始化成功", async () => {
       const canvasId = "new-canvas-" + uuidv4();
-      const pods = podStore.getAll(canvasId);
+      const pods = podStore.list(canvasId);
 
       expect(Array.isArray(pods)).toBe(true);
       expect(pods).toHaveLength(0);
@@ -98,6 +98,65 @@ describe("Store 覆蓋率測試", () => {
           rotation: 0,
         });
       }).toThrow("找不到 Canvas：");
+    });
+
+    it("create 帶 mcpServerIds / pluginIds 後 getById 能正確讀回", () => {
+      const server = getServer();
+      const canvasId = server.canvasId;
+
+      const { pod } = podStore.create(canvasId, {
+        name: "relation-pod-create",
+        x: 0,
+        y: 0,
+        rotation: 0,
+        mcpServerIds: ["m1", "m2"],
+        pluginIds: ["p1"],
+      });
+
+      const fetched = podStore.getById(canvasId, pod.id);
+      expect(fetched).toBeDefined();
+      expect(fetched!.mcpServerIds).toEqual(["m1", "m2"]);
+      expect(fetched!.pluginIds).toEqual(["p1"]);
+    });
+
+    it("update mcpServerIds 後 getById 反映新值（移除舊值、加入新值）", () => {
+      const server = getServer();
+      const canvasId = server.canvasId;
+
+      const { pod } = podStore.create(canvasId, {
+        name: "relation-pod-update-mcp",
+        x: 0,
+        y: 0,
+        rotation: 0,
+        mcpServerIds: ["m1", "m2"],
+        pluginIds: [],
+      });
+
+      podStore.update(canvasId, pod.id, { mcpServerIds: ["m3"] });
+
+      const fetched = podStore.getById(canvasId, pod.id);
+      expect(fetched).toBeDefined();
+      expect(fetched!.mcpServerIds).toEqual(["m3"]);
+    });
+
+    it("update pluginIds 後 getById 反映新值（移除舊值、加入新值）", () => {
+      const server = getServer();
+      const canvasId = server.canvasId;
+
+      const { pod } = podStore.create(canvasId, {
+        name: "relation-pod-update-plugin",
+        x: 0,
+        y: 0,
+        rotation: 0,
+        mcpServerIds: [],
+        pluginIds: ["p1"],
+      });
+
+      podStore.update(canvasId, pod.id, { pluginIds: ["p2", "p3"] });
+
+      const fetched = podStore.getById(canvasId, pod.id);
+      expect(fetched).toBeDefined();
+      expect(fetched!.pluginIds).toEqual(["p2", "p3"]);
     });
   });
 

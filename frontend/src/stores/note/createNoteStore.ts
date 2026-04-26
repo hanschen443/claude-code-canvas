@@ -230,6 +230,113 @@ export type TypedNoteStore<
 > = (() => ReturnType<TStore> & TCustomActions) & { $id: string };
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+/**
+ * 模組層級的 getters 建構器，與 defineStore 拆開，降低 createNoteStore 工廠函式複雜度。
+ * 依賴 config（relationship、itemIdField）與 getItemName（來自工廠層），以參數注入取代閉包。
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function buildNoteStoreGetters<TItem, TNote extends BaseNote>(
+  config: Pick<NoteStoreConfig<TItem>, "relationship" | "itemIdField">,
+  getItemName: (item: TItem) => string,
+) {
+  return {
+    typedAvailableItems: (state: BaseNoteState): TItem[] =>
+      state.availableItems as TItem[],
+    typedNotes: (state: BaseNoteState): TNote[] =>
+      state.notes as unknown as TNote[],
+
+    getUnboundNotes: (state: BaseNoteState): NoteItem[] =>
+      state.notes.filter((note) => note.boundToPodId === null),
+
+    getNotesByPodId:
+      (state: BaseNoteState) =>
+      (podId: string): TNote[] => {
+        if (config.relationship === "one-to-one") {
+          const note = state.notes.find((note) => note.boundToPodId === podId);
+          return note ? [note as unknown as TNote] : [];
+        }
+        return state.notes.filter(
+          (note) => note.boundToPodId === podId,
+        ) as unknown as TNote[];
+      },
+
+    getNoteById:
+      (state: BaseNoteState) =>
+      (noteId: string): TNote | undefined =>
+        state.notes.find((note) => note.id === noteId) as TNote | undefined,
+
+    isNoteAnimating:
+      (state: BaseNoteState) =>
+      (noteId: string): boolean =>
+        state.animatingNoteIds.has(noteId),
+
+    canDeleteDraggedNote: (state: BaseNoteState): boolean => {
+      if (state.draggedNoteId === null) return false;
+      const note = state.notes.find((note) => note.id === state.draggedNoteId);
+      return note?.boundToPodId === null;
+    },
+
+    isItemInUse:
+      (state: BaseNoteState) =>
+      (itemId: string): boolean =>
+        state.notes.some(
+          (note) =>
+            note[config.itemIdField] === itemId && note.boundToPodId !== null,
+        ),
+
+    isItemBoundToPod:
+      (state: BaseNoteState) =>
+      (itemId: string, podId: string): boolean =>
+        state.notes.some(
+          (note) =>
+            note[config.itemIdField] === itemId && note.boundToPodId === podId,
+        ),
+
+    getGroupById:
+      (state: BaseNoteState) =>
+      (groupId: string): Group | undefined =>
+        state.groups.find((group) => group.id === groupId),
+
+    getItemsByGroupId:
+      (state: BaseNoteState) =>
+      (groupId: string | null): TItem[] =>
+        state.availableItems.filter(
+          (item) => (item as ItemWithGroupId).groupId === groupId,
+        ) as TItem[],
+
+    getRootItems: (state: BaseNoteState): TItem[] =>
+      state.availableItems.filter(
+        (item) => !(item as ItemWithGroupId).groupId,
+      ) as TItem[],
+
+    getSortedItemsWithGroups: (
+      state: BaseNoteState,
+    ): { groups: Group[]; rootItems: TItem[] } => {
+      const groups = [...state.groups].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+      const rootItems = state.availableItems
+        .filter((item) => !(item as ItemWithGroupId).groupId)
+        .sort((a, b) =>
+          getItemName(a as TItem).localeCompare(getItemName(b as TItem)),
+        );
+      return { groups, rootItems: rootItems as TItem[] };
+    },
+
+    isGroupExpanded:
+      (state: BaseNoteState) =>
+      (groupId: string): boolean =>
+        state.expandedGroupIds.has(groupId),
+
+    canDeleteGroup:
+      (state: BaseNoteState) =>
+      (groupId: string): boolean =>
+        !state.availableItems.some(
+          (item) => (item as ItemWithGroupId).groupId === groupId,
+        ),
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNoteStore<
   TItem,
@@ -242,119 +349,26 @@ export function createNoteStore<
     config.getItemName ??
     ((item: TItem): string => (item as { name: string }).name);
 
+  // state 獨立定義
+  const state = (): BaseNoteState => ({
+    availableItems: [],
+    notes: [],
+    isLoading: false,
+    error: null,
+    draggedNoteId: null,
+    animatingNoteIds: new Set<string>(),
+    isDraggingNote: false,
+    isOverTrash: false,
+    groups: [],
+    expandedGroupIds: new Set<string>(),
+  });
+
+  // getters 獨立建構
+  const getters = buildNoteStoreGetters<TItem, TNote>(config, getItemName);
+
   return defineStore(config.storeName, {
-    state: (): BaseNoteState => ({
-      availableItems: [],
-      notes: [],
-      isLoading: false,
-      error: null,
-      draggedNoteId: null,
-      animatingNoteIds: new Set<string>(),
-      isDraggingNote: false,
-      isOverTrash: false,
-      groups: [],
-      expandedGroupIds: new Set<string>(),
-    }),
-
-    getters: {
-      typedAvailableItems: (state): TItem[] => state.availableItems as TItem[],
-      typedNotes: (state): TNote[] => state.notes as TNote[],
-
-      getUnboundNotes: (state) =>
-        state.notes.filter((note) => note.boundToPodId === null),
-
-      getNotesByPodId:
-        (state) =>
-        (podId: string): TNote[] => {
-          if (config.relationship === "one-to-one") {
-            const note = state.notes.find(
-              (note) => note.boundToPodId === podId,
-            );
-            return note ? [note as TNote] : [];
-          }
-          return state.notes.filter(
-            (note) => note.boundToPodId === podId,
-          ) as TNote[];
-        },
-
-      getNoteById:
-        (state) =>
-        (noteId: string): TNote | undefined =>
-          state.notes.find((note) => note.id === noteId) as TNote | undefined,
-
-      isNoteAnimating:
-        (state) =>
-        (noteId: string): boolean =>
-          state.animatingNoteIds.has(noteId),
-
-      canDeleteDraggedNote: (state) => {
-        if (state.draggedNoteId === null) return false;
-        const note = state.notes.find(
-          (note) => note.id === state.draggedNoteId,
-        );
-        return note?.boundToPodId === null;
-      },
-
-      isItemInUse:
-        (state) =>
-        (itemId: string): boolean =>
-          state.notes.some(
-            (note) =>
-              note[config.itemIdField] === itemId && note.boundToPodId !== null,
-          ),
-
-      isItemBoundToPod:
-        (state) =>
-        (itemId: string, podId: string): boolean =>
-          state.notes.some(
-            (note) =>
-              note[config.itemIdField] === itemId &&
-              note.boundToPodId === podId,
-          ),
-
-      getGroupById:
-        (state) =>
-        (groupId: string): Group | undefined =>
-          state.groups.find((group) => group.id === groupId),
-
-      getItemsByGroupId:
-        (state) =>
-        (groupId: string | null): TItem[] =>
-          state.availableItems.filter(
-            (item) => (item as ItemWithGroupId).groupId === groupId,
-          ) as TItem[],
-
-      getRootItems: (state): TItem[] =>
-        state.availableItems.filter(
-          (item) => !(item as ItemWithGroupId).groupId,
-        ) as TItem[],
-
-      getSortedItemsWithGroups: (
-        state,
-      ): { groups: Group[]; rootItems: TItem[] } => {
-        const groups = [...state.groups].sort((a, b) =>
-          a.name.localeCompare(b.name),
-        );
-        const rootItems = state.availableItems
-          .filter((item) => !(item as ItemWithGroupId).groupId)
-          .sort((a, b) =>
-            getItemName(a as TItem).localeCompare(getItemName(b as TItem)),
-          );
-        return { groups, rootItems: rootItems as TItem[] };
-      },
-
-      isGroupExpanded:
-        (state) =>
-        (groupId: string): boolean =>
-          state.expandedGroupIds.has(groupId),
-
-      canDeleteGroup:
-        (state) =>
-        (groupId: string): boolean =>
-          !state.availableItems.some(
-            (item) => (item as ItemWithGroupId).groupId === groupId,
-          ),
-    },
+    state,
+    getters,
 
     actions: {
       async fetchWithActiveCanvasId(

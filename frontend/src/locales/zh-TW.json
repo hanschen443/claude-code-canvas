@@ -211,6 +211,11 @@
     "multiInstance": {
       "readonlyHint": "此 Pod 屬於 Multi-Instance 流程，請從歷程查看"
     },
+    "provider": {
+      "title": "Provider",
+      "unknownDescription": "此 Provider 已下線或尚未支援，無法開啟對話",
+      "loadFailedDescription": "無法取得 provider capabilities，部分功能可能不正常"
+    },
     "clearWorkflow": {
       "title": "清理 Workflow",
       "description": "即將清空以下 POD 的所有訊息：",
@@ -300,6 +305,9 @@
   "websocket": {
     "notConnected": "WebSocket 尚未連線",
     "requestTimeout": "請求逾時：{event}"
+  },
+  "composableDeleteResource": {
+    "deleteFailed": "刪除失敗，請稍後再試"
   },
   "canvas": {
     "noActiveCanvas": "沒有啟用的畫布",

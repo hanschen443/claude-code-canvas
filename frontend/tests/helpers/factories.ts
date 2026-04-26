@@ -92,6 +92,8 @@ export function createMockPod(overrides?: Partial<Pod>): Pod {
     multiInstance: false,
     commandId: null,
     schedule: null,
+    mcpServerIds: [],
+    pluginIds: [],
     provider: "claude",
     providerConfig: { model: "opus" },
     ...overrides,

@@ -7,9 +7,7 @@ import {
 } from "../../src/schemas";
 import type {
   CommandNoteCreatedPayload,
-  SkillNoteCreatedPayload,
   RepositoryNoteCreatedPayload,
-  NoteCreatedPayload,
 } from "../../src/types";
 
 /**
@@ -47,32 +45,6 @@ export async function createCommandNote(
       canvasId,
       commandId,
       name: "Cmd Note",
-      x: 100,
-      y: 100,
-      boundToPodId: null,
-      originalPosition: null,
-    },
-  );
-  return response.note!;
-}
-
-/**
- * 建立 Skill Note
- */
-export async function createSkillNote(
-  client: TestWebSocketClient,
-  skillId: string,
-) {
-  const canvasId = await getCanvasId(client);
-  const response = await emitAndWaitResponse<any, SkillNoteCreatedPayload>(
-    client,
-    WebSocketRequestEvents.SKILL_NOTE_CREATE,
-    WebSocketResponseEvents.SKILL_NOTE_CREATED,
-    {
-      requestId: uuidv4(),
-      canvasId,
-      skillId,
-      name: "Skill Note",
       x: 100,
       y: 100,
       boundToPodId: null,

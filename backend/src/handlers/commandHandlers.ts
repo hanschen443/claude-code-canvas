@@ -10,7 +10,6 @@ import {
   type BindResourceConfig,
 } from "./factories/createBindHandlers.js";
 import { createMoveToGroupHandler } from "./factories/createMoveToGroupHandler.js";
-import { GROUP_TYPES } from "../types";
 
 export const commandNoteHandlers = createNoteHandlers({
   noteStore: commandNoteStore,
@@ -81,7 +80,6 @@ export const handleCommandMoveToGroup = createMoveToGroupHandler({
   service: commandService,
   resourceName: "Command",
   idField: "itemId",
-  groupType: GROUP_TYPES.COMMAND,
   events: {
     moved: WebSocketResponseEvents.COMMAND_MOVED_TO_GROUP,
   },

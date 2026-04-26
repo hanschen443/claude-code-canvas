@@ -62,7 +62,7 @@ describe("useEditModal", () => {
   describe("handleOpenCreateGroupModal - 開啟建立群組 Modal", () => {
     it("開啟群組建立 Modal 時 showContent 應為 false", () => {
       const { composable } = createComposable();
-      composable.handleOpenCreateGroupModal("commandGroup", "建立群組");
+      composable.handleOpenCreateGroupModal("建立群組");
 
       expect(composable.editModal.value.visible).toBe(true);
       expect(composable.editModal.value.mode).toBe("create");
@@ -152,7 +152,7 @@ describe("useEditModal", () => {
 
     it("建立群組時應呼叫 createGroup 而非 createNote", async () => {
       const { composable } = createComposable();
-      composable.handleOpenCreateGroupModal("commandGroup", "建立群組");
+      composable.handleOpenCreateGroupModal("建立群組");
 
       await composable.handleCreateEditSubmit({
         name: "My Group",

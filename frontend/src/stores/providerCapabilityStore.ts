@@ -11,6 +11,7 @@ import {
   WebSocketResponseEvents,
 } from "@/services/websocket";
 import { useToast } from "@/composables/useToast";
+import { t } from "@/i18n";
 
 /**
  * 保守 fallback：找不到 provider 時使用。
@@ -233,8 +234,8 @@ export const useProviderCapabilityStore = defineStore(
           loaded.value = false;
         }
         toast({
-          title: "Provider",
-          description: "無法取得 provider capabilities，部分功能可能不正常",
+          title: t("pod.provider.title"),
+          description: t("pod.provider.loadFailedDescription"),
           variant: "destructive",
         });
       }

@@ -4,8 +4,11 @@ import type { Group, Position } from "@/types";
 import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
 import { t } from "@/i18n";
 
+// 目前只有一種資源類型
 type ResourceType = "command";
-type GroupType = "commandGroup";
+// 目前只有一種 group
+const COMMAND_GROUP_TYPE = "commandGroup" as const;
+type GroupType = typeof COMMAND_GROUP_TYPE;
 type ExtendedResourceType = ResourceType | GroupType;
 
 interface EditModalState {
@@ -55,7 +58,7 @@ export function useEditModal(
 ): {
   editModal: Ref<EditModalState>;
   handleOpenCreateModal: (resourceType: ResourceType, title: string) => void;
-  handleOpenCreateGroupModal: (groupType: GroupType, title: string) => void;
+  handleOpenCreateGroupModal: (title: string) => void;
   handleOpenEditModal: (
     resourceType: ResourceType,
     id: string,
@@ -165,17 +168,14 @@ export function useEditModal(
     };
   }
 
-  function handleOpenCreateGroupModal(
-    groupType: GroupType,
-    title: string,
-  ): void {
+  function handleOpenCreateGroupModal(title: string): void {
     editModal.value = {
       visible: true,
       mode: "create",
       title,
       initialName: "",
       initialContent: "",
-      resourceType: groupType,
+      resourceType: COMMAND_GROUP_TYPE,
       itemId: "",
       showContent: false,
     };

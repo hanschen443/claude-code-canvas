@@ -335,13 +335,15 @@ function runMigrations(db: Database): void {
   ]);
 
   // Migration: 砍除 SkillNote / skillIds 功能後移除 join table
-  // 冪等：table 不存在時靜默忽略
-  runMigration(db, "DROP TABLE IF EXISTS pod_skill_ids", ["no such table"]);
-  runMigration(db, "DROP TABLE IF EXISTS skill_notes", ["no such table"]);
+  // ⚠️ 此操作不可逆，DROP 後資料無法恢復；如需 rollback binary 須先備份
+  // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
+  runMigration(db, "DROP TABLE IF EXISTS pod_skill_ids", []);
+  runMigration(db, "DROP TABLE IF EXISTS skill_notes", []);
 
   // Migration: 移除 SubAgent 功能後移除 junction table
-  // 冪等：table 不存在時靜默忽略
-  runMigration(db, "DROP TABLE IF EXISTS pod_sub_agent_ids", ["no such table"]);
+  // ⚠️ 此操作不可逆，DROP 後資料無法恢復；如需 rollback binary 須先備份
+  // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
+  runMigration(db, "DROP TABLE IF EXISTS pod_sub_agent_ids", []);
 }
 
 export function createTables(db: Database): void {

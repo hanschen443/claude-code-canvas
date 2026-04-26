@@ -55,11 +55,7 @@ describe("useDeleteResource", () => {
     it("開啟群組刪除 Modal 時 type 應為 GroupType", () => {
       const composable = useDeleteResource(mockStores as any);
 
-      composable.handleOpenDeleteGroupModal(
-        "commandGroup",
-        "group-1",
-        "My Group",
-      );
+      composable.handleOpenDeleteGroupModal("group-1", "My Group");
 
       expect(composable.showDeleteModal.value).toBe(true);
       expect(composable.deleteTarget.value?.type).toBe("commandGroup");
@@ -78,11 +74,7 @@ describe("useDeleteResource", () => {
     it("group 類型永遠不算被使用中", () => {
       const composable = useDeleteResource(mockStores as any);
 
-      composable.handleOpenDeleteGroupModal(
-        "commandGroup",
-        "group-1",
-        "My Group",
-      );
+      composable.handleOpenDeleteGroupModal("group-1", "My Group");
 
       expect(composable.isDeleteTargetInUse.value).toBe(false);
     });
@@ -132,11 +124,7 @@ describe("useDeleteResource", () => {
 
     it("確認刪除 commandGroup 後應呼叫 commandStore.deleteGroup", async () => {
       const composable = useDeleteResource(mockStores as any);
-      composable.handleOpenDeleteGroupModal(
-        "commandGroup",
-        "cmd-group-1",
-        "My CMD Group",
-      );
+      composable.handleOpenDeleteGroupModal("cmd-group-1", "My CMD Group");
 
       await composable.handleConfirmDelete();
 
@@ -151,11 +139,7 @@ describe("useDeleteResource", () => {
         success: false,
         error: "刪除失敗",
       });
-      composable.handleOpenDeleteGroupModal(
-        "commandGroup",
-        "group-1",
-        "My Group",
-      );
+      composable.handleOpenDeleteGroupModal("group-1", "My Group");
 
       await composable.handleConfirmDelete();
 

@@ -1,9 +1,13 @@
 import { ref, computed } from "vue";
 import type { Ref, ComputedRef } from "vue";
 import type { Group } from "@/types";
+import { useToast } from "@/composables/useToast";
+import { t } from "@/i18n";
 
 type ItemType = "repository" | "command" | "mcpServer";
-type GroupType = "commandGroup";
+// 目前只有一種 group
+const COMMAND_GROUP_TYPE = "commandGroup" as const;
+type GroupType = typeof COMMAND_GROUP_TYPE;
 type ExtendedItemType = ItemType | GroupType;
 
 interface DeleteTarget {
@@ -38,11 +42,7 @@ export function useDeleteResource(stores: DeleteResourceStores): {
     id: string,
     name: string,
   ) => void;
-  handleOpenDeleteGroupModal: (
-    groupType: GroupType,
-    groupId: string,
-    name: string,
-  ) => void;
+  handleOpenDeleteGroupModal: (groupId: string, name: string) => void;
   handleConfirmDelete: () => Promise<void>;
   closeDeleteModal: () => void;
 } {
@@ -75,12 +75,8 @@ export function useDeleteResource(stores: DeleteResourceStores): {
     showDeleteModal.value = true;
   }
 
-  function handleOpenDeleteGroupModal(
-    groupType: GroupType,
-    groupId: string,
-    name: string,
-  ): void {
-    deleteTarget.value = { type: groupType, id: groupId, name };
+  function handleOpenDeleteGroupModal(groupId: string, name: string): void {
+    deleteTarget.value = { type: COMMAND_GROUP_TYPE, id: groupId, name };
     showDeleteModal.value = true;
   }
 
@@ -102,7 +98,8 @@ export function useDeleteResource(stores: DeleteResourceStores): {
     const result = await deleteActions[type]();
 
     if (result && typeof result === "object" && !result.success) {
-      console.error("刪除失敗:", result.error);
+      const { showErrorToast } = useToast();
+      showErrorToast("Pod", t("composableDeleteResource.deleteFailed"));
       return;
     }
 

@@ -1,8 +1,7 @@
-import { WebSocketResponseEvents } from '../../schemas';
-import { groupStore } from '../../services/groupStore.js';
-import { GroupType } from '../../types';
-import { emitNotFound } from '../../utils/websocketResponse.js';
-import { socketService } from '../../services/socketService.js';
+import { WebSocketResponseEvents } from "../../schemas";
+import { groupStore } from "../../services/groupStore.js";
+import { emitNotFound } from "../../utils/websocketResponse.js";
+import { socketService } from "../../services/socketService.js";
 
 interface MoveToGroupConfig<TIdField extends string = string> {
   service: {
@@ -11,27 +10,45 @@ interface MoveToGroupConfig<TIdField extends string = string> {
   };
   resourceName: string;
   idField: TIdField;
-  groupType: GroupType;
   events: {
     moved: WebSocketResponseEvents;
   };
 }
 
-export function createMoveToGroupHandler<TIdField extends string>(config: MoveToGroupConfig<TIdField>) {
-  return async (connectionId: string, payload: Record<TIdField, string> & { groupId: string | null }, requestId: string): Promise<void> => {
+export function createMoveToGroupHandler<TIdField extends string>(
+  config: MoveToGroupConfig<TIdField>,
+) {
+  return async (
+    connectionId: string,
+    payload: Record<TIdField, string> & { groupId: string | null },
+    requestId: string,
+  ): Promise<void> => {
     const resourceId = payload[config.idField];
     const groupId = payload.groupId;
 
     const resourceExists = await config.service.exists(resourceId);
     if (!resourceExists) {
-      emitNotFound(connectionId, config.events.moved, config.resourceName, resourceId, requestId);
+      emitNotFound(
+        connectionId,
+        config.events.moved,
+        config.resourceName,
+        resourceId,
+        requestId,
+      );
       return;
     }
 
     if (groupId !== null) {
-      const groupExists = await groupStore.exists(groupId, config.groupType);
+      // 目前只有 "command" 一種 groupType
+      const groupExists = await groupStore.exists(groupId, "command");
       if (!groupExists) {
-        emitNotFound(connectionId, config.events.moved, 'Group', groupId, requestId);
+        emitNotFound(
+          connectionId,
+          config.events.moved,
+          "Group",
+          groupId,
+          requestId,
+        );
         return;
       }
     }

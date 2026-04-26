@@ -211,6 +211,11 @@
     "multiInstance": {
       "readonlyHint": "This Pod is part of a Multi-Instance workflow. View details in run history."
     },
+    "provider": {
+      "title": "Provider",
+      "unknownDescription": "This Provider is offline or not yet supported. Chat is unavailable.",
+      "loadFailedDescription": "Unable to load provider capabilities. Some features may not work."
+    },
     "clearWorkflow": {
       "title": "Clear Workflow",
       "description": "The following PODs will have all messages cleared:",
@@ -300,6 +305,9 @@
   "websocket": {
     "notConnected": "WebSocket is not connected",
     "requestTimeout": "Request timed out: {event}"
+  },
+  "composableDeleteResource": {
+    "deleteFailed": "Delete failed, please try again later"
   },
   "canvas": {
     "noActiveCanvas": "No active canvas",

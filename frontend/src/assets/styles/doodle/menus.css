@@ -118,7 +118,9 @@
   border-radius: 4px;
   color: oklch(0.5 0.02 50);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -145,7 +147,9 @@
   border-radius: 4px;
   color: oklch(0.5 0.02 50);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
   flex-shrink: 0;
 }
 

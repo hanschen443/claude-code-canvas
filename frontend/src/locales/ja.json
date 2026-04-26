@@ -58,6 +58,11 @@
     "multiInstance": {
       "readonlyHint": "この Pod は Multi-Instance ワークフローの一部です。詳細は実行履歴からご確認ください。"
     },
+    "provider": {
+      "title": "Provider",
+      "unknownDescription": "この Provider はオフラインまたは未サポートです。チャットは利用できません。",
+      "loadFailedDescription": "Provider capabilities を取得できませんでした。一部の機能が正常に動作しない場合があります。"
+    },
     "clearWorkflow": {
       "title": "ワークフローをクリア",
       "description": "以下の POD のすべてのメッセージがクリアされます：",
@@ -147,6 +152,9 @@
   "websocket": {
     "notConnected": "WebSocket が接続されていません",
     "requestTimeout": "リクエストがタイムアウトしました：{event}"
+  },
+  "composableDeleteResource": {
+    "deleteFailed": "削除に失敗しました。後でもう一度お試しください"
   },
   "canvas": {
     "noActiveCanvas": "アクティブなキャンバスがありません",

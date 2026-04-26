@@ -81,12 +81,10 @@ class GroupStore {
   }
 
   private getBasePath(type: GroupType): string {
-    switch (type) {
-      case "command":
-        return config.commandsPath;
-      default:
-        throw new Error(`未知的 GroupType: ${type}`);
+    if (type !== "command") {
+      throw new Error(`未知的 GroupType: ${type}`);
     }
+    return config.commandsPath;
   }
 }
 

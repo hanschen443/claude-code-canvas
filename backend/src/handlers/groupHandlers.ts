@@ -1,16 +1,36 @@
-import { WebSocketResponseEvents, GroupCreatePayload, GroupListPayload, GroupDeletePayload } from '../schemas';
-import { groupStore } from '../services/groupStore.js';
-import { GroupType, GROUP_TYPES } from '../types';
-import { emitError, emitSuccess, emitNotFound } from '../utils/websocketResponse.js';
-import { createI18nError } from '../utils/i18nError.js';
-import { socketService } from '../services/socketService.js';
+import {
+  WebSocketResponseEvents,
+  GroupCreatePayload,
+  GroupListPayload,
+  GroupDeletePayload,
+} from "../schemas";
+import { groupStore } from "../services/groupStore.js";
+import { GroupType } from "../types";
+import {
+  emitError,
+  emitSuccess,
+  emitNotFound,
+} from "../utils/websocketResponse.js";
+import { createI18nError } from "../utils/i18nError.js";
+import { socketService } from "../services/socketService.js";
 
-export async function handleGroupCreate(connectionId: string, payload: GroupCreatePayload, requestId: string): Promise<void> {
+export async function handleGroupCreate(
+  connectionId: string,
+  payload: GroupCreatePayload,
+  requestId: string,
+): Promise<void> {
   const { canvasId, name, type } = payload;
 
   const exists = await groupStore.exists(name, type);
   if (exists) {
-    emitError(connectionId, WebSocketResponseEvents.GROUP_CREATED, createI18nError('errors.groupNameExists'), requestId, undefined, 'ALREADY_EXISTS');
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.GROUP_CREATED,
+      createI18nError("errors.groupNameExists"),
+      requestId,
+      undefined,
+      "ALREADY_EXISTS",
+    );
     return;
   }
 
@@ -23,7 +43,11 @@ export async function handleGroupCreate(connectionId: string, payload: GroupCrea
   });
 }
 
-export async function handleGroupList(connectionId: string, payload: GroupListPayload, requestId: string): Promise<void> {
+export async function handleGroupList(
+  connectionId: string,
+  payload: GroupListPayload,
+  requestId: string,
+): Promise<void> {
   const { type } = payload;
 
   const groups = await groupStore.list(type);
@@ -35,24 +59,47 @@ export async function handleGroupList(connectionId: string, payload: GroupListPa
   });
 }
 
-export async function handleGroupDelete(connectionId: string, payload: GroupDeletePayload, requestId: string): Promise<void> {
+export async function handleGroupDelete(
+  connectionId: string,
+  payload: GroupDeletePayload,
+  requestId: string,
+): Promise<void> {
   const { canvasId, groupId } = payload;
 
   const type = await findGroupType(groupId);
   if (!type) {
-    emitNotFound(connectionId, WebSocketResponseEvents.GROUP_DELETED, 'Group', groupId, requestId);
+    emitNotFound(
+      connectionId,
+      WebSocketResponseEvents.GROUP_DELETED,
+      "Group",
+      groupId,
+      requestId,
+    );
     return;
   }
 
   const hasItems = await groupStore.hasItems(groupId, type);
   if (hasItems) {
-    emitError(connectionId, WebSocketResponseEvents.GROUP_DELETED, createI18nError('errors.groupNotEmpty'), requestId, undefined, 'GROUP_NOT_EMPTY');
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.GROUP_DELETED,
+      createI18nError("errors.groupNotEmpty"),
+      requestId,
+      undefined,
+      "GROUP_NOT_EMPTY",
+    );
     return;
   }
 
   const deleted = await groupStore.delete(groupId, type);
   if (!deleted) {
-    emitNotFound(connectionId, WebSocketResponseEvents.GROUP_DELETED, 'Group', groupId, requestId);
+    emitNotFound(
+      connectionId,
+      WebSocketResponseEvents.GROUP_DELETED,
+      "Group",
+      groupId,
+      requestId,
+    );
     return;
   }
 
@@ -64,11 +111,6 @@ export async function handleGroupDelete(connectionId: string, payload: GroupDele
 }
 
 async function findGroupType(groupId: string): Promise<GroupType | null> {
-  for (const type of Object.values(GROUP_TYPES)) {
-    const exists = await groupStore.exists(groupId, type);
-    if (exists) {
-      return type;
-    }
-  }
-  return null;
+  const exists = await groupStore.exists(groupId, "command");
+  return exists ? "command" : null;
 }

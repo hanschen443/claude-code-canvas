@@ -42,14 +42,6 @@ async function deleteSelectedElements(
   const failedCount = failedResults.length;
 
   if (failedCount > 0) {
-    failedResults.forEach((result) => {
-      if (result.status === "rejected") {
-        if (import.meta.env.DEV) {
-          console.error("刪除元素失敗:", result.reason);
-        }
-      }
-    });
-
     toast({
       title: t("composable.deleteSelection.partialFailed"),
       description: t("composable.deleteSelection.partialFailedDesc", {

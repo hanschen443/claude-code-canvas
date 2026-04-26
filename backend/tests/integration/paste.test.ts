@@ -31,7 +31,6 @@ describe("貼上功能", () => {
       requestId: uuidv4(),
       canvasId,
       pods: [],
-      skillNotes: [],
       repositoryNotes: [],
       commandNotes: [],
       connections: [],
@@ -794,9 +793,7 @@ describe("貼上功能", () => {
             pluginIds: ["plugin/evil"],
           },
         ],
-        skillNotes: [],
         repositoryNotes: [],
-
         commandNotes: [],
         connections: [],
       };
@@ -824,9 +821,7 @@ describe("貼上功能", () => {
         pods: [
           { originalId: uuidv4(), name: "Pod 1", x: 0, y: 0, rotation: 0 },
         ],
-        skillNotes: [],
         repositoryNotes: [],
-
         commandNotes: [],
         connections: [],
       };
@@ -845,9 +840,7 @@ describe("貼上功能", () => {
         pods: [
           { originalId: uuidv4(), name: "Pod 1", x: 50, y: 50, rotation: 0 },
         ],
-        skillNotes: [],
         repositoryNotes: [],
-
         commandNotes: [],
         connections: [],
       };
