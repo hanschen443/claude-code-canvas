@@ -1,13 +1,7 @@
 import { WebSocketResponseEvents } from "@/services/websocket";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
-import type {
-  RepositoryNote,
-  CommandNote,
-  McpServer,
-  McpServerNote,
-} from "@/types";
+import type { RepositoryNote, CommandNote } from "@/types";
 import { createUnifiedHandler } from "./sharedHandlerUtils";
 import { t } from "@/i18n";
 import type { BasePayload } from "./sharedHandlerUtils";
@@ -97,26 +91,11 @@ const validateRepositoryItem = (repository: RepositoryItem): boolean => {
   return true;
 };
 
-const validateMcpServer = (mcpServer: McpServer): boolean => {
-  if (!validateIdAndName(mcpServer.id, mcpServer.name, "mcpServer"))
-    return false;
-
-  if (containsXssPattern(mcpServer.name)) {
-    console.error("[Security] 潛在惡意的 mcpServer.name:", mcpServer.name);
-    return false;
-  }
-
-  return true;
-};
-
 const repositoryNoteHandlers = createNoteHandlers<RepositoryNote>({
   getStore: useRepositoryStore,
 });
 const commandNoteHandlers = createNoteHandlers<CommandNote>({
   getStore: useCommandStore,
-});
-const mcpServerNoteHandlers = createNoteHandlers<McpServerNote>({
-  getStore: useMcpServerStore,
 });
 
 const handleRepositoryWorktreeCreated = createUnifiedHandler<
@@ -177,51 +156,6 @@ const handleCommandDeleted = createUnifiedHandler<
   { toastMessage: () => t("composable.eventHandler.commandDeleted") },
 );
 
-const handleMcpServerCreated = createUnifiedHandler<
-  BasePayload & { mcpServer?: McpServer; canvasId: string }
->(
-  (payload) => {
-    if (payload.mcpServer && validateMcpServer(payload.mcpServer)) {
-      useMcpServerStore().addItemFromEvent(payload.mcpServer);
-    }
-  },
-  { toastMessage: () => t("composable.eventHandler.mcpServerCreated") },
-);
-
-const handleMcpServerUpdated = createUnifiedHandler<
-  BasePayload & { mcpServer?: McpServer; canvasId: string }
->(
-  (payload) => {
-    if (payload.mcpServer && validateMcpServer(payload.mcpServer)) {
-      useMcpServerStore().updateItemFromEvent(payload.mcpServer);
-    }
-  },
-  { toastMessage: () => t("composable.eventHandler.mcpServerUpdated") },
-);
-
-const handleMcpServerDeleted = createUnifiedHandler<
-  BasePayload & {
-    mcpServerId: string;
-    deletedNoteIds?: string[];
-    canvasId: string;
-  }
->(
-  (payload) => {
-    if (!payload.mcpServerId || typeof payload.mcpServerId !== "string") {
-      console.error("[Security] 無效的 mcpServerId:", payload.mcpServerId);
-      return;
-    }
-    useMcpServerStore().removeItemFromEvent(
-      payload.mcpServerId,
-      payload.deletedNoteIds,
-    );
-  },
-  {
-    toastMessage: () => t("composable.eventHandler.mcpServerDeleted"),
-    skipCanvasCheck: true,
-  },
-);
-
 export function getNoteEventListeners(): Array<{
   event: string;
   handler: (payload: unknown) => void;
@@ -266,30 +200,6 @@ export function getNoteEventListeners(): Array<{
     {
       event: WebSocketResponseEvents.COMMAND_NOTE_DELETED,
       handler: commandNoteHandlers.deleted as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.MCP_SERVER_CREATED,
-      handler: handleMcpServerCreated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.MCP_SERVER_UPDATED,
-      handler: handleMcpServerUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.MCP_SERVER_DELETED,
-      handler: handleMcpServerDeleted as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.MCP_SERVER_NOTE_CREATED,
-      handler: mcpServerNoteHandlers.created as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.MCP_SERVER_NOTE_UPDATED,
-      handler: mcpServerNoteHandlers.updated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.MCP_SERVER_NOTE_DELETED,
-      handler: mcpServerNoteHandlers.deleted as (payload: unknown) => void,
     },
   ];
 }

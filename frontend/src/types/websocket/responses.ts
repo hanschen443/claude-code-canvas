@@ -8,7 +8,6 @@ import type {
 import type { Repository, RepositoryNote } from "@/types";
 import type { CommandNote } from "@/types";
 import type { AnchorPosition } from "@/types";
-import type { McpServerConfig, McpServerNote } from "../mcpServer";
 import type { InstalledPlugin } from "../plugin";
 import type { ResultPayload } from "./index";
 import type {
@@ -17,6 +16,7 @@ import type {
   RunPodStatus,
   PathwayState,
 } from "../run";
+import type { McpListItem } from "../mcp";
 
 export interface ConnectionReadyPayload {
   socketId: string;
@@ -51,7 +51,6 @@ export interface PodDeletedPayload extends ResultPayload {
   deletedNoteIds?: {
     repositoryNote?: string[];
     commandNote?: string[];
-    mcpServerNote?: string[];
   };
 }
 
@@ -190,7 +189,7 @@ export interface WorkflowClearResultPayload extends ResultPayload {
 }
 
 export interface PasteError {
-  type: "pod" | "repositoryNote" | "commandNote" | "mcpServerNote";
+  type: "pod" | "repositoryNote" | "commandNote";
   originalId: string;
   error: string;
 }
@@ -199,7 +198,6 @@ export interface CanvasPasteResultPayload extends ResultPayload {
   createdPods: Pod[];
   createdRepositoryNotes: RepositoryNote[];
   createdCommandNotes: CommandNote[];
-  createdMcpServerNotes: McpServerNote[];
   createdConnections: ConnectionPayloadItem[];
   podIdMapping: Record<string, string>;
   errors: PasteError[];
@@ -417,25 +415,15 @@ export interface CursorMovedPayload {
   color: string;
 }
 
-export interface McpServerCreatedPayload {
-  requestId: string;
-  success: boolean;
-  mcpServer?: { id: string; name: string };
-  error?: string;
+/** MCP server 清單查詢結果 */
+export interface McpListResultPayload extends ResultPayload {
+  provider?: "claude" | "codex";
+  items?: McpListItem[];
 }
 
-export interface McpServerUpdatedPayload {
-  requestId: string;
-  success: boolean;
-  mcpServer?: { id: string; name: string };
-  error?: string;
-}
-
-export interface McpServerReadResultPayload {
-  requestId: string;
-  success: boolean;
-  mcpServer?: { id: string; name: string; config: McpServerConfig };
-  error?: string;
+/** Pod 的 MCP server 名稱清單已更新 */
+export interface PodMcpServerNamesUpdatedPayload extends ResultPayload {
+  pod?: Pod;
 }
 
 export interface CursorLeftPayload {

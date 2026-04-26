@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { ref } from "vue";
 import { useCanvasNoteHandlers } from "@/composables/canvas/useCanvasNoteHandlers";
-import type { McpServerConfig } from "@/types";
 
 vi.mock("@/composables/canvas/useNoteEventHandlers", () => ({
   useNoteEventHandlers: () => ({
@@ -37,28 +36,16 @@ function createOptions(overrides: Record<string, unknown> = {}) {
   const viewportStore = { offset: { x: 0, y: 0 }, zoom: 1 };
   const repositoryStore = createNoteStore();
   const commandStore = createNoteStore();
-  const mcpServerStore = createNoteStore({
-    readMcpServer: vi.fn().mockResolvedValue(null),
-  });
   const trashZoneRef = ref(null);
   const handleOpenEditModal = vi.fn().mockResolvedValue(undefined);
-  const mcpServerModal = ref({
-    visible: false,
-    mode: "create" as "create" | "edit",
-    mcpServerId: "",
-    initialName: "",
-    initialConfig: undefined as McpServerConfig | undefined,
-  });
 
   return {
     podStore,
     viewportStore,
     repositoryStore,
     commandStore,
-    mcpServerStore,
     trashZoneRef,
     handleOpenEditModal,
-    mcpServerModal,
     ...overrides,
   };
 }
@@ -118,35 +105,6 @@ describe("useCanvasNoteHandlers", () => {
       );
 
       expect(isCanvasEmpty.value).toBe(false);
-    });
-  });
-
-  describe("handleNoteDoubleClick", () => {
-    it("mcpServer 類型應讀取資料並設定 modal", async () => {
-      const mockMcpServerData = {
-        name: "My MCP",
-        config: { command: "npx", args: ["-y", "server"] } as McpServerConfig,
-      };
-      const options = createOptions();
-      options.mcpServerStore.typedNotes = [
-        { id: "note-1", mcpServerId: "mcp-1" },
-      ];
-      (
-        options.mcpServerStore as ReturnType<typeof createNoteStore> & {
-          readMcpServer: ReturnType<typeof vi.fn>;
-        }
-      ).readMcpServer.mockResolvedValue(mockMcpServerData);
-
-      const { handleNoteDoubleClick } = useCanvasNoteHandlers(
-        options as unknown as Parameters<typeof useCanvasNoteHandlers>[0],
-      );
-
-      await handleNoteDoubleClick({ noteId: "note-1", noteType: "mcpServer" });
-
-      expect(options.mcpServerModal.value.visible).toBe(true);
-      expect(options.mcpServerModal.value.mode).toBe("edit");
-      expect(options.mcpServerModal.value.mcpServerId).toBe("mcp-1");
-      expect(options.mcpServerModal.value.initialName).toBe("My MCP");
     });
   });
 });

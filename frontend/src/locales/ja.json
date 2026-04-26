@@ -76,14 +76,21 @@
     },
     "slot": {
       "duplicateTitle": "すでに存在しています",
-      "mcpServerDuplicate": "この MCP サーバーはすでにこの Pod にバインドされています",
       "codexDisabled": "Codex はこの機能をサポートしていません",
       "pluginsLabel": "Plugins",
       "pluginsLoading": "読み込み中...",
       "pluginsBusyTooltip": "タスク実行中です。完了までお待ちください。",
       "pluginsEmpty": "プラグインがインストールされていません",
       "pluginsToggleFailed": "変更に失敗しました。ロールバックされました",
-      "pluginsCodexHint": "Codex プラグインは codex でグローバル管理されています"
+      "pluginsCodexHint": "Codex プラグインは codex でグローバル管理されています",
+      "mcpLabel": "MCP",
+      "mcpLoading": "読み込み中…",
+      "mcpBusyTooltip": "Pod 実行中は切り替え不可",
+      "mcpEmpty": "MCP server がインストールされていません",
+      "mcpClaudeEmptyHint": "`claude mcp add` でインストールしてください",
+      "mcpCodexEmptyHint": "`codex mcp add` でインストールしてください",
+      "mcpToggleFailed": "MCP server の切替に失敗しました",
+      "mcpCodexHint": "Codex MCP server は codex でグローバル管理されます"
     }
   },
   "run": {
@@ -258,19 +265,6 @@
       "contentPlaceholder": "内容",
       "editTitleWithType": "{type} を編集"
     },
-    "mcpServer": {
-      "createTitle": "MCP Server を追加",
-      "editTitle": "MCP Server を編集",
-      "description": "JSON 形式の MCP Server 設定を貼り付けてください。最初のキーが名前、値が設定内容です。",
-      "parseError": "JSON 形式が正しくありません。構文を確認してください",
-      "minOneServer": "MCP Server の設定を少なくとも 1 つ入力してください",
-      "nameInvalid": "名前は英数字、アンダースコア、ハイフンのみ使用できます",
-      "modeError": "設定には command フィールド（stdio モード）または type + url フィールド（http/sse モード）が必要です",
-      "commandEmpty": "command フィールドを空にできません",
-      "urlInvalid": "url フィールドの形式が正しくありません",
-      "argsInvalid": "args フィールドは文字列の配列である必要があります",
-      "parseLost": "解析結果が失われました。再度送信してください"
-    },
     "scheduleModal": {
       "createTitle": "スケジュールを設定",
       "editTitle": "スケジュールを編集",
@@ -426,10 +420,7 @@
       "worktreeCreated": "Worktree を作成しました",
       "repositoryDeleted": "Repository を削除しました",
       "commandDeleted": "Command を削除しました",
-      "mcpServerCreated": "MCP Server を作成しました",
-      "mcpServerUpdated": "MCP Server を更新しました",
-      "mcpServerDeleted": "MCP Server を削除しました",
-      "mcpServerReadFailed": "MCP Server の読み込みに失敗しました"
+      "mcpToggleSuccess": "MCP の設定を更新しました"
     },
     "deleteSelection": {
       "partialFailed": "一部の削除に失敗しました",

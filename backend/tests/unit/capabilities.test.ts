@@ -17,8 +17,8 @@ describe("CODEX_CAPABILITIES 能力旗標", () => {
     expect(CODEX_CAPABILITIES.plugin).toBe(true);
   });
 
-  it("mcp 應為 false（Codex 不支援 MCP）", () => {
-    expect(CODEX_CAPABILITIES.mcp).toBe(false);
+  it("mcp 應為 true（Codex 透過唯讀展示支援 MCP）", () => {
+    expect(CODEX_CAPABILITIES.mcp).toBe(true);
   });
 
   it("integration 應為 false（Codex 不支援 Integration）", () => {

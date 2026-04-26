@@ -5,7 +5,6 @@ import type {
   CopiedPod,
   CopiedRepositoryNote,
   CopiedCommandNote,
-  CopiedMcpServerNote,
   CopiedConnection,
 } from "@/types";
 
@@ -19,7 +18,6 @@ describe("clipboardStore", () => {
       expect(store.copiedPods).toEqual([]);
       expect(store.copiedRepositoryNotes).toEqual([]);
       expect(store.copiedCommandNotes).toEqual([]);
-      expect(store.copiedMcpServerNotes).toEqual([]);
       expect(store.copiedConnections).toEqual([]);
     });
   });
@@ -43,7 +41,7 @@ describe("clipboardStore", () => {
         providerConfig: { model: "opus" },
       };
 
-      store.setCopy([mockPod], [], [], [], []);
+      store.setCopy([mockPod], [], [], []);
 
       expect(store.isEmpty).toBe(false);
     });
@@ -59,7 +57,7 @@ describe("clipboardStore", () => {
         originalPosition: null,
       };
 
-      store.setCopy([], [mockNote], [], [], []);
+      store.setCopy([], [mockNote], [], []);
 
       expect(store.isEmpty).toBe(false);
     });
@@ -75,24 +73,7 @@ describe("clipboardStore", () => {
         originalPosition: null,
       };
 
-      store.setCopy([], [], [mockNote], [], []);
-
-      expect(store.isEmpty).toBe(false);
-    });
-
-    it("有 copiedMcpServerNotes 時應為 false", () => {
-      const store = useClipboardStore();
-      const mockNote: CopiedMcpServerNote = {
-        id: "note-1",
-        mcpServerId: "mcp-server-1",
-        name: "Test MCP Server",
-        x: 100,
-        y: 200,
-        boundToPodId: null,
-        originalPosition: null,
-      };
-
-      store.setCopy([], [], [], [mockNote], []);
+      store.setCopy([], [], [mockNote], []);
 
       expect(store.isEmpty).toBe(false);
     });
@@ -106,7 +87,7 @@ describe("clipboardStore", () => {
         targetAnchor: "top",
       };
 
-      store.setCopy([], [], [], [], [mockConnection]);
+      store.setCopy([], [], [], [mockConnection]);
 
       expect(store.isEmpty).toBe(false);
     });
@@ -129,14 +110,14 @@ describe("clipboardStore", () => {
         targetAnchor: "top",
       };
 
-      store.setCopy([mockPod], [], [], [], [mockConnection]);
+      store.setCopy([mockPod], [], [], [mockConnection]);
 
       expect(store.isEmpty).toBe(false);
     });
   });
 
   describe("setCopy", () => {
-    it("應設定所有 5 個陣列", () => {
+    it("應設定所有 4 個陣列", () => {
       const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
@@ -167,16 +148,6 @@ describe("clipboardStore", () => {
         originalPosition: null,
       };
 
-      const mockMcpServerNote: CopiedMcpServerNote = {
-        id: "note-4",
-        mcpServerId: "mcp-server-1",
-        name: "Test MCP Server",
-        x: 350,
-        y: 450,
-        boundToPodId: null,
-        originalPosition: null,
-      };
-
       const mockConnection: CopiedConnection = {
         sourcePodId: "pod-1",
         sourceAnchor: "bottom",
@@ -188,26 +159,23 @@ describe("clipboardStore", () => {
         [mockPod],
         [mockRepositoryNote],
         [mockCommandNote],
-        [mockMcpServerNote],
         [mockConnection],
       );
 
       expect(store.copiedPods).toEqual([mockPod]);
       expect(store.copiedRepositoryNotes).toEqual([mockRepositoryNote]);
       expect(store.copiedCommandNotes).toEqual([mockCommandNote]);
-      expect(store.copiedMcpServerNotes).toEqual([mockMcpServerNote]);
       expect(store.copiedConnections).toEqual([mockConnection]);
     });
 
     it("應能設定空陣列", () => {
       const store = useClipboardStore();
 
-      store.setCopy([], [], [], [], []);
+      store.setCopy([], [], [], []);
 
       expect(store.copiedPods).toEqual([]);
       expect(store.copiedRepositoryNotes).toEqual([]);
       expect(store.copiedCommandNotes).toEqual([]);
-      expect(store.copiedMcpServerNotes).toEqual([]);
       expect(store.copiedConnections).toEqual([]);
     });
 
@@ -234,10 +202,10 @@ describe("clipboardStore", () => {
         providerConfig: { model: "opus" },
       };
 
-      store.setCopy([mockPod1], [], [], [], []);
+      store.setCopy([mockPod1], [], [], []);
       expect(store.copiedPods).toEqual([mockPod1]);
 
-      store.setCopy([mockPod2], [], [], [], []);
+      store.setCopy([mockPod2], [], [], []);
       expect(store.copiedPods).toEqual([mockPod2]);
     });
 
@@ -265,7 +233,7 @@ describe("clipboardStore", () => {
         },
       ];
 
-      store.setCopy(mockPods, [], [], [], []);
+      store.setCopy(mockPods, [], [], []);
 
       expect(store.copiedPods).toHaveLength(2);
       expect(store.copiedPods).toEqual(mockPods);
@@ -286,7 +254,7 @@ describe("clipboardStore", () => {
         providerConfig: { model: "opus" },
       };
 
-      store.setCopy([mockPod], [], [], [], []);
+      store.setCopy([mockPod], [], [], []);
       expect(store.copiedPods).toHaveLength(1);
 
       store.clear();
@@ -294,7 +262,6 @@ describe("clipboardStore", () => {
       expect(store.copiedPods).toEqual([]);
       expect(store.copiedRepositoryNotes).toEqual([]);
       expect(store.copiedCommandNotes).toEqual([]);
-      expect(store.copiedMcpServerNotes).toEqual([]);
       expect(store.copiedConnections).toEqual([]);
     });
 
@@ -311,7 +278,7 @@ describe("clipboardStore", () => {
         providerConfig: { model: "opus" },
       };
 
-      store.setCopy([mockPod], [], [], [], []);
+      store.setCopy([mockPod], [], [], []);
       expect(store.isEmpty).toBe(false);
 
       store.clear();
@@ -321,7 +288,7 @@ describe("clipboardStore", () => {
   });
 
   describe("getCopiedData", () => {
-    it("應回傳所有 5 個陣列的資料", () => {
+    it("應回傳所有 4 個陣列的資料", () => {
       const store = useClipboardStore();
 
       const mockPod: CopiedPod = {
@@ -352,16 +319,6 @@ describe("clipboardStore", () => {
         originalPosition: null,
       };
 
-      const mockMcpServerNote: CopiedMcpServerNote = {
-        id: "note-4",
-        mcpServerId: "mcp-server-1",
-        name: "Test MCP Server",
-        x: 350,
-        y: 450,
-        boundToPodId: null,
-        originalPosition: null,
-      };
-
       const mockConnection: CopiedConnection = {
         sourcePodId: "pod-1",
         sourceAnchor: "bottom",
@@ -373,7 +330,6 @@ describe("clipboardStore", () => {
         [mockPod],
         [mockRepositoryNote],
         [mockCommandNote],
-        [mockMcpServerNote],
         [mockConnection],
       );
 
@@ -383,7 +339,6 @@ describe("clipboardStore", () => {
         pods: [mockPod],
         repositoryNotes: [mockRepositoryNote],
         commandNotes: [mockCommandNote],
-        mcpServerNotes: [mockMcpServerNote],
         connections: [mockConnection],
       });
     });
@@ -397,7 +352,6 @@ describe("clipboardStore", () => {
         pods: [],
         repositoryNotes: [],
         commandNotes: [],
-        mcpServerNotes: [],
         connections: [],
       });
     });
@@ -415,7 +369,7 @@ describe("clipboardStore", () => {
         providerConfig: { model: "opus" },
       };
 
-      store.setCopy([mockPod], [], [], [], []);
+      store.setCopy([mockPod], [], [], []);
 
       const result1 = store.getCopiedData();
       expect(result1.pods).toHaveLength(1);

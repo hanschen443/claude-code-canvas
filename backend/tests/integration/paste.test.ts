@@ -1,11 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { emitAndWaitResponse, setupIntegrationTest } from "../setup";
-import {
-  createRepository,
-  createCommand,
-  createMcpServer,
-  getCanvasId,
-} from "../helpers";
+import { createRepository, createCommand, getCanvasId } from "../helpers";
 import {
   WebSocketRequestEvents,
   WebSocketResponseEvents,
@@ -14,7 +9,6 @@ import {
   type PasteConnectionItem,
   type PasteRepositoryNoteItem,
   type PasteCommandNoteItem,
-  type PasteMcpServerNoteItem,
 } from "../../src/schemas";
 import { type CanvasPasteResultPayload } from "../../src/types";
 import { codexProvider } from "../../src/services/provider/codexProvider.js";
@@ -316,54 +310,6 @@ describe("貼上功能", () => {
       expect(pod?.commandId).toBe(command.id);
     });
 
-    it("成功貼上並建立綁定 Pod 的 MCP server 註記，且 Pod 的 mcpServerIds 被更新", async () => {
-      const client = getClient();
-      const mcpServer = await createMcpServer(client, `mcp-${uuidv4()}`);
-      const originalPodId = uuidv4();
-
-      const pods: PastePodItem[] = [
-        { originalId: originalPodId, name: "MCP Pod", x: 0, y: 0, rotation: 0 },
-      ];
-
-      const mcpServerNotes: PasteMcpServerNoteItem[] = [
-        {
-          mcpServerId: mcpServer.id,
-          name: "MCP Note",
-          x: 10,
-          y: 10,
-          boundToOriginalPodId: originalPodId,
-          originalPosition: { x: 10, y: 10 },
-        },
-      ];
-
-      const payload: CanvasPastePayload = {
-        ...(await emptyPastePayload()),
-        pods,
-        mcpServerNotes,
-      };
-
-      const response = await emitAndWaitResponse<
-        CanvasPastePayload,
-        CanvasPasteResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.CANVAS_PASTE,
-        WebSocketResponseEvents.CANVAS_PASTE_RESULT,
-        payload,
-      );
-
-      expect(response.createdMcpServerNotes).toHaveLength(1);
-      expect(response.createdPods).toHaveLength(1);
-
-      const newPodId = response.podIdMapping[originalPodId];
-      expect(response.createdMcpServerNotes[0].boundToPodId).toBe(newPodId);
-
-      const canvasId = await getCanvasId(client);
-      const { podStore } = await import("../../src/services/podStore.js");
-      const pod = podStore.getById(canvasId, newPodId);
-      expect(pod?.mcpServerIds).toContain(mcpServer.id);
-    });
-
     it("Command Note 未綁定 Pod 時可獨立貼上，且不建立任何 Pod", async () => {
       const client = getClient();
       const command = await createCommand(
@@ -565,127 +511,6 @@ describe("貼上功能", () => {
       expect(response.createdPods).not.toContainEqual(
         expect.objectContaining({ id: originalPodId }),
       );
-    });
-
-    it("MCP Server Note 未綁定 Pod 時可獨立貼上，且不影響任何 Pod 的 mcpServerIds", async () => {
-      const client = getClient();
-      const mcpServer = await createMcpServer(
-        client,
-        `mcp-unbound-${uuidv4()}`,
-      );
-
-      const mcpServerNotes: PasteMcpServerNoteItem[] = [
-        {
-          mcpServerId: mcpServer.id,
-          name: "Unbound MCP Note",
-          x: 10,
-          y: 10,
-          boundToOriginalPodId: null,
-          originalPosition: { x: 10, y: 10 },
-        },
-      ];
-
-      const payload: CanvasPastePayload = {
-        ...(await emptyPastePayload()),
-        mcpServerNotes,
-      };
-
-      const response = await emitAndWaitResponse<
-        CanvasPastePayload,
-        CanvasPasteResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.CANVAS_PASTE,
-        WebSocketResponseEvents.CANVAS_PASTE_RESULT,
-        payload,
-      );
-
-      expect(response.createdMcpServerNotes).toHaveLength(1);
-      expect(response.createdMcpServerNotes[0].mcpServerId).toBe(mcpServer.id);
-      expect(response.createdMcpServerNotes[0].boundToPodId).toBeNull();
-      expect(response.createdPods).toHaveLength(0);
-    });
-
-    it("貼上 MCP Server Note 時，若 Pod 的 mcpServerIds 已包含該 mcpServerId，不應重複加入", async () => {
-      const client = getClient();
-      const mcpServer = await createMcpServer(client, `mcp-dedup-${uuidv4()}`);
-      const originalPodId = uuidv4();
-
-      const pods: PastePodItem[] = [
-        {
-          originalId: originalPodId,
-          name: "MCP Dedup Pod",
-          x: 0,
-          y: 0,
-          rotation: 0,
-        },
-      ];
-
-      const mcpServerNotes: PasteMcpServerNoteItem[] = [
-        {
-          mcpServerId: mcpServer.id,
-          name: "MCP Note Dedup",
-          x: 10,
-          y: 10,
-          boundToOriginalPodId: originalPodId,
-          originalPosition: { x: 10, y: 10 },
-        },
-      ];
-
-      // 先貼上一次，建立 Pod 並綁定 mcpServerId
-      const firstPayload: CanvasPastePayload = {
-        ...(await emptyPastePayload()),
-        pods,
-        mcpServerNotes,
-      };
-      const firstResponse = await emitAndWaitResponse<
-        CanvasPastePayload,
-        CanvasPasteResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.CANVAS_PASTE,
-        WebSocketResponseEvents.CANVAS_PASTE_RESULT,
-        firstPayload,
-      );
-
-      const newPodId = firstResponse.podIdMapping[originalPodId];
-      const canvasId = await getCanvasId(client);
-      const { podStore } = await import("../../src/services/podStore.js");
-
-      const podAfterFirst = podStore.getById(canvasId, newPodId);
-      expect(podAfterFirst?.mcpServerIds).toContain(mcpServer.id);
-      const countAfterFirst = podAfterFirst?.mcpServerIds.length ?? 0;
-
-      // 再次貼上同一個 mcpServerId，boundToOriginalPodId 直接指向已建立的 Pod
-      // 此 Pod 的 mcpServerIds 已包含該 mcpServerId，應不重複加入
-      const secondMcpServerNotes: PasteMcpServerNoteItem[] = [
-        {
-          mcpServerId: mcpServer.id,
-          name: "MCP Note Dedup 2",
-          x: 20,
-          y: 20,
-          boundToOriginalPodId: newPodId,
-          originalPosition: { x: 20, y: 20 },
-        },
-      ];
-
-      const secondPayload: CanvasPastePayload = {
-        ...(await emptyPastePayload()),
-        mcpServerNotes: secondMcpServerNotes,
-      };
-
-      await emitAndWaitResponse<CanvasPastePayload, CanvasPasteResultPayload>(
-        client,
-        WebSocketRequestEvents.CANVAS_PASTE,
-        WebSocketResponseEvents.CANVAS_PASTE_RESULT,
-        secondPayload,
-      );
-
-      const podAfterSecond = podStore.getById(canvasId, newPodId);
-      expect(podAfterSecond?.mcpServerIds.length).toBe(countAfterFirst);
-      expect(
-        podAfterSecond?.mcpServerIds.filter((id) => id === mcpServer.id),
-      ).toHaveLength(1);
     });
 
     it("Codex Pod 複製貼上後 provider 仍為 codex、model 仍為 CODEX_DEFAULT_MODEL", async () => {

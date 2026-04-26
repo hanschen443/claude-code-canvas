@@ -5,7 +5,6 @@ import { useDeleteSelection } from "@/composables/canvas";
 import { useRemoteCursors } from "@/composables/canvas/useRemoteCursors";
 import { useCursorTracker } from "@/composables/canvas/useCursorTracker";
 import { useEditModal } from "@/composables/canvas/useEditModal";
-import { useMcpServerModal } from "@/composables/canvas/useMcpServerModal";
 import { useDeleteResource } from "@/composables/canvas/useDeleteResource";
 import { useCanvasProgressTasks } from "@/composables/canvas/useCanvasProgressTasks";
 import { useCanvasContextMenus } from "@/composables/canvas/useCanvasContextMenus";
@@ -28,9 +27,8 @@ import CreateRepositoryModal from "./CreateRepositoryModal.vue";
 import CloneRepositoryModal from "./CloneRepositoryModal.vue";
 import ConfirmDeleteModal from "./ConfirmDeleteModal.vue";
 import CreateEditModal from "./CreateEditModal.vue";
-import McpServerModal from "./McpServerModal.vue";
 import IntegrationConnectModal from "@/components/integration/IntegrationConnectModal.vue";
-import type { Pod, PodTypeConfig, Position, McpServerConfig } from "@/types";
+import type { Pod, PodTypeConfig, Position } from "@/types";
 import type { PodProvider, ProviderConfig } from "@/types/pod";
 import {
   POD_MENU_X_OFFSET,
@@ -46,7 +44,6 @@ const {
   selectionStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
 } = useCanvasContext();
 
@@ -82,12 +79,6 @@ const {
 } = useEditModal({ commandStore, viewportStore }, lastMenuPosition);
 
 const {
-  mcpServerModal,
-  handleOpenMcpServerModal: openMcpServerModal,
-  handleMcpServerModalSubmit: submitMcpServerModal,
-} = useMcpServerModal({ viewportStore, lastMenuPosition });
-
-const {
   showDeleteModal,
   deleteTarget,
   isDeleteTargetInUse,
@@ -97,7 +88,6 @@ const {
 } = useDeleteResource({
   repositoryStore,
   commandStore,
-  mcpServerStore,
 });
 
 const { allProgressTasks, handleCloneStarted, handlePullStarted } =
@@ -122,7 +112,6 @@ const {
   isCanvasEmpty,
   handleCreateRepositoryNote,
   handleCreateCommandNote,
-  handleCreateMcpServerNote,
   getRepositoryBranchName,
   handleNoteDoubleClick,
 } = useCanvasNoteHandlers({
@@ -130,10 +119,8 @@ const {
   viewportStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   trashZoneRef,
   handleOpenEditModal,
-  mcpServerModal,
 });
 
 const handleContextMenu = (e: MouseEvent): void => {
@@ -160,7 +147,6 @@ const handleCanvasClick = (e: MouseEvent): void => {
     ".pod-doodle",
     ".repository-note",
     ".command-note",
-    ".mcp-server-note",
   ];
   if (ignoredSelectors.some((selector) => target.closest(selector))) {
     return;
@@ -277,45 +263,27 @@ const withMenuPosition = <T extends (...args: never[]) => unknown>(
   }) as T;
 };
 
-const handleMcpServerModalSubmit = async (payload: {
-  name: string;
-  config: McpServerConfig;
-}): Promise<void> => {
-  await submitMcpServerModal(payload, mcpServerStore);
-};
-
 const wrappedHandleOpenCreateModal = withMenuPosition(handleOpenCreateModal);
 const wrappedHandleOpenCreateGroupModal = withMenuPosition(
   handleOpenCreateGroupModal,
 );
 const wrappedHandleOpenEditModal = withMenuPosition(handleOpenEditModal);
-const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
 
 /** 處理 PodTypeMenu 的統一 create-note 事件，依 type 分派至對應的 note 建立函式 */
-const handleCreateNote = (payload: {
-  type: "repository" | "command" | "mcpServer";
-  id: string;
-}): void => {
-  const handlerMap = {
-    repository: handleCreateRepositoryNote,
-    command: handleCreateCommandNote,
-    mcpServer: handleCreateMcpServerNote,
-  } as const;
-  handlerMap[payload.type](payload.id);
+const handleCreateNote = (payload: { type: string; id: string }): void => {
+  if (payload.type === "repository") {
+    handleCreateRepositoryNote(payload.id);
+  } else if (payload.type === "command") {
+    handleCreateCommandNote(payload.id);
+  }
 };
 
 /** 處理 PodTypeMenu 的統一 open-modal 事件，依 type 分派至對應的 Modal 開啟函式 */
-const handleOpenModal = (payload: {
-  type: "createRepository" | "cloneRepository" | "mcpServer";
-  mode?: "create" | "edit";
-  mcpServerId?: string;
-}): void => {
+const handleOpenModal = (payload: { type: string }): void => {
   if (payload.type === "createRepository") {
     handleOpenCreateRepositoryModal();
   } else if (payload.type === "cloneRepository") {
     handleOpenCloneRepositoryModal();
-  } else if (payload.type === "mcpServer") {
-    handleOpenMcpServerModal(payload.mode ?? "create", payload.mcpServerId);
   }
 };
 </script>
@@ -362,17 +330,6 @@ const handleOpenModal = (payload: {
       @drag-end="noteHandlerMap.command.handleDragEnd"
       @drag-move="noteHandlerMap.command.handleDragMove"
       @drag-complete="noteHandlerMap.command.handleDragComplete"
-      @dblclick="handleNoteDoubleClick"
-    />
-
-    <GenericNote
-      v-for="note in mcpServerStore.getUnboundNotes"
-      :key="note.id"
-      :note="note"
-      note-type="mcpServer"
-      @drag-end="noteHandlerMap.mcpServer.handleDragEnd"
-      @drag-move="noteHandlerMap.mcpServer.handleDragMove"
-      @drag-complete="noteHandlerMap.mcpServer.handleDragComplete"
       @dblclick="handleNoteDoubleClick"
     />
 
@@ -464,14 +421,6 @@ const handleOpenModal = (payload: {
     :name-editable="editModal.mode === 'create'"
     :show-content="editModal.showContent"
     @submit="handleCreateEditSubmit"
-  />
-
-  <McpServerModal
-    v-model:open="mcpServerModal.visible"
-    :mode="mcpServerModal.mode"
-    :initial-name="mcpServerModal.initialName"
-    :initial-config="mcpServerModal.initialConfig"
-    @submit="handleMcpServerModalSubmit"
   />
 
   <IntegrationConnectModal

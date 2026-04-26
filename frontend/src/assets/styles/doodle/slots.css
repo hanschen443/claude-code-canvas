@@ -274,6 +274,76 @@
   animation: slide-into-slot 0.3s ease-out;
 }
 
+/* ===================================
+   MCP Slot（Pod 左側 MCP 凹槽按鈕，與 Plugin Slot 並列）
+   =================================== */
+
+.pod-mcp-slot {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  background: transparent;
+  border: 2px solid var(--doodle-ink);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-mono), monospace, sans-serif;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.pod-mcp-slot:hover {
+  background: var(--secondary);
+  box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.3);
+}
+
+.pod-mcp-slot[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* MCP Slot 啟用狀態（有 MCP 已啟用，Claude 專用） */
+.pod-mcp-slot--active {
+  background: var(--doodle-sand);
+  border-color: var(--doodle-ink);
+  box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.3);
+  color: var(--doodle-ink);
+}
+
+.pod-mcp-slot--active:hover {
+  background: var(--doodle-sand);
+  box-shadow: 3px 3px 0 oklch(0.4 0.02 50 / 0.4);
+}
+
+/* MCP Slot Codex 狀態（永遠顯示沙色，不需 toggle，僅供資訊展示） */
+.pod-mcp-slot--codex {
+  background: var(--doodle-sand);
+  border-color: var(--doodle-ink);
+  box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.3);
+  color: var(--doodle-ink);
+}
+
+.pod-mcp-slot--codex:hover {
+  background: var(--doodle-sand);
+  box-shadow: 3px 3px 0 oklch(0.4 0.02 50 / 0.4);
+}
+
+/* MCP Slot 容器位置（POD 左側，Plugin Slot 下方 40px） */
+.pod-mcp-notch-area {
+  position: absolute;
+  left: 0;
+  top: 84px;
+  transform: translateX(-100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
 /* MCP Server Slot 容器位置（POD 左側） */
 .pod-mcp-server-notch-area {
   left: 0;

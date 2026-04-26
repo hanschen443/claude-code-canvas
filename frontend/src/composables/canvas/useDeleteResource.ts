@@ -4,7 +4,7 @@ import type { Group } from "@/types";
 import { useToast } from "@/composables/useToast";
 import { t } from "@/i18n";
 
-type ItemType = "repository" | "command" | "mcpServer";
+type ItemType = "repository" | "command";
 // 目前只有一種 group
 const COMMAND_GROUP_TYPE = "commandGroup" as const;
 type GroupType = typeof COMMAND_GROUP_TYPE;
@@ -28,9 +28,6 @@ interface DeleteResourceStores {
     deleteCommand: (id: string) => Promise<void>;
     deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>;
   };
-  mcpServerStore: DeletableStore & {
-    deleteMcpServer: (id: string) => Promise<void>;
-  };
 }
 
 export function useDeleteResource(stores: DeleteResourceStores): {
@@ -46,7 +43,7 @@ export function useDeleteResource(stores: DeleteResourceStores): {
   handleConfirmDelete: () => Promise<void>;
   closeDeleteModal: () => void;
 } {
-  const { repositoryStore, commandStore, mcpServerStore } = stores;
+  const { repositoryStore, commandStore } = stores;
 
   const showDeleteModal = ref(false);
   const deleteTarget = ref<DeleteTarget | null>(null);
@@ -59,7 +56,6 @@ export function useDeleteResource(stores: DeleteResourceStores): {
     const inUseChecks: Record<ExtendedItemType, () => boolean> = {
       repository: (): boolean => repositoryStore.isItemInUse(id),
       command: (): boolean => commandStore.isItemInUse(id),
-      mcpServer: (): boolean => mcpServerStore.isItemInUse(id),
       commandGroup: (): boolean => false,
     };
 
@@ -91,7 +87,6 @@ export function useDeleteResource(stores: DeleteResourceStores): {
     > = {
       repository: (): Promise<void> => repositoryStore.deleteRepository(id),
       command: (): Promise<void> => commandStore.deleteCommand(id),
-      mcpServer: (): Promise<void> => mcpServerStore.deleteMcpServer(id),
       commandGroup: () => commandStore.deleteGroup(id),
     };
 

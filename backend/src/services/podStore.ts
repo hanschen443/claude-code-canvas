@@ -78,7 +78,7 @@ class PodStore {
   /**
    * 統一 PreparedStatement LRU 快取，取代原本分散的四個 cache map。
    * key 格式：「語意前綴:參數」，例如：
-   *   - "relations:pod_mcp_server_ids:5"（batchLoadRelations）
+   *   - "relations:pod_mcp_server_names:5"（batchLoadRelations）
    *   - "bindings:5"（batchLoadBindings）
    *   - "joinFetch:5"（findByJoinTableId）
    *   - "podsByIds:5"（fetchPodsByIds）
@@ -133,13 +133,13 @@ class PodStore {
 
   /** 合法的 tableName 白名單，防止 SQL injection */
   private static readonly ALLOWED_RELATION_TABLES = new Set([
-    "pod_mcp_server_ids",
+    "pod_mcp_server_names",
     "pod_plugin_ids",
   ]);
 
   /** 合法的 valueColumn 白名單，防止 SQL injection */
   private static readonly ALLOWED_RELATION_COLUMNS = new Set([
-    "mcp_server_id",
+    "mcp_server_name",
     "plugin_id",
   ]);
 
@@ -210,17 +210,17 @@ class PodStore {
   }
 
   /**
-   * 批次載入多個 Pod 的關聯表資料（mcpServer、plugin）。
+   * 批次載入多個 Pod 的關聯表資料（mcpServerNames、plugin）。
    * 使用 WHERE pod_id IN (...) 一次查詢，避免 N+1 問題。
    * PreparedStatement 以 "tableName:n" 為 key 快取，不同 relation 類別不會互相命中。
    */
   private batchLoadRelations(podIds: string[]): {
-    mcpServerIds: Map<string, string[]>;
+    mcpServerNames: Map<string, string[]>;
     pluginIds: Map<string, string[]>;
   } {
     if (podIds.length === 0) {
       return {
-        mcpServerIds: new Map(),
+        mcpServerNames: new Map(),
         pluginIds: new Map(),
       };
     }
@@ -228,9 +228,9 @@ class PodStore {
     const placeholders = podIds.map(() => "?").join(", ");
 
     return {
-      mcpServerIds: this.loadRelation(
-        "pod_mcp_server_ids",
-        "mcp_server_id",
+      mcpServerNames: this.loadRelation(
+        "pod_mcp_server_names",
+        "mcp_server_name",
         podIds,
         placeholders,
       ),
@@ -434,7 +434,7 @@ class PodStore {
   private buildPodFromRow(
     row: PodRow,
     relations: {
-      mcpServerIds: Map<string, string[]>;
+      mcpServerNames: Map<string, string[]>;
       pluginIds: Map<string, string[]>;
     },
     bindingsMap: Map<string, IntegrationBinding[]>,
@@ -450,7 +450,7 @@ class PodStore {
       y: row.y,
       rotation: row.rotation,
       sessionId: row.session_id,
-      mcpServerIds: relations.mcpServerIds.get(row.id) ?? [],
+      mcpServerNames: relations.mcpServerNames.get(row.id) ?? [],
       pluginIds: relations.pluginIds.get(row.id) ?? [],
       provider,
       providerConfig,
@@ -480,17 +480,17 @@ class PodStore {
   }
 
   /**
-   * 私有 helper：將 Pod 的兩張 join table（mcpServerIds / pluginIds）
+   * 私有 helper：將 Pod 的兩張 join table（mcpServerNames / pluginIds）
    * 批次寫入 DB。必須在同一個 transaction 內被呼叫（由 create / update 統一保證）。
    */
   private insertJoinTableIds(
     podId: string,
-    pod: Pick<Pod, "mcpServerIds" | "pluginIds">,
+    pod: Pick<Pod, "mcpServerNames" | "pluginIds">,
   ): void {
-    for (const mcpServerId of pod.mcpServerIds) {
-      this.stmts.podMcpServerIds.insert.run({
+    for (const mcpServerName of pod.mcpServerNames) {
+      this.stmts.podMcpServerNames.insert.run({
         $podId: podId,
-        $mcpServerId: mcpServerId,
+        $mcpServerName: mcpServerName,
       });
     }
 
@@ -523,7 +523,7 @@ class PodStore {
       y: data.y,
       rotation: data.rotation,
       sessionId: null,
-      mcpServerIds: data.mcpServerIds ?? [],
+      mcpServerNames: data.mcpServerNames ?? [],
       pluginIds: data.pluginIds ?? [],
       provider,
       providerConfig,
@@ -651,19 +651,11 @@ class PodStore {
   }
 
   /**
-   * 依照 updates 中提供的 id 陣列，重新寫入兩張 join table（mcpServerIds、pluginIds）。
+   * 依照 updates 中提供的 id 陣列，重新寫入 pluginIds join table。
    * 未傳入的欄位（undefined）視為不更新，維持原有資料。
+   * mcpServerNames 透過 setMcpServerNames 獨立管理，不在此處處理。
    */
   private updateJoinTables(podId: string, updates: PodUpdates): void {
-    if (updates.mcpServerIds !== undefined) {
-      this.replaceJoinTableIds(
-        podId,
-        this.stmts.podMcpServerIds,
-        updates.mcpServerIds,
-        (valueId) => ({ $podId: podId, $mcpServerId: valueId }),
-      );
-    }
-
     if (updates.pluginIds !== undefined) {
       this.replaceJoinTableIds(
         podId,
@@ -794,55 +786,27 @@ class PodStore {
     this.setSessionId(canvasId, podId, "");
   }
 
-  addMcpServerId(canvasId: string, podId: string, mcpServerId: string): void {
-    this.stmts.podMcpServerIds.insert.run({
-      $podId: podId,
-      $mcpServerId: mcpServerId,
-    });
-  }
-
-  removeMcpServerId(
-    canvasId: string,
-    podId: string,
-    mcpServerId: string,
-  ): void {
-    this.stmts.podMcpServerIds.deleteOne.run({
-      $podId: podId,
-      $mcpServerId: mcpServerId,
-    });
-  }
-
-  private findByJoinTableId(
-    canvasId: string,
-    selectByValueId: ReturnType<
-      typeof getStmts
-    >["podMcpServerIds"]["selectByMcpServerId"],
-    valueId: string,
-  ): Pod[] {
-    const podIdRows = selectByValueId.all(valueId) as Array<{ pod_id: string }>;
-    const podIds = podIdRows.map((r) => r.pod_id);
-    if (podIds.length === 0) return [];
-
-    // 用 WHERE id IN (...) 一次取得所有 Pod，再過濾 canvas，避免 N+1
-    const cacheKey = `joinFetch:${podIds.length}`;
-    const placeholders = podIds.map(() => "?").join(", ");
-    const stmt = this.getCachedStmt(
-      this.stmtCache,
-      cacheKey,
-      () =>
-        `SELECT * FROM pods WHERE canvas_id = ? AND id IN (${placeholders})`,
-    );
-    const rows = stmt.all(canvasId, ...podIds) as PodRow[];
-    return this.rowsToPods(rows);
+  /**
+   * 直接覆寫指定 pod 的 mcpServerNames 陣列（全量替換，非增量）。
+   * 先刪除舊記錄再逐一插入，確保結果與傳入 names 完全一致。
+   */
+  setMcpServerNames(podId: string, names: string[]): void {
+    getDb().transaction(() => {
+      this.stmts.podMcpServerNames.deleteByPodId.run(podId);
+      for (const name of names) {
+        this.stmts.podMcpServerNames.insert.run({
+          $podId: podId,
+          $mcpServerName: name,
+        });
+      }
+    })();
   }
 
   private replaceJoinTableIds(
     podId: string,
     stmtGroup: {
-      deleteByPodId: ReturnType<
-        typeof getStmts
-      >["podMcpServerIds"]["deleteByPodId"];
-      insert: ReturnType<typeof getStmts>["podMcpServerIds"]["insert"];
+      deleteByPodId: ReturnType<Database["prepare"]>;
+      insert: ReturnType<Database["prepare"]>;
     },
     valueIds: string[],
     buildParams: (valueId: string) => Record<string, string>,
@@ -851,14 +815,6 @@ class PodStore {
     for (const valueId of valueIds) {
       stmtGroup.insert.run(buildParams(valueId));
     }
-  }
-
-  findByMcpServerId(canvasId: string, mcpServerId: string): Pod[] {
-    return this.findByJoinTableId(
-      canvasId,
-      this.stmts.podMcpServerIds.selectByMcpServerId,
-      mcpServerId,
-    );
   }
 
   findByCommandId(canvasId: string, commandId: string): Pod[] {

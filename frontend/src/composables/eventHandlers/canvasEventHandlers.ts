@@ -3,14 +3,12 @@ import { usePodStore } from "@/stores/pod/podStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import type {
   Pod,
   RepositoryNote,
   CommandNote,
   Canvas,
-  McpServerNote,
   Connection,
 } from "@/types";
 import { createUnifiedHandler } from "./sharedHandlerUtils";
@@ -80,7 +78,6 @@ const handleCanvasPasted = createUnifiedHandler<
     createdPods?: Pod[];
     createdRepositoryNotes?: RepositoryNote[];
     createdCommandNotes?: CommandNote[];
-    createdMcpServerNotes?: McpServerNote[];
     createdConnections?: RawConnectionFromEvent[];
   }
 >(
@@ -89,7 +86,6 @@ const handleCanvasPasted = createUnifiedHandler<
     const connectionStore = useConnectionStore();
     const repositoryStore = useRepositoryStore();
     const commandStore = useCommandStore();
-    const mcpServerStore = useMcpServerStore();
 
     addCreatedItems(payload.createdPods, (pod) =>
       podStore.addPodFromEvent(pod),
@@ -99,9 +95,6 @@ const handleCanvasPasted = createUnifiedHandler<
     );
     addCreatedItems(payload.createdCommandNotes, (note) =>
       commandStore.addNoteFromEvent(note),
-    );
-    addCreatedItems(payload.createdMcpServerNotes, (note) =>
-      mcpServerStore.addNoteFromEvent(note),
     );
     addCreatedItems(payload.createdConnections, (connection) =>
       connectionStore.addConnectionFromEvent(connection),

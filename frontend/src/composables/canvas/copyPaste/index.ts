@@ -4,6 +4,6 @@ export {
   collectSelectedNotes,
   collectRelatedConnections,
 } from "./collectCopyData";
-export type { BoundNotesByType, NoteStores } from "./collectCopyData";
+export type { NoteStores } from "./collectCopyData";
 
 export { calculatePastePositions } from "./calculatePaste";

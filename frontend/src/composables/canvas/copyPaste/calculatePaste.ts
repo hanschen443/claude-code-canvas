@@ -9,12 +9,10 @@ import type {
   CopiedPod,
   CopiedRepositoryNote,
   CopiedCommandNote,
-  CopiedMcpServerNote,
   CopiedConnection,
   PastePodItem,
   PasteRepositoryNoteItem,
   PasteCommandNoteItem,
-  PasteMcpServerNoteItem,
   PasteConnectionItem,
 } from "@/types";
 
@@ -66,21 +64,15 @@ function updateBoundsForUnboundNotes(
   }
 }
 
-function calculateBoundingBox<
-  TR extends HasPosition,
-  TC extends HasPosition,
-  TM extends HasPosition,
->(
+function calculateBoundingBox<TR extends HasPosition, TC extends HasPosition>(
   pods: CopiedPod[],
   notes: {
     repositoryNotes: TR[];
     commandNotes: TC[];
-    mcpServerNotes: TM[];
   },
   getBoundKeys: {
     repositoryNote: (n: TR) => string | null;
     commandNote: (n: TC) => string | null;
-    mcpServerNote: (n: TM) => string | null;
   },
 ): BoundingBox {
   const bounds = createInitialBounds();
@@ -92,7 +84,6 @@ function calculateBoundingBox<
   updateBoundsForUnboundNotes(bounds, [
     toUnboundNoteEntry(notes.repositoryNotes, getBoundKeys.repositoryNote),
     toUnboundNoteEntry(notes.commandNotes, getBoundKeys.commandNote),
-    toUnboundNoteEntry(notes.mcpServerNotes, getBoundKeys.mcpServerNote),
   ]);
 
   return bounds;
@@ -156,7 +147,7 @@ export function transformPods(
       rotation: pod.rotation,
       provider: pod.provider,
       providerConfig: pod.providerConfig,
-      mcpServerIds: pod.mcpServerIds,
+      mcpServerNames: pod.mcpServerNames,
       pluginIds: pod.pluginIds,
       repositoryId: pod.repositoryId,
       commandId: pod.commandId,
@@ -204,14 +195,10 @@ type ClipboardData = {
   pods: CopiedPod[];
   repositoryNotes: CopiedRepositoryNote[];
   commandNotes: CopiedCommandNote[];
-  mcpServerNotes: CopiedMcpServerNote[];
   connections: CopiedConnection[];
 };
 
-type CopiedNote =
-  | CopiedRepositoryNote
-  | CopiedCommandNote
-  | CopiedMcpServerNote;
+type CopiedNote = CopiedRepositoryNote | CopiedCommandNote;
 
 type NoteTransformConfig<TSource extends CopiedNote, TResult> = {
   notes: TSource[];
@@ -220,12 +207,11 @@ type NoteTransformConfig<TSource extends CopiedNote, TResult> = {
 };
 
 function isEmptyClipboard(clipboardData: ClipboardData): boolean {
-  const { pods, repositoryNotes, commandNotes, mcpServerNotes } = clipboardData;
+  const { pods, repositoryNotes, commandNotes } = clipboardData;
   return (
     pods.length === 0 &&
     repositoryNotes.length === 0 &&
-    commandNotes.length === 0 &&
-    mcpServerNotes.length === 0
+    commandNotes.length === 0
   );
 }
 
@@ -237,18 +223,15 @@ export function calculatePastePositions(
   pods: PastePodItem[];
   repositoryNotes: PasteRepositoryNoteItem[];
   commandNotes: PasteCommandNoteItem[];
-  mcpServerNotes: PasteMcpServerNoteItem[];
   connections: PasteConnectionItem[];
 } {
-  const { pods, repositoryNotes, commandNotes, mcpServerNotes, connections } =
-    clipboardData;
+  const { pods, repositoryNotes, commandNotes, connections } = clipboardData;
 
   if (isEmptyClipboard(clipboardData)) {
     return {
       pods: [],
       repositoryNotes: [],
       commandNotes: [],
-      mcpServerNotes: [],
       connections: [],
     };
   }
@@ -258,12 +241,10 @@ export function calculatePastePositions(
     {
       repositoryNotes,
       commandNotes,
-      mcpServerNotes,
     },
     {
       repositoryNote: (note) => note.boundToOriginalPodId,
       commandNote: (note) => note.boundToOriginalPodId,
-      mcpServerNote: (note) => note.boundToPodId,
     },
   );
 
@@ -309,20 +290,6 @@ export function calculatePastePositions(
         originalPosition: note.originalPosition,
       }),
     }),
-    mcpServerNotes: applyTransform<CopiedMcpServerNote, PasteMcpServerNoteItem>(
-      {
-        notes: mcpServerNotes,
-        getBoundKey: (note) => note.boundToPodId,
-        mapFn: (note, position) => ({
-          mcpServerId: note.mcpServerId,
-          name: note.name,
-          x: position.x,
-          y: position.y,
-          boundToOriginalPodId: note.boundToPodId,
-          originalPosition: note.originalPosition,
-        }),
-      },
-    ),
     connections: transformConnections(connections),
   };
 }

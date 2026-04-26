@@ -41,7 +41,6 @@ export function useCopyPaste(): void {
     selectionStore,
     repositoryStore,
     commandStore,
-    mcpServerStore,
     clipboardStore,
     connectionStore,
   } = useCanvasContext();
@@ -66,7 +65,6 @@ export function useCopyPaste(): void {
     const copiedNotes = collectSelectedNotes(selectedElements, selectedPodIds, {
       repositoryStore,
       commandStore,
-      mcpServerStore,
     });
     const copiedConnections = collectRelatedConnections(
       selectedPodIds,
@@ -77,7 +75,6 @@ export function useCopyPaste(): void {
       copiedPods,
       copiedNotes.repositoryNotes,
       copiedNotes.commandNotes,
-      copiedNotes.mcpServerNotes,
       copiedConnections,
     );
 
@@ -95,7 +92,7 @@ export function useCopyPaste(): void {
     );
     const clipboardData = clipboardStore.getCopiedData();
     const existingNames = new Set(podStore.pods.map((p) => p.name));
-    const { pods, repositoryNotes, commandNotes, mcpServerNotes, connections } =
+    const { pods, repositoryNotes, commandNotes, connections } =
       calculatePastePositions(canvasPos, clipboardData, existingNames);
 
     const { wrapWebSocketRequest } = useWebSocketErrorHandler();
@@ -109,7 +106,6 @@ export function useCopyPaste(): void {
           pods,
           repositoryNotes,
           commandNotes,
-          mcpServerNotes,
           connections,
         },
         timeout: PASTE_TIMEOUT_MS,
@@ -130,10 +126,6 @@ export function useCopyPaste(): void {
       ...collectUnboundCreatedElements(
         "commandNote",
         response.createdCommandNotes,
-      ),
-      ...collectUnboundCreatedElements(
-        "mcpServerNote",
-        response.createdMcpServerNotes,
       ),
     ];
 

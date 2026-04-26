@@ -3,7 +3,6 @@ import type {
   CopiedPod,
   CopiedRepositoryNote,
   CopiedCommandNote,
-  CopiedMcpServerNote,
   CopiedConnection,
   AnchorPosition,
   TriggerMode,
@@ -15,7 +14,7 @@ type NoteWithIndexSignature = {
   [key: string]: unknown;
 };
 
-type AnyNote = CopiedRepositoryNote | CopiedCommandNote | CopiedMcpServerNote;
+type AnyNote = CopiedRepositoryNote | CopiedCommandNote;
 
 type StoreWithNotes<
   TNote extends NoteWithIndexSignature = NoteWithIndexSignature,
@@ -45,12 +44,6 @@ function buildNoteByIdMap<TNote extends NoteWithIndexSignature>(
   notes: TNote[],
 ): Map<string, TNote> {
   return new Map(notes.map((note) => [note.id as string, note]));
-}
-
-export interface BoundNotesByType {
-  repositoryNotes: CopiedRepositoryNote[];
-  commandNotes: CopiedCommandNote[];
-  mcpServerNotes: CopiedMcpServerNote[];
 }
 
 /**
@@ -95,18 +88,6 @@ function extractNoteBaseFields(note: NoteWithIndexSignature): NoteBaseFields {
   };
 }
 
-function createBoundNoteMapper<
-  T extends NoteBaseFields & { boundToPodId: string | null },
->(idField: string): (note: NoteWithIndexSignature) => T {
-  return (note: NoteWithIndexSignature): T =>
-    ({
-      ...extractNoteBaseFields(note),
-      id: note.id as string,
-      [idField]: note[idField] as string,
-      boundToPodId: note.boundToPodId,
-    }) as unknown as T;
-}
-
 function createOriginalBoundNoteMapper<
   T extends NoteBaseFields & { boundToOriginalPodId: string | null },
 >(idField: string): (note: NoteWithIndexSignature) => T {
@@ -118,37 +99,86 @@ function createOriginalBoundNoteMapper<
     }) as unknown as T;
 }
 
-const mapToMcpServerNote =
-  createBoundNoteMapper<CopiedMcpServerNote>("mcpServerId");
 const mapToRepositoryNote =
   createOriginalBoundNoteMapper<CopiedRepositoryNote>("repositoryId");
 const mapToCommandNote =
   createOriginalBoundNoteMapper<CopiedCommandNote>("commandId");
 
-/**
- * @internal 僅供模組內部與測試使用，不應從 index.ts re-export 給外部消費。
- */
-export function collectBoundNotes(
-  podId: string,
-  stores: NoteStores,
-): BoundNotesByType {
-  return {
-    repositoryNotes: collectBoundNotesFromStore(
-      podId,
-      stores.repositoryStore,
-      mapToRepositoryNote,
-    ),
-    commandNotes: collectBoundNotesFromStore(
-      podId,
-      stores.commandStore,
-      mapToCommandNote,
-    ),
-    mcpServerNotes: collectBoundNotesFromStore(
-      podId,
-      stores.mcpServerStore,
-      mapToMcpServerNote,
-    ),
-  };
+export interface NoteStores {
+  repositoryStore: StoreWithNotes;
+  commandStore: StoreWithNotes;
+}
+
+interface NoteStoreConfig {
+  key: string;
+  getStore: (noteStores: NoteStores) => StoreWithNotes;
+  mapFn: (note: NoteWithIndexSignature) => AnyNote;
+}
+
+const NOTE_STORE_CONFIGS: NoteStoreConfig[] = [
+  {
+    key: "repositoryNote",
+    getStore: (noteStores) => noteStores.repositoryStore,
+    mapFn: mapToRepositoryNote,
+  },
+  {
+    key: "commandNote",
+    getStore: (noteStores) => noteStores.commandStore,
+    mapFn: mapToCommandNote,
+  },
+];
+
+type CollectedNoteArrays = {
+  repositoryNote: CopiedRepositoryNote[];
+  commandNote: CopiedCommandNote[];
+};
+
+export function collectSelectedPods(
+  selectedElements: SelectableElement[],
+  pods: Pod[],
+): CopiedPod[] {
+  const podMap = new Map(pods.map((pod) => [pod.id, pod]));
+
+  return selectedElements
+    .filter((element) => element.type === "pod")
+    .flatMap((element) => {
+      const pod = podMap.get(element.id);
+      if (!pod) return [];
+      // SECURITY：providerConfig 包含 API key 等敏感設定，存於 in-memory clipboardStore。
+      // paste 出來的新 Pod 需要 providerConfig 才能正常運作，因此必須保留此欄位。
+      // XSS 防線在框架層（Vue 的 template 自動 escape），此處不另行過濾。
+      return [
+        {
+          id: pod.id,
+          name: pod.name,
+          x: pod.x,
+          y: pod.y,
+          rotation: pod.rotation,
+          provider: pod.provider,
+          providerConfig: pod.providerConfig,
+          mcpServerNames: pod.mcpServerNames,
+          pluginIds: pod.pluginIds,
+          repositoryId: pod.repositoryId,
+          commandId: pod.commandId,
+        },
+      ];
+    });
+}
+
+function collectNoteFromElement(
+  element: SelectableElement,
+  noteCollectorMap: Record<
+    string,
+    { collector: (id: string) => AnyNote | null; array: AnyNote[] }
+  >,
+): void {
+  const collectorInfo =
+    noteCollectorMap[element.type as keyof typeof noteCollectorMap];
+  if (!collectorInfo) return;
+  const note = collectorInfo.collector(element.id);
+  if (note) {
+    collectorInfo.array.push(note);
+  }
 }
 
 export function createUnboundNoteCollector<T>(
@@ -177,90 +207,6 @@ function createUnboundNoteCollectorFromMap<T>(
   };
 }
 
-export function collectSelectedPods(
-  selectedElements: SelectableElement[],
-  pods: Pod[],
-): CopiedPod[] {
-  const podMap = new Map(pods.map((pod) => [pod.id, pod]));
-
-  return selectedElements
-    .filter((element) => element.type === "pod")
-    .flatMap((element) => {
-      const pod = podMap.get(element.id);
-      if (!pod) return [];
-      // SECURITY：providerConfig 包含 API key 等敏感設定，存於 in-memory clipboardStore。
-      // paste 出來的新 Pod 需要 providerConfig 才能正常運作，因此必須保留此欄位。
-      // XSS 防線在框架層（Vue 的 template 自動 escape），此處不另行過濾。
-      return [
-        {
-          id: pod.id,
-          name: pod.name,
-          x: pod.x,
-          y: pod.y,
-          rotation: pod.rotation,
-          provider: pod.provider,
-          providerConfig: pod.providerConfig,
-          mcpServerIds: pod.mcpServerIds,
-          pluginIds: pod.pluginIds,
-          repositoryId: pod.repositoryId,
-          commandId: pod.commandId,
-        },
-      ];
-    });
-}
-
-function collectNoteFromElement(
-  element: SelectableElement,
-  noteCollectorMap: Record<
-    string,
-    { collector: (id: string) => AnyNote | null; array: AnyNote[] }
-  >,
-): void {
-  const collectorInfo =
-    noteCollectorMap[element.type as keyof typeof noteCollectorMap];
-  if (!collectorInfo) return;
-  const note = collectorInfo.collector(element.id);
-  if (note) {
-    collectorInfo.array.push(note);
-  }
-}
-
-export interface NoteStores {
-  repositoryStore: StoreWithNotes;
-  commandStore: StoreWithNotes;
-  mcpServerStore: StoreWithNotes;
-}
-
-interface NoteStoreConfig {
-  key: string;
-  getStore: (noteStores: NoteStores) => StoreWithNotes;
-  mapFn: (note: NoteWithIndexSignature) => AnyNote;
-}
-
-const NOTE_STORE_CONFIGS: NoteStoreConfig[] = [
-  {
-    key: "repositoryNote",
-    getStore: (noteStores) => noteStores.repositoryStore,
-    mapFn: mapToRepositoryNote,
-  },
-  {
-    key: "commandNote",
-    getStore: (noteStores) => noteStores.commandStore,
-    mapFn: mapToCommandNote,
-  },
-  {
-    key: "mcpServerNote",
-    getStore: (noteStores) => noteStores.mcpServerStore,
-    mapFn: mapToMcpServerNote,
-  },
-];
-
-type CollectedNoteArrays = {
-  repositoryNote: CopiedRepositoryNote[];
-  commandNote: CopiedCommandNote[];
-  mcpServerNote: CopiedMcpServerNote[];
-};
-
 /**
  * 收集所有選取 Pod 的 bound notes（依 podId groupBy Map O(1) 查找）。
  * 分離自 collectSelectedNotes，單一職責：只處理 bound note 收集。
@@ -273,14 +219,10 @@ function collectBoundNotesByPodIds(
     stores.repositoryStore.notes,
   );
   const commandBoundMap = buildBoundNotesByPodMap(stores.commandStore.notes);
-  const mcpServerBoundMap = buildBoundNotesByPodMap(
-    stores.mcpServerStore.notes,
-  );
 
   const arrays: CollectedNoteArrays = {
     repositoryNote: [],
     commandNote: [],
-    mcpServerNote: [],
   };
 
   for (const podId of podIds) {
@@ -293,9 +235,6 @@ function collectBoundNotesByPodIds(
     );
     arrays.commandNote.push(
       ...collectBoundNotesFromMap(podId, commandBoundMap, mapToCommandNote),
-    );
-    arrays.mcpServerNote.push(
-      ...collectBoundNotesFromMap(podId, mcpServerBoundMap, mapToMcpServerNote),
     );
   }
 
@@ -340,7 +279,6 @@ export function collectSelectedNotes(
 ): {
   repositoryNotes: CopiedRepositoryNote[];
   commandNotes: CopiedCommandNote[];
-  mcpServerNotes: CopiedMcpServerNote[];
 } {
   // 高階組裝：bound notes（Pod 相關） + unbound notes（element 相關）
   const arrays = collectBoundNotesByPodIds(selectedPodIds, noteStores);
@@ -349,7 +287,6 @@ export function collectSelectedNotes(
   return {
     repositoryNotes: arrays.repositoryNote,
     commandNotes: arrays.commandNote,
-    mcpServerNotes: arrays.mcpServerNote,
   };
 }
 

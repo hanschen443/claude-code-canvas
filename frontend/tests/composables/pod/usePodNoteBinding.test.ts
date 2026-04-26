@@ -2,16 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ref } from "vue";
 import { usePodNoteBinding } from "@/composables/pod/usePodNoteBinding";
 
-const { mockToast } = vi.hoisted(() => ({
-  mockToast: vi.fn(),
-}));
-
-vi.mock("@/composables/useToast", () => ({
-  useToast: () => ({
-    toast: mockToast,
-  }),
-}));
-
 describe("usePodNoteBinding", () => {
   const podId = ref("pod-1");
 
@@ -24,11 +14,6 @@ describe("usePodNoteBinding", () => {
     bindToPod: ReturnType<typeof vi.fn>;
     getNoteById: ReturnType<typeof vi.fn>;
     unbindFromPod: ReturnType<typeof vi.fn>;
-  };
-  let mockMcpServerStore: {
-    bindToPod: ReturnType<typeof vi.fn>;
-    getNoteById: ReturnType<typeof vi.fn>;
-    isItemBoundToPod: ReturnType<typeof vi.fn>;
   };
   let mockPodStore: {
     updatePodRepository: ReturnType<typeof vi.fn>;
@@ -48,11 +33,6 @@ describe("usePodNoteBinding", () => {
       getNoteById: vi.fn(),
       unbindFromPod: vi.fn().mockResolvedValue(undefined),
     };
-    mockMcpServerStore = {
-      bindToPod: vi.fn().mockResolvedValue(undefined),
-      getNoteById: vi.fn(),
-      isItemBoundToPod: vi.fn(() => false),
-    };
     mockPodStore = {
       updatePodRepository: vi.fn(),
       updatePodCommand: vi.fn(),
@@ -67,9 +47,6 @@ describe("usePodNoteBinding", () => {
       commandStore: mockCommandStore as Parameters<
         typeof usePodNoteBinding
       >[1]["commandStore"],
-      mcpServerStore: mockMcpServerStore as Parameters<
-        typeof usePodNoteBinding
-      >[1]["mcpServerStore"],
       podStore: mockPodStore as Parameters<
         typeof usePodNoteBinding
       >[1]["podStore"],
@@ -77,22 +54,6 @@ describe("usePodNoteBinding", () => {
   }
 
   describe("handleNoteDrop", () => {
-    it("mcpServer 重複綁定時應顯示 toast 並不呼叫 bindToPod", async () => {
-      mockMcpServerStore.getNoteById.mockReturnValue({ mcpServerId: "mcp-1" });
-      mockMcpServerStore.isItemBoundToPod.mockReturnValue(true);
-
-      const { handleNoteDrop } = usePodNoteBinding(podId, buildStores());
-      await handleNoteDrop("mcpServer", "note-1");
-
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "已存在，無法插入",
-          description: "此 MCP Server 已綁定到此 Pod",
-        }),
-      );
-      expect(mockMcpServerStore.bindToPod).not.toHaveBeenCalled();
-    });
-
     it("repository 綁定成功後應呼叫 bindToPod 和 updatePodRepository", async () => {
       mockRepositoryStore.getNoteById.mockReturnValue({
         repositoryId: "repo-1",

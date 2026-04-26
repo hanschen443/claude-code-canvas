@@ -37,7 +37,6 @@ const {
   chatStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
   canvasStore,
 } = useCanvasContext();
@@ -89,10 +88,6 @@ const loadCanvasData = async (): Promise<void> => {
     (async (): Promise<void> => {
       await commandStore.loadCommands();
       await commandStore.loadNotesFromBackend();
-    })(),
-    (async (): Promise<void> => {
-      await mcpServerStore.loadMcpServers();
-      await mcpServerStore.loadNotesFromBackend();
     })(),
     connectionStore.loadConnectionsFromBackend(),
     ...getAllProviders().map((provider) =>
@@ -335,7 +330,6 @@ watch(
     connectionStore.resetForCanvasSwitch();
     repositoryStore.resetForCanvasSwitch();
     commandStore.resetForCanvasSwitch();
-    mcpServerStore.resetForCanvasSwitch();
     chatStore.resetForCanvasSwitch();
 
     await loadCanvasData();

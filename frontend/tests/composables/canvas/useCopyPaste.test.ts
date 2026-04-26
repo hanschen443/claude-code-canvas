@@ -13,11 +13,7 @@ import {
 } from "../../helpers/factories";
 import { useCopyPaste } from "@/composables/canvas/useCopyPaste";
 import { usePodStore, useViewportStore, useSelectionStore } from "@/stores/pod";
-import {
-  useRepositoryStore,
-  useCommandStore,
-  useMcpServerStore,
-} from "@/stores/note";
+import { useRepositoryStore, useCommandStore } from "@/stores/note";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useClipboardStore } from "@/stores/clipboardStore";
 import { useCanvasStore } from "@/stores/canvasStore";
@@ -79,7 +75,6 @@ vi.mock("@/composables/canvas/useCanvasContext", () => ({
     const selectionStore = useSelectionStore();
     const repositoryStore = useRepositoryStore();
     const commandStore = useCommandStore();
-    const mcpServerStore = useMcpServerStore();
     const connectionStore = useConnectionStore();
     const clipboardStore = useClipboardStore();
     const canvasStore = useCanvasStore();
@@ -90,7 +85,7 @@ vi.mock("@/composables/canvas/useCanvasContext", () => ({
       selectionStore,
       repositoryStore,
       commandStore,
-      mcpServerStore,
+      // TODO Phase 4: mcpServerStore 重構後補回
       connectionStore,
       clipboardStore,
       canvasStore,
@@ -112,7 +107,7 @@ describe("useCopyPaste", () => {
   let selectionStore: ReturnType<typeof useSelectionStore>;
   let repositoryStore: ReturnType<typeof useRepositoryStore>;
   let commandStore: ReturnType<typeof useCommandStore>;
-  let mcpServerStore: ReturnType<typeof useMcpServerStore>;
+  // TODO Phase 4: mcpServerStore 重構後補回
   let connectionStore: ReturnType<typeof useConnectionStore>;
   let clipboardStore: ReturnType<typeof useClipboardStore>;
   let canvasStore: ReturnType<typeof useCanvasStore>;
@@ -129,7 +124,7 @@ describe("useCopyPaste", () => {
     selectionStore = useSelectionStore();
     repositoryStore = useRepositoryStore();
     commandStore = useCommandStore();
-    mcpServerStore = useMcpServerStore();
+    // TODO Phase 4: mcpServerStore 重構後補回
     connectionStore = useConnectionStore();
     clipboardStore = useClipboardStore();
     canvasStore = useCanvasStore();
@@ -238,28 +233,7 @@ describe("useCopyPaste", () => {
       expect(copiedData.commandNotes[0]!.boundToOriginalPodId).toBe("pod-1");
     });
 
-    it("收集選中 Pod 綁定的 MCP Server Note", () => {
-      const pod1 = createMockPod({ id: "pod-1" });
-      podStore.pods = [pod1];
-
-      const boundNote = createMockNote("mcpServer", {
-        id: "note-1",
-        boundToPodId: "pod-1",
-        x: 10,
-        y: 10,
-      });
-      mcpServerStore.notes = [boundNote] as any[];
-
-      selectionStore.selectedElements = [{ type: "pod", id: "pod-1" }];
-
-      const event = new KeyboardEvent("keydown", { key: "c", ctrlKey: true });
-      Object.defineProperty(event, "preventDefault", { value: vi.fn() });
-      document.dispatchEvent(event);
-
-      const copiedData = clipboardStore.getCopiedData();
-      expect(copiedData.mcpServerNotes).toHaveLength(1);
-      expect(copiedData.mcpServerNotes[0]!.boundToPodId).toBe("pod-1");
-    });
+    // TODO Phase 4: 「收集選中 Pod 綁定的 MCP Server Note」測試重構後補回
 
     it("收集選中的未綁定 Repository Note", () => {
       const unboundNote = createMockNote("repository", {
@@ -303,27 +277,7 @@ describe("useCopyPaste", () => {
       expect(copiedData.commandNotes[0]!.boundToOriginalPodId).toBeNull();
     });
 
-    it("收集選中的未綁定 MCP Server Note", () => {
-      const unboundNote = createMockNote("mcpServer", {
-        id: "note-1",
-        boundToPodId: null,
-        x: 100,
-        y: 100,
-      });
-      mcpServerStore.notes = [unboundNote] as any[];
-
-      selectionStore.selectedElements = [
-        { type: "mcpServerNote", id: "note-1" },
-      ];
-
-      const event = new KeyboardEvent("keydown", { key: "c", ctrlKey: true });
-      Object.defineProperty(event, "preventDefault", { value: vi.fn() });
-      document.dispatchEvent(event);
-
-      const copiedData = clipboardStore.getCopiedData();
-      expect(copiedData.mcpServerNotes).toHaveLength(1);
-      expect(copiedData.mcpServerNotes[0]!.boundToPodId).toBeNull();
-    });
+    // TODO Phase 4: 「收集選中的未綁定 MCP Server Note」測試重構後補回
 
     it("只收集兩端都在選中範圍內的 Connection", () => {
       const pod1 = createMockPod({ id: "pod-1" });
@@ -375,7 +329,6 @@ describe("useCopyPaste", () => {
         expect.any(Array),
         expect.any(Array),
         expect.any(Array),
-        expect.any(Array),
       );
     });
   });
@@ -394,7 +347,7 @@ describe("useCopyPaste", () => {
 
     it("計算貼上位置（基於滑鼠座標轉換為畫布座標）", async () => {
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       const mouseMoveEvent = new MouseEvent("mousemove", {
         clientX: 500,
@@ -408,7 +361,6 @@ describe("useCopyPaste", () => {
 
         createdRepositoryNotes: [],
         createdCommandNotes: [],
-        createdMcpServerNotes: [],
         createdConnections: [],
       });
 
@@ -423,14 +375,13 @@ describe("useCopyPaste", () => {
 
     it("發送 CANVAS_PASTE WebSocket 請求", async () => {
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       mockWrapWebSocketRequest.mockResolvedValue({
         createdPods: [],
 
         createdRepositoryNotes: [],
         createdCommandNotes: [],
-        createdMcpServerNotes: [],
         createdConnections: [],
       });
 
@@ -454,7 +405,7 @@ describe("useCopyPaste", () => {
 
     it("成功後設定新建元素為選中狀態", async () => {
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       const mockResponse: CanvasPasteResultPayload = {
         requestId: "",
@@ -465,7 +416,6 @@ describe("useCopyPaste", () => {
 
         createdRepositoryNotes: [],
         createdCommandNotes: [],
-        createdMcpServerNotes: [],
         createdConnections: [],
       };
 
@@ -487,59 +437,9 @@ describe("useCopyPaste", () => {
       ]);
     });
 
-    it("僅選中未綁定的 MCP Server Note", async () => {
-      const boundNote = createMockNote("mcpServer", {
-        id: "note-1",
-        boundToPodId: "pod-1",
-      });
-      const unboundNote = createMockNote("mcpServer", {
-        id: "note-2",
-        boundToPodId: null,
-      });
-
-      clipboardStore.setCopy([], [], [], [boundNote, unboundNote] as any, []);
-
-      const mockResponse: CanvasPasteResultPayload = {
-        requestId: "",
-        success: true,
-        podIdMapping: {},
-        errors: [],
-        createdPods: [],
-
-        createdRepositoryNotes: [],
-        createdCommandNotes: [],
-        createdMcpServerNotes: [
-          {
-            ...(boundNote as any),
-            id: "new-note-1",
-            boundToPodId: "new-pod-1",
-          },
-          { ...(unboundNote as any), id: "new-note-2", boundToPodId: null },
-        ] as any,
-        createdConnections: [],
-      };
-
-      mockWrapWebSocketRequest.mockResolvedValue(mockResponse);
-
-      const setSelectedElementsSpy = vi.spyOn(
-        selectionStore,
-        "setSelectedElements",
-      );
-
-      const event = new KeyboardEvent("keydown", { key: "v", ctrlKey: true });
-      Object.defineProperty(event, "preventDefault", { value: vi.fn() });
-      document.dispatchEvent(event);
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(setSelectedElementsSpy).toHaveBeenCalledWith([
-        { type: "mcpServerNote", id: "new-note-2" },
-      ]);
-    });
-
     it("WebSocket 請求失敗時回傳 false", async () => {
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       mockWrapWebSocketRequest.mockResolvedValue(null);
 
@@ -558,14 +458,13 @@ describe("useCopyPaste", () => {
       it("計算所有 Pod 的包圍框", async () => {
         const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
         const pod2 = createMockPod({ id: "pod-2", x: 300, y: 200 });
-        clipboardStore.setCopy([pod1, pod2], [], [], [], []);
+        clipboardStore.setCopy([pod1, pod2], [], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -591,14 +490,13 @@ describe("useCopyPaste", () => {
           x: 150,
           y: 150,
         }) as any;
-        clipboardStore.setCopy([], [note1], [], [], []);
+        clipboardStore.setCopy([], [note1], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -623,14 +521,13 @@ describe("useCopyPaste", () => {
           x: 50,
           y: 50,
         }) as any;
-        clipboardStore.setCopy([pod1], [boundNote], [], [], []);
+        clipboardStore.setCopy([pod1], [boundNote], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -651,14 +548,13 @@ describe("useCopyPaste", () => {
     describe("calculateOffsets", () => {
       it("計算原始中心到目標位置的偏移量", async () => {
         const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-        clipboardStore.setCopy([pod1], [], [], [], []);
+        clipboardStore.setCopy([pod1], [], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -683,14 +579,13 @@ describe("useCopyPaste", () => {
       it("應用偏移量到 Pod 座標", async () => {
         const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
         const pod2 = createMockPod({ id: "pod-2", x: 200, y: 200 });
-        clipboardStore.setCopy([pod1, pod2], [], [], [], []);
+        clipboardStore.setCopy([pod1, pod2], [], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -719,14 +614,13 @@ describe("useCopyPaste", () => {
           x: 100,
           y: 100,
         }) as any;
-        clipboardStore.setCopy([], [unboundNote], [], [], []);
+        clipboardStore.setCopy([], [unboundNote], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -753,14 +647,13 @@ describe("useCopyPaste", () => {
           x: 150,
           y: 150,
         }) as any;
-        clipboardStore.setCopy([pod1], [boundNote], [], [], []);
+        clipboardStore.setCopy([pod1], [boundNote], [], []);
 
         mockWrapWebSocketRequest.mockResolvedValue({
           createdPods: [],
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -791,7 +684,7 @@ describe("useCopyPaste", () => {
           sourceAnchor: "bottom",
           targetAnchor: "top",
         });
-        clipboardStore.setCopy([pod1, pod2], [], [], [], [
+        clipboardStore.setCopy([pod1, pod2], [], [], [
           conn,
         ] as unknown as CopiedConnection[]);
 
@@ -800,7 +693,6 @@ describe("useCopyPaste", () => {
 
           createdRepositoryNotes: [],
           createdCommandNotes: [],
-          createdMcpServerNotes: [],
           createdConnections: [],
         });
         (viewportStore as any).screenToCanvas = vi.fn(() => ({
@@ -841,14 +733,13 @@ describe("useCopyPaste", () => {
 
     it("Ctrl+V 觸發貼上", async () => {
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       mockWrapWebSocketRequest.mockResolvedValue({
         createdPods: [],
 
         createdRepositoryNotes: [],
         createdCommandNotes: [],
-        createdMcpServerNotes: [],
         createdConnections: [],
       });
 
@@ -880,14 +771,13 @@ describe("useCopyPaste", () => {
       mockIsEditingElement.mockReturnValue(true);
 
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       mockWrapWebSocketRequest.mockResolvedValue({
         createdPods: [],
 
         createdRepositoryNotes: [],
         createdCommandNotes: [],
-        createdMcpServerNotes: [],
         createdConnections: [],
       });
 
@@ -933,7 +823,7 @@ describe("useCopyPaste", () => {
       mockIsModifierKeyPressed.mockReturnValue(false);
 
       const pod1 = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      clipboardStore.setCopy([pod1], [], [], [], []);
+      clipboardStore.setCopy([pod1], [], [], []);
 
       const event = new KeyboardEvent("keydown", { key: "v" });
       document.dispatchEvent(event);

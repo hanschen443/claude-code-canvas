@@ -101,7 +101,7 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     multiInstance: false,
     skillIds: [],
 
-    mcpServerIds: [],
+    mcpServerNames: [],
     pluginIds: [],
     provider: "claude",
     providerConfig: { model: "opus" },

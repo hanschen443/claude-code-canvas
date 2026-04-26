@@ -19,7 +19,7 @@ export const CODEX_CAPABILITIES: Readonly<ProviderCapabilities> = Object.freeze(
     plugin: true,
     repository: true,
     command: true,
-    mcp: false,
+    mcp: true,
     integration: false,
     runMode: false,
   },

@@ -30,6 +30,7 @@ import type {
   PodSetMultiInstancePayload,
   PodSetSchedulePayload,
 } from "@/types/websocket";
+import { updatePodMcpServers as updatePodMcpServersApi } from "@/services/mcpApi";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import { t } from "@/i18n";
@@ -379,6 +380,26 @@ export const usePodStore = defineStore("pod", () => {
     updatePodField(podId, "pluginIds", pluginIds);
   }
 
+  /** 純前端狀態更新：設定 pod 的 MCP server 名稱清單（不發 WebSocket） */
+  function updatePodMcpServers(podId: string, names: string[]): void {
+    updatePodField(podId, "mcpServerNames", names);
+  }
+
+  /**
+   * Backend-sync：呼叫 updatePodMcpServers API 後更新本地狀態。
+   * 失敗時 throw McpServerNamesError，由呼叫端決定是否 rollback。
+   */
+  async function setMcpServersWithBackend(
+    podId: string,
+    names: string[],
+  ): Promise<void> {
+    const canvasId = getActiveCanvasIdOrWarn("PodStore");
+    if (!canvasId) return;
+
+    await updatePodMcpServersApi(canvasId, podId, names);
+    updatePodMcpServers(podId, names);
+  }
+
   async function setMultiInstanceWithBackend(
     podId: string,
     multiInstance: boolean,
@@ -498,6 +519,8 @@ export const usePodStore = defineStore("pod", () => {
     updatePodRepository,
     updatePodCommand,
     updatePodPlugins,
+    updatePodMcpServers,
+    setMcpServersWithBackend,
     setMultiInstanceWithBackend,
     addPodFromEvent,
     removePod,

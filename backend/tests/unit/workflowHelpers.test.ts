@@ -45,7 +45,7 @@ const makePod = (overrides?: Partial<Pod>): Pod => ({
   sessionId: null,
   skillIds: [],
 
-  mcpServerIds: [],
+  mcpServerNames: [],
   provider: "claude",
   providerConfig: { model: "sonnet" },
   repositoryId: null,

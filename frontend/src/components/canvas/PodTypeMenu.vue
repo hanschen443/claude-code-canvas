@@ -8,14 +8,8 @@ import {
   watchEffect,
   type Component,
 } from "vue";
-import {
-  FolderOpen,
-  Github,
-  FolderPlus,
-  FilePlus,
-  Server,
-} from "lucide-vue-next";
-import type { Position, PodTypeConfig, Repository, McpServer } from "@/types";
+import { FolderOpen, Github, FolderPlus, FilePlus } from "lucide-vue-next";
+import type { Position, PodTypeConfig, Repository } from "@/types";
 import type { PodProvider, ProviderConfig } from "@/types/pod";
 import { podTypes } from "@/data/podTypes";
 import { useCanvasContext } from "@/composables/canvas/useCanvasContext";
@@ -30,22 +24,20 @@ interface Props {
 
 const props = defineProps<Props>();
 
-type ItemType = "repository" | "command" | "mcpServer";
+type ItemType = "repository" | "command";
 type ResourceType = "command";
 type GroupType = "commandGroup";
-type OpenMenuType = "repository" | "command" | "mcpServer" | "pod";
+type OpenMenuType = "repository" | "command" | "pod";
 
 /** 建立 Note 的 discriminated union，統一 create-*-note 事件為一個事件 */
 type CreateNotePayload =
   | { type: "repository"; id: string }
-  | { type: "command"; id: string }
-  | { type: "mcpServer"; id: string };
+  | { type: "command"; id: string };
 
 /** 開啟 Modal 的 discriminated union，統一多個 open-*-modal 事件 */
 type OpenModalPayload =
   | { type: "createRepository" }
-  | { type: "cloneRepository" }
-  | { type: "mcpServer"; mode: "create" | "edit"; mcpServerId?: string };
+  | { type: "cloneRepository" };
 
 const emit = defineEmits<{
   /** Pod 建立：選擇 provider 後觸發 */
@@ -71,8 +63,7 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const { repositoryStore, commandStore, mcpServerStore, podStore } =
-  useCanvasContext();
+const { repositoryStore, commandStore, podStore } = useCanvasContext();
 
 const { t } = useI18n();
 
@@ -100,7 +91,6 @@ onMounted(async () => {
     repositoryStore.loadRepositories(),
     commandStore.loadCommands(),
     commandStore.loadGroups(),
-    mcpServerStore.loadMcpServers(),
   ]);
 });
 
@@ -127,18 +117,6 @@ const handleRepositorySelect = (repository: Repository): void => {
 const handleCommandSelect = (command: { id: string; name: string }): void => {
   openMenuType.value = null;
   emit("create-note", { type: "command", id: command.id });
-  emit("close");
-};
-
-const handleMcpServerSelect = (mcpServer: McpServer): void => {
-  openMenuType.value = null;
-  emit("create-note", { type: "mcpServer", id: mcpServer.id });
-  emit("close");
-};
-
-const handleNewMcpServer = (): void => {
-  openMenuType.value = null;
-  emit("open-modal", { type: "mcpServer", mode: "create" });
   emit("close");
 };
 
@@ -318,20 +296,6 @@ const SECTION_CONFIGS: SectionConfig[] = [
         label: "New Group...",
         handler: handleNewCommandGroup,
       },
-    ],
-  },
-  {
-    type: "mcpServer",
-    label: "MCPs >",
-    iconColor: "var(--doodle-purple)",
-    icon: Server,
-    editable: false,
-    getItems: () => mcpServerStore.typedAvailableItems,
-    onSelect: (item) => handleMcpServerSelect(item as McpServer),
-    onDelete: (id, name, event) =>
-      handleDeleteClick("mcpServer", id, name, event),
-    footerActions: [
-      { icon: FilePlus, label: "New...", handler: handleNewMcpServer },
     ],
   },
   {

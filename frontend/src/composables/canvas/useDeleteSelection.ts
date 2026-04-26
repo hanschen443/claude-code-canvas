@@ -9,13 +9,8 @@ async function deleteSelectedElements(
   canvasContext: ReturnType<typeof useCanvasContext>,
   toast: ReturnType<typeof useToast>["toast"],
 ): Promise<void> {
-  const {
-    podStore,
-    selectionStore,
-    repositoryStore,
-    commandStore,
-    mcpServerStore,
-  } = canvasContext;
+  const { podStore, selectionStore, repositoryStore, commandStore } =
+    canvasContext;
 
   const selectedElements = selectionStore.selectedElements;
   if (selectedElements.length === 0) return;
@@ -24,7 +19,6 @@ async function deleteSelectedElements(
     pod: (id) => podStore.deletePodWithBackend(id),
     repositoryNote: (id) => repositoryStore.deleteNote(id),
     commandNote: (id) => commandStore.deleteNote(id),
-    mcpServerNote: (id) => mcpServerStore.deleteNote(id),
   };
 
   const deletePromises: Promise<void>[] = [];

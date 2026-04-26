@@ -6,7 +6,7 @@ export interface CreatePodRequest {
   x: number;
   y: number;
   rotation: number;
-  mcpServerIds?: string[];
+  mcpServerNames?: string[];
   pluginIds?: string[];
   provider?: ProviderName;
   providerConfig?: Record<string, unknown>;

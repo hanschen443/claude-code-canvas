@@ -24,7 +24,6 @@ import { t } from "@/i18n";
 const STORE_TO_CATEGORY_MAP: Record<string, ToastCategory> = {
   repository: "Repository",
   command: "Command",
-  mcpServer: "McpServer",
 };
 
 function findItemById<T extends { id: string }>(

@@ -38,7 +38,7 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.plugin).toBe(true);
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
-    expect(caps.mcp).toBe(false);
+    expect(caps.mcp).toBe(true);
     expect(caps.integration).toBe(false);
     expect(caps.runMode).toBe(false);
   });

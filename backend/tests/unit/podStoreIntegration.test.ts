@@ -915,3 +915,94 @@ describe("PodStore - Provider / Model 驗證", () => {
     expect(matched).toBe(true);
   });
 });
+
+// ================================================================
+// PodStore - mcpServerNames 欄位寫入與 setMcpServerNames setter
+// ================================================================
+describe("PodStore - mcpServerNames", () => {
+  let canvasId: string;
+
+  beforeEach(() => {
+    initTestDb();
+    resetStatements();
+    clearPodStoreCache();
+
+    const stmts = getStatements(getDb());
+    canvasId = "test-canvas-mcp";
+    stmts.canvas.insert.run({
+      $id: canvasId,
+      $name: "test-canvas-mcp",
+      $sortIndex: 0,
+    });
+  });
+
+  afterEach(() => {
+    closeDb();
+  });
+
+  function createTestPod(name: string) {
+    const { pod } = podStore.create(canvasId, {
+      name,
+      x: 0,
+      y: 0,
+      rotation: 0,
+    });
+    return pod;
+  }
+
+  it("create 後 getById 回傳的 mcpServerNames 為空陣列", () => {
+    const pod = createTestPod("pod-mcp-initial");
+
+    const found = podStore.getById(canvasId, pod.id);
+
+    expect(found).toBeDefined();
+    expect(Array.isArray(found!.mcpServerNames)).toBe(true);
+    expect(found!.mcpServerNames).toHaveLength(0);
+  });
+
+  it("setMcpServerNames 後 getById 可讀取到寫入的 names", () => {
+    const pod = createTestPod("pod-mcp-set");
+
+    podStore.setMcpServerNames(pod.id, ["server-a", "server-b"]);
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found).toBeDefined();
+    expect(found!.mcpServerNames).toEqual(
+      expect.arrayContaining(["server-a", "server-b"]),
+    );
+    expect(found!.mcpServerNames).toHaveLength(2);
+  });
+
+  it("setMcpServerNames 全量替換：再次呼叫應覆蓋舊清單", () => {
+    const pod = createTestPod("pod-mcp-replace");
+
+    // 初次寫入
+    podStore.setMcpServerNames(pod.id, ["server-a", "server-b"]);
+    // 全量替換（只保留 server-c）
+    podStore.setMcpServerNames(pod.id, ["server-c"]);
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found!.mcpServerNames).toEqual(["server-c"]);
+  });
+
+  it("setMcpServerNames 傳空陣列應清空 mcpServerNames", () => {
+    const pod = createTestPod("pod-mcp-clear");
+
+    podStore.setMcpServerNames(pod.id, ["server-a"]);
+    podStore.setMcpServerNames(pod.id, []);
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found!.mcpServerNames).toHaveLength(0);
+  });
+
+  it("list 也應回傳正確的 mcpServerNames", () => {
+    const pod = createTestPod("pod-mcp-list");
+
+    podStore.setMcpServerNames(pod.id, ["list-server"]);
+
+    const pods = podStore.list(canvasId);
+    const found = pods.find((p) => p.id === pod.id);
+    expect(found).toBeDefined();
+    expect(found!.mcpServerNames).toContain("list-server");
+  });
+});

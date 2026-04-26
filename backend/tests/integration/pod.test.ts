@@ -12,11 +12,7 @@ import {
   getCanvasId,
 } from "../helpers";
 import { createConnection } from "../helpers";
-import {
-  createMcpServer,
-  createMcpServerNote,
-  createRepository,
-} from "../helpers";
+import { createRepository } from "../helpers";
 import {
   WebSocketRequestEvents,
   WebSocketResponseEvents,
@@ -28,7 +24,6 @@ import {
   type PodSetSchedulePayload,
   type PodDeletePayload,
   type ConnectionListPayload,
-  type McpServerNoteListPayload,
   type PodBindRepositoryPayload,
 } from "../../src/schemas";
 import {
@@ -40,7 +35,6 @@ import {
   type PodScheduleSetPayload,
   type PodDeletedPayload,
   type ConnectionListResultPayload,
-  type McpServerNoteListResultPayload,
   type PodRepositoryBoundPayload,
 } from "../../src/types";
 
@@ -355,40 +349,6 @@ describe("Pod 管理", () => {
         (c) => c.sourcePodId === podA.id || c.targetPodId === podA.id,
       );
       expect(related).toHaveLength(0);
-    });
-
-    it("刪除 Pod 時清理綁定的 MCP Server Note", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const mcpServer = await createMcpServer(client, `mcp-${uuidv4()}`);
-
-      const canvasId = await getCanvasId(client);
-      await createMcpServerNote(client, mcpServer.id, {
-        boundToPodId: pod.id,
-        originalPosition: { x: 0, y: 0 },
-      });
-
-      await emitAndWaitResponse<PodDeletePayload, PodDeletedPayload>(
-        client,
-        WebSocketRequestEvents.POD_DELETE,
-        WebSocketResponseEvents.POD_DELETED,
-        { requestId: uuidv4(), canvasId, podId: pod.id },
-      );
-
-      const listResponse = await emitAndWaitResponse<
-        McpServerNoteListPayload,
-        McpServerNoteListResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.MCP_SERVER_NOTE_LIST,
-        WebSocketResponseEvents.MCP_SERVER_NOTE_LIST_RESULT,
-        { requestId: uuidv4(), canvasId },
-      );
-
-      const bound = listResponse.notes!.filter(
-        (n) => n.boundToPodId === pod.id,
-      );
-      expect(bound).toHaveLength(0);
     });
 
     it("刪除不存在的 Pod 時失敗", async () => {

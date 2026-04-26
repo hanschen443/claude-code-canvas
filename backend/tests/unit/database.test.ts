@@ -38,11 +38,10 @@ describe("Database", () => {
         "global_settings",
         "integration_apps",
         "integration_bindings",
-        "mcp_servers",
         "messages",
         "notes",
         "pod_manifests",
-        "pod_mcp_server_ids",
+        "pod_mcp_server_names",
         "pod_plugin_ids",
         "pods",
         "repository_metadata",
@@ -136,9 +135,6 @@ describe("Database", () => {
           VALUES ('m1', 'p1', 'c1', 'user', 'hello', '2024-01-01')`,
       );
       db.exec(
-        "INSERT INTO pod_mcp_server_ids (pod_id, mcp_server_id) VALUES ('p1', 'mcp1')",
-      );
-      db.exec(
         "INSERT INTO pod_plugin_ids (pod_id, plugin_id) VALUES ('p1', 'plg1')",
       );
 
@@ -174,13 +170,6 @@ describe("Database", () => {
       ).toBe(0);
       expect(
         (
-          db
-            .prepare("SELECT COUNT(*) as count FROM pod_mcp_server_ids")
-            .get() as { count: number }
-        ).count,
-      ).toBe(0);
-      expect(
-        (
           db.prepare("SELECT COUNT(*) as count FROM pod_plugin_ids").get() as {
             count: number;
           }
@@ -204,9 +193,6 @@ describe("Database", () => {
           VALUES ('ib1', 'p1', 'c1', 'slack', 'ia1', 'res1')`,
       );
       db.exec(
-        "INSERT INTO pod_mcp_server_ids (pod_id, mcp_server_id) VALUES ('p1', 'mcp1')",
-      );
-      db.exec(
         "INSERT INTO pod_plugin_ids (pod_id, plugin_id) VALUES ('p1', 'plg1')",
       );
 
@@ -216,13 +202,6 @@ describe("Database", () => {
         (
           db
             .prepare("SELECT COUNT(*) as count FROM integration_bindings")
-            .get() as { count: number }
-        ).count,
-      ).toBe(0);
-      expect(
-        (
-          db
-            .prepare("SELECT COUNT(*) as count FROM pod_mcp_server_ids")
             .get() as { count: number }
         ).count,
       ).toBe(0);
@@ -290,34 +269,39 @@ describe("Database", () => {
         $providerConfigJson: JSON.stringify({ model: "opus" }),
       });
 
-      stmts.podMcpServerIds.insert.run({ $podId: "p1", $mcpServerId: "mcp-1" });
-      stmts.podMcpServerIds.insert.run({ $podId: "p1", $mcpServerId: "mcp-2" });
+      stmts.podMcpServerNames.insert.run({
+        $podId: "p1",
+        $mcpServerName: "server-a",
+      });
+      stmts.podMcpServerNames.insert.run({
+        $podId: "p1",
+        $mcpServerName: "server-b",
+      });
 
-      const mcpServers = stmts.podMcpServerIds.selectByPodId.all("p1") as {
-        mcp_server_id: string;
+      const mcpNames = stmts.podMcpServerNames.selectByPodId.all("p1") as {
+        mcp_server_name: string;
       }[];
-      expect(mcpServers).toHaveLength(2);
-      expect(mcpServers.map((m) => m.mcp_server_id).sort()).toEqual([
-        "mcp-1",
-        "mcp-2",
+      expect(mcpNames).toHaveLength(2);
+      expect(mcpNames.map((m) => m.mcp_server_name).sort()).toEqual([
+        "server-a",
+        "server-b",
       ]);
 
       // INSERT OR IGNORE 重複不報錯
-      stmts.podMcpServerIds.insert.run({ $podId: "p1", $mcpServerId: "mcp-1" });
-      const mcpAfterDup = stmts.podMcpServerIds.selectByPodId.all(
+      stmts.podMcpServerNames.insert.run({
+        $podId: "p1",
+        $mcpServerName: "server-a",
+      });
+      const mcpAfterDup = stmts.podMcpServerNames.selectByPodId.all(
         "p1",
       ) as unknown[];
       expect(mcpAfterDup).toHaveLength(2);
 
-      stmts.podMcpServerIds.deleteOne.run({
-        $podId: "p1",
-        $mcpServerId: "mcp-1",
-      });
-      const mcpAfterDelete = stmts.podMcpServerIds.selectByPodId.all("p1") as {
-        mcp_server_id: string;
-      }[];
-      expect(mcpAfterDelete).toHaveLength(1);
-      expect(mcpAfterDelete[0].mcp_server_id).toBe("mcp-2");
+      stmts.podMcpServerNames.deleteByPodId.run("p1");
+      const mcpAfterDelete = stmts.podMcpServerNames.selectByPodId.all(
+        "p1",
+      ) as unknown[];
+      expect(mcpAfterDelete).toHaveLength(0);
     });
 
     it("應該能操作 connection", () => {

@@ -834,7 +834,7 @@ describe("排程觸發 multi-instance 分支", () => {
     multiInstance: false,
     skillIds: [],
 
-    mcpServerIds: [],
+    mcpServerNames: [],
     provider: "claude" as const,
     providerConfig: { model: "opus" },
     schedule: baseSchedule,

@@ -56,23 +56,6 @@ const mockCommandStore = {
   updateNotePosition: vi.fn(),
 };
 
-const mockMcpServerStore = {
-  notes: [] as Array<{
-    id?: string;
-    x: number;
-    y: number;
-    boundToPodId?: string | null;
-  }>,
-  updateNotePositionLocal: vi.fn((noteId: string, x: number, y: number) => {
-    const note = mockMcpServerStore.notes.find((n) => n.id === noteId);
-    if (note) {
-      note.x = x;
-      note.y = y;
-    }
-  }),
-  updateNotePosition: vi.fn(),
-};
-
 vi.mock("@/composables/canvas/useCanvasContext", () => ({
   useCanvasContext: () => ({
     podStore: mockPodStore,
@@ -80,7 +63,6 @@ vi.mock("@/composables/canvas/useCanvasContext", () => ({
     selectionStore: mockSelectionStore,
     repositoryStore: mockRepositoryStore,
     commandStore: mockCommandStore,
-    mcpServerStore: mockMcpServerStore,
   }),
 }));
 
@@ -102,9 +84,6 @@ describe("useBatchDrag", () => {
     mockCommandStore.notes = [];
     mockCommandStore.updateNotePositionLocal.mockClear();
     mockCommandStore.updateNotePosition.mockClear();
-    mockMcpServerStore.notes = [];
-    mockMcpServerStore.updateNotePositionLocal.mockClear();
-    mockMcpServerStore.updateNotePosition.mockClear();
   });
 
   afterEach(() => {

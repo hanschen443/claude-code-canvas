@@ -100,7 +100,7 @@ describe("Store 覆蓋率測試", () => {
       }).toThrow("找不到 Canvas：");
     });
 
-    it("create 帶 mcpServerIds / pluginIds 後 getById 能正確讀回", () => {
+    it("create 帶 mcpServerNames / pluginIds 後 getById 能正確讀回", () => {
       const server = getServer();
       const canvasId = server.canvasId;
 
@@ -109,17 +109,17 @@ describe("Store 覆蓋率測試", () => {
         x: 0,
         y: 0,
         rotation: 0,
-        mcpServerIds: ["m1", "m2"],
+        mcpServerNames: ["m1", "m2"],
         pluginIds: ["p1"],
       });
 
       const fetched = podStore.getById(canvasId, pod.id);
       expect(fetched).toBeDefined();
-      expect(fetched!.mcpServerIds).toEqual(["m1", "m2"]);
+      expect(fetched!.mcpServerNames).toEqual(["m1", "m2"]);
       expect(fetched!.pluginIds).toEqual(["p1"]);
     });
 
-    it("update mcpServerIds 後 getById 反映新值（移除舊值、加入新值）", () => {
+    it("setMcpServerNames 後 getById 反映新值（全量覆寫）", () => {
       const server = getServer();
       const canvasId = server.canvasId;
 
@@ -128,15 +128,15 @@ describe("Store 覆蓋率測試", () => {
         x: 0,
         y: 0,
         rotation: 0,
-        mcpServerIds: ["m1", "m2"],
+        mcpServerNames: ["m1", "m2"],
         pluginIds: [],
       });
 
-      podStore.update(canvasId, pod.id, { mcpServerIds: ["m3"] });
+      podStore.setMcpServerNames(pod.id, ["m3"]);
 
       const fetched = podStore.getById(canvasId, pod.id);
       expect(fetched).toBeDefined();
-      expect(fetched!.mcpServerIds).toEqual(["m3"]);
+      expect(fetched!.mcpServerNames).toEqual(["m3"]);
     });
 
     it("update pluginIds 後 getById 反映新值（移除舊值、加入新值）", () => {
@@ -148,7 +148,7 @@ describe("Store 覆蓋率測試", () => {
         x: 0,
         y: 0,
         rotation: 0,
-        mcpServerIds: [],
+        mcpServerNames: [],
         pluginIds: ["p1"],
       });
 

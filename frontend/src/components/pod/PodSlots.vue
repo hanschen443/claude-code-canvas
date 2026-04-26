@@ -3,26 +3,22 @@
 // 新增 slot 類型需同步更新此元件 props、template、emits 與 CanvasPod 對應 listener。
 import { computed, toRef } from "vue";
 import { useI18n } from "vue-i18n";
-import type { RepositoryNote, CommandNote, McpServerNote } from "@/types";
+import type { RepositoryNote, CommandNote } from "@/types";
 import type { PodProvider } from "@/types/pod";
-import PodMultiBindSlot from "@/components/pod/PodMultiBindSlot.vue";
 import PodSingleBindSlot from "@/components/pod/PodSingleBindSlot.vue";
 import PodPluginSlot from "@/components/pod/PodPluginSlot.vue";
-import {
-  useMcpServerStore,
-  useRepositoryStore,
-  useCommandStore,
-} from "@/stores/note";
+import PodMcpSlot from "@/components/pod/PodMcpSlot.vue";
+import { useRepositoryStore, useCommandStore } from "@/stores/note";
 import { usePodCapabilities } from "@/composables/pod/usePodCapabilities";
 
 const props = defineProps<{
   podId: string;
   podRotation: number;
   pluginActiveCount: number;
+  mcpActiveCount: number;
   provider: PodProvider;
   boundRepositoryNote: RepositoryNote | undefined;
   boundCommandNote: CommandNote | undefined;
-  boundMcpServerNotes: McpServerNote[];
 }>();
 
 // 注意：不要解構 props，Vue3 的 defineProps 回傳值是 reactive proxy，
@@ -31,18 +27,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "plugin-clicked": [event: MouseEvent];
+  "mcp-clicked": [event: MouseEvent];
   "repository-dropped": [noteId: string];
   "repository-removed": [];
   "command-dropped": [noteId: string];
   "command-removed": [];
-  "mcp-server-dropped": [noteId: string];
 }>();
 
 const { t } = useI18n();
 
 // 子元件自行取 store 是有意設計，避免父元件介面爆炸；
 // store 為 singleton，重複呼叫無額外成本。
-const mcpServerStore = useMcpServerStore();
 const repositoryStore = useRepositoryStore();
 const commandStore = useCommandStore();
 
@@ -56,12 +51,12 @@ const DISABLED_TOOLTIP = computed(() => t("pod.slot.codexDisabled"));
 /** Plugin capability 關閉（目前兩個 provider plugin: true，恆為 false，保留以利擴充） */
 const pluginCapabilityDisabled = computed(() => !isPluginEnabled.value);
 
+/** MCP capability 關閉：當前 provider 不支援 MCP 才為 true */
+const mcpCapabilityDisabled = computed(() => !isMcpEnabled.value);
+
 // -----------------------------------------------------------------------
 // Slot 設定陣列：每筆描述一個 slot 的型態、資料來源與 emit 對應
 // 新增 slot 類型只需在此加一筆，並補對應 emit 宣告即可。
-//
-// type === 'single'：對應 PodSingleBindSlot（一個 slot 只能綁定一個 note）
-// type === 'multi'： 對應 PodMultiBindSlot（一個 slot 可綁定多個 note）
 // -----------------------------------------------------------------------
 
 type SingleSlotConfig = {
@@ -77,23 +72,7 @@ type SingleSlotConfig = {
   onRemoved: () => void;
 };
 
-type MultiSlotConfig = {
-  kind: "multi";
-  areaClass: string;
-  slotClass: string;
-  label: string;
-  store: typeof mcpServerStore;
-  boundNotes: () => McpServerNote[];
-  duplicateToastTitle: () => string;
-  duplicateToastDescription: () => string;
-  menuScrollableClass: string;
-  itemIdField: string;
-  disabled: boolean;
-  disabledTooltip: string;
-  onDropped: (noteId: string) => void;
-};
-
-type SlotConfig = SingleSlotConfig | MultiSlotConfig;
+type SlotConfig = SingleSlotConfig;
 
 function createRepositorySlotConfig(): SingleSlotConfig {
   return {
@@ -131,31 +110,9 @@ function createCommandSlotConfig(): SingleSlotConfig {
   };
 }
 
-function createMcpSlotConfig(): MultiSlotConfig {
-  return {
-    kind: "multi",
-    areaClass: "pod-notch-area-base pod-mcp-server-notch-area",
-    slotClass: "pod-mcp-server-slot",
-    label: "MCPs",
-    store: mcpServerStore,
-    boundNotes: () => props.boundMcpServerNotes,
-    duplicateToastTitle: () => t("pod.slot.duplicateTitle"),
-    duplicateToastDescription: () => t("pod.slot.mcpServerDuplicate"),
-    menuScrollableClass: "pod-mcp-server-menu-scrollable",
-    itemIdField: "mcpServerId",
-    disabled: !isMcpEnabled.value,
-    disabledTooltip: DISABLED_TOOLTIP.value,
-    onDropped: (noteId: string): void => {
-      if (!noteId) return;
-      emit("mcp-server-dropped", noteId);
-    },
-  };
-}
-
 const slotConfigs = computed((): SlotConfig[] => [
   createRepositorySlotConfig(),
   createCommandSlotConfig(),
-  createMcpSlotConfig(),
 ]);
 </script>
 
@@ -169,10 +126,18 @@ const slotConfigs = computed((): SlotConfig[] => [
     :disabled-tooltip="DISABLED_TOOLTIP"
     @click="(ev) => emit('plugin-clicked', ev)"
   />
+  <PodMcpSlot
+    :pod-id="props.podId"
+    :pod-rotation="props.podRotation"
+    :active-count="props.mcpActiveCount"
+    :provider="props.provider"
+    :capability-disabled="mcpCapabilityDisabled"
+    :disabled-tooltip="DISABLED_TOOLTIP"
+    @click="(ev) => emit('mcp-clicked', ev)"
+  />
   <template v-for="slot in slotConfigs" :key="slot.slotClass">
     <div :class="slot.areaClass">
       <PodSingleBindSlot
-        v-if="slot.kind === 'single'"
         :pod-id="props.podId"
         :bound-note="slot.boundNote()"
         :store="slot.store"
@@ -183,21 +148,6 @@ const slotConfigs = computed((): SlotConfig[] => [
         :disabled-tooltip="slot.disabledTooltip"
         @note-dropped="slot.onDropped"
         @note-removed="slot.onRemoved()"
-      />
-      <PodMultiBindSlot
-        v-else-if="slot.kind === 'multi'"
-        :pod-id="props.podId"
-        :bound-notes="slot.boundNotes()"
-        :store="slot.store"
-        :label="slot.label"
-        :duplicate-toast-title="slot.duplicateToastTitle()"
-        :duplicate-toast-description="slot.duplicateToastDescription()"
-        :slot-class="slot.slotClass"
-        :menu-scrollable-class="slot.menuScrollableClass"
-        :item-id-field="slot.itemIdField"
-        :disabled="slot.disabled"
-        :disabled-tooltip="slot.disabledTooltip"
-        @note-dropped="slot.onDropped"
       />
     </div>
   </template>

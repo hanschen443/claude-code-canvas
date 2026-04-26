@@ -23,7 +23,7 @@ function makePod(overrides: Partial<Pick<Pod, "providerConfig">> = {}): Pod {
     providerConfig: {},
     workspacePath: "/workspace/test",
     skillIds: [],
-    mcpServerIds: [],
+    mcpServerNames: [],
     pluginIds: [],
     integrationBindings: [],
 

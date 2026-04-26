@@ -4,7 +4,6 @@ import type {
   PasteError,
   RepositoryNote,
   CommandNote,
-  McpServerNote,
   Pod,
 } from "../types";
 import type { CanvasPastePayload } from "../schemas";
@@ -42,8 +41,7 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
     payload: CanvasPastePayload,
     requestId: string,
   ): Promise<void> => {
-    const { pods, repositoryNotes, commandNotes, mcpServerNotes, connections } =
-      payload;
+    const { pods, repositoryNotes, commandNotes, connections } = payload;
 
     const podIdMapping: Record<string, string> = {};
     const errors: PasteError[] = [];
@@ -68,12 +66,6 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
         commandNotes ?? [],
         podIdMapping,
       ),
-      mcpServer: createPastedNotesByType(
-        "mcpServer",
-        canvasId,
-        mcpServerNotes ?? [],
-        podIdMapping,
-      ),
     };
 
     errors.push(...Object.values(noteResultMap).flatMap((r) => r.errors));
@@ -92,14 +84,6 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
       (cId, pId, cmdId) => podStore.setCommandId(cId, pId, cmdId),
     );
 
-    syncBoundNotesToPod(
-      canvasId,
-      noteResultMap.mcpServer.notes as McpServerNote[],
-      (note) => note.mcpServerId,
-      (pod, mcpId) => !pod.mcpServerIds.includes(mcpId),
-      (cId, pId, mcpId) => podStore.addMcpServerId(cId, pId, mcpId),
-    );
-
     const response: CanvasPasteResultPayload = {
       requestId,
       success: errors.length === 0,
@@ -107,7 +91,6 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
       createdRepositoryNotes: noteResultMap.repository
         .notes as RepositoryNote[],
       createdCommandNotes: noteResultMap.command.notes as CommandNote[],
-      createdMcpServerNotes: noteResultMap.mcpServer.notes as McpServerNote[],
       createdConnections,
       podIdMapping,
       errors,
@@ -129,8 +112,6 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
       pasteItems.push(`${response.createdRepositoryNotes.length} repository`);
     if (response.createdCommandNotes.length > 0)
       pasteItems.push(`${response.createdCommandNotes.length} command`);
-    if (response.createdMcpServerNotes.length > 0)
-      pasteItems.push(`${response.createdMcpServerNotes.length} mcp server`);
     if (createdConnections.length > 0)
       pasteItems.push(`${createdConnections.length} connection`);
     if (errors.length > 0) pasteItems.push(`${errors.length} 個錯誤`);

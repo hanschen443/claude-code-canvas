@@ -10,13 +10,13 @@ import { multiInstanceHandlerGroup } from "./groups/multiInstanceHandlerGroup.js
 import { canvasHandlerGroup } from "./groups/canvasHandlerGroup.js";
 import { groupHandlerGroup } from "./groups/groupHandlerGroup.js";
 import { cursorHandlerGroup } from "./groups/cursorHandlerGroup.js";
-import { mcpServerHandlerGroup } from "./groups/mcpServerHandlerGroup.js";
 import { configHandlerGroup } from "./groups/configHandlerGroup.js";
 import { integrationHandlerGroup } from "./groups/integrationHandlerGroup.js";
 import { runHandlerGroup } from "./groups/runHandlerGroup.js";
 import { pluginHandlerGroup } from "./groups/pluginHandlerGroup.js";
 import { backupHandlerGroup } from "./groups/backupHandlerGroup.js";
 import { providerHandlerGroup } from "./groups/providerHandlerGroup.js";
+import { mcpHandlerGroup } from "./groups/mcpHandlerGroup.js";
 
 const registry = new HandlerRegistry();
 
@@ -31,13 +31,13 @@ registry.registerGroup(multiInstanceHandlerGroup);
 registry.registerGroup(canvasHandlerGroup);
 registry.registerGroup(groupHandlerGroup);
 registry.registerGroup(cursorHandlerGroup);
-registry.registerGroup(mcpServerHandlerGroup);
 registry.registerGroup(configHandlerGroup);
 registry.registerGroup(integrationHandlerGroup);
 registry.registerGroup(runHandlerGroup);
 registry.registerGroup(pluginHandlerGroup);
 registry.registerGroup(backupHandlerGroup);
 registry.registerGroup(providerHandlerGroup);
+registry.registerGroup(mcpHandlerGroup);
 
 export function registerAllHandlers(): void {
   registry.registerToRouter();

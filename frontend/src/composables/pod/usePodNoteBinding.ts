@@ -1,15 +1,11 @@
 import type { Ref } from "vue";
-import { useToast } from "@/composables/useToast";
-import { DEFAULT_TOAST_DURATION_MS } from "@/lib/constants";
-import { t } from "@/i18n";
 import type { UnbindBehavior } from "@/stores/note/noteBindingActions";
 
-export type NoteType = "repository" | "command" | "mcpServer";
+export type NoteType = "repository" | "command";
 
 interface NoteItem {
   repositoryId?: string;
   commandId?: string;
-  mcpServerId?: string;
 }
 
 export interface BaseBindableNoteStore {
@@ -33,9 +29,6 @@ interface NoteStores {
   commandStore: BaseBindableNoteStore & {
     unbindFromPod: (podId: string, behavior: UnbindBehavior) => Promise<void>;
   };
-  mcpServerStore: BaseBindableNoteStore & {
-    isItemBoundToPod: (itemId: string, podId: string) => boolean;
-  };
   podStore: {
     updatePodRepository: (podId: string, itemId: string | null) => void;
     updatePodCommand: (podId: string, itemId: string | null) => void;
@@ -46,10 +39,6 @@ interface UsePodNoteBindingReturn {
   handleNoteDrop: (noteType: NoteType, noteId: string) => Promise<void>;
   handleNoteRemove: (noteType: NoteType) => Promise<void>;
 }
-
-const DUPLICATE_BIND_MESSAGES: Partial<Record<NoteType, () => string>> = {
-  mcpServer: () => t("pod.slot.mcpServerDuplicate"),
-};
 
 const isAlreadyBound = (
   mapping: NoteStoreMapping,
@@ -69,8 +58,7 @@ export function usePodNoteBinding(
   podId: Ref<string>,
   stores: NoteStores,
 ): UsePodNoteBindingReturn {
-  const { toast } = useToast();
-  const { repositoryStore, commandStore, mcpServerStore, podStore } = stores;
+  const { repositoryStore, commandStore, podStore } = stores;
 
   const noteStoreMap: Record<NoteType, NoteStoreMapping> = {
     repository: {
@@ -90,13 +78,6 @@ export function usePodNoteBinding(
       getItemId: (note) => note.commandId,
       updatePodField: (pid, itemId) => podStore.updatePodCommand(pid, itemId),
     },
-    mcpServer: {
-      bindToPod: (noteId, pid) => mcpServerStore.bindToPod(noteId, pid),
-      getNoteById: (noteId) => mcpServerStore.getNoteById(noteId),
-      isItemBoundToPod: (itemId, pid) =>
-        mcpServerStore.isItemBoundToPod(itemId, pid),
-      getItemId: (note) => note.mcpServerId,
-    },
   };
 
   const handleNoteDrop = async (
@@ -109,17 +90,7 @@ export function usePodNoteBinding(
     const note = mapping.getNoteById(noteId);
     if (!note) return;
 
-    if (isAlreadyBound(mapping, note, podId.value)) {
-      const descFn = DUPLICATE_BIND_MESSAGES[noteType];
-      if (descFn) {
-        toast({
-          title: t("pod.slot.duplicateTitle"),
-          description: descFn(),
-          duration: DEFAULT_TOAST_DURATION_MS,
-        });
-      }
-      return;
-    }
+    if (isAlreadyBound(mapping, note, podId.value)) return;
 
     await mapping.bindToPod(noteId, podId.value);
 

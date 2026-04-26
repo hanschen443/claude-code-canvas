@@ -1,9 +1,5 @@
 import { usePodStore, useViewportStore, useSelectionStore } from "@/stores/pod";
-import {
-  useRepositoryStore,
-  useCommandStore,
-  useMcpServerStore,
-} from "@/stores/note";
+import { useRepositoryStore, useCommandStore } from "@/stores/note";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useClipboardStore } from "@/stores/clipboardStore";
 import { useChatStore } from "@/stores/chat";
@@ -16,7 +12,6 @@ export function useCanvasContext(): {
   selectionStore: ReturnType<typeof useSelectionStore>;
   repositoryStore: ReturnType<typeof useRepositoryStore>;
   commandStore: ReturnType<typeof useCommandStore>;
-  mcpServerStore: ReturnType<typeof useMcpServerStore>;
   connectionStore: ReturnType<typeof useConnectionStore>;
   clipboardStore: ReturnType<typeof useClipboardStore>;
   chatStore: ReturnType<typeof useChatStore>;
@@ -28,7 +23,6 @@ export function useCanvasContext(): {
   const selectionStore = useSelectionStore();
   const repositoryStore = useRepositoryStore();
   const commandStore = useCommandStore();
-  const mcpServerStore = useMcpServerStore();
   const connectionStore = useConnectionStore();
   const clipboardStore = useClipboardStore();
   const chatStore = useChatStore();
@@ -41,7 +35,6 @@ export function useCanvasContext(): {
     selectionStore,
     repositoryStore,
     commandStore,
-    mcpServerStore,
     connectionStore,
     clipboardStore,
     chatStore,

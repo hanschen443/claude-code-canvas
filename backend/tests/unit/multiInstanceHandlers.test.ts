@@ -64,7 +64,7 @@ const mockPod: Pod = {
   multiInstance: false,
   skillIds: [],
 
-  mcpServerIds: [],
+  mcpServerNames: [],
   provider: "claude",
   providerConfig: { model: "opus" },
 };

@@ -32,6 +32,7 @@ import PodModelSelector from "@/components/pod/PodModelSelector.vue";
 import IntegrationStatusIcon from "@/components/integration/IntegrationStatusIcon.vue";
 import ScheduleModal from "@/components/canvas/ScheduleModal.vue";
 import PluginPopover from "@/components/pod/PluginPopover.vue";
+import McpPopover from "@/components/pod/McpPopover.vue";
 
 const props = defineProps<{
   pod: Pod;
@@ -43,7 +44,6 @@ const {
   selectionStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
   chatStore,
 } = useCanvasContext();
@@ -72,9 +72,6 @@ const boundRepositoryNote = computed(
 );
 const boundCommandNote = computed(
   () => commandStore.getNotesByPodId(props.pod.id)[0],
-);
-const boundMcpServerNotes = computed(() =>
-  mcpServerStore.getNotesByPodId(props.pod.id),
 );
 const isSourcePod = computed(() => connectionStore.isSourcePod(props.pod.id));
 const hasUpstreamConnection = computed(() =>
@@ -174,7 +171,6 @@ const { isDragging, startSingleDrag } = usePodDrag(
 const { handleNoteDrop, handleNoteRemove } = usePodNoteBinding(computedPodId, {
   repositoryStore,
   commandStore,
-  mcpServerStore,
   podStore,
 });
 
@@ -204,6 +200,19 @@ const handlePluginClick = (event: MouseEvent): void => {
     event.currentTarget as HTMLElement
   ).getBoundingClientRect();
   showPluginPopover.value = true;
+};
+
+// MCP notch 相關狀態
+const podMcpActiveCount = computed(() => props.pod.mcpServerNames?.length ?? 0);
+
+const showMcpPopover = ref(false);
+const mcpAnchorRect = ref<DOMRect | null>(null);
+
+const handleMcpClick = (event: MouseEvent): void => {
+  mcpAnchorRect.value = (
+    event.currentTarget as HTMLElement
+  ).getBoundingClientRect();
+  showMcpPopover.value = true;
 };
 
 // 合併成單一 CSS selector 字串，closest() 一次查詢取代原本最差 4 次 DOM 遍歷
@@ -343,7 +352,7 @@ const handleContextMenu = (e: MouseEvent): void => {
     />
 
     <div
-      class="relative pod-wrapper pod-with-plugin-notch pod-with-mcp-server-notch"
+      class="relative pod-wrapper pod-with-plugin-notch pod-with-mcp-notch pod-with-mcp-server-notch"
       :class="{ dragging: isDragging || isBatchDragging }"
       :style="{ '--pod-rotation': `${pod.rotation}deg` }"
     >
@@ -359,16 +368,16 @@ const handleContextMenu = (e: MouseEvent): void => {
         :pod-id="pod.id"
         :pod-rotation="pod.rotation"
         :plugin-active-count="pluginActiveCount"
+        :mcp-active-count="podMcpActiveCount"
         :provider="pod.provider"
         :bound-repository-note="boundRepositoryNote"
         :bound-command-note="boundCommandNote"
-        :bound-mcp-server-notes="boundMcpServerNotes"
         @plugin-clicked="handlePluginClick"
+        @mcp-clicked="handleMcpClick"
         @repository-dropped="(noteId) => handleNoteDrop('repository', noteId)"
         @repository-removed="() => handleNoteRemove('repository')"
         @command-dropped="(noteId) => handleNoteDrop('command', noteId)"
         @command-removed="() => handleNoteRemove('command')"
-        @mcp-server-dropped="(noteId) => handleNoteDrop('mcpServer', noteId)"
       />
 
       <div
@@ -381,6 +390,7 @@ const handleContextMenu = (e: MouseEvent): void => {
         @contextmenu="handleContextMenu"
       >
         <div class="model-notch" />
+        <div class="mcp-notch" />
         <div class="mcp-server-notch" />
         <div class="repository-notch" />
         <div class="command-notch" />
@@ -467,6 +477,15 @@ const handleContextMenu = (e: MouseEvent): void => {
         :busy="isPodBusy"
         :provider="pod.provider"
         @close="showPluginPopover = false"
+      />
+
+      <McpPopover
+        v-if="showMcpPopover && mcpAnchorRect"
+        :pod-id="pod.id"
+        :anchor-rect="mcpAnchorRect"
+        :busy="isPodBusy"
+        :provider="pod.provider"
+        @close="showMcpPopover = false"
       />
     </div>
   </div>

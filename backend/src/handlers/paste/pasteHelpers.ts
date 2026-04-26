@@ -2,7 +2,6 @@ import type {
   Pod,
   RepositoryNote,
   CommandNote,
-  McpServerNote,
   Connection,
   PasteError,
 } from "../../types";
@@ -14,7 +13,6 @@ import { workspaceService } from "../../services/workspace";
 import {
   repositoryNoteStore,
   commandNoteStore,
-  mcpServerNoteStore,
 } from "../../services/noteStores.js";
 import { connectionStore } from "../../services/connectionStore.js";
 import { repositoryService } from "../../services/repositoryService.js";
@@ -172,7 +170,7 @@ async function createSinglePod(
     rotation: podItem.rotation,
     provider: podItem.provider,
     providerConfig: podItem.providerConfig,
-    mcpServerIds: podItem.mcpServerIds ?? [],
+    mcpServerNames: podItem.mcpServerNames ?? [],
     pluginIds: podItem.pluginIds ?? [],
     repositoryId: finalRepositoryId,
     commandId: podItem.commandId ?? null,
@@ -404,7 +402,6 @@ const NOTE_PASTE_CONFIGS = {
     "repositoryNote",
   ),
   command: makeNoteConfig("commandId", commandNoteStore, "commandNote"),
-  mcpServer: makeNoteConfig("mcpServerId", mcpServerNoteStore, "mcpServerNote"),
 } as const;
 
 export type NotePasteType = keyof typeof NOTE_PASTE_CONFIGS;
@@ -412,13 +409,11 @@ export type NotePasteType = keyof typeof NOTE_PASTE_CONFIGS;
 interface NoteItemMap {
   repository: NoteItemWithId<"repositoryId">;
   command: NoteItemWithId<"commandId">;
-  mcpServer: NoteItemWithId<"mcpServerId">;
 }
 
 interface NoteMap {
   repository: RepositoryNote;
   command: CommandNote;
-  mcpServer: McpServerNote;
 }
 
 type NoteItemForType<K extends NotePasteType> = NoteItemMap[K];

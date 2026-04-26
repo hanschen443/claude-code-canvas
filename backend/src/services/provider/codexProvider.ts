@@ -8,7 +8,8 @@
  *
  * CLI 指令組合：
  *   - 新對話：`codex exec - --json --skip-git-repo-check --cd <repoPath> --full-auto -c sandbox_workspace_write.network_access=true --model <model>`
- *   - 恢復對話：`codex exec resume <id> - --json --cd <repoPath> --full-auto -c sandbox_workspace_write.network_access=true`
+ *   - 恢復對話：`codex exec resume <id> - --json --full-auto -c sandbox_workspace_write.network_access=true`
+ *     （`exec resume` 不接受 `--cd`，工作目錄改由 Bun.spawn cwd 定錨）
  *   - `-` 表示從 stdin 讀取 prompt
  *   - `--full-auto` 取代舊版 `--yolo`，保留 OS-level workspace 寫入限制
  *   - `--cd <repoPath>` 明確錨定 sandbox boundary，與 Bun.spawn cwd 雙保險
@@ -30,6 +31,7 @@ import type {
 import { logger } from "../../utils/logger.js";
 import type { Pod } from "../../types/pod.js";
 import type { RunContext } from "../../types/run.js";
+import { readCodexMcpServers } from "../mcp/codexMcpReader.js";
 
 /**
  * Codex provider 的執行時選項（執行時型別，由 buildOptions 輸出）。
@@ -169,6 +171,29 @@ function buildPromptText(
   return parts.join("\n");
 }
 
+/**
+ * 為每個使用者安裝的 MCP server 產生對應的 `-c mcp_servers.<name>.default_tools_approval_mode=approve` 旗標組。
+ *
+ * codex 在 sandbox=WorkspaceWrite + approval_policy=Never 下，MCP tool 仍會走 approval flow，
+ * 但 spawn 時 stdin 是 pipe 無法取得使用者輸入，最終回 Cancel。
+ * 透過 `-c` 覆寫各 server 的 default_tools_approval_mode=approve 可跳過 approval。
+ *
+ * 注意：server name 若含 `.` 會與 TOML path 產生歧義，此處直接傳入；
+ * codex config.toml 的 [mcp_servers.<name>] 語法通常只允許 [a-zA-Z0-9_-]，
+ * 邊緣情況由 codex CLI 自行處理。
+ */
+function buildMcpAutoApproveArgs(): string[] {
+  const servers = readCodexMcpServers();
+  const result: string[] = [];
+  for (const server of servers) {
+    result.push(
+      "-c",
+      `mcp_servers.${server.name}.default_tools_approval_mode=approve`,
+    );
+  }
+  return result;
+}
+
 /** 組合新對話的 CLI 參數（無 resumeSessionId 或 sessionId 不合法時使用）。 */
 function buildNewSessionArgs(model: string, repoPath: string): string[] {
   return [
@@ -181,6 +206,8 @@ function buildNewSessionArgs(model: string, repoPath: string): string[] {
     "--full-auto",
     "-c",
     "sandbox_workspace_write.network_access=true",
+    // 為每個使用者安裝的 MCP server 加入 auto-approve 旗標，避免 stdin pipe 無法回應時被 Cancel
+    ...buildMcpAutoApproveArgs(),
     "--model",
     model,
   ];
@@ -190,8 +217,11 @@ function buildNewSessionArgs(model: string, repoPath: string): string[] {
  * 組合 codex CLI 參數。
  * 驗證 resumeSessionId 及 model 格式，防止 CLI 旗標注入。
  *
- * args 含 `--cd <repoPath>` 是雙保險：Bun.spawn cwd 已由上層 `resolvePodCwd` 統一解析，
+ * 新對話 args 含 `--cd <repoPath>` 是雙保險：Bun.spawn cwd 已由上層 `resolvePodCwd` 統一解析，
  * `--cd` 則明確錨定 sandbox boundary，確保 codex sandbox 寫入限制與工作目錄一致。
+ *
+ * resume 模式的 `codex exec resume` 不接受 `--cd` flag（會導致 "unexpected argument" 錯誤），
+ * 因此 resume 只用 Bun.spawn cwd 定錨工作目錄，不傳 `--cd`。
  *
  * @param resumeSessionId 恢復對話的 session ID，為 null 時走新對話模式
  * @param model 模型名稱（已通過 MODEL_RE 驗證）
@@ -214,18 +244,19 @@ function buildCodexArgs(
       return buildNewSessionArgs(model, repoPath);
     }
 
-    // 恢復對話模式：不帶 --model（由 session 決定）
+    // 恢復對話模式：`codex exec resume` 不接受 --cd，僅依賴 Bun.spawn cwd 定錨工作目錄。
+    // --model 由 session 決定，不傳入。
     return [
       "exec",
       "resume",
       resumeSessionId,
       "-",
       "--json",
-      "--cd",
-      repoPath,
       "--full-auto",
       "-c",
       "sandbox_workspace_write.network_access=true",
+      // 為每個使用者安裝的 MCP server 加入 auto-approve 旗標，避免 stdin pipe 無法回應時被 Cancel
+      ...buildMcpAutoApproveArgs(),
     ];
   }
 

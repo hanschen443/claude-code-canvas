@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks（需在 import 之前宣告）────────────────────────────────────────────
 
-vi.mock("../../src/services/mcpServerStore.js", () => ({
-  mcpServerStore: {
-    getByIds: vi.fn().mockReturnValue([]),
-  },
+vi.mock("../../src/services/mcp/claudeMcpReader.js", () => ({
+  readClaudeMcpServers: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../../src/services/pluginScanner.js", () => ({
@@ -50,7 +48,7 @@ import {
   buildClaudeOptions,
   BASE_ALLOWED_TOOLS,
 } from "../../src/services/provider/claude/buildClaudeOptions.js";
-import { mcpServerStore } from "../../src/services/mcpServerStore.js";
+import { readClaudeMcpServers } from "../../src/services/mcp/claudeMcpReader.js";
 import { scanInstalledPlugins } from "../../src/services/pluginScanner.js";
 import { integrationRegistry } from "../../src/services/integration/index.js";
 import type { Pod } from "../../src/types/pod.js";
@@ -65,7 +63,7 @@ function createBasePod(overrides: Partial<Pod> = {}): Pod {
     id: "pod-test",
     name: "Test Pod",
     workspacePath: "/canvas/test-pod",
-    mcpServerIds: [],
+    mcpServerNames: [],
     pluginIds: [],
     repositoryId: null,
     providerConfig: { model: "opus" },
@@ -80,7 +78,7 @@ describe("buildClaudeOptions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // 預設 mock 狀態：無 MCP Server、無 Plugin、無 Integration
-    vi.mocked(mcpServerStore.getByIds).mockReturnValue([]);
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
     vi.mocked(scanInstalledPlugins).mockReturnValue([]);
     vi.mocked(integrationRegistry.get).mockReturnValue(undefined);
   });
@@ -139,13 +137,14 @@ describe("buildClaudeOptions", () => {
 
   describe("同時帶 MCP Server 與 Integration binding 時 mcpServers 應正確合併", () => {
     it("mcpServers 同時含 MCP Server 設定與 Integration reply tool，互不覆蓋", async () => {
-      // 準備 MCP Server
-      vi.mocked(mcpServerStore.getByIds).mockReturnValue([
+      // 準備 MCP Server（readClaudeMcpServers 回傳所有本機 server，由 mcpServerNames allowlist 過濾）
+      vi.mocked(readClaudeMcpServers).mockReturnValue([
         {
-          id: "mcp-1",
           name: "my-mcp",
-          config: { command: "node", args: ["server.js"] },
-        } as any,
+          command: "node",
+          args: ["server.js"],
+          env: {},
+        },
       ]);
 
       // 準備 Integration provider（帶 sendMessage）
@@ -155,7 +154,7 @@ describe("buildClaudeOptions", () => {
       } as any);
 
       const pod = createBasePod({
-        mcpServerIds: ["mcp-1"],
+        mcpServerNames: ["my-mcp"],
         integrationBindings: [
           {
             provider: "slack",
@@ -201,7 +200,7 @@ describe("buildClaudeOptions", () => {
 describe("applyIntegrationToolOptions：provider 不存在時跳過（不 crash）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(mcpServerStore.getByIds).mockReturnValue([]);
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
     vi.mocked(scanInstalledPlugins).mockReturnValue([]);
     // 模擬 integrationRegistry.get 回傳 undefined（provider 不存在）
     vi.mocked(integrationRegistry.get).mockReturnValue(undefined);
@@ -247,5 +246,71 @@ describe("applyIntegrationToolOptions：provider 不存在時跳過（不 crash�
 
     // 無 sendMessage，不應注入 mcpServer
     expect(result).not.toHaveProperty("mcpServers");
+  });
+});
+
+describe("buildClaudeOptions mcpServerNames 過濾行為", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
+    vi.mocked(scanInstalledPlugins).mockReturnValue([]);
+    vi.mocked(integrationRegistry.get).mockReturnValue(undefined);
+  });
+
+  it("pod.mcpServerNames 為空時不應產出 mcpServers", async () => {
+    // reader 有資料，但 pod 沒有啟用任何 server
+    vi.mocked(readClaudeMcpServers).mockReturnValue([
+      { name: "available-server", command: "node", args: [], env: {} },
+    ]);
+
+    const pod = createBasePod({ mcpServerNames: [] });
+    const result = await buildClaudeOptions(pod);
+
+    expect(result).not.toHaveProperty("mcpServers");
+  });
+
+  it("pod.mcpServerNames 有指定 name 但 reader 無對應 server 時不應產出 mcpServers", async () => {
+    // reader 回傳空（本機未安裝）
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
+
+    const pod = createBasePod({ mcpServerNames: ["nonexistent-server"] });
+    const result = await buildClaudeOptions(pod);
+
+    expect(result).not.toHaveProperty("mcpServers");
+  });
+
+  it("pod.mcpServerNames 與 reader 交集後只注入允許的 server", async () => {
+    vi.mocked(readClaudeMcpServers).mockReturnValue([
+      { name: "server-allowed", command: "node", args: ["a.js"], env: {} },
+      { name: "server-not-in-pod", command: "python3", args: [], env: {} },
+    ]);
+
+    // pod 只啟用 server-allowed，不啟用 server-not-in-pod
+    const pod = createBasePod({ mcpServerNames: ["server-allowed"] });
+    const result = await buildClaudeOptions(pod);
+
+    expect(result.mcpServers).toBeDefined();
+    expect(result.mcpServers).toHaveProperty("server-allowed");
+    expect(result.mcpServers).not.toHaveProperty("server-not-in-pod");
+  });
+
+  it("mcpServers 注入的 command 與 args 應與 reader 回傳值一致", async () => {
+    vi.mocked(readClaudeMcpServers).mockReturnValue([
+      {
+        name: "my-server",
+        command: "npx",
+        args: ["-y", "@scope/mcp-server"],
+        env: { TOKEN: "secret" },
+      },
+    ]);
+
+    const pod = createBasePod({ mcpServerNames: ["my-server"] });
+    const result = await buildClaudeOptions(pod);
+
+    expect(result.mcpServers?.["my-server"]).toMatchObject({
+      command: "npx",
+      args: ["-y", "@scope/mcp-server"],
+      env: { TOKEN: "secret" },
+    });
   });
 });

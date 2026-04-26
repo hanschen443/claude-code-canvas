@@ -4,7 +4,7 @@ import { computed } from "vue";
 import PodSlots from "@/components/pod/PodSlots.vue";
 
 // -----------------------------------------------------------------------
-// Mock 子元件（PodSingleBindSlot / PodMultiBindSlot）
+// Mock 子元件（PodSingleBindSlot / PodMcpSlot）
 // -----------------------------------------------------------------------
 
 vi.mock("@/components/pod/PodSingleBindSlot.vue", () => ({
@@ -26,25 +26,20 @@ vi.mock("@/components/pod/PodSingleBindSlot.vue", () => ({
   },
 }));
 
-vi.mock("@/components/pod/PodMultiBindSlot.vue", () => ({
+vi.mock("@/components/pod/PodMcpSlot.vue", () => ({
   default: {
-    name: "PodMultiBindSlot",
+    name: "PodMcpSlot",
     template:
-      "<div class='multi-bind-slot-stub' :data-slot-class='slotClass' :data-disabled='disabled' :data-disabled-tooltip='disabledTooltip' @click=\"$emit('note-dropped', 'note-1')\" @contextmenu=\"$emit('note-dropped', '')\"></div>",
+      "<button class='pod-mcp-slot' :data-capability-disabled='capabilityDisabled' :data-disabled-tooltip='disabledTooltip' @click=\"$emit('click', $event)\"></button>",
     props: [
       "podId",
-      "boundNotes",
-      "store",
-      "label",
-      "duplicateToastTitle",
-      "duplicateToastDescription",
-      "slotClass",
-      "menuScrollableClass",
-      "itemIdField",
-      "disabled",
+      "podRotation",
+      "activeCount",
+      "provider",
+      "capabilityDisabled",
       "disabledTooltip",
     ],
-    emits: ["note-dropped"],
+    emits: ["click"],
   },
 }));
 
@@ -61,12 +56,10 @@ const createMockStore = () => ({
   setNoteAnimating: vi.fn(),
 });
 
-const mockMcpServerStore = createMockStore();
 const mockRepositoryStore = createMockStore();
 const mockCommandStore = createMockStore();
 
 vi.mock("@/stores/note", () => ({
-  useMcpServerStore: () => mockMcpServerStore,
   useRepositoryStore: () => mockRepositoryStore,
   useCommandStore: () => mockCommandStore,
 }));
@@ -106,10 +99,10 @@ function mountPodSlots(overrides: Record<string, unknown> = {}) {
       podId: "pod-1",
       podRotation: 0,
       pluginActiveCount: 0,
+      mcpActiveCount: 0,
       provider: "claude",
       boundRepositoryNote: undefined,
       boundCommandNote: undefined,
-      boundMcpServerNotes: [],
       ...overrides,
     },
   });
@@ -143,35 +136,24 @@ describe("PodSlots - Codex provider Pod：Command 以外 slot 為 disabled", () 
     wrapper.unmount();
   });
 
-  it("所有 multi-bind slot 的 disabled 屬性應為 true", () => {
+  it("MCP notch slot 的 capability-disabled 屬性應為 true", () => {
     const wrapper = mountPodSlots();
-    const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
+    const mcpSlot = wrapper.find(".pod-mcp-slot");
 
-    // MCP（0）共 1 個 multi-bind slot
-    expect(multiSlots.length).toBe(1);
-    for (const slot of multiSlots) {
-      expect(slot.attributes("data-disabled")).toBe("true");
-    }
+    expect(mcpSlot.exists()).toBe(true);
+    expect(mcpSlot.attributes("data-capability-disabled")).toBe("true");
 
     wrapper.unmount();
   });
 
-  it("Repository、MCP 的 disabled-tooltip 應為 pod.slot.codexDisabled", () => {
+  it("Repository 的 disabled-tooltip 應為 pod.slot.codexDisabled", () => {
     const wrapper = mountPodSlots();
     const singleSlots = wrapper.findAll(".single-bind-slot-stub");
-    const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
 
     // 真正會 disabled 的 slot：Repository（0）
     expect(singleSlots[0]!.attributes("data-disabled-tooltip")).toBe(
       "pod.slot.codexDisabled",
     );
-
-    // MCP（0）
-    for (const slot of multiSlots) {
-      expect(slot.attributes("data-disabled-tooltip")).toBe(
-        "pod.slot.codexDisabled",
-      );
-    }
 
     wrapper.unmount();
   });
@@ -219,15 +201,12 @@ describe("PodSlots - Claude provider Pod：全部 slot 為 enabled", () => {
     wrapper.unmount();
   });
 
-  it("所有 multi-bind slot 的 disabled 屬性應為 false", () => {
+  it("MCP notch slot 的 capability-disabled 屬性應為 false", () => {
     const wrapper = mountPodSlots();
-    const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
+    const mcpSlot = wrapper.find(".pod-mcp-slot");
 
-    // MCP（0）共 1 個 multi-bind slot
-    expect(multiSlots.length).toBe(1);
-    for (const slot of multiSlots) {
-      expect(slot.attributes("data-disabled")).toBe("false");
-    }
+    expect(mcpSlot.exists()).toBe(true);
+    expect(mcpSlot.attributes("data-capability-disabled")).toBe("false");
 
     wrapper.unmount();
   });
@@ -294,30 +273,17 @@ describe("PodSlots - emit 事件轉發", () => {
     wrapper.unmount();
   });
 
-  it("MCP slot note-dropped → emit mcp-server-dropped", async () => {
+  it("MCP slot click → emit mcp-clicked 帶 MouseEvent", async () => {
     const wrapper = mountPodSlots();
-    const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
+    const mcpSlot = wrapper.find(".pod-mcp-slot");
 
-    // MCP（0）
-    await multiSlots[0]!.trigger("click");
+    expect(mcpSlot.exists()).toBe(true);
 
-    expect(wrapper.emitted("mcp-server-dropped")).toBeTruthy();
-    expect(wrapper.emitted("mcp-server-dropped")![0]).toEqual(["note-1"]);
+    await mcpSlot.trigger("click");
 
-    wrapper.unmount();
-  });
-
-  it("空字串 noteId 應被守門，不 re-emit 父層事件", async () => {
-    // 測試縱深防禦：PodSlots 的 onDropped handler 應攔截空 noteId
-    // 透過 contextmenu 觸發 multi-bind slot emit 空字串 noteId
-    const wrapper = mountPodSlots();
-    const multiSlots = wrapper.findAll(".multi-bind-slot-stub");
-
-    // 觸發 MCP slot 的 note-dropped 事件（傳入空字串 ''）
-    await multiSlots[0]!.trigger("contextmenu");
-
-    // 空 noteId 應被守門，不應 re-emit mcp-server-dropped
-    expect(wrapper.emitted("mcp-server-dropped")).toBeFalsy();
+    expect(wrapper.emitted("mcp-clicked")).toBeTruthy();
+    const [emittedEvent] = wrapper.emitted("mcp-clicked")![0] as [MouseEvent];
+    expect(emittedEvent).toBeInstanceOf(MouseEvent);
 
     wrapper.unmount();
   });

@@ -229,14 +229,21 @@
     },
     "slot": {
       "duplicateTitle": "已存在，無法插入",
-      "mcpServerDuplicate": "此 MCP Server 已綁定到此 Pod",
       "codexDisabled": "Codex 不支援此功能",
       "pluginsLabel": "Plugins",
       "pluginsLoading": "載入中...",
       "pluginsBusyTooltip": "任務進行中，請等待完成",
       "pluginsEmpty": "尚未安裝 plugin",
       "pluginsToggleFailed": "變更失敗，已回滾",
-      "pluginsCodexHint": "Codex plugin 由 codex 全域管理"
+      "pluginsCodexHint": "Codex plugin 由 codex 全域管理",
+      "mcpLabel": "MCPs",
+      "mcpLoading": "載入中…",
+      "mcpBusyTooltip": "Pod 執行中無法切換",
+      "mcpEmpty": "尚未安裝 MCP server",
+      "mcpClaudeEmptyHint": "請使用 `claude mcp add` 安裝",
+      "mcpCodexEmptyHint": "請使用 `codex mcp add` 安裝",
+      "mcpToggleFailed": "切換 MCP server 失敗",
+      "mcpCodexHint": "Codex MCP server 由 codex 全域管理"
     }
   },
   "run": {
@@ -411,19 +418,6 @@
       "contentPlaceholder": "內容",
       "editTitleWithType": "編輯 {type}"
     },
-    "mcpServer": {
-      "createTitle": "新增 MCP Server",
-      "editTitle": "編輯 MCP Server",
-      "description": "請貼入 JSON 格式的 MCP Server 設定，第一個 key 為名稱，value 為設定內容",
-      "parseError": "JSON 格式錯誤，請檢查語法",
-      "minOneServer": "請輸入至少一個 MCP Server 設定",
-      "nameInvalid": "名稱只能包含英數字、底線和連字號",
-      "modeError": "設定必須包含 command 欄位（stdio 模式）或 type + url 欄位（http/sse 模式）",
-      "commandEmpty": "command 欄位不能為空",
-      "urlInvalid": "url 欄位格式不正確",
-      "argsInvalid": "args 欄位必須是字串陣列",
-      "parseLost": "解析結果遺失，請重新提交"
-    },
     "scheduleModal": {
       "createTitle": "設定排程",
       "editTitle": "編輯排程",
@@ -579,10 +573,7 @@
       "worktreeCreated": "Worktree 建立成功",
       "repositoryDeleted": "Repository 已刪除",
       "commandDeleted": "Command 已刪除",
-      "mcpServerCreated": "MCP Server 已建立",
-      "mcpServerUpdated": "MCP Server 已更新",
-      "mcpServerDeleted": "MCP Server 已刪除",
-      "mcpServerReadFailed": "讀取 MCP Server 失敗"
+      "mcpToggleSuccess": "已更新 MCP 啟用設定"
     },
     "deleteSelection": {
       "partialFailed": "刪除部分失敗",

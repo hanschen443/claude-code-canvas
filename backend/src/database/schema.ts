@@ -63,11 +63,12 @@ function createBaseTables(db: Database): void {
   );
   db.exec("CREATE INDEX IF NOT EXISTS idx_pods_canvas_id ON pods(canvas_id)");
 
+  // 新版 MCP server 名稱 join table（以 name 取代舊的 id）
   db.exec(
-    "CREATE TABLE IF NOT EXISTS pod_mcp_server_ids (" +
+    "CREATE TABLE IF NOT EXISTS pod_mcp_server_names (" +
       "pod_id TEXT NOT NULL REFERENCES pods(id) ON DELETE CASCADE," +
-      "mcp_server_id TEXT NOT NULL," +
-      "PRIMARY KEY (pod_id, mcp_server_id)" +
+      "mcp_server_name TEXT NOT NULL," +
+      "PRIMARY KEY (pod_id, mcp_server_name)" +
       ")",
   );
 
@@ -148,14 +149,6 @@ function createBaseTables(db: Database): void {
       "parent_repo_id TEXT," +
       "branch_name TEXT," +
       "current_branch TEXT" +
-      ")",
-  );
-
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS mcp_servers (" +
-      "id TEXT PRIMARY KEY," +
-      "name TEXT NOT NULL UNIQUE," +
-      "config_json TEXT NOT NULL" +
       ")",
   );
 
@@ -344,6 +337,14 @@ function runMigrations(db: Database): void {
   // ⚠️ 此操作不可逆，DROP 後資料無法恢復；如需 rollback binary 須先備份
   // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
   runMigration(db, "DROP TABLE IF EXISTS pod_sub_agent_ids", []);
+
+  // Migration: 移除 MCP SQLite CRUD 模式，改為外部 CLI 唯讀。
+  // ⚠️ 此 migration 不可逆。MCP 從 SQLite CRUD 改為外部 CLI 唯讀，
+  //    舊資料直接清除，使用者需在外部 CLI 重新安裝並於 popover 重新啟用。
+  // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
+  runMigration(db, "DROP TABLE IF EXISTS mcp_server_notes", []);
+  runMigration(db, "DROP TABLE IF EXISTS pod_mcp_server_ids", []);
+  runMigration(db, "DROP TABLE IF EXISTS mcp_servers", []);
 }
 
 export function createTables(db: Database): void {

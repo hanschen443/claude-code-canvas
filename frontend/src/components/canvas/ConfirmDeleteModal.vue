@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useI18n } from "vue-i18n";
 
-type ItemType = "repository" | "command" | "mcpServer";
+type ItemType = "repository" | "command";
 type GroupType = "commandGroup";
 type ExtendedItemType = ItemType | GroupType;
 

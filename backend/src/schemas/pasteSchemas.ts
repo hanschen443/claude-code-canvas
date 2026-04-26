@@ -26,7 +26,7 @@ export const pastePodItemSchema = z
      * Zod strip 會靜默丟失未宣告欄位，前端型別若有變動會讓 model 資訊消失，曾真實發生 bug。
      */
     providerConfig: providerConfigSchema.optional(),
-    mcpServerIds: z.array(resourceIdSchema).optional(),
+    mcpServerNames: z.array(z.string().min(1).max(200)).optional(),
     pluginIds: z
       .array(
         z
@@ -48,10 +48,6 @@ export const pasteCommandNoteItemSchema = createPasteNoteItemSchema({
   commandId: resourceIdSchema,
 }).strict();
 
-export const pasteMcpServerNoteItemSchema = createPasteNoteItemSchema({
-  mcpServerId: resourceIdSchema,
-}).strict();
-
 export const pasteConnectionItemSchema = z
   .object({
     originalSourcePodId: z.uuid(),
@@ -69,7 +65,6 @@ export const canvasPasteSchema = z
     pods: z.array(pastePodItemSchema).max(100),
     repositoryNotes: z.array(pasteRepositoryNoteItemSchema).max(100),
     commandNotes: z.array(pasteCommandNoteItemSchema).max(100).optional(),
-    mcpServerNotes: z.array(pasteMcpServerNoteItemSchema).max(100).optional(),
     connections: z.array(pasteConnectionItemSchema).max(200).optional(),
   })
   .strict();
@@ -80,7 +75,4 @@ export type PasteRepositoryNoteItem = z.infer<
   typeof pasteRepositoryNoteItemSchema
 >;
 export type PasteCommandNoteItem = z.infer<typeof pasteCommandNoteItemSchema>;
-export type PasteMcpServerNoteItem = z.infer<
-  typeof pasteMcpServerNoteItemSchema
->;
 export type PasteConnectionItem = z.infer<typeof pasteConnectionItemSchema>;

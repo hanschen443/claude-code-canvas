@@ -2,7 +2,6 @@ import { WebSocketResponseEvents } from "@/services/websocket";
 import { usePodStore } from "@/stores/pod/podStore";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
 import { useChatStore } from "@/stores/chat/chatStore";
 import type { Pod } from "@/types";
 import { createUnifiedHandler } from "./sharedHandlerUtils";
@@ -12,7 +11,6 @@ import { t } from "@/i18n";
 type DeletedNoteIds = {
   repositoryNote?: string[];
   commandNote?: string[];
-  mcpServerNote?: string[];
 };
 
 const noteTypeHandlers: {
@@ -21,7 +19,6 @@ const noteTypeHandlers: {
 }[] = [
   { key: "repositoryNote", getStore: () => useRepositoryStore() },
   { key: "commandNote", getStore: () => useCommandStore() },
-  { key: "mcpServerNote", getStore: () => useMcpServerStore() },
 ];
 
 export const removeDeletedNotes = (
@@ -191,14 +188,6 @@ export function getPodEventListeners(): Array<{
     },
     {
       event: WebSocketResponseEvents.POD_MULTI_INSTANCE_SET,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.POD_MCP_SERVER_BOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND,
       handler: handlePodStateUpdated as (payload: unknown) => void,
     },
     {

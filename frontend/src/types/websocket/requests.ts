@@ -1,6 +1,5 @@
 import type { ModelType, Schedule, PodProvider, ProviderConfig } from "../pod";
 import type { AnchorPosition } from "@/types";
-import type { McpServerConfig } from "../mcpServer";
 
 export type ImageMediaType =
   | "image/jpeg"
@@ -141,7 +140,7 @@ export interface PastePodItem {
   provider: PodProvider;
   /** Provider 對應的設定（含 model 等參數） */
   providerConfig: ProviderConfig;
-  mcpServerIds?: string[];
+  mcpServerNames?: string[];
   pluginIds?: string[];
   repositoryId?: string | null;
   commandId?: string | null;
@@ -181,7 +180,6 @@ export interface CanvasPastePayload {
   pods: PastePodItem[];
   repositoryNotes: PasteRepositoryNoteItem[];
   commandNotes: PasteCommandNoteItem[];
-  mcpServerNotes: PasteMcpServerNoteItem[];
   connections: PasteConnectionItem[];
 }
 
@@ -218,15 +216,6 @@ export interface CommandNoteCreatePayload {
 
 export interface PasteCommandNoteItem {
   commandId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToOriginalPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
-}
-
-export interface PasteMcpServerNoteItem {
-  mcpServerId: string;
   name: string;
   x: number;
   y: number;
@@ -307,25 +296,18 @@ export interface MoveToGroupPayload {
   groupId: string | null;
 }
 
-export interface McpServerCreatePayload {
+/** 查詢指定 Provider 的 MCP server 清單 */
+export interface McpListPayload {
   requestId: string;
-  canvasId: string;
-  name: string;
-  config: McpServerConfig;
+  provider: "claude" | "codex";
 }
 
-export interface McpServerUpdatePayload {
+/** 設定指定 Pod 的 MCP server 名稱清單 */
+export interface PodSetMcpServerNamesPayload {
   requestId: string;
   canvasId: string;
-  mcpServerId: string;
-  name: string;
-  config: McpServerConfig;
-}
-
-export interface McpServerReadPayload {
-  requestId: string;
-  canvasId: string;
-  mcpServerId: string;
+  podId: string;
+  mcpServerNames: string[];
 }
 
 export interface CursorMovePayload {

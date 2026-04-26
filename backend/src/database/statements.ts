@@ -53,12 +53,10 @@ function buildStatements(db: Database): {
     deleteByPodId: ReturnType<Database["prepare"]>;
     deleteByAppId: ReturnType<Database["prepare"]>;
   };
-  podMcpServerIds: {
+  podMcpServerNames: {
     insert: ReturnType<Database["prepare"]>;
     selectByPodId: ReturnType<Database["prepare"]>;
     deleteByPodId: ReturnType<Database["prepare"]>;
-    deleteOne: ReturnType<Database["prepare"]>;
-    selectByMcpServerId: ReturnType<Database["prepare"]>;
   };
   podPluginIds: {
     insert: ReturnType<Database["prepare"]>;
@@ -116,13 +114,6 @@ function buildStatements(db: Database): {
     selectByRepositoryId: ReturnType<Database["prepare"]>;
     deleteByPodIdAndRepoId: ReturnType<Database["prepare"]>;
     deleteByPodId: ReturnType<Database["prepare"]>;
-  };
-  mcpServer: {
-    insert: ReturnType<Database["prepare"]>;
-    selectAll: ReturnType<Database["prepare"]>;
-    selectById: ReturnType<Database["prepare"]>;
-    update: ReturnType<Database["prepare"]>;
-    deleteById: ReturnType<Database["prepare"]>;
   };
   globalSettings: {
     selectByKey: ReturnType<Database["prepare"]>;
@@ -295,21 +286,15 @@ function buildStatements(db: Database): {
       ),
     },
 
-    podMcpServerIds: {
+    podMcpServerNames: {
       insert: db.prepare(
-        "INSERT OR IGNORE INTO pod_mcp_server_ids (pod_id, mcp_server_id) VALUES ($podId, $mcpServerId)",
+        "INSERT OR IGNORE INTO pod_mcp_server_names (pod_id, mcp_server_name) VALUES ($podId, $mcpServerName)",
       ),
       selectByPodId: db.prepare(
-        "SELECT mcp_server_id FROM pod_mcp_server_ids WHERE pod_id = ?",
+        "SELECT mcp_server_name FROM pod_mcp_server_names WHERE pod_id = ?",
       ),
       deleteByPodId: db.prepare(
-        "DELETE FROM pod_mcp_server_ids WHERE pod_id = ?",
-      ),
-      deleteOne: db.prepare(
-        "DELETE FROM pod_mcp_server_ids WHERE pod_id = $podId AND mcp_server_id = $mcpServerId",
-      ),
-      selectByMcpServerId: db.prepare(
-        "SELECT pod_id FROM pod_mcp_server_ids WHERE mcp_server_id = ?",
+        "DELETE FROM pod_mcp_server_names WHERE pod_id = ?",
       ),
     },
 
@@ -469,18 +454,6 @@ function buildStatements(db: Database): {
       selectById: db.prepare("SELECT * FROM repository_metadata WHERE id = ?"),
       selectAll: db.prepare("SELECT * FROM repository_metadata"),
       deleteById: db.prepare("DELETE FROM repository_metadata WHERE id = ?"),
-    },
-
-    mcpServer: {
-      insert: db.prepare(
-        "INSERT INTO mcp_servers (id, name, config_json) VALUES ($id, $name, $configJson)",
-      ),
-      selectAll: db.prepare("SELECT * FROM mcp_servers"),
-      selectById: db.prepare("SELECT * FROM mcp_servers WHERE id = ?"),
-      update: db.prepare(
-        "UPDATE mcp_servers SET name = $name, config_json = $configJson WHERE id = $id",
-      ),
-      deleteById: db.prepare("DELETE FROM mcp_servers WHERE id = ?"),
     },
 
     podManifest: {

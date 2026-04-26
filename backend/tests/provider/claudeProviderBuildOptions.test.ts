@@ -3,7 +3,7 @@
  *
  * 驗證 buildClaudeOptions 從 Pod 設定正確建構 ClaudeOptions：
  * - 空 Pod（無特殊設定）→ 等於 metadata.defaultOptions + pod model
- * - pod.mcpServerIds → mcpServers 被填入（mock mcpServerStore.getByIds）
+ * - pod.mcpServerNames → mcpServers 被填入（mock readClaudeMcpServers，以名稱 allowlist 過濾）
  * - pod.pluginIds → plugins 被填入（mock scanInstalledPlugins）
  * - pod.integrationBindings → mcpServers 加 reply server、allowedTools 含 mcp__ 前綴（mock integrationRegistry）
  * - pod.providerConfig.model 覆寫 default
@@ -14,10 +14,8 @@
 
 // ── 所有 mock 必須在 import 前設定 ────────────────────────────────────────────
 
-vi.mock("../../src/services/mcpServerStore.js", () => ({
-  mcpServerStore: {
-    getByIds: vi.fn(),
-  },
+vi.mock("../../src/services/mcp/claudeMcpReader.js", () => ({
+  readClaudeMcpServers: vi.fn(),
 }));
 
 vi.mock("../../src/services/pluginScanner.js", () => ({
@@ -84,7 +82,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async () => {
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { claudeProvider } from "../../src/services/provider/claudeProvider.js";
-import { mcpServerStore } from "../../src/services/mcpServerStore.js";
+import { readClaudeMcpServers } from "../../src/services/mcp/claudeMcpReader.js";
 import { scanInstalledPlugins } from "../../src/services/pluginScanner.js";
 import { integrationRegistry } from "../../src/services/integration/index.js";
 import { BASE_ALLOWED_TOOLS } from "../../src/services/provider/claude/buildClaudeOptions.js";
@@ -101,7 +99,7 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     providerConfig: {},
     workspacePath: "/workspace/test",
     skillIds: [],
-    mcpServerIds: [],
+    mcpServerNames: [],
     pluginIds: [],
     integrationBindings: [],
 
@@ -122,7 +120,7 @@ describe("claudeProvider.buildOptions()", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // 預設 mock 回傳值
-    vi.mocked(mcpServerStore.getByIds).mockReturnValue([]);
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
     vi.mocked(scanInstalledPlugins).mockReturnValue([]);
     vi.mocked(integrationRegistry.get).mockReturnValue(undefined);
   });
@@ -158,35 +156,34 @@ describe("claudeProvider.buildOptions()", () => {
     expect(options.model).toBe("sonnet");
   });
 
-  // ── Case 3：pod.mcpServerIds → mcpServers 被填入 ─────────────────────
-  it("pod.mcpServerIds 設定時應呼叫 mcpServerStore.getByIds，並填入 mcpServers", async () => {
+  // ── Case 3：pod.mcpServerNames → mcpServers 被填入 ─────────────────────
+  it("pod.mcpServerNames 設定時應呼叫 readClaudeMcpServers，並以名稱過濾填入 mcpServers", async () => {
     const mockServers = [
       {
-        id: "mcp-001",
         name: "my-mcp-server",
-        config: {
-          command: "npx",
-          args: ["-y", "@my-mcp/server"],
-          type: "stdio",
-        },
+        command: "npx",
+        args: ["-y", "@my-mcp/server"],
+        env: {},
       },
     ];
-    vi.mocked(mcpServerStore.getByIds).mockReturnValue(mockServers as any);
+    vi.mocked(readClaudeMcpServers).mockReturnValue(mockServers);
 
-    const pod = makePod({ mcpServerIds: ["mcp-001"] });
+    const pod = makePod({ mcpServerNames: ["my-mcp-server"] });
     const options = await claudeProvider.buildOptions(pod);
 
-    expect(mcpServerStore.getByIds).toHaveBeenCalledWith(["mcp-001"]);
+    expect(readClaudeMcpServers).toHaveBeenCalled();
     expect(options.mcpServers).toBeDefined();
-    expect(options.mcpServers?.["my-mcp-server"]).toEqual(
-      mockServers[0].config,
-    );
+    expect(options.mcpServers?.["my-mcp-server"]).toEqual({
+      command: "npx",
+      args: ["-y", "@my-mcp/server"],
+      env: {},
+    });
   });
 
-  it("mcpServerIds 為空陣列時，mcpServers 應為 undefined", async () => {
-    vi.mocked(mcpServerStore.getByIds).mockReturnValue([]);
+  it("mcpServerNames 為空陣列時，mcpServers 應為 undefined", async () => {
+    vi.mocked(readClaudeMcpServers).mockReturnValue([]);
 
-    const pod = makePod({ mcpServerIds: [] });
+    const pod = makePod({ mcpServerNames: [] });
     const options = await claudeProvider.buildOptions(pod);
 
     expect(options.mcpServers).toBeUndefined();
@@ -343,14 +340,15 @@ describe("claudeProvider.buildOptions()", () => {
 
   // ── Case 7：多能力組合同時存在 ───────────────────────────────────────
   it("MCP + Plugin + Integration 同時設定時，產物各欄位均正確", async () => {
-    // mock MCP Server
-    vi.mocked(mcpServerStore.getByIds).mockReturnValue([
+    // mock MCP Server（readClaudeMcpServers 回傳所有本機 server）
+    vi.mocked(readClaudeMcpServers).mockReturnValue([
       {
-        id: "mcp-combo",
         name: "combo-server",
-        config: { command: "node", args: ["server.js"], type: "stdio" },
+        command: "node",
+        args: ["server.js"],
+        env: {},
       },
-    ] as any);
+    ]);
 
     // mock Plugin
     vi.mocked(scanInstalledPlugins).mockReturnValue([
@@ -383,7 +381,7 @@ describe("claudeProvider.buildOptions()", () => {
 
     const pod = makePod({
       providerConfig: { model: "sonnet" },
-      mcpServerIds: ["mcp-combo"],
+      mcpServerNames: ["combo-server"],
       pluginIds: ["plugin-combo"],
       integrationBindings: [
         {

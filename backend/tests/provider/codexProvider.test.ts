@@ -8,6 +8,7 @@
  * - stdout JSON line 解析
  * - exit code 非 0 且無 turn_complete 時推出 error event
  * - ctx.options.model 被正確傳入 --model 旗標
+ * - MCP server auto-approve 旗標注入（新對話 & resume）
  *
  * Mock 方法：vi.spyOn(Bun, "spawn") 替換 Bun.spawn（Bun 全域不可重新賦值，
  * 但 Bun.spawn 屬性是 writable，可透過 spyOn 攔截）
@@ -25,6 +26,13 @@ vi.mock("../../src/utils/logger.js", () => ({
     error: vi.fn(),
   },
 }));
+
+// ── codexMcpReader mock（預設回傳空陣列，各測試可覆寫） ────────────────
+vi.mock("../../src/services/mcp/codexMcpReader.js", () => ({
+  readCodexMcpServers: vi.fn().mockReturnValue([]),
+}));
+
+import { readCodexMcpServers } from "../../src/services/mcp/codexMcpReader.js";
 
 // ── 工具：把字串陣列轉為 ReadableStream<Uint8Array>（模擬 stdout/stderr） ─
 function makeReadableStream(lines: string[]): ReadableStream<Uint8Array> {
@@ -139,8 +147,10 @@ describe("CodexProvider", () => {
     ]);
   });
 
-  // ── Case 2：resume 時 spawn 指令包含 resume <id> ───────────────────
-  it("resumeSessionId 存在時 spawn 指令應包含 exec resume <id> 及必要的 CLI 參數", async () => {
+  // ── Case 2：resume 時 spawn 指令包含 resume <id>，不含 --cd ─────────
+  // `codex exec resume` 不接受 --cd flag（會導致 "unexpected argument" 錯誤），
+  // 工作目錄改由 Bun.spawn cwd 定錨。
+  it("resumeSessionId 存在時 spawn 指令應包含 exec resume <id> 及必要的 CLI 參數，且不含 --cd", async () => {
     const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
     spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
 
@@ -158,12 +168,12 @@ describe("CodexProvider", () => {
       "session-abc123",
       "-",
       "--json",
-      "--cd",
-      ctx.workspacePath,
       "--full-auto",
       "-c",
       "sandbox_workspace_write.network_access=true",
     ]);
+    // resume 模式不應含 --cd（codex exec resume 不接受此 flag）
+    expect(spawnArgs).not.toContain("--cd");
   });
 
   // ── Case 3：abortSignal 觸發後 subprocess.kill() 被呼叫 ───────────
@@ -310,8 +320,8 @@ describe("CodexProvider", () => {
     expect(spawnArgs).toContain("--skip-git-repo-check");
   });
 
-  // ── 補充：spawn cwd 與 --cd 路徑必須一致 ─────────────────────────
-  it("spawn 的 cwd 與 args 中 --cd 後一個元素必須相同", async () => {
+  // ── 補充：新對話 spawn cwd 與 --cd 路徑必須一致 ──────────────────
+  it("新對話時 spawn 的 cwd 與 args 中 --cd 後一個元素必須相同", async () => {
     const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
     spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
 
@@ -329,6 +339,28 @@ describe("CodexProvider", () => {
     expect(cdIdx).toBeGreaterThan(-1);
     const cdPath = spawnArgs[cdIdx + 1];
     expect(cdPath).toBe(spawnOptions.cwd);
+  });
+
+  // ── 補充：resume 模式 spawn cwd 由 Bun.spawn cwd 定錨，args 不含 --cd ──
+  // `codex exec resume` 不接受 --cd flag，工作目錄僅靠 Bun.spawn cwd 定錨。
+  it("resume 模式時 spawn cwd 應設為 workspacePath，且 args 不含 --cd", async () => {
+    const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    const provider = new CodexProvider();
+    const ctx = makeCtx({ resumeSessionId: "session-xyz" });
+    await collectEvents(provider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs, spawnOptions] = spawnSpy.mock.calls[0] as [
+      string[],
+      { cwd?: string },
+    ];
+
+    // cwd 必須是 workspacePath
+    expect(spawnOptions.cwd).toBe(ctx.workspacePath);
+    // resume args 不含 --cd
+    expect(spawnArgs).not.toContain("--cd");
   });
 
   // ── 補充：args 不含 -c sandbox_workspace_write.writable_roots（負面斷言）
@@ -351,5 +383,85 @@ describe("CodexProvider", () => {
       arg.includes("writable_roots"),
     );
     expect(hasWritableRoots).toBe(false);
+  });
+
+  // ── MCP auto-approve：新對話 args 包含每個 MCP server 的 default_tools_approval_mode=approve ──
+  it("新對話時 args 應包含每個 MCP server 的 default_tools_approval_mode=approve 旗標", async () => {
+    // mock readCodexMcpServers 回傳兩個 server
+    vi.mocked(readCodexMcpServers).mockReturnValue([
+      { name: "figma", type: "http" },
+      { name: "context7", type: "stdio" },
+    ]);
+
+    const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    const provider = new CodexProvider();
+    const ctx = makeCtx({ resumeSessionId: null });
+    await collectEvents(provider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+    // 應包含 figma 的 auto-approve 旗標
+    const figmaIdx = spawnArgs.indexOf(
+      "mcp_servers.figma.default_tools_approval_mode=approve",
+    );
+    expect(figmaIdx).toBeGreaterThan(-1);
+    expect(spawnArgs[figmaIdx - 1]).toBe("-c");
+
+    // 應包含 context7 的 auto-approve 旗標
+    const context7Idx = spawnArgs.indexOf(
+      "mcp_servers.context7.default_tools_approval_mode=approve",
+    );
+    expect(context7Idx).toBeGreaterThan(-1);
+    expect(spawnArgs[context7Idx - 1]).toBe("-c");
+  });
+
+  // ── MCP auto-approve：resume args 同樣包含每個 MCP server 的 auto-approve 旗標 ──
+  it("resume 時 args 應包含每個 MCP server 的 default_tools_approval_mode=approve 旗標", async () => {
+    // mock readCodexMcpServers 回傳一個 server
+    vi.mocked(readCodexMcpServers).mockReturnValue([
+      { name: "my-mcp", type: "stdio" },
+    ]);
+
+    const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    const provider = new CodexProvider();
+    const ctx = makeCtx({ resumeSessionId: "session-abc123" });
+    await collectEvents(provider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+    // 應包含 my-mcp 的 auto-approve 旗標
+    const mcpIdx = spawnArgs.indexOf(
+      "mcp_servers.my-mcp.default_tools_approval_mode=approve",
+    );
+    expect(mcpIdx).toBeGreaterThan(-1);
+    expect(spawnArgs[mcpIdx - 1]).toBe("-c");
+
+    // resume 模式不含 --cd
+    expect(spawnArgs).not.toContain("--cd");
+  });
+
+  // ── MCP auto-approve：無 MCP server 時 args 不含 default_tools_approval_mode ──
+  it("無 MCP server 時 args 不應含任何 default_tools_approval_mode 旗標", async () => {
+    // readCodexMcpServers 預設 mock 回傳空陣列
+    vi.mocked(readCodexMcpServers).mockReturnValue([]);
+
+    const mockProc = makeMockProc([JSON.stringify({ type: "turn.completed" })]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    const provider = new CodexProvider();
+    const ctx = makeCtx({ resumeSessionId: null });
+    await collectEvents(provider.chat(ctx));
+
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+    const hasApproveFlag = spawnArgs.some((arg) =>
+      arg.includes("default_tools_approval_mode"),
+    );
+    expect(hasApproveFlag).toBe(false);
   });
 });

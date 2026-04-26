@@ -41,7 +41,7 @@ vi.mock("@/components/ui/button", () => ({
   },
 }));
 
-type ItemType = "repository" | "command" | "mcpServer";
+type ItemType = "repository" | "command";
 type GroupType = "commandGroup";
 type ExtendedItemType = ItemType | GroupType;
 
@@ -110,36 +110,6 @@ describe("ConfirmDeleteModal", () => {
 
       const buttons = wrapper.findAll("button");
       expect(buttons.some((btn) => btn.text().includes("刪除"))).toBe(false);
-    });
-  });
-
-  describe("MCP Server 在使用中", () => {
-    it("mcpServer 在 isInUse 為 false 時正常顯示刪除按鈕", () => {
-      const wrapper = mountModal({ isInUse: false, itemType: "mcpServer" });
-
-      const buttons = wrapper.findAll("button");
-      expect(buttons.some((btn) => btn.text().includes("刪除"))).toBe(true);
-    });
-
-    it("mcpServer 在 isInUse 為 true 時顯示「無法刪除」標題", () => {
-      const wrapper = mountModal({ isInUse: true, itemType: "mcpServer" });
-
-      expect(wrapper.text()).toContain("無法刪除");
-    });
-
-    it("mcpServer 在 isInUse 為 true 時阻擋刪除", () => {
-      const wrapper = mountModal({ isInUse: true, itemType: "mcpServer" });
-
-      const buttons = wrapper.findAll("button");
-      expect(buttons.some((btn) => btn.text().includes("刪除"))).toBe(false);
-    });
-
-    it("mcpServer 在 isInUse 為 true 時只顯示確定按鈕", () => {
-      const wrapper = mountModal({ isInUse: true, itemType: "mcpServer" });
-
-      const buttons = wrapper.findAll("button");
-      expect(buttons.length).toBe(1);
-      expect(buttons[0]?.text()).toContain("確認");
     });
   });
 

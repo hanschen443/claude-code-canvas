@@ -5,24 +5,11 @@ import { useNoteDoubleClick } from "@/composables/canvas/useNoteDoubleClick";
 import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
 import type { usePodStore } from "@/stores/pod";
 import type { useViewportStore } from "@/stores/pod";
-import type {
-  useRepositoryStore,
-  useCommandStore,
-  useMcpServerStore,
-} from "@/stores/note";
+import type { useRepositoryStore, useCommandStore } from "@/stores/note";
 import TrashZone from "@/components/canvas/TrashZone.vue";
-import type { McpServerConfig } from "@/types";
 
 // EditableNoteType 供 UseCanvasNoteHandlersOptions.handleOpenEditModal 型別引用
 type EditableNoteType = "command";
-
-interface McpServerModalState {
-  visible: boolean;
-  mode: "create" | "edit";
-  mcpServerId: string;
-  initialName: string;
-  initialConfig: McpServerConfig | undefined;
-}
 
 interface NoteStoreBase {
   isDraggingNote: boolean;
@@ -44,16 +31,14 @@ interface UseCanvasNoteHandlersOptions {
   viewportStore: ReturnType<typeof useViewportStore>;
   repositoryStore: ReturnType<typeof useRepositoryStore>;
   commandStore: ReturnType<typeof useCommandStore>;
-  mcpServerStore: ReturnType<typeof useMcpServerStore>;
   trashZoneRef: Ref<InstanceType<typeof TrashZone> | null>;
   handleOpenEditModal: (
     type: EditableNoteType,
     id: string,
   ) => Promise<void> | void;
-  mcpServerModal: Ref<McpServerModalState>;
 }
 
-type NoteType = "repository" | "command" | "mcpServer";
+type NoteType = "repository" | "command";
 
 export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
   noteHandlerMap: Record<NoteType, ReturnType<typeof useNoteEventHandlers>>;
@@ -62,7 +47,6 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
   isCanvasEmpty: ComputedRef<boolean>;
   handleCreateRepositoryNote: (itemId: string) => void;
   handleCreateCommandNote: (itemId: string) => void;
-  handleCreateMcpServerNote: (itemId: string) => void;
   getRepositoryBranchName: (repositoryId: string) => string | undefined;
   handleNoteDoubleClick: (data: {
     noteId: string;
@@ -74,16 +58,13 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
     viewportStore,
     repositoryStore,
     commandStore,
-    mcpServerStore,
     trashZoneRef,
     handleOpenEditModal,
-    mcpServerModal,
   } = options;
 
   const noteConfigs = [
     { store: repositoryStore as NoteStoreBase, type: "repository" as const },
     { store: commandStore as NoteStoreBase, type: "command" as const },
-    { store: mcpServerStore as NoteStoreBase, type: "mcpServer" as const },
   ] as const;
 
   const allNoteStores = noteConfigs.map((config) => config.store);
@@ -129,9 +110,6 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
   const handleCreateCommandNote = createNoteHandler(
     commandStore as NoteStoreBase,
   );
-  const handleCreateMcpServerNote = createNoteHandler(
-    mcpServerStore as NoteStoreBase,
-  );
 
   const getRepositoryBranchName = (
     repositoryId: string,
@@ -143,8 +121,7 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
   };
 
   const { handleNoteDoubleClick } = useNoteDoubleClick(
-    { commandStore, mcpServerStore },
-    mcpServerModal,
+    { commandStore },
     handleOpenEditModal,
   );
 
@@ -155,7 +132,6 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
     isCanvasEmpty,
     handleCreateRepositoryNote,
     handleCreateCommandNote,
-    handleCreateMcpServerNote,
     getRepositoryBranchName,
     handleNoteDoubleClick,
   };

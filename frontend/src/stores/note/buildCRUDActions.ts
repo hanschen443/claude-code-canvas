@@ -42,7 +42,6 @@ interface CRUDActions {
  * 目前使用此機制的 store：
  *   - commandStore  (methodPrefix: 'command')
  *   - repositoryStore (methodPrefix: 'repository')
- *   - mcpServerStore (methodPrefix: 'mcpServer')
  */
 export function buildCRUDActions<TItem>(
   config: NoteStoreConfig<TItem>,

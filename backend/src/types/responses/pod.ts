@@ -75,7 +75,6 @@ export interface PodDeletedPayload {
   deletedNoteIds?: {
     repositoryNote?: string[];
     commandNote?: string[];
-    mcpServerNote?: string[];
   };
   error?: string;
 }

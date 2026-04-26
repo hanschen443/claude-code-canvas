@@ -64,7 +64,7 @@ describe("GET /api/canvas/:id/pods", () => {
     expect(typeof pod.y).toBe("number");
     expect(typeof pod.rotation).toBe("number");
 
-    expect(Array.isArray(pod.mcpServerIds)).toBe(true);
+    expect(Array.isArray(pod.mcpServerNames)).toBe(true);
     // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
     expect(typeof pod.providerConfig?.model).toBe("string");
     expect(typeof pod.multiInstance).toBe("boolean");
@@ -317,7 +317,7 @@ describe("POST /api/canvas/:id/pods", () => {
     // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
     expect(typeof pod.providerConfig?.model).toBe("string");
 
-    expect(Array.isArray(pod.mcpServerIds)).toBe(true);
+    expect(Array.isArray(pod.mcpServerNames)).toBe(true);
     expect(typeof pod.multiInstance).toBe("boolean");
   });
 });

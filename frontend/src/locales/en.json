@@ -229,14 +229,21 @@
     },
     "slot": {
       "duplicateTitle": "Already exists, cannot insert",
-      "mcpServerDuplicate": "This MCP Server is already bound to this Pod",
       "codexDisabled": "Codex doesn't support this",
       "pluginsLabel": "Plugins",
       "pluginsLoading": "Loading...",
       "pluginsBusyTooltip": "Task in progress, please wait.",
       "pluginsEmpty": "No plugins installed",
       "pluginsToggleFailed": "Update failed, rolled back",
-      "pluginsCodexHint": "Codex plugins are globally managed by codex"
+      "pluginsCodexHint": "Codex plugins are globally managed by codex",
+      "mcpLabel": "MCPs",
+      "mcpLoading": "Loading…",
+      "mcpBusyTooltip": "Cannot toggle while pod is busy",
+      "mcpEmpty": "No MCP server installed",
+      "mcpClaudeEmptyHint": "Run `claude mcp add` to install",
+      "mcpCodexEmptyHint": "Run `codex mcp add` to install",
+      "mcpToggleFailed": "Failed to toggle MCP server",
+      "mcpCodexHint": "Codex MCP servers are managed globally by codex"
     }
   },
   "run": {
@@ -411,19 +418,6 @@
       "contentPlaceholder": "Content",
       "editTitleWithType": "Edit {type}"
     },
-    "mcpServer": {
-      "createTitle": "Add MCP Server",
-      "editTitle": "Edit MCP Server",
-      "description": "Paste JSON-format MCP Server config. The first key is the name, the value is the config.",
-      "parseError": "JSON format error, please check the syntax",
-      "minOneServer": "Please enter at least one MCP Server config",
-      "nameInvalid": "Name can only contain letters, numbers, underscores and hyphens",
-      "modeError": "Config must contain a command field (stdio mode) or type + url fields (http/sse mode)",
-      "commandEmpty": "command field cannot be empty",
-      "urlInvalid": "url field format is invalid",
-      "argsInvalid": "args field must be an array of strings",
-      "parseLost": "Parse result lost, please resubmit"
-    },
     "scheduleModal": {
       "createTitle": "Set Schedule",
       "editTitle": "Edit Schedule",
@@ -579,10 +573,7 @@
       "worktreeCreated": "Worktree created",
       "repositoryDeleted": "Repository deleted",
       "commandDeleted": "Command deleted",
-      "mcpServerCreated": "MCP Server created",
-      "mcpServerUpdated": "MCP Server updated",
-      "mcpServerDeleted": "MCP Server deleted",
-      "mcpServerReadFailed": "Failed to read MCP Server"
+      "mcpToggleSuccess": "MCP servers updated"
     },
     "deleteSelection": {
       "partialFailed": "Some deletions failed",

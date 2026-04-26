@@ -65,7 +65,7 @@ function makePodResult(overrides: Record<string, unknown> = {}) {
     workspacePath: "/tmp/workspace",
     skillIds: [],
 
-    mcpServerIds: [],
+    mcpServerNames: [],
     multiInstance: false,
     ...overrides,
   };

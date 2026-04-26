@@ -4,7 +4,7 @@ import { setupStoreTest } from "../../helpers/testSetup";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
+// TODO Phase 4: useMcpServerStore 重構後補回
 import { getNoteEventListeners } from "@/composables/eventHandlers/noteEventHandlers";
 
 vi.mock("@/services/websocket", () => webSocketMockFactory());
@@ -34,8 +34,9 @@ describe("noteEventHandlers", () => {
   describe("getNoteEventListeners", () => {
     it("應回傳正確數量的 listener", () => {
       const result = getNoteEventListeners();
-      // repository/command/mcpServer 各類 CRUD + deleted + worktree created + branch changed
-      expect(result.length).toBeGreaterThanOrEqual(10);
+      // repository/command 各類 CRUD + deleted + worktree created + branch changed
+      // TODO Phase 4: mcpServer 重構後調整預期數量
+      expect(result.length).toBeGreaterThanOrEqual(7);
     });
   });
 
@@ -95,19 +96,7 @@ describe("noteEventHandlers", () => {
     });
   });
 
-  describe("handleMcpServerDeleted（skipCanvasCheck: true）", () => {
-    it("mcpServerId 有效時應呼叫 removeItemFromEvent", () => {
-      const store = useMcpServerStore();
-      const spy = vi.spyOn(store, "removeItemFromEvent");
-
-      findHandler("mcp-server:deleted")({
-        mcpServerId: "mcp-1",
-        deletedNoteIds: ["note-1"],
-      });
-
-      expect(spy).toHaveBeenCalledWith("mcp-1", ["note-1"]);
-    });
-  });
+  // TODO Phase 4: handleMcpServerDeleted 測試重構後補回
 
   describe("其他 note 類型的 canvasId 防護", () => {
     it("repository:note:created - canvasId 不匹配時不應執行", () => {
@@ -134,16 +123,6 @@ describe("noteEventHandlers", () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
-    it("mcp-server:note:created - canvasId 不匹配時不應執行", () => {
-      const store = useMcpServerStore();
-      const spy = vi.spyOn(store, "addNoteFromEvent");
-
-      findHandler("mcp-server-note:created")({
-        canvasId: "other-canvas",
-        note: { id: "mcp-n-1" },
-      });
-
-      expect(spy).not.toHaveBeenCalled();
-    });
+    // TODO Phase 4: mcp-server:note:created canvasId 防護測試重構後補回
   });
 });

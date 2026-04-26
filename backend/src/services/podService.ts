@@ -6,11 +6,7 @@ import { workflowStateService } from "./workflow/index.js";
 import { connectionStore } from "./connectionStore.js";
 import { repositorySyncService } from "./repositorySyncService.js";
 import { podManifestService } from "./podManifestService.js";
-import {
-  repositoryNoteStore,
-  commandNoteStore,
-  mcpServerNoteStore,
-} from "./noteStores.js";
+import { repositoryNoteStore, commandNoteStore } from "./noteStores.js";
 import { WebSocketResponseEvents } from "../schemas/index.js";
 import type { PodDeletedPayload } from "../types/index.js";
 import type { CreatePodRequest } from "../types/api.js";
@@ -39,7 +35,6 @@ export function deleteAllPodNotes(
   }> = [
     { store: repositoryNoteStore, key: "repositoryNote" },
     { store: commandNoteStore, key: "commandNote" },
-    { store: mcpServerNoteStore, key: "mcpServerNote" },
   ];
 
   const result: PodDeletedPayload["deletedNoteIds"] = {};

@@ -161,43 +161,11 @@ describe("useDeleteSelection", () => {
       expect(selectionStore.clearSelection).toHaveBeenCalled();
     });
 
-    it("刪除選中的 mcpServerNote", async () => {
-      const { selectionStore, mcpServerStore } = useCanvasContext();
+    // TODO Phase 4: 「刪除選中的 mcpServerNote」測試重構後補回
 
-      const TestComponent = defineComponent({
-        setup() {
-          return useDeleteSelection();
-        },
-        template: "<div></div>",
-      });
-
-      const wrapper = mount(TestComponent);
-      const { deleteSelectedElements } = wrapper.vm as ReturnType<
-        typeof useDeleteSelection
-      >;
-
-      selectionStore.selectedElements = [
-        { type: "mcpServerNote", id: "mcp-server-note-1" },
-      ] as SelectableElement[];
-
-      const deleteNoteSpy = vi
-        .spyOn(mcpServerStore, "deleteNote")
-        .mockResolvedValue();
-
-      await deleteSelectedElements();
-
-      expect(deleteNoteSpy).toHaveBeenCalledWith("mcp-server-note-1");
-      expect(selectionStore.clearSelection).toHaveBeenCalled();
-    });
-
-    it("混合刪除 Pod 和多種 Note（含 mcpServerNote）", async () => {
-      const {
-        selectionStore,
-        podStore,
-        repositoryStore,
-        commandStore,
-        mcpServerStore,
-      } = useCanvasContext();
+    it("混合刪除 Pod 和多種 Note", async () => {
+      const { selectionStore, podStore, repositoryStore, commandStore } =
+        useCanvasContext();
 
       const TestComponent = defineComponent({
         setup() {
@@ -215,7 +183,6 @@ describe("useDeleteSelection", () => {
         { type: "pod", id: "pod-1" },
         { type: "repositoryNote", id: "repo-1" },
         { type: "commandNote", id: "command-1" },
-        { type: "mcpServerNote", id: "mcp-1" },
       ] as SelectableElement[];
 
       const deletePodSpy = vi
@@ -227,16 +194,12 @@ describe("useDeleteSelection", () => {
       const deleteCommandSpy = vi
         .spyOn(commandStore, "deleteNote")
         .mockResolvedValue();
-      const deleteMcpServerSpy = vi
-        .spyOn(mcpServerStore, "deleteNote")
-        .mockResolvedValue();
 
       await deleteSelectedElements();
 
       expect(deletePodSpy).toHaveBeenCalledWith("pod-1");
       expect(deleteRepositorySpy).toHaveBeenCalledWith("repo-1");
       expect(deleteCommandSpy).toHaveBeenCalledWith("command-1");
-      expect(deleteMcpServerSpy).toHaveBeenCalledWith("mcp-1");
       expect(selectionStore.clearSelection).toHaveBeenCalled();
     });
 

@@ -1,5 +1,5 @@
 export interface SelectableElement {
-  type: "pod" | "repositoryNote" | "commandNote" | "mcpServerNote";
+  type: "pod" | "repositoryNote" | "commandNote";
   id: string;
 }
 

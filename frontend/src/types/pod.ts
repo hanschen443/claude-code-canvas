@@ -98,7 +98,7 @@ export interface Pod {
   rotation: number;
   status?: PodStatus;
   workspacePath?: string;
-  mcpServerIds?: string[];
+  mcpServerNames?: string[];
   pluginIds?: string[];
   repositoryId?: string | null;
   multiInstance?: boolean;

@@ -18,7 +18,6 @@ export type ToastCategory =
   | "Schedule"
   | "Paste"
   | "WebSocket"
-  | "McpServer"
   | "Connection"
   | "Slack"
   | "Telegram"

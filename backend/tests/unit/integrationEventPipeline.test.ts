@@ -123,7 +123,7 @@ function makePod(overrides: Partial<Pod> = {}): Pod {
     sessionId: null,
     skillIds: [],
 
-    mcpServerIds: [],
+    mcpServerNames: [],
     provider: "claude",
     providerConfig: { model: "opus" },
     repositoryId: null,

@@ -5,7 +5,7 @@ import { useCanvasContext } from "@/composables/canvas/useCanvasContext";
 import { useBatchDrag } from "@/composables/canvas";
 import { isCtrlOrCmdPressed } from "@/utils/keyboardHelpers";
 
-type NoteType = "repository" | "command" | "mcpServer";
+type NoteType = "repository" | "command";
 
 interface Props {
   note: BaseNote;
@@ -35,7 +35,6 @@ const {
   selectionStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
 } = useCanvasContext();
 const { startBatchDrag, isElementSelected } = useBatchDrag();
@@ -50,11 +49,6 @@ const NOTE_TYPE_CONFIG = {
     store: commandStore,
     selectionType: "commandNote" as const,
     cssClass: "command-note",
-  },
-  mcpServer: {
-    store: mcpServerStore,
-    selectionType: "mcpServerNote" as const,
-    cssClass: "mcp-server-note",
   },
 } as const;
 
@@ -219,10 +213,10 @@ const displayName = computed(() => {
 
 /**
  * 處理雙擊事件
- * command、mcpServer 兩種類型可編輯
+ * command 類型可編輯
  */
 const handleDoubleClick = (): void => {
-  const editableTypes: NoteType[] = ["command", "mcpServer"];
+  const editableTypes: NoteType[] = ["command"];
 
   if (editableTypes.includes(props.noteType)) {
     emit("dblclick", { noteId: props.note.id, noteType: props.noteType });

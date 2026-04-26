@@ -6,11 +6,7 @@ import { useBoxSelect } from "@/composables/canvas/useBoxSelect";
 import { useSelectionStore } from "@/stores/pod/selectionStore";
 import { useViewportStore } from "@/stores/pod/viewportStore";
 import { usePodStore } from "@/stores/pod/podStore";
-import {
-  useRepositoryStore,
-  useCommandStore,
-  useMcpServerStore,
-} from "@/stores/note";
+import { useRepositoryStore, useCommandStore } from "@/stores/note";
 
 // Mock useCanvasContext
 vi.mock("@/composables/canvas/useCanvasContext", () => ({
@@ -20,7 +16,7 @@ vi.mock("@/composables/canvas/useCanvasContext", () => ({
     podStore: usePodStore(),
     repositoryStore: useRepositoryStore(),
     commandStore: useCommandStore(),
-    mcpServerStore: useMcpServerStore(),
+    // TODO Phase 4: mcpServerStore 重構後補回
   }),
 }));
 
@@ -512,7 +508,7 @@ describe("useBoxSelect", () => {
       const podStore = usePodStore();
       const repositoryStore = useRepositoryStore();
       const commandStore = useCommandStore();
-      const mcpServerStore = useMcpServerStore();
+      // TODO Phase 4: mcpServerStore 重構後補回
 
       viewportStore.zoom = 2;
       viewportStore.offset = { x: 50, y: 100 };
@@ -559,12 +555,12 @@ describe("useBoxSelect", () => {
       // moveCanvasX = (450 - 50) / 2 = 200
       // moveCanvasY = (500 - 100) / 2 = 200
       expect(updateSelectionSpy).toHaveBeenCalledWith(200, 200);
+      // TODO Phase 4: mcpServerNote 重構後補回 noteGroups 中的 mcpServerNote
       expect(calculateSelectedElementsSpy).toHaveBeenCalledWith({
         pods: podStore.pods,
         noteGroups: [
           { notes: repositoryStore.notes, type: "repositoryNote" },
           { notes: commandStore.notes, type: "commandNote" },
-          { notes: mcpServerStore.notes, type: "mcpServerNote" },
         ],
       });
     });

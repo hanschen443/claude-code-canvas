@@ -10,11 +10,7 @@ import {
   createMockConnection,
 } from "../helpers/factories";
 import { usePodStore, useSelectionStore, useViewportStore } from "@/stores/pod";
-import {
-  useRepositoryStore,
-  useCommandStore,
-  useMcpServerStore,
-} from "@/stores/note";
+import { useRepositoryStore, useCommandStore } from "@/stores/note";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useClipboardStore } from "@/stores/clipboardStore";
 import { useCanvasStore } from "@/stores/canvasStore";
@@ -64,8 +60,7 @@ describe("複製貼上/批量操作完整流程", () => {
   let viewportStore: ReturnType<typeof useViewportStore>;
   let repositoryStore: ReturnType<typeof useRepositoryStore>;
   let commandStore: ReturnType<typeof useCommandStore>;
-  let mcpServerStore: ReturnType<typeof useMcpServerStore>;
-  let connectionStore: ReturnType<typeof useConnectionStore>;
+    let connectionStore: ReturnType<typeof useConnectionStore>;
   let clipboardStore: ReturnType<typeof useClipboardStore>;
   let canvasStore: ReturnType<typeof useCanvasStore>;
 
@@ -77,8 +72,7 @@ describe("複製貼上/批量操作完整流程", () => {
     viewportStore = useViewportStore();
     repositoryStore = useRepositoryStore();
     commandStore = useCommandStore();
-    mcpServerStore = useMcpServerStore();
-    connectionStore = useConnectionStore();
+        connectionStore = useConnectionStore();
     clipboardStore = useClipboardStore();
     canvasStore = useCanvasStore();
     canvasStore.activeCanvasId = "test-canvas-id";
@@ -88,11 +82,10 @@ describe("複製貼上/批量操作完整流程", () => {
    * 回傳包含全部 Note 類型的 noteGroups 陣列，
    * 供 calculateSelectedElements 使用。
    */
-  function buildNoteGroups() {
+    function buildNoteGroups() {
     return [
       { notes: repositoryStore.notes, type: "repositoryNote" as const },
       { notes: commandStore.notes, type: "commandNote" as const },
-      { notes: mcpServerStore.notes, type: "mcpServerNote" as const },
     ];
   }
 
@@ -138,62 +131,18 @@ describe("複製貼上/批量操作完整流程", () => {
           triggerMode: conn.triggerMode,
         }));
 
-      clipboardStore.setCopy([], [], [], [], copiedConnections as any);
+      clipboardStore.setCopy([], [], [], copiedConnections as any);
 
       expect(clipboardStore.copiedConnections).toHaveLength(1);
       expect(clipboardStore.copiedConnections[0]!.sourcePodId).toBe("pod-1");
       expect(clipboardStore.copiedConnections[0]!.targetPodId).toBe("pod-2");
     });
 
-    it("框選含 MCP Server Note 的區域，複製後 clipboardStore 包含 MCP Server Note", () => {
-      const pod = createMockPod({ id: "pod-1", x: 100, y: 100 });
-      const mcpServerNote = createMockNote("mcpServer", {
-        id: "mcp-note-1",
-        x: 300,
-        y: 300,
-        boundToPodId: null,
-      });
-
-      podStore.pods = [pod];
-      mcpServerStore.notes = [mcpServerNote as any];
-
-      // 選取範圍涵蓋 x=[0,500], y=[0,500]，pod(100,100)、mcpServerNote(300,300) 均在範圍內
-      const SELECTION_BOX = { x1: 0, y1: 0, x2: 500, y2: 500 };
-      selectionStore.startSelection(SELECTION_BOX.x1, SELECTION_BOX.y1);
-      selectionStore.updateSelection(SELECTION_BOX.x2, SELECTION_BOX.y2);
-      selectionStore.calculateSelectedElements({
-        pods: podStore.pods,
-        noteGroups: buildNoteGroups(),
-      });
-
-      const selectedElements = selectionStore.selectedElements;
-      const copiedMcpServerNotes = mcpServerStore.notes
-        .filter((n) =>
-          selectedElements.some(
-            (el) => el.type === "mcpServerNote" && el.id === n.id,
-          ),
-        )
-        .map((n) => ({
-          id: n.id,
-          mcpServerId: (n as any).mcpServerId,
-          name: n.name,
-          x: n.x,
-          y: n.y,
-          boundToPodId: n.boundToPodId,
-          originalPosition: n.originalPosition,
-        }));
-
-      clipboardStore.setCopy([], [], [], copiedMcpServerNotes as any, []);
-
-      expect(clipboardStore.isEmpty).toBe(false);
-      expect(clipboardStore.copiedMcpServerNotes).toHaveLength(1);
-      expect(clipboardStore.copiedMcpServerNotes[0]!.id).toBe("mcp-note-1");
-    });
 
     it("應在貼上後更新 selectionStore 為新建立的元素", () => {
       const pod = createMockPod({ id: "pod-1", x: 100, y: 100 });
 
-      clipboardStore.setCopy([toCopiedPod(pod)], [], [], [], []);
+      clipboardStore.setCopy([toCopiedPod(pod)], [], [], []);
 
       const newSelectedElements: SelectableElement[] = [
         { type: "pod", id: "new-pod-1" },
@@ -235,7 +184,7 @@ describe("複製貼上/批量操作完整流程", () => {
         .filter((p) => selectedPodIds.has(p.id))
         .map(toCopiedPod);
 
-      clipboardStore.setCopy(copiedPods, [], [], [], []);
+      clipboardStore.setCopy(copiedPods, [], [], []);
 
       expect(clipboardStore.isEmpty).toBe(false);
       expect(clipboardStore.copiedPods).toHaveLength(1);
@@ -254,7 +203,7 @@ describe("複製貼上/批量操作完整流程", () => {
         providerConfig: { model: "gpt-5.4" },
       });
 
-      clipboardStore.setCopy([toCopiedPod(codexPod)], [], [], [], []);
+      clipboardStore.setCopy([toCopiedPod(codexPod)], [], [], []);
 
       // 確認 clipboard 中保留了 Codex provider 身份
       const storedPod = clipboardStore.copiedPods[0]!;
@@ -282,7 +231,7 @@ describe("複製貼上/批量操作完整流程", () => {
 
       const copiedPods = [claudePod, codexPod].map(toCopiedPod);
 
-      clipboardStore.setCopy(copiedPods, [], [], [], []);
+      clipboardStore.setCopy(copiedPods, [], [], []);
 
       expect(clipboardStore.copiedPods).toHaveLength(2);
       const storedClaude = clipboardStore.copiedPods.find(

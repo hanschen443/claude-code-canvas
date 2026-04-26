@@ -15,7 +15,6 @@ export function useBoxSelect(): {
     podStore,
     repositoryStore,
     commandStore,
-    mcpServerStore,
   } = useCanvasContext();
 
   const isBoxSelecting = ref(false);
@@ -35,7 +34,6 @@ export function useBoxSelect(): {
         noteGroups: [
           { notes: repositoryStore.notes, type: "repositoryNote" as const },
           { notes: commandStore.notes, type: "commandNote" as const },
-          { notes: mcpServerStore.notes, type: "mcpServerNote" as const },
         ],
       });
     },

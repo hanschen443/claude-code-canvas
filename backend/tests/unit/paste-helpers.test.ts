@@ -37,8 +37,7 @@ describe("Paste Helpers", () => {
       rotation: 0,
       workspacePath: "/test/workspace",
       repositoryId: null,
-      skillIds: [] as string[],
-      mcpServerIds: [] as string[],
+      mcpServerNames: [] as string[],
       pluginIds: [] as string[],
       commandId: null,
       provider: "claude" as const,
@@ -979,51 +978,6 @@ describe("Paste Helpers", () => {
       );
     });
 
-    it("mcpServer note：應正確建立並回傳 McpServerNote", async () => {
-      const { createPastedNotesByType } =
-        await import("../../src/handlers/paste/pasteHelpers.js");
-      const { mcpServerNoteStore } =
-        await import("../../src/services/noteStores.js");
-
-      const noteId = uuidv4();
-      const mcpServerId = uuidv4();
-      const mockNote = {
-        id: noteId,
-        name: "mcp-note",
-        x: 30,
-        y: 40,
-        boundToPodId: null,
-        originalPosition: null,
-        mcpServerId,
-      };
-
-      vi.spyOn(mcpServerNoteStore, "create").mockReturnValue(mockNote as any);
-
-      const result = createPastedNotesByType(
-        "mcpServer",
-        canvasId,
-        [
-          {
-            mcpServerId,
-            name: "mcp-note",
-            x: 30,
-            y: 40,
-            boundToOriginalPodId: null,
-            originalPosition: null,
-          },
-        ],
-        {},
-      );
-
-      expect(result.notes).toHaveLength(1);
-      expect(result.notes[0].id).toBe(noteId);
-      expect(result.errors).toHaveLength(0);
-      expect(mcpServerNoteStore.create).toHaveBeenCalledWith(
-        canvasId,
-        expect.objectContaining({ mcpServerId, boundToPodId: null }),
-      );
-    });
-
     it("command note：podIdMapping 中找到對應 Pod 時 boundToPodId 應為新 Pod ID", async () => {
       const { createPastedNotesByType } =
         await import("../../src/handlers/paste/pasteHelpers.js");
@@ -1066,51 +1020,6 @@ describe("Paste Helpers", () => {
       expect(commandNoteStore.create).toHaveBeenCalledWith(
         canvasId,
         expect.objectContaining({ commandId, boundToPodId: newPodId }),
-      );
-    });
-
-    it("mcpServer note：podIdMapping 中找到對應 Pod 時 boundToPodId 應為新 Pod ID", async () => {
-      const { createPastedNotesByType } =
-        await import("../../src/handlers/paste/pasteHelpers.js");
-      const { mcpServerNoteStore } =
-        await import("../../src/services/noteStores.js");
-
-      const originalPodId = uuidv4();
-      const newPodId = uuidv4();
-      const mcpServerId = uuidv4();
-      const mockNote = {
-        id: uuidv4(),
-        name: "mcp-note-bound",
-        x: 0,
-        y: 0,
-        boundToPodId: newPodId,
-        originalPosition: null,
-        mcpServerId,
-      };
-
-      vi.spyOn(mcpServerNoteStore, "create").mockReturnValue(mockNote as any);
-
-      const result = createPastedNotesByType(
-        "mcpServer",
-        canvasId,
-        [
-          {
-            mcpServerId,
-            name: "mcp-note-bound",
-            x: 0,
-            y: 0,
-            boundToOriginalPodId: originalPodId,
-            originalPosition: null,
-          },
-        ],
-        { [originalPodId]: newPodId },
-      );
-
-      expect(result.notes).toHaveLength(1);
-      expect(result.errors).toHaveLength(0);
-      expect(mcpServerNoteStore.create).toHaveBeenCalledWith(
-        canvasId,
-        expect.objectContaining({ mcpServerId, boundToPodId: newPodId }),
       );
     });
 

@@ -1,27 +1,14 @@
-import type { Ref } from "vue";
-import type { useCommandStore, useMcpServerStore } from "@/stores/note";
-import type { McpServerConfig } from "@/types";
-import { useToast } from "@/composables/useToast";
+import type { useCommandStore } from "@/stores/note";
 
 type EditableNoteType = "command";
-type NoteType = "repository" | "command" | "mcpServer";
-
-interface McpServerModalState {
-  visible: boolean;
-  mode: "create" | "edit";
-  mcpServerId: string;
-  initialName: string;
-  initialConfig: McpServerConfig | undefined;
-}
+type NoteType = "repository" | "command";
 
 interface UseNoteDoubleClickStores {
   commandStore: ReturnType<typeof useCommandStore>;
-  mcpServerStore: ReturnType<typeof useMcpServerStore>;
 }
 
 export function useNoteDoubleClick(
   stores: UseNoteDoubleClickStores,
-  mcpServerModal: Ref<McpServerModalState>,
   handleOpenEditModal: (
     type: EditableNoteType,
     id: string,
@@ -32,8 +19,7 @@ export function useNoteDoubleClick(
     noteType: NoteType;
   }) => Promise<void>;
 } {
-  const { commandStore, mcpServerStore } = stores;
-  const { showErrorToast } = useToast();
+  const { commandStore } = stores;
 
   const editableNoteResourceIdGetters: Record<
     EditableNoteType,
@@ -43,37 +29,11 @@ export function useNoteDoubleClick(
       commandStore.typedNotes.find((note) => note.id === noteId)?.commandId,
   };
 
-  const handleMcpServerDoubleClick = async (noteId: string): Promise<void> => {
-    const note = mcpServerStore.typedNotes.find((n) => n.id === noteId);
-    if (!note) return;
-
-    const mcpServerId = note.mcpServerId;
-    const mcpServerData = await mcpServerStore.readMcpServer(mcpServerId);
-
-    if (!mcpServerData) {
-      showErrorToast("McpServer", "讀取 MCP Server 失敗");
-      return;
-    }
-
-    mcpServerModal.value = {
-      visible: true,
-      mode: "edit",
-      mcpServerId,
-      initialName: mcpServerData.name,
-      initialConfig: mcpServerData.config,
-    };
-  };
-
   const handleNoteDoubleClick = async (data: {
     noteId: string;
     noteType: NoteType;
   }): Promise<void> => {
     const { noteId, noteType } = data;
-
-    if (noteType === "mcpServer") {
-      await handleMcpServerDoubleClick(noteId);
-      return;
-    }
 
     const getResourceId =
       editableNoteResourceIdGetters[noteType as EditableNoteType];

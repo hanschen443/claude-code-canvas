@@ -16,7 +16,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
-import { mcpServerStore } from "../../mcpServerStore.js";
+import { readClaudeMcpServers } from "../../mcp/claudeMcpReader.js";
 import { scanInstalledPlugins } from "../../pluginScanner.js";
 import { integrationRegistry } from "../../integration/index.js";
 import {
@@ -40,7 +40,7 @@ import { logger } from "../../../utils/logger.js";
 export interface ClaudeOptions {
   /** 使用的 Claude 模型（預設為 "opus"） */
   model: string;
-  /** MCP Server 設定（來自 mcpServerIds 與 Integration Tool） */
+  /** MCP Server 設定（來自 mcpServerNames 與 Integration Tool） */
   mcpServers?: Options["mcpServers"];
   /** Plugin 設定（來自 pluginIds） */
   plugins?: SdkPluginConfig[];
@@ -79,15 +79,28 @@ export const BASE_ALLOWED_TOOLS: readonly string[] = [
 
 /**
  * 套用 MCP Server 設定，回傳包含 mcpServers 的 partial options。
- * 若 pod 無 mcpServerIds 設定，則回傳空物件。
+ *
+ * 從 ~/.claude.json 的 projects[homedir].mcpServers 讀取 user-scoped MCP server，
+ * 再以 pod.mcpServerNames 做 allowlist 過濾。
+ * 若 pod.mcpServerNames 為空，或過濾後無符合項目，則回傳空物件，不寫入 mcpServers。
  */
 function applyMcpServers(pod: Pod): Pick<ClaudeOptions, "mcpServers"> {
-  if (!pod.mcpServerIds?.length) return {};
+  if (!pod.mcpServerNames?.length) return {};
 
-  const servers = mcpServerStore.getByIds(pod.mcpServerIds);
+  // 讀取 user-scoped MCP servers（projects[homedir].mcpServers）
+  const allowedSet = new Set(pod.mcpServerNames);
+  const allServers = readClaudeMcpServers();
+  const filtered = allServers.filter((s) => allowedSet.has(s.name));
+
+  if (filtered.length === 0) return {};
+
   const mcpServers: NonNullable<Options["mcpServers"]> = {};
-  for (const server of servers) {
-    mcpServers[server.name] = server.config;
+  for (const server of filtered) {
+    mcpServers[server.name] = {
+      command: server.command,
+      args: server.args,
+      env: server.env,
+    };
   }
   return { mcpServers };
 }

@@ -9,6 +9,6 @@ export * from "./clipboard";
 export * from "./repository";
 export * from "./command";
 export * from "./group";
-export * from "./mcpServer";
 export * from "./config";
 export * from "./run";
+export * from "./mcp";

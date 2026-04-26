@@ -43,14 +43,6 @@ export type {
 export type { Canvas } from "./canvas.js";
 
 export type {
-  McpServer,
-  McpServerConfig,
-  StdioMcpServerConfig,
-  HttpMcpServerConfig,
-} from "./mcpServer.js";
-export type { McpServerNote } from "./mcpServerNote.js";
-
-export type {
   CreatePodRequest,
   CreatePodResponse,
   ChatRequest,

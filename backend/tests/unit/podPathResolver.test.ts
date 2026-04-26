@@ -31,7 +31,7 @@ function createBasePod(overrides: Partial<Pod> = {}): Pod {
     id: "pod-test",
     name: "Test Pod",
     workspacePath: "/canvas/test-pod",
-    mcpServerIds: [],
+    mcpServerNames: [],
     pluginIds: [],
     repositoryId: null,
     providerConfig: { model: "opus" },
