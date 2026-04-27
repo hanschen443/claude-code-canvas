@@ -3,14 +3,16 @@
 ## [1.1.2] - 2026-04-27
 
 ### 新增
-- 簡化複雜度：抽出 helper 函數提升程式碼可讀性
-- 補上核心分支的單元測試
+- 統一 Command 展開流程：skipCommandExpand 參數支援上游事先展開避免雙重展開
+- 補上核心分支單元測試（streamingChatExecutor 與 launchMultiInstanceRun）
+- Paste API 回應新增 canvasId 欄位，前端完成後顯示成功/失敗 Toast 提示
 
 ### 修正
-- 加強安全性：路徑穿越防護、排程競爭條件修復
-- 錯誤訊息改用通用文字，避免使用者困惑
-- 清除離開時剪貼簿敏感資料
-- 修復 14 個前端 ESLint warning
+- SQLite 路徑遷移：資料庫內殘留 ClaudeCanvas 路徑全面替換為 AgentCanvas
+- 修復貼上 Pod 缺少 canvasId 導致前端無法回應的問題
+- Webhook 觸發 Command 展開重構：避免重複展開並統一 Command 不存在時的處理邏輯
+- 排程觸發時 Command 展開流程重構：實現空字串 fallback 機制避免 stdin 為空崩潰
+- 修復 14 個前端 ESLint warning（排版格式化、Vue 指令屬性斷行）
 
 ## [1.1.1] - 2026-04-27
 
