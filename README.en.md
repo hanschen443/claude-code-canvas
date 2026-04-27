@@ -1,6 +1,6 @@
 [繁體中文](README.md) | [日本語](README.ja.md)
 
-# Claude Code Canvas
+# Agent Canvas
 
 A canvas tool for visually designing and executing AI Agent workflows, powered by Claude Agent SDK for agent execution. Also supports team collaboration.
 
@@ -36,35 +36,35 @@ A canvas tool for visually designing and executing AI Agent workflows, powered b
 **Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and logged in
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cowbear6598/claude-code-canvas/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/cowbear6598/agent-canvas/main/install.sh | sh
 ```
 
 **Uninstall**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cowbear6598/claude-code-canvas/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/cowbear6598/agent-canvas/main/install.sh | sh -s -- --uninstall
 ```
 
 ## Usage
 
 ```bash
 # Start service (background daemon, default port 3001)
-claude-code-canvas start
+agent-canvas start
 
 # Start with custom port
-claude-code-canvas start --port 8080
+agent-canvas start --port 8080
 
 # Check service status
-claude-code-canvas status
+agent-canvas status
 
 # Stop service
-claude-code-canvas stop
+agent-canvas stop
 
 # View latest logs (default 50 lines)
-claude-code-canvas logs
+agent-canvas logs
 
 # View specific number of log lines
-claude-code-canvas logs -n 100
+agent-canvas logs -n 100
 ```
 
 Open your browser and navigate to `http://localhost:3001` to get started.
@@ -75,16 +75,16 @@ To use Clone features for accessing private repositories, use the `config` comma
 
 ```bash
 # GitHub Token
-claude-code-canvas config set GITHUB_TOKEN ghp_xxxxx
+agent-canvas config set GITHUB_TOKEN ghp_xxxxx
 
 # GitLab Token
-claude-code-canvas config set GITLAB_TOKEN glpat-xxxxx
+agent-canvas config set GITLAB_TOKEN glpat-xxxxx
 
 # Self-hosted GitLab URL (optional, defaults to gitlab.com)
-claude-code-canvas config set GITLAB_URL https://gitlab.example.com
+agent-canvas config set GITLAB_URL https://gitlab.example.com
 
 # List all configurations
-claude-code-canvas config list
+agent-canvas config list
 ```
 
 ## Tutorials

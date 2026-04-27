@@ -1,6 +1,6 @@
 [English](README.en.md) | [日本語](README.ja.md)
 
-# Claude Code Canvas
+# Agent Canvas
 
 視覺化設計與執行 AI Agent 工作流程的畫布工具，串接 Claude Agent SDK 驅動 Agent 執行，也可支援團隊多人協作。
 
@@ -38,35 +38,35 @@
 **一鍵安裝（推薦）**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cowbear6598/claude-code-canvas/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/cowbear6598/agent-canvas/main/install.sh | sh
 ```
 
 **解除安裝**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cowbear6598/claude-code-canvas/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/cowbear6598/agent-canvas/main/install.sh | sh -s -- --uninstall
 ```
 
 ## 使用方式
 
 ```bash
 # 啟動服務（背景 daemon 模式，預設 port 3001）
-claude-code-canvas start
+agent-canvas start
 
 # 指定 port 啟動
-claude-code-canvas start --port 8080
+agent-canvas start --port 8080
 
 # 查看服務狀態
-claude-code-canvas status
+agent-canvas status
 
 # 停止服務
-claude-code-canvas stop
+agent-canvas stop
 
 # 查看最新日誌（預設 50 行）
-claude-code-canvas logs
+agent-canvas logs
 
 # 查看指定行數的日誌
-claude-code-canvas logs -n 100
+agent-canvas logs -n 100
 ```
 
 啟動後開啟瀏覽器前往 `http://localhost:3001` 即可使用。
@@ -77,16 +77,16 @@ claude-code-canvas logs -n 100
 
 ```bash
 # GitHub Token
-claude-code-canvas config set GITHUB_TOKEN ghp_xxxxx
+agent-canvas config set GITHUB_TOKEN ghp_xxxxx
 
 # GitLab Token
-claude-code-canvas config set GITLAB_TOKEN glpat-xxxxx
+agent-canvas config set GITLAB_TOKEN glpat-xxxxx
 
 # 自架 GitLab 網址（選填，預設為 gitlab.com）
-claude-code-canvas config set GITLAB_URL https://gitlab.example.com
+agent-canvas config set GITLAB_URL https://gitlab.example.com
 
 # 查看所有設定
-claude-code-canvas config list
+agent-canvas config list
 ```
 
 ## 教學
