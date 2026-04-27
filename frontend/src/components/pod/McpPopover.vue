@@ -171,7 +171,10 @@ const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
       </div>
 
       <!-- MCP server 列表（Claude：可 toggle；Codex：唯讀展示） -->
-      <div v-else class="space-y-1">
+      <div
+        v-else
+        class="space-y-1"
+      >
         <!-- Codex 唯讀模式：顯示 name + 類型標籤（stdio/http）+ ✓ -->
         <template v-if="isCodex">
           <div
