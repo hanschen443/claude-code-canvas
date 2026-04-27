@@ -16,21 +16,14 @@ import { logger } from "../../utils/logger.js";
 import { getClaudeCodePath } from "./claudePathResolver.js";
 
 export type { StreamEvent, StreamCallback } from "./types.js";
-
-// ─── 公開介面 ────────────────────────────────────────────────────────────────
-
-export interface DisposableChatOptions {
-  systemPrompt: string;
-  userMessage: string;
-  workspacePath: string;
-  model?: string;
-}
-
-export interface DisposableChatResult {
-  content: string;
-  success: boolean;
-  error?: string;
-}
+export type {
+  DisposableChatOptions,
+  DisposableChatResult,
+} from "../shared/disposableChatTypes.js";
+import type {
+  DisposableChatOptions,
+  DisposableChatResult,
+} from "../shared/disposableChatTypes.js";
 
 export interface McpChatOptions {
   prompt: string;

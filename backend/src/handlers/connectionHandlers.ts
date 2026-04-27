@@ -263,6 +263,9 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
     payload: ConnectionUpdatePayload,
     requestId: string,
   ): Promise<void> => {
+    // 授權邊界說明：本工具為本地單使用者場景，不存在多使用者概念，
+    // canvas membership 驗證由 withCanvasId 確保 canvasId 合法即可，
+    // 無需額外的使用者身份驗證。
     const { connectionId, triggerMode, summaryModel, aiDecideModel } = payload;
 
     const connection = findConnectionOrEmitError(

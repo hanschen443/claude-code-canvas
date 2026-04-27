@@ -42,6 +42,28 @@ interface ExecutionServiceDeps {
   directTriggerService: TriggerStrategy;
 }
 
+/**
+ * 代表預期的使用者可見業務錯誤，訊息可安全傳送給客戶端。
+ * 拋出此類別的錯誤時，message 會直接廣播；其他 Error 則以通用訊息替代。
+ */
+export class WorkflowUserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkflowUserError";
+  }
+}
+
+/**
+ * 過濾錯誤訊息，避免將系統內部細節（路徑、堆疊等）洩漏給客戶端。
+ * 只有 WorkflowUserError 的 message 允許原樣傳遞。
+ */
+function sanitizeErrorForClient(error: Error): string {
+  if (error instanceof WorkflowUserError) {
+    return error.message;
+  }
+  return "工作流程執行失敗";
+}
+
 interface WorkflowChatContext {
   canvasId: string;
   connectionId: string;
@@ -53,11 +75,14 @@ interface WorkflowChatContext {
   delegate: WorkflowStatusDelegate;
 }
 
+/** 摘要失敗時的 fallback 結果型別（直接取原始訊息，未經 disposableChat） */
+type LastAssistantFallback = { content: string; isSummarized: boolean };
+
 class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
   private getLastAssistantFallback(
     sourcePodId: string,
     runContext?: RunContext,
-  ): { content: string; isSummarized: boolean } | null {
+  ): LastAssistantFallback | null {
     const fallback = this.deps.autoTriggerService.getLastAssistantMessage(
       sourcePodId,
       runContext,
@@ -245,7 +270,12 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
 
     const targetPod = podStore.getById(canvasId, targetPodId);
     if (!targetPod) {
-      throw new Error(`找不到 Pod：${targetPodId}`);
+      logger.warn(
+        "Workflow",
+        "Warn",
+        `triggerWorkflowWithSummary: 找不到目標 Pod ${targetPodId}，跳過觸發`,
+      );
+      return;
     }
 
     const sourcePod = podStore.getById(canvasId, sourcePodId);
@@ -314,6 +344,26 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     }
   }
 
+  /**
+   * 純函數：依 triggerMode 回傳應設為 active 的 connection id 清單。
+   * 不讀取 runContext，不產生副作用。
+   */
+  private resolveConnectionIdsToActivate(
+    canvasId: string,
+    targetPodId: string,
+    triggerMode: TriggerMode,
+    participatingConnectionIds: string[],
+  ): string[] {
+    if (isAutoTriggerable(triggerMode)) {
+      const multiInputIds: string[] = [];
+      forEachMultiInputGroupConnection(canvasId, targetPodId, (conn) =>
+        multiInputIds.push(conn.id),
+      );
+      return multiInputIds;
+    }
+    return participatingConnectionIds;
+  }
+
   private setConnectionsToActive(
     canvasId: string,
     connectionId: string,
@@ -325,15 +375,13 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     // run mode 下 connection 是模板，不應改變全域狀態
     if (runContext) return;
 
-    if (isAutoTriggerable(triggerMode)) {
-      const multiInputIds: string[] = [];
-      forEachMultiInputGroupConnection(canvasId, targetPodId, (conn) =>
-        multiInputIds.push(conn.id),
-      );
-      this.activateConnections(canvasId, multiInputIds);
-      return;
-    }
-    this.activateConnections(canvasId, participatingConnectionIds);
+    const ids = this.resolveConnectionIdsToActivate(
+      canvasId,
+      targetPodId,
+      triggerMode,
+      participatingConnectionIds,
+    );
+    this.activateConnections(canvasId, ids);
   }
 
   private async onWorkflowChatComplete(
@@ -391,6 +439,8 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
       runContext,
       delegate,
     } = params;
+    // 過濾 error.message：只有 WorkflowUserError（業務錯誤）才允許原樣傳給客戶端
+    const clientErrorMessage = sanitizeErrorForClient(error);
     strategy.onError(
       {
         canvasId,
@@ -401,11 +451,11 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
         participatingConnectionIds,
         runContext,
       },
-      error.message,
+      clientErrorMessage,
     );
     logger.error("Workflow", "Error", "Workflow 執行失敗", error);
 
-    delegate.onChatError(canvasId, targetPodId, error.message);
+    delegate.onChatError(canvasId, targetPodId, clientErrorMessage);
     delegate.scheduleNextInQueue(canvasId, targetPodId);
   }
 
@@ -439,7 +489,8 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
         );
         await this.onWorkflowChatError(
           params,
-          new Error(
+          // WorkflowUserError 使訊息安全地傳至客戶端
+          new WorkflowUserError(
             `Command「${expandResult.commandId}」不存在，請至 Pod 設定重新選擇或解除綁定`,
           ),
         );

@@ -525,6 +525,128 @@ describe("providerCapabilityStore", () => {
   });
 
   // ----------------------------------------------------------------
+  // isModelValidForProvider getter（Phase 4 新增）
+  // ----------------------------------------------------------------
+  describe("isModelValidForProvider", () => {
+    it("provider 已知 + model 合法 → true", () => {
+      const store = useProviderCapabilityStore();
+
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: CLAUDE_TEST_CAPABILITIES,
+          availableModels: [
+            { label: "Sonnet", value: "sonnet" },
+            { label: "Opus", value: "opus" },
+          ],
+        },
+      ]);
+
+      expect(store.isModelValidForProvider("claude", "sonnet")).toBe(true);
+      expect(store.isModelValidForProvider("claude", "opus")).toBe(true);
+    });
+
+    it("provider 已知 + model 不在清單 → false", () => {
+      const store = useProviderCapabilityStore();
+
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: CLAUDE_TEST_CAPABILITIES,
+          availableModels: [{ label: "Sonnet", value: "sonnet" }],
+        },
+      ]);
+
+      expect(store.isModelValidForProvider("claude", "gpt-5.4")).toBe(false);
+      expect(store.isModelValidForProvider("claude", "unknown-model")).toBe(
+        false,
+      );
+    });
+
+    it("provider 未知（未收到 metadata）→ false", () => {
+      const store = useProviderCapabilityStore();
+
+      // 未 syncFromPayload，store 為空
+      expect(
+        store.isModelValidForProvider("unknown-provider", "some-model"),
+      ).toBe(false);
+    });
+
+    it("provider 已知但 availableModels 為空 → false", () => {
+      const store = useProviderCapabilityStore();
+
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: CLAUDE_TEST_CAPABILITIES,
+          availableModels: [],
+        },
+      ]);
+
+      expect(store.isModelValidForProvider("claude", "sonnet")).toBe(false);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // getDefaultModel getter（Phase 4 新增）
+  // ----------------------------------------------------------------
+  describe("getDefaultModel", () => {
+    it("provider 已知 → 回傳 availableModels 第一筆的 value", () => {
+      const store = useProviderCapabilityStore();
+
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: CLAUDE_TEST_CAPABILITIES,
+          availableModels: [
+            { label: "Opus", value: "opus" },
+            { label: "Sonnet", value: "sonnet" },
+          ],
+        },
+      ]);
+
+      expect(store.getDefaultModel("claude")).toBe("opus");
+    });
+
+    it("provider 已知（codex）→ 回傳 codex availableModels 第一筆的 value", () => {
+      const store = useProviderCapabilityStore();
+
+      store.syncFromPayload([
+        {
+          name: "codex",
+          capabilities: CODEX_TEST_CAPABILITIES,
+          availableModels: [
+            { label: "GPT-5.4", value: "gpt-5.4" },
+            { label: "GPT-5.5", value: "gpt-5.5" },
+          ],
+        },
+      ]);
+
+      expect(store.getDefaultModel("codex")).toBe("gpt-5.4");
+    });
+
+    it("provider 未知 → 回傳 undefined", () => {
+      const store = useProviderCapabilityStore();
+
+      expect(store.getDefaultModel("unknown-provider")).toBeUndefined();
+    });
+
+    it("provider 已知但 availableModels 為空 → 回傳 undefined", () => {
+      const store = useProviderCapabilityStore();
+
+      store.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: CLAUDE_TEST_CAPABILITIES,
+          availableModels: [],
+        },
+      ]);
+
+      expect(store.getDefaultModel("claude")).toBeUndefined();
+    });
+  });
+
+  // ----------------------------------------------------------------
   // 重連行為：state 覆蓋不累積；先成功再失敗時保留上次成功值
   // ----------------------------------------------------------------
   describe("重連行為", () => {

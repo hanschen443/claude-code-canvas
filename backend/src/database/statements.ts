@@ -70,7 +70,9 @@ function buildStatements(db: Database): {
     selectByCanvasId: ReturnType<Database["prepare"]>;
     selectById: ReturnType<Database["prepare"]>;
     update: ReturnType<Database["prepare"]>;
+    updateReturning: ReturnType<Database["prepare"]>;
     updateConnectionStatus: ReturnType<Database["prepare"]>;
+    updateConnectionStatusReturning: ReturnType<Database["prepare"]>;
     updateDecideStatus: ReturnType<Database["prepare"]>;
     clearDecideStatusByPodId: ReturnType<Database["prepare"]>;
     deleteById: ReturnType<Database["prepare"]>;
@@ -341,8 +343,23 @@ function buildStatements(db: Database): {
           summary_model = $summaryModel, ai_decide_model = $aiDecideModel
         WHERE canvas_id = $canvasId AND id = $id`,
       ),
+      // RETURNING 版本：UPDATE 後直接回傳更新後的行，免去額外 SELECT
+      updateReturning: db.prepare(
+        `UPDATE connections SET
+          source_pod_id = $sourcePodId, source_anchor = $sourceAnchor,
+          target_pod_id = $targetPodId, target_anchor = $targetAnchor,
+          trigger_mode = $triggerMode, decide_status = $decideStatus,
+          decide_reason = $decideReason, connection_status = $connectionStatus,
+          summary_model = $summaryModel, ai_decide_model = $aiDecideModel
+        WHERE canvas_id = $canvasId AND id = $id
+        RETURNING *`,
+      ),
       updateConnectionStatus: db.prepare(
         "UPDATE connections SET connection_status = $connectionStatus WHERE canvas_id = $canvasId AND id = $id",
+      ),
+      // RETURNING 版本：UPDATE 後直接回傳更新後的行，免去額外 SELECT
+      updateConnectionStatusReturning: db.prepare(
+        "UPDATE connections SET connection_status = $connectionStatus WHERE canvas_id = $canvasId AND id = $id RETURNING *",
       ),
       updateDecideStatus: db.prepare(
         `UPDATE connections SET

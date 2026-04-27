@@ -98,7 +98,15 @@ describe("ConnectionContextMenu", () => {
   setupStoreTest();
 
   // 每次測試前重置為 Claude 預設狀態，避免跨測試干擾
+  // setupStoreTest() 會呼叫 vi.clearAllMocks()，因此需在此補回所有 mock 的預設實作
   beforeEach(() => {
+    mockFindConnectionById.mockReturnValue({
+      id: "conn-123",
+      sourcePodId: "pod-upstream",
+      triggerMode: "auto",
+      summaryModel: "sonnet",
+      aiDecideModel: "sonnet",
+    });
     mockGetPodById.mockReturnValue({ id: "pod-upstream", provider: "claude" });
     mockGetAvailableModels.mockReturnValue([
       { value: "haiku", label: "Haiku" },
@@ -642,6 +650,26 @@ describe("ConnectionContextMenu", () => {
       await wrapper.vm.$nextTick();
 
       expect(wrapper.emitted("close")).toBeFalsy();
+    });
+  });
+
+  describe("Summary Model 載入中分支", () => {
+    it("mockFindConnectionById 回傳 null 時，Summary Model 子選單應顯示載入中", async () => {
+      mockFindConnectionById.mockReturnValue(null);
+
+      const wrapper = mountMenu();
+      await openSummaryMenu(wrapper);
+
+      expect(wrapper.text()).toContain("載入中");
+    });
+
+    it("mockGetAvailableModels 回傳空陣列時，Summary Model 子選單應顯示載入中", async () => {
+      mockGetAvailableModels.mockReturnValue([]);
+
+      const wrapper = mountMenu();
+      await openSummaryMenu(wrapper);
+
+      expect(wrapper.text()).toContain("載入中");
     });
   });
 

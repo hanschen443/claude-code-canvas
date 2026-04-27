@@ -641,6 +641,85 @@ describe("WorkflowPipeline", () => {
       expect(socketService.emitToCanvas).not.toHaveBeenCalled();
     });
 
+    it("上游 Pod 為 Codex、summaryModel=sonnet（不合法）→ lazy 修正為 gpt-5.4 並廣播", async () => {
+      const mockStrategy = createMockStrategy("auto");
+
+      // 建立 Codex 上游 Pod
+      const mockCodexSourcePod = createMockPod({
+        id: sourcePodId,
+        name: "Codex Source Pod",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+        status: "idle" as const,
+      });
+
+      // connection.summaryModel 使用 "sonnet"（不合法 for codex）
+      const codexConnection = createMockConnection({
+        id: connectionId,
+        sourcePodId,
+        targetPodId,
+        triggerMode: "auto",
+        summaryModel: "sonnet",
+      });
+      const codexBaseContext: PipelineContext = {
+        canvasId,
+        sourcePodId,
+        connection: codexConnection,
+        triggerMode: "auto",
+        decideResult: { connectionId, approved: true, reason: null },
+      };
+
+      // podStore.getById：source pod 回 Codex pod，target pod 回原本的 mockTargetPod
+      (podStore.getById as any).mockImplementation(
+        (_cId: string, podId: string) => {
+          if (podId === sourcePodId) return mockCodexSourcePod;
+          return mockTargetPod;
+        },
+      );
+      // connectionStore.findByTargetPodId 回一條 connection（非 multi-input）
+      (connectionStore.findByTargetPodId as any).mockReturnValue([
+        codexConnection,
+      ]);
+
+      // summaryService 回傳 resolvedModel="gpt-5.4"（fallback 修正結果）
+      (
+        mockExecutionService.generateSummaryWithFallback as any
+      ).mockResolvedValue({
+        content: "codex 摘要",
+        isSummarized: true,
+        resolvedModel: "gpt-5.4",
+      });
+
+      const updatedConnection = createMockConnection({
+        id: connectionId,
+        sourcePodId,
+        targetPodId,
+        triggerMode: "auto",
+        summaryModel: "gpt-5.4",
+      });
+      (connectionStore.update as any).mockReturnValue(updatedConnection);
+
+      await workflowPipeline.execute(codexBaseContext, mockStrategy);
+
+      // 應呼叫 connectionStore.update 寫回 gpt-5.4
+      expect(connectionStore.update).toHaveBeenCalledWith(
+        canvasId,
+        connectionId,
+        { summaryModel: "gpt-5.4" },
+      );
+
+      // 應廣播 CONNECTION_UPDATED 事件
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        expect.stringContaining("connection:updated"),
+        expect.objectContaining({
+          canvasId,
+          success: true,
+          connection: updatedConnection,
+        }),
+      );
+    });
+
     it("resolvedModel 為 undefined（fallback 路徑）時，不應觸發寫回", async () => {
       const mockStrategy = createMockStrategy("auto");
 

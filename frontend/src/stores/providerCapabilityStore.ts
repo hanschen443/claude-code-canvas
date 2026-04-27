@@ -108,6 +108,12 @@ export const useProviderCapabilityStore = defineStore(
       Record<PodProvider, ReadonlyArray<ModelOption>>
     >({});
 
+    /**
+     * 各 Provider 可選模型的 value Set，供 isModelValidForProvider O(1) 查詢。
+     * 與 availableModelsByProvider 同步更新，由 syncFromPayload 維護。
+     */
+    const availableModelValuesByProvider = ref<Record<string, Set<string>>>({});
+
     /** 是否已從後端成功載入一次 */
     const loaded = ref<boolean>(false);
 
@@ -193,13 +199,14 @@ export const useProviderCapabilityStore = defineStore(
      * 判斷指定 model 是否為該 provider 的合法模型（存在於 availableModels 清單）。
      * provider 尚未收到 metadata（清單為空）時，回傳 false，
      * 避免在 capability 尚未載入時誤判所有 model 都合法。
+     * 使用 Set.has() O(1) 查詢，避免每次線性掃描。
      */
     const isModelValidForProvider = computed(
       () =>
         (provider: PodProvider, model: string): boolean => {
-          const models = availableModelsByProvider.value[provider];
-          if (!models || models.length === 0) return false;
-          return models.some((m) => m.value === model);
+          const modelSet = availableModelValuesByProvider.value[provider];
+          if (!modelSet || modelSet.size === 0) return false;
+          return modelSet.has(model);
         },
     );
 
@@ -222,9 +229,12 @@ export const useProviderCapabilityStore = defineStore(
         capabilitiesByProvider.value[name] = { ...capabilities };
         defaultOptionsByProvider.value[name] = { ...(defaultOptions ?? {}) };
         // Object.freeze 一次性凍結陣列，防止外部引用意外修改 store 內部狀態
-        availableModelsByProvider.value[name] = Object.freeze([
-          ...(availableModels ?? []),
-        ]);
+        const frozenModels = Object.freeze([...(availableModels ?? [])]);
+        availableModelsByProvider.value[name] = frozenModels;
+        // 同步建立 value Set，供 isModelValidForProvider O(1) 查詢
+        availableModelValuesByProvider.value[name] = new Set(
+          frozenModels.map((m) => m.value),
+        );
       }
     }
 

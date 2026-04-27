@@ -24,6 +24,9 @@ export type ConnectionStatus =
 /** aiDecideModel 硬性鎖定 Claude 三選一（不接受第三方模型） */
 export type AiDecideModelType = "opus" | "sonnet" | "haiku";
 
+/** aiDecideModel 預設值，避免字面值 "sonnet" 散落各處 */
+export const DEFAULT_AI_DECIDE_MODEL: AiDecideModelType = "sonnet";
+
 export interface Connection {
   id: string;
   sourcePodId: string;

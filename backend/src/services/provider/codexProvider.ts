@@ -32,6 +32,7 @@ import { logger } from "../../utils/logger.js";
 import type { Pod } from "../../types/pod.js";
 import type { RunContext } from "../../types/run.js";
 import { readCodexMcpServers } from "../mcp/codexMcpReader.js";
+import { buildCodexEnv, collectStderr } from "../codex/codexHelpers.js";
 
 /**
  * Codex provider 的執行時選項（執行時型別，由 buildOptions 輸出）。
@@ -59,55 +60,8 @@ const ALLOWED_IMAGE_EXTS = new Set(["jpg", "png", "gif", "webp"]);
 /** 合法 base64 字元集（防止換行符造成 prompt injection） */
 const BASE64_RE = /^[A-Za-z0-9+/=]+$/;
 
-/**
- * stderr 收集上限（64KB）。
- * 超過後停止累積，避免長時間執行的 codex 輸出大量 debug log 時記憶體爆掉。
- */
-const STDERR_MAX_BYTES = 64 * 1024;
-
-/** 傳入 codex subprocess 的環境變數白名單：僅傳遞 codex 實際需要的 key，避免洩漏敏感資訊 */
-const CODEX_ENV_WHITELIST = new Set([
-  "PATH",
-  "HOME",
-  "LANG",
-  "LC_ALL",
-  "OPENAI_API_KEY",
-  "TERM",
-]);
-
-/** CODEX 專屬環境變數額外允許清單 */
-const CODEX_ENV_EXTRA_WHITELIST: ReadonlySet<string> = new Set([
-  "CODEX_DISABLE_TELEMETRY",
-  "CODEX_LOG_LEVEL",
-]);
-
-function buildCodexEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value === undefined) continue;
-    if (CODEX_ENV_WHITELIST.has(key) || CODEX_ENV_EXTRA_WHITELIST.has(key)) {
-      out[key] = value;
-    }
-  }
-  return out;
-}
-
 /** process.env 在 process 生命週期內不會改變，模組載入時快取一次 */
 const CODEX_ENV = buildCodexEnv();
-
-/**
- * 將 stderr 文字中的敏感資訊遮蔽。
- * 避免 OPENAI_API_KEY 或 Bearer token 等資訊寫進 server log。
- * 涵蓋常見 secret 模式：API key、Bearer token、Authorization header 等。
- */
-function maskSensitiveText(text: string): string {
-  return text
-    .replace(/OPENAI_API_KEY\s*=\s*\S+/gi, "OPENAI_API_KEY=[REDACTED]")
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
-    .replace(/Authorization\s*:\s*\S+/gi, "Authorization: [REDACTED]")
-    .replace(/api[_-]?key\s*[=:]\s*\S+/gi, "api_key=[REDACTED]")
-    .replace(/sk-[A-Za-z0-9]{8,}/g, "sk-[REDACTED]");
-}
 
 /**
  * 將 ContentBlock[] 轉換為 codex 可接受的純文字 prompt。
@@ -301,41 +255,6 @@ function spawnCodexProcess(
 }
 
 /**
- * 並行收集 codex subprocess 的 stderr，上限 STDERR_MAX_BYTES。
- * 必須在 stdout 消費「之前」啟動（或並行），避免 stderr buffer 滿導致 subprocess 卡住。
- *
- * @param proc Bun.Subprocess
- * @param abortSignal abort 控制（中止時停止收集）
- * @returns 收集到的 stderr 文字（已截斷標記、已遮蔽敏感資訊）
- */
-async function collectStderr(
-  proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
-  abortSignal: AbortSignal,
-): Promise<string> {
-  const chunks: Buffer[] = [];
-  let totalBytes = 0;
-  let truncated = false;
-
-  for await (const chunk of proc.stderr as ReadableStream<Uint8Array>) {
-    if (abortSignal.aborted) break;
-    const buf = Buffer.from(chunk as Uint8Array);
-    if (totalBytes + buf.byteLength <= STDERR_MAX_BYTES) {
-      chunks.push(buf);
-      totalBytes += buf.byteLength;
-    } else {
-      truncated = true;
-      break;
-    }
-  }
-
-  let text = Buffer.concat(chunks).toString("utf-8").trim();
-  if (truncated) {
-    text += "\n[TRUNCATED]";
-  }
-  return maskSensitiveText(text);
-}
-
-/**
  * 依 exit code 決定是否 yield error event 或 warn log。
  *
  * - exitCode !== 0 且未 abort 且 !hasTurnComplete → yield error event 並寫 error log
@@ -444,7 +363,7 @@ async function* streamCodexOutput(
   await proc.stdin.end();
 
   // ── 並行啟動 stderr 收集（在 stdout 之前啟動避免 buffer 滿卡住） ──
-  const stderrPromise = collectStderr(proc, abortSignal);
+  const stderrPromise = collectStderr(proc, abortSignal, "[CodexProvider]");
 
   // ── 逐行讀取 stdout ─────────────────────────────────────────────
   const turnState = { hasTurnComplete: false };

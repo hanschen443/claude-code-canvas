@@ -9,7 +9,7 @@
  * - 不合法的 model 會 fallback 到 provider 預設模型，並透過 resolvedModel 回傳實際使用值
  */
 
-import { getProvider } from "./provider/index.js";
+import { resolveModelWithFallback } from "./provider/index.js";
 import type { ProviderName } from "./provider/index.js";
 import { claudeService } from "./claude/claudeService.js";
 import { codexService } from "./codex/codexService.js";
@@ -38,24 +38,24 @@ export interface DisposableChatOutput {
 /**
  * 驗證傳入的 model 是否在該 provider 的合法清單內。
  * 不合法時 fallback 到 provider 預設模型。
+ * 共用邏輯由 provider/index.ts 的 resolveModelWithFallback 提供。
  * @returns 實際使用的 model 字串
  */
 function resolveModel(provider: ProviderName, requestedModel: string): string {
-  const metadata = getProvider(provider).metadata;
-  const isValid = metadata.availableModelValues.has(requestedModel);
+  const { resolved, didFallback } = resolveModelWithFallback(
+    provider,
+    requestedModel,
+  );
 
-  if (isValid) {
-    return requestedModel;
+  if (didFallback) {
+    logger.warn(
+      "Chat",
+      "Warn",
+      `[DisposableChatService] model "${requestedModel}" 不在 ${provider} 合法清單內，fallback 到預設模型 "${resolved}"`,
+    );
   }
 
-  const defaultModel =
-    (metadata.defaultOptions as { model?: string }).model ?? requestedModel;
-  logger.warn(
-    "Chat",
-    "Warn",
-    `[DisposableChatService] model "${requestedModel}" 不在 ${provider} 合法清單內，fallback 到預設模型 "${defaultModel}"`,
-  );
-  return defaultModel;
+  return resolved;
 }
 
 // ─── 核心函數 ─────────────────────────────────────────────────────────────────
@@ -95,6 +95,7 @@ export async function executeDisposableChat(
   }
 
   // 未支援的 provider（理論上 TypeScript 型別系統已防止，但防禦性處理）
+  // 內部 log 保留原始 provider 字串方便除錯，但回給客戶端的 error 不含使用者輸入
   logger.error(
     "Chat",
     "Error",
@@ -103,7 +104,7 @@ export async function executeDisposableChat(
   return {
     content: "",
     success: false,
-    error: `不支援的 provider：${String(provider)}`,
+    error: "不支援的 provider",
     resolvedModel: input.model,
   };
 }

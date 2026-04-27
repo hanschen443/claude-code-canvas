@@ -161,7 +161,8 @@ export interface PasteConnectionItem {
   originalTargetPodId: string;
   targetAnchor: AnchorPosition;
   triggerMode?: "auto" | "ai-decide" | "direct";
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
 }
 
@@ -170,7 +171,8 @@ export interface ConnectionUpdatePayload {
   canvasId: string;
   connectionId: string;
   triggerMode?: "auto" | "ai-decide" | "direct";
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
 }
 

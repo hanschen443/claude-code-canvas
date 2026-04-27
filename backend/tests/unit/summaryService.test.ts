@@ -321,10 +321,11 @@ describe("SummaryService", () => {
     });
 
     it("fallback 路徑時 resolvedModel 不應存在", async () => {
+      // success: false 時 disposableChatService 不應回傳 resolvedModel（與真實行為對齊）
       (disposableChatService.executeDisposableChat as any).mockResolvedValue({
         success: false,
         content: "",
-        resolvedModel: "claude-sonnet-4-5-20250929",
+        resolvedModel: undefined,
         error: "執行失敗",
       });
 

@@ -26,6 +26,7 @@ import { DEFAULT_SUMMARY_MODEL, DEFAULT_AI_DECIDE_MODEL } from "@/types/config";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { createWorkflowEventHandlers } from "./workflowEventHandlers";
 import { removeById } from "@/lib/arrayHelpers";
+import { logger } from "@/utils/logger";
 import type {
   ConnectionCreatedPayload,
   ConnectionUpdatedPayload,
@@ -44,7 +45,8 @@ interface RawConnection {
   targetPodId: string;
   targetAnchor: AnchorPosition;
   triggerMode?: "auto" | "ai-decide" | "direct";
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
   connectionStatus?: string;
   decideReason?: string | null;
@@ -79,6 +81,18 @@ const RUNNING_CONNECTION_STATUSES = new Set<ConnectionStatus>([
 
 const RUNNING_POD_STATUSES = new Set(["chatting", "summarizing"]);
 
+/**
+ * 事件亂序保護：當 connection 正在 AI 決策中，不允許被 active 事件覆蓋。
+ * 防止排程或其他觸發路徑的 active 事件在 ai-deciding 期間改變狀態，
+ * 導致 AI 決策結果被忽略或狀態機進入不一致情況。
+ */
+function isOutOfOrderUpdate(
+  currentStatus: ConnectionStatus | undefined,
+  incomingStatus: ConnectionStatus,
+): boolean {
+  return currentStatus === "ai-deciding" && incomingStatus === "active";
+}
+
 function shouldUpdateConnection(
   connection: Connection,
   targetPodId: string,
@@ -90,8 +104,7 @@ function shouldUpdateConnection(
     connection.triggerMode !== "ai-decide"
   )
     return false;
-  // ai-deciding 表示 AI 仍在判斷中，不應被強制設為 active（事件亂序保護）
-  if (connection.status === "ai-deciding" && status === "active") return false;
+  if (isOutOfOrderUpdate(connection.status, status)) return false;
   return true;
 }
 
@@ -159,6 +172,8 @@ function buildIsRunningPod(
 export const useConnectionStore = defineStore("connection", () => {
   const { executeAction } = useCanvasWebSocketAction();
   const { toast, showErrorToast } = useToast();
+  const podStore = usePodStore();
+  const providerCapabilityStore = useProviderCapabilityStore();
 
   const connections = ref<Connection[]>([]);
   const selectedConnectionId = ref<string | null>(null);
@@ -240,27 +255,65 @@ export const useConnectionStore = defineStore("connection", () => {
   });
 
   /**
+   * 一次性建立雙向鄰接表（Map<podId, neighbors>），
+   * 供同一次 BFS 呼叫內的所有節點共用，避免每個節點都全表掃描（O(n) 建表，O(degree) 查詢）。
+   */
+  function buildBidirectionalAdjacencyMap(): Map<
+    string,
+    { neighborId: string; connection: Connection }[]
+  > {
+    const map = new Map<
+      string,
+      { neighborId: string; connection: Connection }[]
+    >();
+    for (const connection of connections.value) {
+      if (connection.sourcePodId) {
+        // 下游方向：source → target
+        const srcList = map.get(connection.sourcePodId) ?? [];
+        srcList.push({ neighborId: connection.targetPodId, connection });
+        map.set(connection.sourcePodId, srcList);
+        // 上游方向：target → source
+        const tgtList = map.get(connection.targetPodId) ?? [];
+        tgtList.push({ neighborId: connection.sourcePodId, connection });
+        map.set(connection.targetPodId, tgtList);
+      }
+    }
+    return map;
+  }
+
+  /**
+   * 一次性建立下游鄰接表（Map<podId, neighbors>），
+   * 供下游單向 BFS 共用，避免 filter 全表掃描。
+   */
+  function buildDownstreamAdjacencyMap(): Map<
+    string,
+    { neighborId: string; connection: Connection }[]
+  > {
+    const map = new Map<
+      string,
+      { neighborId: string; connection: Connection }[]
+    >();
+    for (const connection of connections.value) {
+      if (connection.sourcePodId) {
+        const list = map.get(connection.sourcePodId) ?? [];
+        list.push({ neighborId: connection.targetPodId, connection });
+        map.set(connection.sourcePodId, list);
+      }
+    }
+    return map;
+  }
+
+  /**
    * 雙向 BFS 遍歷整條 Workflow 鏈（上游 + 下游），
    * 讓 head、tail 或任何連線中的 Pod 都能感知整條鏈的執行狀態，
    * 用於在 Workflow 執行中時封鎖對應 Pod 的輸入。
+   * 每次呼叫預先建立鄰接表（O(n)），BFS 查詢降為 O(degree)。
    */
   const isPartOfRunningWorkflow = computed(() => (podId: string): boolean => {
-    const podStore = usePodStore();
-
+    const adjMap = buildBidirectionalAdjacencyMap();
     return runBFS(
       podId,
-      (currentId) => {
-        const neighbors: { neighborId: string; connection: Connection }[] = [];
-        for (const connection of connections.value) {
-          if (connection.sourcePodId === currentId) {
-            neighbors.push({ neighborId: connection.targetPodId, connection });
-          }
-          if (connection.targetPodId === currentId && connection.sourcePodId) {
-            neighbors.push({ neighborId: connection.sourcePodId, connection });
-          }
-        }
-        return neighbors;
-      },
+      (currentId) => adjMap.get(currentId) ?? [],
       buildIsRunningPod(podStore),
     );
   });
@@ -269,20 +322,13 @@ export const useConnectionStore = defineStore("connection", () => {
    * 單向下游 BFS，從指定 Pod 出發往下游遍歷，
    * 用於判斷從某個 head Pod 觸發的 Workflow 是否仍在執行中，
    * 以決定是否允許再次觸發。
+   * 每次呼叫預先建立鄰接表（O(n)），BFS 查詢降為 O(degree)。
    */
   const isWorkflowRunning = computed(() => (sourcePodId: string): boolean => {
-    const podStore = usePodStore();
-
+    const adjMap = buildDownstreamAdjacencyMap();
     return runBFS(
       sourcePodId,
-      (currentId) => {
-        return connections.value
-          .filter((connection) => connection.sourcePodId === currentId)
-          .map((connection) => ({
-            neighborId: connection.targetPodId,
-            connection,
-          }));
-      },
+      (currentId) => adjMap.get(currentId) ?? [],
       buildIsRunningPod(podStore),
     );
   });
@@ -314,63 +360,68 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
+  // 快取 handlers 與 event map，確保 setupWorkflowListeners / cleanupWorkflowListeners
+  // 拿到的是同一份 handler reference，讓 websocketClient.off() 能正確移除監聽器。
+  const workflowHandlers: WorkflowHandlers = createWorkflowEventHandlers({
+    connections: connections.value,
+    findConnectionById,
+    updateAutoGroupStatus,
+    setConnectionStatus,
+  });
+
+  const workflowEventMap: Array<[string, (payload: unknown) => void]> = [
+    [
+      WebSocketResponseEvents.WORKFLOW_AUTO_TRIGGERED,
+      castHandler(workflowHandlers.handleWorkflowAutoTriggered),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_COMPLETE,
+      castHandler(workflowHandlers.handleWorkflowComplete),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_AI_DECIDE_PENDING,
+      castHandler(workflowHandlers.handleAiDecidePending),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_AI_DECIDE_RESULT,
+      castHandler(workflowHandlers.handleAiDecideResult),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_AI_DECIDE_ERROR,
+      castHandler(workflowHandlers.handleAiDecideError),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_AI_DECIDE_CLEAR,
+      castHandler(workflowHandlers.handleAiDecideClear),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_AI_DECIDE_TRIGGERED,
+      castHandler(workflowHandlers.handleWorkflowAiDecideTriggered),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_DIRECT_TRIGGERED,
+      castHandler(workflowHandlers.handleWorkflowDirectTriggered),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_DIRECT_WAITING,
+      castHandler(workflowHandlers.handleWorkflowDirectWaiting),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_QUEUED,
+      castHandler(workflowHandlers.handleWorkflowQueued),
+    ],
+    [
+      WebSocketResponseEvents.WORKFLOW_QUEUE_PROCESSED,
+      castHandler(workflowHandlers.handleWorkflowQueueProcessed),
+    ],
+  ];
+
   function getWorkflowHandlers(): WorkflowHandlers {
-    return createWorkflowEventHandlers({
-      connections: connections.value,
-      findConnectionById,
-      updateAutoGroupStatus,
-      setConnectionStatus,
-    });
+    return workflowHandlers;
   }
 
   function getWorkflowEventMap(): Array<[string, (payload: unknown) => void]> {
-    const handlers = getWorkflowHandlers();
-    return [
-      [
-        WebSocketResponseEvents.WORKFLOW_AUTO_TRIGGERED,
-        castHandler(handlers.handleWorkflowAutoTriggered),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_COMPLETE,
-        castHandler(handlers.handleWorkflowComplete),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_AI_DECIDE_PENDING,
-        castHandler(handlers.handleAiDecidePending),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_AI_DECIDE_RESULT,
-        castHandler(handlers.handleAiDecideResult),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_AI_DECIDE_ERROR,
-        castHandler(handlers.handleAiDecideError),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_AI_DECIDE_CLEAR,
-        castHandler(handlers.handleAiDecideClear),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_AI_DECIDE_TRIGGERED,
-        castHandler(handlers.handleWorkflowAiDecideTriggered),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_DIRECT_TRIGGERED,
-        castHandler(handlers.handleWorkflowDirectTriggered),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_DIRECT_WAITING,
-        castHandler(handlers.handleWorkflowDirectWaiting),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_QUEUED,
-        castHandler(handlers.handleWorkflowQueued),
-      ],
-      [
-        WebSocketResponseEvents.WORKFLOW_QUEUE_PROCESSED,
-        castHandler(handlers.handleWorkflowQueueProcessed),
-      ],
-    ];
+    return workflowEventMap;
   }
 
   async function loadConnectionsFromBackend(): Promise<void> {
@@ -400,7 +451,7 @@ export const useConnectionStore = defineStore("connection", () => {
     targetPodId: string,
   ): boolean {
     if (sourcePodId === targetPodId) {
-      console.warn("[ConnectionStore] 無法將 Pod 連接到自身");
+      logger.warn("[ConnectionStore] 無法將 Pod 連接到自身");
       return false;
     }
 
@@ -433,8 +484,6 @@ export const useConnectionStore = defineStore("connection", () => {
 
     // 依上游 Pod 的 provider 解析預設 summaryModel；
     // 查不到 Pod 或 capability 尚未推送時 fallback 為 DEFAULT_SUMMARY_MODEL
-    const podStore = usePodStore();
-    const providerCapabilityStore = useProviderCapabilityStore();
     const sourcePod = sourcePodId
       ? podStore.getPodById(sourcePodId)
       : undefined;
@@ -478,7 +527,7 @@ export const useConnectionStore = defineStore("connection", () => {
     // 後端若未帶回 summaryModel，以上游 provider 預設模型填入
     const rawConnection = result.data.connection;
     if (!rawConnection.summaryModel) {
-      rawConnection.summaryModel = resolvedSummaryModel as ModelType;
+      rawConnection.summaryModel = resolvedSummaryModel;
     }
 
     return normalizeConnection(rawConnection);
@@ -605,7 +654,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
   async function updateConnectionSummaryModel(
     connectionId: string,
-    summaryModel: ModelType,
+    summaryModel: string,
   ): Promise<Connection | null> {
     return executeConnectionUpdate(
       connectionId,
@@ -616,11 +665,11 @@ export const useConnectionStore = defineStore("connection", () => {
 
   async function updateConnectionAiDecideModel(
     connectionId: string,
-    aiDecideModel: ModelType,
+    aiDecideModel: string,
   ): Promise<Connection | null> {
     return executeConnectionUpdate(
       connectionId,
-      { aiDecideModel },
+      { aiDecideModel: aiDecideModel as ModelType },
       t("store.connection.aiDecideModelUpdateFailed"),
     );
   }
@@ -700,32 +749,40 @@ export const useConnectionStore = defineStore("connection", () => {
    * 3. 用 isModelValidForProvider 判斷 summaryModel 是否仍合法
    * 4. 若不合法，取 getDefaultModel 作為新值，呼叫 updateConnectionSummaryModel
    */
-  async function reconcileSummaryModelsForPod(podId: string): Promise<void> {
-    const podStore = usePodStore();
-    const providerCapabilityStore = useProviderCapabilityStore();
-
+  /**
+   * 純函數：回傳所有 summaryModel 不合法的 connection 及其對應的修正 model。
+   * 不發出任何更新，供 reconcileSummaryModelsForPod 使用。
+   */
+  function getInvalidConnectionsForPod(
+    podId: string,
+  ): Array<{ connectionId: string; newModel: string }> {
     const pod = podStore.getPodById(podId);
-    if (!pod) return;
+    if (!pod) return [];
 
     const provider = pod.provider;
 
-    const targets = connections.value.filter(
-      (conn) => conn.sourcePodId === podId,
-    );
-
-    for (const conn of targets) {
-      const currentModel = conn.summaryModel ?? DEFAULT_SUMMARY_MODEL;
-      const isValid = providerCapabilityStore.isModelValidForProvider(
-        provider,
-        currentModel,
-      );
-      if (!isValid) {
+    return connections.value
+      .filter((conn) => conn.sourcePodId === podId)
+      .flatMap((conn) => {
+        const currentModel = conn.summaryModel ?? DEFAULT_SUMMARY_MODEL;
+        const isValid = providerCapabilityStore.isModelValidForProvider(
+          provider,
+          currentModel,
+        );
+        if (isValid) return [];
         const newModel = providerCapabilityStore.getDefaultModel(provider);
-        if (newModel) {
-          await updateConnectionSummaryModel(conn.id, newModel as ModelType);
-        }
-      }
-    }
+        if (!newModel) return [];
+        return [{ connectionId: conn.id, newModel }];
+      });
+  }
+
+  async function reconcileSummaryModelsForPod(podId: string): Promise<void> {
+    const invalidConnections = getInvalidConnectionsForPod(podId);
+    await Promise.all(
+      invalidConnections.map(({ connectionId, newModel }) =>
+        updateConnectionSummaryModel(connectionId, newModel),
+      ),
+    );
   }
 
   // 切換 canvas 時重設 connection 相關狀態

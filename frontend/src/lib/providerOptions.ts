@@ -12,7 +12,16 @@
  *   - codexProvider.ts（CodexOptions）
  */
 
-import type { ClaudeOptions, CodexOptions, Pod } from "@/types";
+import type { ClaudeOptions, CodexOptions, Pod, PodProvider } from "@/types";
+
+/**
+ * 從 Pod（或可能為 undefined 的 Pod）中取得 provider 名稱。
+ * Pod 不存在或未設定 provider 時 fallback 到 "claude"。
+ * 統一管理 `pod?.provider ?? "claude"` 字面值，避免分散於各檔案。
+ */
+export function resolvePodProvider(pod: Pod | undefined | null): PodProvider {
+  return pod?.provider ?? "claude";
+}
 
 /**
  * 從 Pod 推導出強型別 ClaudeOptions。

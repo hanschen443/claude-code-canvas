@@ -25,7 +25,8 @@ export interface Connection {
   status?: ConnectionStatus;
   triggerMode: TriggerMode;
   decideReason?: string;
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
 }
 

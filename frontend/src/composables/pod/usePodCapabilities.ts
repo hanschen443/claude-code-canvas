@@ -2,6 +2,7 @@ import { computed } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import { usePodStore } from "@/stores/pod";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
+import { resolvePodProvider } from "@/lib/providerOptions";
 import type { ProviderCapabilities } from "@/types/pod";
 
 /** usePodCapabilities 回傳值型別 */
@@ -28,7 +29,7 @@ export function usePodCapabilities(
   /** 取得 Provider 能力表，Pod 不存在時退回 claude fallback */
   const capabilities = computed((): ProviderCapabilities => {
     const pod = podStore.getPodById(podId.value);
-    const provider = pod?.provider ?? "claude";
+    const provider = resolvePodProvider(pod);
     return capabilityStore.getCapabilities(provider);
   });
 

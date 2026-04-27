@@ -9,6 +9,7 @@ import { messageStore } from "../messageStore.js";
 import { runStore } from "../runStore.js";
 import { commandService } from "../commandService.js";
 import { claudeService } from "../claude/claudeService.js";
+import { executeDisposableChat } from "../disposableChatService.js";
 import { summaryPromptBuilder } from "../summaryPromptBuilder.js";
 import type { Connection, AiDecideModelType } from "../../types/index.js";
 import type { RunContext } from "../../types/run.js";
@@ -113,10 +114,13 @@ class AiDecideService {
     const results: AiDecideResult[] = [];
     const errors: Array<{ connectionId: string; error: string }> = [];
 
+    // 先用 connectionId 為 key 建立 Map，避免對每條 connection 都線性掃描 decisions（O(n²) → O(n+m)）
+    const decisionMap = new Map(
+      decisionResults.decisions.map((d) => [d.connectionId, d]),
+    );
+
     for (const connection of connections) {
-      const decision = decisionResults.decisions.find(
-        (decisionEntry) => decisionEntry.connectionId === connection.id,
-      );
+      const decision = decisionMap.get(connection.id);
       if (decision) {
         results.push({
           connectionId: connection.id,
@@ -138,7 +142,6 @@ class AiDecideService {
     canvasId: string,
     sourcePodId: string,
     connections: Connection[],
-    summaryModel: string,
     runContext?: RunContext,
   ): Promise<
     | {
@@ -149,24 +152,28 @@ class AiDecideService {
       }
     | { valid: false; error: AiDecideBatchResult }
   > {
-    const sourceSummary = await this.generateSourceSummary(
-      canvasId,
-      sourcePodId,
-      runContext,
-      summaryModel,
-    );
-    if (!sourceSummary) {
-      return {
-        valid: false,
-        error: this.buildDecisionErrors(connections, "無法生成來源 Pod 摘要"),
-      };
-    }
-
+    // 先查詢 sourcePod，傳入 generateSourceSummary 避免重複查詢
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) {
       return {
         valid: false,
         error: this.buildDecisionErrors(connections, "找不到來源 Pod"),
+      };
+    }
+
+    // group 是依 aiDecideModel 分組而來，同組內的 summaryModel 語意上屬於各自 connection。
+    // 此處摘要僅用於輔助 AI 決策，非傳送給 target Pod，因此取第一筆作為代表值
+    // 是刻意的設計選擇：group-level 摘要品質差異可忽略，無需逐條拆開呼叫。
+    const groupSummaryModel = connections[0]?.summaryModel ?? "sonnet";
+    const sourceSummary = await this.generateSourceSummary(
+      sourcePod,
+      runContext,
+      groupSummaryModel,
+    );
+    if (!sourceSummary) {
+      return {
+        valid: false,
+        error: this.buildDecisionErrors(connections, "無法生成來源 Pod 摘要"),
       };
     }
 
@@ -220,7 +227,7 @@ class AiDecideService {
       return { results: [], errors: [] };
     }
 
-    // 依 aiDecideModel 分組，每組使用各自的模型進行 AI 決策
+    // 依 aiDecideModel 分組以支援同一決策迴圈內不同 connection 用不同模型
     const groupByModel = new Map<AiDecideModelType, Connection[]>();
     for (const connection of connections) {
       const model = connection.aiDecideModel;
@@ -237,7 +244,6 @@ class AiDecideService {
         canvasId,
         sourcePodId,
         groupConnections,
-        groupConnections[0]?.summaryModel ?? "sonnet",
         runContext,
       );
       if (!inputValidation.valid) {
@@ -331,13 +337,11 @@ class AiDecideService {
   }
 
   private async generateSourceSummary(
-    canvasId: string,
-    sourcePodId: string,
+    sourcePod: NonNullable<ReturnType<typeof podStore.getById>>,
     runContext?: RunContext,
     summaryModel?: string,
   ): Promise<string | null> {
-    const sourcePod = podStore.getById(canvasId, sourcePodId);
-    if (!sourcePod) return null;
+    const sourcePodId = sourcePod.id;
 
     const messages = runContext
       ? runStore.getRunMessages(runContext.runId, sourcePodId)
@@ -353,7 +357,8 @@ class AiDecideService {
       conversationHistory,
     });
 
-    const result = await claudeService.executeDisposableChat({
+    const result = await executeDisposableChat({
+      provider: "claude",
       systemPrompt,
       userMessage: userPrompt,
       workspacePath: sourcePod.workspacePath,

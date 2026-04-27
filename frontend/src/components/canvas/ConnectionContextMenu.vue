@@ -17,7 +17,8 @@ interface Props {
   position: { x: number; y: number };
   connectionId: string;
   currentTriggerMode: TriggerMode;
-  currentSummaryModel: ModelType;
+  /** currentSummaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  currentSummaryModel: string;
   currentAiDecideModel: ModelType;
 }
 
@@ -71,10 +72,33 @@ const handleSetTriggerMode = async (targetMode: TriggerMode): Promise<void> => {
   }
 };
 
+/** 顯示模型切換成功的 toast */
+const showModelChangeToast = (title: string, label: string): void => {
+  toast({
+    title,
+    description: t("canvas.connectionContextMenu.modelSwitched", {
+      model: label,
+    }),
+    duration: SHORT_TOAST_DURATION_MS,
+  });
+};
+
+/** 發送模型變更事件並關閉選單 */
+const emitModelChanged = (
+  eventName: "summary-model-changed" | "ai-decide-model-changed",
+): void => {
+  if (eventName === "summary-model-changed") {
+    emit("summary-model-changed");
+  } else {
+    emit("ai-decide-model-changed");
+  }
+  emit("close");
+};
+
 const handleSetModel = async (
-  targetModel: ModelType,
-  currentModel: ModelType,
-  updateFn: (connectionId: string, model: ModelType) => Promise<unknown>,
+  targetModel: string,
+  currentModel: string,
+  updateFn: (connectionId: string, model: string) => Promise<unknown>,
   successTitle: string,
   failDesc: string,
   changedEvent: "summary-model-changed" | "ai-decide-model-changed",
@@ -88,19 +112,8 @@ const handleSetModel = async (
   const result = await updateFn(props.connectionId, targetModel);
 
   if (result) {
-    toast({
-      title: successTitle,
-      description: t("canvas.connectionContextMenu.modelSwitched", {
-        model: displayLabel ?? targetModel,
-      }),
-      duration: SHORT_TOAST_DURATION_MS,
-    });
-    if (changedEvent === "summary-model-changed") {
-      emit("summary-model-changed");
-    } else {
-      emit("ai-decide-model-changed");
-    }
-    emit("close");
+    showModelChangeToast(successTitle, displayLabel ?? targetModel);
+    emitModelChanged(changedEvent);
   } else {
     toast({
       title: t("canvas.connectionContextMenu.changeFailed"),
@@ -115,9 +128,12 @@ const handleSetModel = async (
  * 以支援 Claude 以外的 provider 模型（value 可為任意 provider model 字串）。
  * 呼叫端確保傳入的值來自 summaryModelOptions，後端接受任意 provider model 字串。
  */
-const handleSetSummaryModel = (targetValue: string, displayLabel: string): Promise<void> =>
+const handleSetSummaryModel = (
+  targetValue: string,
+  displayLabel: string,
+): Promise<void> =>
   handleSetModel(
-    targetValue as ModelType,
+    targetValue,
     props.currentSummaryModel,
     connectionStore.updateConnectionSummaryModel,
     t("canvas.connectionContextMenu.summaryModelChanged"),
@@ -126,7 +142,10 @@ const handleSetSummaryModel = (targetValue: string, displayLabel: string): Promi
     displayLabel,
   );
 
-const handleSetAiDecideModel = (option: { value: ModelType; label: string }): Promise<void> =>
+const handleSetAiDecideModel = (option: {
+  value: ModelType;
+  label: string;
+}): Promise<void> =>
   handleSetModel(
     option.value,
     props.currentAiDecideModel,

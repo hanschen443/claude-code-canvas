@@ -1,5 +1,6 @@
 import type { Pod, PodProvider, ProviderConfig } from "@/types";
 import { validatePodName } from "@/lib/sanitize";
+import { resolvePodProvider } from "@/lib/providerOptions";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 
 function hasValidIdentity(pod: Pod): boolean {
@@ -81,7 +82,7 @@ export function isValidModelName(model: string): boolean {
  */
 export function enrichPod(pod: Pod, preservedOutput?: string[]): Pod {
   // 缺 provider 時視為舊有的 Claude Pod
-  const provider: PodProvider = pod.provider ?? "claude";
+  const provider: PodProvider = resolvePodProvider(pod);
 
   return {
     ...pod,

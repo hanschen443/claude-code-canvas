@@ -433,6 +433,8 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       // 等待 fire-and-forget 的錯誤處理完成
       await new Promise((resolve) => setTimeout(resolve, 100));
 
+      // sanitizeErrorForClient 會把非白名單錯誤訊息替換為通用訊息，
+      // "Claude query failed" 不在白名單中，故期望收到泛化後的錯誤訊息
       expect(mockAutoStrategy.onError).toHaveBeenCalledWith(
         expect.objectContaining({
           canvasId,
@@ -441,7 +443,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
           targetPodId: "target-fail",
           triggerMode: "auto",
         }),
-        "Claude query failed",
+        "工作流程執行失敗",
       );
 
       expect(processNextInQueueCalled).toBe(true);

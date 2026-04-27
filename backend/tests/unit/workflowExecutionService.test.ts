@@ -68,7 +68,7 @@ import { aiDecideService } from "../../src/services/workflow";
 import { pendingTargetStore } from "../../src/services/pendingTargetStore.js";
 import { workflowQueueService } from "../../src/services/workflow";
 import { workflowMultiInputService } from "../../src/services/workflow";
-import type { Connection, TriggerMode } from "../../src/types";
+import type { Connection } from "../../src/types";
 import type { TriggerStrategy } from "../../src/services/workflow/types.js";
 import {
   createMockPod,
@@ -77,202 +77,11 @@ import {
   createMockStrategy,
   TEST_IDS,
 } from "../mocks/workflowTestFactories.js";
-
-// 提取為獨立函數，因為 vi.clearAllMocks 後需要重新設定，避免 beforeEach 膨脹
-function createPipelineExecuteImpl(
-  mockAutoStrategy: TriggerStrategy,
-  mockAiDecideStrategy: TriggerStrategy,
-) {
-  return async (context: any, strategy: TriggerStrategy) => {
-    const summaryResult = await summaryService.generateSummaryForTarget(
-      context.canvasId,
-      context.sourcePodId,
-      context.connection.targetPodId,
-      "claude",
-      context.connection.summaryModel ?? "sonnet",
-    );
-
-    const { isMultiInput, requiredSourcePodIds } =
-      workflowStateService.checkMultiInputScenario(
-        context.canvasId,
-        context.connection.targetPodId,
-      );
-
-    if (isMultiInput) {
-      await workflowMultiInputService.handleMultiInputForConnection({
-        canvasId: context.canvasId,
-        sourcePodId: context.sourcePodId,
-        connection: context.connection,
-        requiredSourcePodIds,
-        summary: summaryResult.summary || "test summary",
-        triggerMode: context.triggerMode,
-      });
-      return;
-    }
-
-    const targetPod = podStore.getById(
-      context.canvasId,
-      context.connection.targetPodId,
-    );
-    if (targetPod && targetPod.status !== "idle") {
-      workflowQueueService.enqueue({
-        canvasId: context.canvasId,
-        connectionId: context.connection.id,
-        sourcePodId: context.sourcePodId,
-        targetPodId: context.connection.targetPodId,
-        summary: summaryResult.summary || "test summary",
-        isSummarized: summaryResult.success || false,
-        triggerMode: context.triggerMode,
-      });
-      return;
-    }
-
-    await workflowExecutionService.triggerWorkflowWithSummary({
-      canvasId: context.canvasId,
-      connectionId: context.connection.id,
-      summary: summaryResult.summary || "test summary",
-      isSummarized: summaryResult.success || false,
-      participatingConnectionIds: undefined,
-      strategy,
-    });
-  };
-}
-
-function createAutoTriggerProcessImpl(
-  mockPipeline: any,
-  mockAutoStrategy: TriggerStrategy,
-) {
-  return async (
-    canvasId: string,
-    sourcePodId: string,
-    connection: Connection,
-  ) => {
-    const pipelineContext = {
-      canvasId,
-      sourcePodId,
-      connection,
-      triggerMode: "auto" as const,
-      decideResult: {
-        connectionId: connection.id,
-        approved: true,
-        reason: null,
-      },
-    };
-    await mockPipeline.execute(pipelineContext, mockAutoStrategy);
-  };
-}
-
-function createAiDecideProcessImpl(
-  mockPipeline: any,
-  mockAiDecideStrategy: TriggerStrategy,
-) {
-  return async (
-    canvasId: string,
-    sourcePodId: string,
-    connections: Connection[],
-  ) => {
-    workflowEventEmitter.emitAiDecidePending(
-      canvasId,
-      connections.map((c) => c.id),
-      sourcePodId,
-    );
-
-    connections.forEach((conn) => {
-      connectionStore.updateDecideStatus(canvasId, conn.id, "pending", null);
-    });
-
-    const decision = await aiDecideService.decideConnections(
-      canvasId,
-      sourcePodId,
-      connections,
-    );
-
-    for (const result of decision.results) {
-      const connection = connections.find((c) => c.id === result.connectionId);
-      if (!connection) continue;
-
-      connectionStore.updateDecideStatus(
-        canvasId,
-        result.connectionId,
-        result.shouldTrigger ? "approved" : "rejected",
-        result.reason,
-      );
-
-      workflowEventEmitter.emitAiDecideResult({
-        canvasId,
-        connectionId: result.connectionId,
-        sourcePodId,
-        targetPodId: connection.targetPodId,
-        shouldTrigger: result.shouldTrigger,
-        reason: result.reason,
-      });
-
-      if (result.shouldTrigger) {
-        const { isMultiInput } = workflowStateService.checkMultiInputScenario(
-          canvasId,
-          connection.targetPodId,
-        );
-
-        if (
-          isMultiInput &&
-          pendingTargetStore.hasPendingTarget(connection.targetPodId)
-        ) {
-          // 記錄 completion（這會在 multiInputService 中處理）
-        } else {
-          const pipelineContext = {
-            canvasId,
-            sourcePodId,
-            connection,
-            triggerMode: "ai-decide" as const,
-            decideResult: {
-              connectionId: connection.id,
-              approved: true,
-              reason: result.reason,
-            },
-          };
-          await mockPipeline.execute(pipelineContext, mockAiDecideStrategy);
-        }
-      } else {
-        const { isMultiInput } = workflowStateService.checkMultiInputScenario(
-          canvasId,
-          connection.targetPodId,
-        );
-        if (
-          isMultiInput &&
-          pendingTargetStore.hasPendingTarget(connection.targetPodId)
-        ) {
-          pendingTargetStore.recordSourceRejection(
-            connection.targetPodId,
-            sourcePodId,
-            result.reason,
-          );
-        }
-      }
-    }
-
-    for (const errorResult of decision.errors) {
-      const connection = connections.find(
-        (c) => c.id === errorResult.connectionId,
-      );
-      if (!connection) continue;
-
-      connectionStore.updateDecideStatus(
-        canvasId,
-        errorResult.connectionId,
-        "error",
-        `錯誤：${errorResult.error}`,
-      );
-
-      workflowEventEmitter.emitAiDecideError({
-        canvasId,
-        connectionId: errorResult.connectionId,
-        sourcePodId,
-        targetPodId: connection.targetPodId,
-        error: `錯誤：${errorResult.error}`,
-      });
-    }
-  };
-}
+import {
+  createPipelineExecuteImpl,
+  createAutoTriggerProcessImpl,
+  createAiDecideProcessImpl,
+} from "../mocks/workflowImplMocks.js";
 
 describe("WorkflowExecutionService", () => {
   const { canvasId, sourcePodId, targetPodId } = TEST_IDS;
@@ -584,7 +393,9 @@ describe("WorkflowExecutionService", () => {
         sourcePodId,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
         canvasId,
@@ -820,7 +631,9 @@ describe("WorkflowExecutionService", () => {
         sourcePodId,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(summaryService.generateSummaryForTarget).toHaveBeenCalledTimes(3);
 
@@ -893,7 +706,9 @@ describe("WorkflowExecutionService", () => {
         sourcePodId,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
         canvasId,
@@ -1110,7 +925,9 @@ describe("WorkflowExecutionService", () => {
         source1PodId,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(enqueueSpy).toHaveBeenCalledWith(
         expect.objectContaining({

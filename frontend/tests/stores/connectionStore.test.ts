@@ -303,6 +303,46 @@ describe("connectionStore", () => {
   });
 
   describe("createConnection", () => {
+    /**
+     * 統一設定 Claude 與 Codex 兩個 provider 的 capability（availableModels）。
+     * Claude case 與 Codex case 都使用此 helper，確保 mock 設定方式一致。
+     */
+    function setupConnectionCapabilities() {
+      const capabilityStore = useProviderCapabilityStore();
+      capabilityStore.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: true,
+            command: true,
+            mcp: true,
+            integration: true,
+          },
+          availableModels: [
+            { value: "sonnet", label: "Sonnet" },
+            { value: "opus", label: "Opus" },
+          ],
+        },
+        {
+          name: "codex",
+          capabilities: {
+            chat: true,
+            plugin: true,
+            repository: false,
+            command: true,
+            mcp: false,
+            integration: false,
+          },
+          availableModels: [
+            { value: "gpt-5.4", label: "GPT-5.4" },
+            { value: "gpt-4.5", label: "GPT-4.5" },
+          ],
+        },
+      ]);
+    }
+
     it("成功時應回傳 Connection、預設 triggerMode 為 auto", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
@@ -522,7 +562,6 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
       const podStore = usePodStore();
-      const capabilityStore = useProviderCapabilityStore();
 
       // 建立 Claude Pod 並放入 podStore
       const claudePod = createMockPod({
@@ -531,24 +570,8 @@ describe("connectionStore", () => {
       });
       podStore.pods = [claudePod];
 
-      // 設定 Claude provider 的 availableModels（第一筆為預設）
-      capabilityStore.syncFromPayload([
-        {
-          name: "claude",
-          capabilities: {
-            chat: true,
-            plugin: false,
-            repository: true,
-            command: true,
-            mcp: true,
-            integration: true,
-          },
-          availableModels: [
-            { value: "sonnet", label: "Sonnet" },
-            { value: "opus", label: "Opus" },
-          ],
-        },
-      ]);
+      // 使用共用 helper 統一設定 capability（與 Codex case 相同方式）
+      setupConnectionCapabilities();
 
       // 後端回傳不帶 summaryModel，應由前端以 provider 預設填入
       mockExecuteAction.mockResolvedValueOnce({
@@ -579,7 +602,6 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
       const podStore = usePodStore();
-      const capabilityStore = useProviderCapabilityStore();
 
       // 建立 Codex Pod 並放入 podStore
       const codexPod = createMockPod({
@@ -589,24 +611,8 @@ describe("connectionStore", () => {
       });
       podStore.pods = [codexPod];
 
-      // 設定 Codex provider 的 availableModels（第一筆為預設）
-      capabilityStore.syncFromPayload([
-        {
-          name: "codex",
-          capabilities: {
-            chat: true,
-            plugin: true,
-            repository: false,
-            command: true,
-            mcp: false,
-            integration: false,
-          },
-          availableModels: [
-            { value: "gpt-5.4", label: "GPT-5.4" },
-            { value: "gpt-4.5", label: "GPT-4.5" },
-          ],
-        },
-      ]);
+      // 使用共用 helper 統一設定 capability（與 Claude case 相同方式）
+      setupConnectionCapabilities();
 
       mockExecuteAction.mockResolvedValueOnce({
         success: true,
