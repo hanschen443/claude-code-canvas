@@ -12,6 +12,7 @@ import {
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { usePodStore } from "@/stores/pod/podStore";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useSelectionStore } from "@/stores/pod/selectionStore";
 import type {
   Connection,
@@ -514,6 +515,157 @@ describe("connectionStore", () => {
         }),
         expect.anything(),
       );
+    });
+
+    it("上游為 Claude Pod 時，summaryModel 應為 Claude 的預設模型", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      const capabilityStore = useProviderCapabilityStore();
+
+      // 建立 Claude Pod 並放入 podStore
+      const claudePod = createMockPod({
+        id: "pod-claude",
+        provider: "claude",
+      });
+      podStore.pods = [claudePod];
+
+      // 設定 Claude provider 的 availableModels（第一筆為預設）
+      capabilityStore.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: true,
+            command: true,
+            mcp: true,
+            integration: true,
+          },
+          availableModels: [
+            { value: "sonnet", label: "Sonnet" },
+            { value: "opus", label: "Opus" },
+          ],
+        },
+      ]);
+
+      // 後端回傳不帶 summaryModel，應由前端以 provider 預設填入
+      mockExecuteAction.mockResolvedValueOnce({
+        success: true,
+        data: {
+          connection: {
+            id: "conn-claude",
+            sourcePodId: "pod-claude",
+            sourceAnchor: "bottom",
+            targetPodId: "pod-target",
+            targetAnchor: "top",
+          },
+        },
+      });
+
+      const result = await store.createConnection(
+        "pod-claude",
+        "bottom",
+        "pod-target",
+        "top",
+      );
+
+      expect(result?.summaryModel).toBe("sonnet");
+    });
+
+    it("上游為 Codex Pod 時，summaryModel 應為 Codex 的預設模型", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      const capabilityStore = useProviderCapabilityStore();
+
+      // 建立 Codex Pod 並放入 podStore
+      const codexPod = createMockPod({
+        id: "pod-codex",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+      });
+      podStore.pods = [codexPod];
+
+      // 設定 Codex provider 的 availableModels（第一筆為預設）
+      capabilityStore.syncFromPayload([
+        {
+          name: "codex",
+          capabilities: {
+            chat: true,
+            plugin: true,
+            repository: false,
+            command: true,
+            mcp: false,
+            integration: false,
+          },
+          availableModels: [
+            { value: "gpt-5.4", label: "GPT-5.4" },
+            { value: "gpt-4.5", label: "GPT-4.5" },
+          ],
+        },
+      ]);
+
+      mockExecuteAction.mockResolvedValueOnce({
+        success: true,
+        data: {
+          connection: {
+            id: "conn-codex",
+            sourcePodId: "pod-codex",
+            sourceAnchor: "bottom",
+            targetPodId: "pod-target",
+            targetAnchor: "top",
+          },
+        },
+      });
+
+      const result = await store.createConnection(
+        "pod-codex",
+        "bottom",
+        "pod-target",
+        "top",
+      );
+
+      expect(result?.summaryModel).toBe("gpt-5.4");
+    });
+
+    it("capability 查無資料時，summaryModel 應 fallback 為 DEFAULT_SUMMARY_MODEL", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      // providerCapabilityStore 維持空白（capability 尚未推送）
+
+      const unknownPod = createMockPod({
+        id: "pod-unknown",
+        provider: "unknown-provider",
+      });
+      podStore.pods = [unknownPod];
+
+      mockExecuteAction.mockResolvedValueOnce({
+        success: true,
+        data: {
+          connection: {
+            id: "conn-unknown",
+            sourcePodId: "pod-unknown",
+            sourceAnchor: "bottom",
+            targetPodId: "pod-target",
+            targetAnchor: "top",
+          },
+        },
+      });
+
+      const result = await store.createConnection(
+        "pod-unknown",
+        "bottom",
+        "pod-target",
+        "top",
+      );
+
+      // capability 未載入，應 fallback 為 DEFAULT_SUMMARY_MODEL（"sonnet"）
+      expect(result?.summaryModel).toBe("sonnet");
     });
   });
 
@@ -2139,6 +2291,189 @@ describe("connectionStore", () => {
       );
 
       expect(store.getPodWorkflowRole("pod-b")).toBe("tail");
+    });
+  });
+
+  describe("reconcileSummaryModelsForPod", () => {
+    function setupCapabilities() {
+      const capabilityStore = useProviderCapabilityStore();
+      capabilityStore.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: true,
+            command: true,
+            mcp: true,
+            integration: true,
+          },
+          availableModels: [
+            { value: "sonnet", label: "Sonnet" },
+            { value: "opus", label: "Opus" },
+            { value: "haiku", label: "Haiku" },
+          ],
+        },
+        {
+          name: "codex",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: false,
+            command: false,
+            mcp: false,
+            integration: false,
+          },
+          availableModels: [
+            { value: "gpt-5.4", label: "GPT-5.4" },
+            { value: "gpt-5.5", label: "GPT-5.5" },
+          ],
+        },
+      ]);
+    }
+
+    it("Claude → Codex 切換時，原本是 sonnet 的 connection 應被更新為 gpt-5.4", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "codex" });
+      podStore.pods = [pod];
+
+      const conn = createMockConnection({
+        id: "conn-1",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        data: {
+          connection: {
+            id: "conn-1",
+            sourcePodId: "pod-src",
+            sourceAnchor: "bottom",
+            targetPodId: "pod-dst",
+            targetAnchor: "top",
+            summaryModel: "gpt-5.4",
+          },
+        },
+      });
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            connectionId: "conn-1",
+            summaryModel: "gpt-5.4",
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("Codex → Claude 切換時，原本是 gpt-5.5 的 connection 應被更新為 sonnet", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "claude" });
+      podStore.pods = [pod];
+
+      const conn = createMockConnection({
+        id: "conn-2",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "gpt-5.5" as never,
+      });
+      store.connections = [conn];
+
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        data: {
+          connection: {
+            id: "conn-2",
+            sourcePodId: "pod-src",
+            sourceAnchor: "bottom",
+            targetPodId: "pod-dst",
+            targetAnchor: "top",
+            summaryModel: "sonnet",
+          },
+        },
+      });
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            connectionId: "conn-2",
+            summaryModel: "sonnet",
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("同 provider 內 model 仍合法時不觸發更新", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "claude" });
+      podStore.pods = [pod];
+
+      const conn = createMockConnection({
+        id: "conn-3",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockExecuteAction).not.toHaveBeenCalled();
+    });
+
+    it("podId 不存在時直接返回，不執行任何操作", async () => {
+      const store = useConnectionStore();
+      const conn = createMockConnection({
+        id: "conn-4",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      await store.reconcileSummaryModelsForPod("non-existent");
+
+      expect(mockExecuteAction).not.toHaveBeenCalled();
+    });
+
+    it("無以該 Pod 為 source 的 connection 時不執行任何操作", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "codex" });
+      podStore.pods = [pod];
+
+      // 這條 connection 是 pod-other 為 source，不應受影響
+      const conn = createMockConnection({
+        id: "conn-5",
+        sourcePodId: "pod-other",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockExecuteAction).not.toHaveBeenCalled();
     });
   });
 });

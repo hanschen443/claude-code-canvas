@@ -2,8 +2,10 @@
 import type { TriggerMode } from "@/types/connection";
 import type { ModelType } from "@/types/pod";
 import { Zap, Brain, ArrowRight, ChevronRight } from "lucide-vue-next";
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { usePodStore } from "@/stores/pod/podStore";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useToast } from "@/composables/useToast";
 import { useI18n } from "vue-i18n";
 import {
@@ -29,6 +31,8 @@ const emit = defineEmits<{
 }>();
 
 const connectionStore = useConnectionStore();
+const podStore = usePodStore();
+const providerCapabilityStore = useProviderCapabilityStore();
 const { toast } = useToast();
 const { t } = useI18n();
 
@@ -67,12 +71,6 @@ const handleSetTriggerMode = async (targetMode: TriggerMode): Promise<void> => {
   }
 };
 
-const MODEL_LABEL_MAP: Record<ModelType, string> = {
-  haiku: "Haiku",
-  sonnet: "Sonnet",
-  opus: "Opus",
-};
-
 const handleSetModel = async (
   targetModel: ModelType,
   currentModel: ModelType,
@@ -80,6 +78,7 @@ const handleSetModel = async (
   successTitle: string,
   failDesc: string,
   changedEvent: "summary-model-changed" | "ai-decide-model-changed",
+  displayLabel?: string,
 ): Promise<void> => {
   if (targetModel === currentModel) {
     emit("close");
@@ -92,7 +91,7 @@ const handleSetModel = async (
     toast({
       title: successTitle,
       description: t("canvas.connectionContextMenu.modelSwitched", {
-        model: MODEL_LABEL_MAP[targetModel],
+        model: displayLabel ?? targetModel,
       }),
       duration: SHORT_TOAST_DURATION_MS,
     });
@@ -111,24 +110,31 @@ const handleSetModel = async (
   }
 };
 
-const handleSetSummaryModel = (targetModel: ModelType): Promise<void> =>
+/**
+ * Summary Model 的 toast 訊息使用動態 label（由 availableModels 的 label 欄位提供），
+ * 以支援 Claude 以外的 provider 模型（value 可為任意 provider model 字串）。
+ * 呼叫端確保傳入的值來自 summaryModelOptions，後端接受任意 provider model 字串。
+ */
+const handleSetSummaryModel = (targetValue: string, displayLabel: string): Promise<void> =>
   handleSetModel(
-    targetModel,
+    targetValue as ModelType,
     props.currentSummaryModel,
     connectionStore.updateConnectionSummaryModel,
     t("canvas.connectionContextMenu.summaryModelChanged"),
     t("canvas.connectionContextMenu.summaryModelChangeFailed"),
     "summary-model-changed",
+    displayLabel,
   );
 
-const handleSetAiDecideModel = (targetModel: ModelType): Promise<void> =>
+const handleSetAiDecideModel = (option: { value: ModelType; label: string }): Promise<void> =>
   handleSetModel(
-    targetModel,
+    option.value,
     props.currentAiDecideModel,
     connectionStore.updateConnectionAiDecideModel,
     t("canvas.connectionContextMenu.aiDecideModelChanged"),
     t("canvas.connectionContextMenu.aiDecideModelChangeFailed"),
     "ai-decide-model-changed",
+    option.label,
   );
 
 const menuRef = ref<HTMLElement | null>(null);
@@ -158,11 +164,34 @@ onUnmounted(() => {
 const isSummaryMenuOpen = ref(false);
 const isAiModelMenuOpen = ref(false);
 
-const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
+/**
+ * AI Decide Model 子選單專用：硬編碼 Claude 三選一。
+ * 不受上游 provider 影響，始終顯示此固定清單。
+ */
+const AI_DECIDE_MODEL_OPTIONS: { value: ModelType; label: string }[] = [
   { value: "haiku", label: "Haiku" },
   { value: "sonnet", label: "Sonnet" },
   { value: "opus", label: "Opus" },
 ];
+
+/**
+ * 透過當前 connectionId 取得 connection，再查 sourcePodId 對應的上游 Pod，
+ * 最後向 providerCapabilityStore 取上游 provider 的 availableModels，
+ * 作為 Summary Model 子選單的動態按鈕資料來源。
+ */
+const summaryModelOptions = computed(() => {
+  const connection = connectionStore.findConnectionById(props.connectionId);
+  if (!connection?.sourcePodId) return null;
+
+  const sourcePod = podStore.getPodById(connection.sourcePodId);
+  if (!sourcePod) return null;
+
+  const models = providerCapabilityStore.getAvailableModels(sourcePod.provider);
+  // 若後端尚未推送 capability 資料，回傳 null 觸發「載入中」顯示
+  if (models.length === 0) return null;
+
+  return models;
+});
 </script>
 
 <template>
@@ -282,13 +311,22 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
         />
       </button>
 
-      <!-- 子選單 -->
+      <!-- Summary Model 子選單：根據上游 Pod provider 動態渲染 -->
       <div
         v-if="isSummaryMenuOpen"
         class="absolute left-full top-0 ml-1 bg-card border border-doodle-ink rounded-md p-1 z-50 min-w-[120px]"
       >
+        <!-- 上游 Pod 不存在或 capability 尚未載入時顯示載入中提示 -->
+        <div
+          v-if="summaryModelOptions === null"
+          class="px-2 py-1 text-xs font-mono text-muted-foreground"
+        >
+          {{ $t("canvas.connectionContextMenu.loading") }}
+        </div>
+
+        <!-- 動態渲染上游 provider 的可選模型清單 -->
         <button
-          v-for="option in MODEL_OPTIONS"
+          v-for="option in summaryModelOptions ?? []"
           :key="option.value"
           :class="[
             'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
@@ -297,7 +335,7 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
                 currentSummaryModel === option.value,
             },
           ]"
-          @click="handleSetSummaryModel(option.value)"
+          @click="handleSetSummaryModel(option.value, option.label)"
         >
           <span
             :class="[
@@ -344,8 +382,9 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
         v-if="isAiModelMenuOpen"
         class="absolute left-full top-0 ml-1 bg-card border border-doodle-ink rounded-md p-1 z-50 min-w-[120px]"
       >
+        <!-- AI Decide Model 子選單：始終硬編碼 Claude 三選一，不受上游 provider 影響 -->
         <button
-          v-for="option in MODEL_OPTIONS"
+          v-for="option in AI_DECIDE_MODEL_OPTIONS"
           :key="option.value"
           :class="[
             'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
@@ -354,7 +393,7 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
                 currentAiDecideModel === option.value,
             },
           ]"
-          @click="handleSetAiDecideModel(option.value)"
+          @click="handleSetAiDecideModel(option)"
         >
           <span
             :class="[

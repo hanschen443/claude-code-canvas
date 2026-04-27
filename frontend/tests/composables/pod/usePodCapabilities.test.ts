@@ -35,7 +35,6 @@ const CLAUDE_FULL_CAPABILITIES = {
   command: true,
   mcp: true,
   integration: true,
-  runMode: true,
 };
 
 /** Phase 2 後，Codex 的 capabilities（需由 syncFromPayload 注入） */
@@ -46,7 +45,6 @@ const CODEX_CAPABILITIES = {
   command: true,
   mcp: false,
   integration: false,
-  runMode: false,
 };
 
 /**
@@ -60,7 +58,6 @@ const CONSERVATIVE_FALLBACK = {
   command: false,
   mcp: false,
   integration: false,
-  runMode: false,
 };
 
 describe("usePodCapabilities", () => {
@@ -104,14 +101,6 @@ describe("usePodCapabilities", () => {
       const { isCodex } = usePodCapabilities(podId);
 
       expect(isCodex.value).toBe(true);
-    });
-
-    it("isRunModeEnabled 應為 false（Codex 不支援）", () => {
-      injectAllCapabilities();
-      const podId = setupPod("codex");
-      const { isRunModeEnabled } = usePodCapabilities(podId);
-
-      expect(isRunModeEnabled.value).toBe(false);
     });
 
     it("isPluginEnabled 應為 true（Codex 支援 plugin）", () => {
@@ -182,7 +171,6 @@ describe("usePodCapabilities", () => {
         isCommandEnabled,
         isMcpEnabled,
         isIntegrationEnabled,
-        isRunModeEnabled,
       } = usePodCapabilities(podId);
 
       expect(isPluginEnabled.value).toBe(true);
@@ -190,7 +178,6 @@ describe("usePodCapabilities", () => {
       expect(isCommandEnabled.value).toBe(true);
       expect(isMcpEnabled.value).toBe(true);
       expect(isIntegrationEnabled.value).toBe(true);
-      expect(isRunModeEnabled.value).toBe(true);
     });
 
     it("capabilities 應等於 Claude full capabilities（從 store 讀取）", () => {
@@ -229,7 +216,6 @@ describe("usePodCapabilities", () => {
         isCommandEnabled,
         isMcpEnabled,
         isIntegrationEnabled,
-        isRunModeEnabled,
       } = usePodCapabilities(podId);
 
       expect(isPluginEnabled.value).toBe(false);
@@ -237,7 +223,6 @@ describe("usePodCapabilities", () => {
       expect(isCommandEnabled.value).toBe(false);
       expect(isMcpEnabled.value).toBe(false);
       expect(isIntegrationEnabled.value).toBe(false);
-      expect(isRunModeEnabled.value).toBe(false);
     });
   });
 
@@ -330,27 +315,6 @@ describe("usePodCapabilities", () => {
       await nextTick();
 
       expect(isPluginEnabled.value).toBe(false);
-    });
-
-    it("syncFromPayload 將 codex 的 runMode 設為 true 後，isRunModeEnabled 應變為 true", async () => {
-      injectAllCapabilities();
-      const podId = setupPod("codex");
-      const capabilityStore = useProviderCapabilityStore();
-      const { isRunModeEnabled } = usePodCapabilities(podId);
-
-      // 初始 codex → runMode: false
-      expect(isRunModeEnabled.value).toBe(false);
-
-      // 模擬後端回傳 codex 功能表，將 runMode 開啟
-      capabilityStore.syncFromPayload([
-        {
-          name: "codex",
-          capabilities: { ...CODEX_CAPABILITIES, runMode: true },
-        },
-      ]);
-      await nextTick();
-
-      expect(isRunModeEnabled.value).toBe(true);
     });
 
     it("syncFromPayload 更新 capabilities 後，整個 capabilities computed 應同步反映", async () => {

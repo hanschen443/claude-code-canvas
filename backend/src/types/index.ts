@@ -31,6 +31,7 @@ export type {
   AutoTriggerMode,
   DecideStatus,
   ConnectionStatus,
+  AiDecideModelType,
 } from "./connection.js";
 
 export type {

@@ -13,7 +13,6 @@ export interface UsePodCapabilitiesReturn {
   isCommandEnabled: ComputedRef<boolean>;
   isMcpEnabled: ComputedRef<boolean>;
   isIntegrationEnabled: ComputedRef<boolean>;
-  isRunModeEnabled: ComputedRef<boolean>;
 }
 
 /**
@@ -53,13 +52,10 @@ export function usePodCapabilities(
   /** MCP slot 是否啟用 */
   const isMcpEnabled = computed((): boolean => capabilities.value.mcp);
 
-  /** Integration 是否啟用（保留給未來使用） */
+  /** Integration 是否啟用 */
   const isIntegrationEnabled = computed(
     (): boolean => capabilities.value.integration,
   );
-
-  /** RunMode 是否啟用（保留給未來使用） */
-  const isRunModeEnabled = computed((): boolean => capabilities.value.runMode);
 
   return {
     capabilities,
@@ -69,6 +65,5 @@ export function usePodCapabilities(
     isCommandEnabled,
     isMcpEnabled,
     isIntegrationEnabled,
-    isRunModeEnabled,
   };
 }

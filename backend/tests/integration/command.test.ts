@@ -772,13 +772,11 @@ describe("Command 跨 Provider 展開行為", () => {
     expect(msg).toContain("execute");
   });
 
-  // ── 17. Capability guard：Codex + multiInstance=true 被擋下 ───────────────────
-  // 設計說明：Codex 不支援 runMode，因此在 handlePodSetMultiInstance 階段
-  // assertCapability("runMode") 會直接以 CAPABILITY_NOT_SUPPORTED 擋下，
-  // 且 podStore.setMultiInstance 不被呼叫，pod.multiInstance 維持 false。
-  // chatHandlers.ts 的 RUN_NOT_SUPPORTED 路徑因此永遠不會被觸及。
+  // ── 17. Codex Pod 能正常切換 multiInstance ──────────────────────────────────
+  // 設計說明：runMode capability 已移除，所有 provider 均支援 multiInstance。
+  // Codex Pod 設定 multiInstance=true 應成功寫入並廣播，不被擋下。
 
-  it("17. Codex Pod 設定 multiInstance=true（Run mode）時，被 CAPABILITY_NOT_SUPPORTED 擋下（command=true 不影響）", async () => {
+  it("17. Codex Pod 設定 multiInstance=true 時應成功（不再被 capability 擋下）", async () => {
     const canvasId = server.canvasId;
 
     const pod = await createPod(client, {
@@ -786,7 +784,7 @@ describe("Command 跨 Provider 展開行為", () => {
       provider: "codex",
     });
 
-    // 嘗試啟用 multiInstance；Codex 不支援 runMode，應回傳 success=false
+    // 啟用 multiInstance；runMode capability 已移除，應正常回傳 success=true
     const setResponse = await emitAndWaitResponse<
       PodSetMultiInstancePayload,
       PodMultiInstanceSetPayload
@@ -797,13 +795,13 @@ describe("Command 跨 Provider 展開行為", () => {
       { requestId: uuidv4(), canvasId, podId: pod.id, multiInstance: true },
     );
 
-    // 設定被擋下，success=false，code 為 CAPABILITY_NOT_SUPPORTED
-    expect(setResponse.success).toBe(false);
+    // 設定成功
+    expect(setResponse.success).toBe(true);
 
-    // pod.multiInstance 維持 false（沒有被寫入）
+    // pod.multiInstance 已被寫入為 true
     const { podStore: ps } = await import("../../src/services/podStore.js");
     const reloaded = ps.getById(canvasId, pod.id);
-    expect(reloaded?.multiInstance).toBe(false);
+    expect(reloaded?.multiInstance).toBe(true);
   });
 
   // ── 18. Pod 已綁 Command，使用者輸入 /help（純文字斜線）─────────────────────────

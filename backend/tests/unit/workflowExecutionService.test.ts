@@ -88,6 +88,8 @@ function createPipelineExecuteImpl(
       context.canvasId,
       context.sourcePodId,
       context.connection.targetPodId,
+      "claude",
+      context.connection.summaryModel ?? "sonnet",
     );
 
     const { isMultiInput, requiredSourcePodIds } =
@@ -436,6 +438,8 @@ describe("WorkflowExecutionService", () => {
         canvasId,
         sourcePodId,
         targetPodId,
+        "claude",
+        "sonnet",
       );
       expect(aiDecideService.decideConnections).not.toHaveBeenCalled();
     });
@@ -1174,8 +1178,9 @@ describe("WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
       canvasId,
       sourcePodId,
       targetPodId,
+      "claude",
+      "sonnet",
       mockRunContext,
-      undefined,
       "auto",
     );
 
@@ -1205,8 +1210,9 @@ describe("WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
       canvasId,
       sourcePodId,
       targetPodId,
+      "claude",
+      "sonnet",
       mockRunContext,
-      undefined,
       "direct",
     );
 
@@ -1232,6 +1238,8 @@ describe("WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
       canvasId,
       sourcePodId,
       targetPodId,
+      "claude",
+      "sonnet",
       mockRunContext,
     );
 

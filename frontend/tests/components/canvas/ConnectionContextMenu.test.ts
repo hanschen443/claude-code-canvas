@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { setupStoreTest } from "../../helpers/testSetup";
 import ConnectionContextMenu from "@/components/canvas/ConnectionContextMenu.vue";
@@ -8,11 +8,45 @@ const mockUpdateConnectionSummaryModel = vi.fn();
 const mockUpdateConnectionAiDecideModel = vi.fn();
 const mockToast = vi.fn();
 
+/** 模擬上游 Pod 為 Claude provider，使 summaryModelOptions 回傳 Haiku/Sonnet/Opus */
+const mockFindConnectionById = vi.fn().mockReturnValue({
+  id: "conn-123",
+  sourcePodId: "pod-upstream",
+  triggerMode: "auto",
+  summaryModel: "sonnet",
+  aiDecideModel: "sonnet",
+});
+
+/** 可在測試中動態調整的 mock 函式，用於切換上游 Pod provider */
+const mockGetPodById = vi
+  .fn()
+  .mockReturnValue({ id: "pod-upstream", provider: "claude" });
+
+/** 可在測試中動態調整的 mock 函式，用於切換上游 provider 的可選模型 */
+const mockGetAvailableModels = vi.fn().mockReturnValue([
+  { value: "haiku", label: "Haiku" },
+  { value: "sonnet", label: "Sonnet" },
+  { value: "opus", label: "Opus" },
+]);
+
 vi.mock("@/stores/connectionStore", () => ({
   useConnectionStore: () => ({
     updateConnectionTriggerMode: mockUpdateConnectionTriggerMode,
     updateConnectionSummaryModel: mockUpdateConnectionSummaryModel,
     updateConnectionAiDecideModel: mockUpdateConnectionAiDecideModel,
+    findConnectionById: mockFindConnectionById,
+  }),
+}));
+
+vi.mock("@/stores/pod/podStore", () => ({
+  usePodStore: () => ({
+    getPodById: mockGetPodById,
+  }),
+}));
+
+vi.mock("@/stores/providerCapabilityStore", () => ({
+  useProviderCapabilityStore: () => ({
+    getAvailableModels: mockGetAvailableModels,
   }),
 }));
 
@@ -62,6 +96,16 @@ async function openAiModelMenu(wrapper: ReturnType<typeof mountMenu>) {
 
 describe("ConnectionContextMenu", () => {
   setupStoreTest();
+
+  // 每次測試前重置為 Claude 預設狀態，避免跨測試干擾
+  beforeEach(() => {
+    mockGetPodById.mockReturnValue({ id: "pod-upstream", provider: "claude" });
+    mockGetAvailableModels.mockReturnValue([
+      { value: "haiku", label: "Haiku" },
+      { value: "sonnet", label: "Sonnet" },
+      { value: "opus", label: "Opus" },
+    ]);
+  });
 
   describe("Summary Model 區塊渲染", () => {
     it("應顯示 Summary Model 標題文字", () => {
@@ -598,6 +642,98 @@ describe("ConnectionContextMenu", () => {
       await wrapper.vm.$nextTick();
 
       expect(wrapper.emitted("close")).toBeFalsy();
+    });
+  });
+
+  describe("Summary Model 子選單依上游 provider 動態渲染", () => {
+    it("上游是 Claude 時 Summary Model 子選單應渲染三個 Claude 模型（Haiku/Sonnet/Opus）", async () => {
+      // mockGetPodById 與 mockGetAvailableModels 已在 beforeEach 設為 Claude 預設
+      const wrapper = mountMenu();
+      await openSummaryMenu(wrapper);
+
+      const buttons = wrapper.findAll("button");
+      const labels = buttons.map((b) => b.text());
+      expect(labels.some((l) => l.includes("Haiku"))).toBe(true);
+      expect(labels.some((l) => l.includes("Sonnet"))).toBe(true);
+      expect(labels.some((l) => l.includes("Opus"))).toBe(true);
+    });
+
+    it("上游是 Codex 時 Summary Model 子選單應渲染三個 Codex 模型（GPT-5.4/GPT-5.5/GPT-5.6）", async () => {
+      mockGetPodById.mockReturnValue({ id: "pod-upstream", provider: "codex" });
+      mockGetAvailableModels.mockReturnValue([
+        { value: "gpt-5.4", label: "GPT-5.4" },
+        { value: "gpt-5.5", label: "GPT-5.5" },
+        { value: "gpt-5.6", label: "GPT-5.6" },
+      ]);
+
+      const wrapper = mountMenu();
+      await openSummaryMenu(wrapper);
+
+      const buttons = wrapper.findAll("button");
+      const labels = buttons.map((b) => b.text());
+      expect(labels.some((l) => l.includes("GPT-5.4"))).toBe(true);
+      expect(labels.some((l) => l.includes("GPT-5.5"))).toBe(true);
+      expect(labels.some((l) => l.includes("GPT-5.6"))).toBe(true);
+    });
+
+    it("上游是 Codex 時，點擊 GPT-5.5 應呼叫 updateConnectionSummaryModel 並傳入正確 value", async () => {
+      mockGetPodById.mockReturnValue({ id: "pod-upstream", provider: "codex" });
+      mockGetAvailableModels.mockReturnValue([
+        { value: "gpt-5.4", label: "GPT-5.4" },
+        { value: "gpt-5.5", label: "GPT-5.5" },
+      ]);
+      mockUpdateConnectionSummaryModel.mockResolvedValue({ id: "conn-123" });
+
+      const wrapper = mountMenu({ currentSummaryModel: "gpt-5.4" as never });
+      await openSummaryMenu(wrapper);
+
+      const buttons = wrapper.findAll("button");
+      const gpt55Btn = buttons.find((b) => b.text().includes("GPT-5.5"));
+      await gpt55Btn?.trigger("click");
+      await wrapper.vm.$nextTick();
+
+      expect(mockUpdateConnectionSummaryModel).toHaveBeenCalledWith(
+        "conn-123",
+        "gpt-5.5",
+      );
+    });
+
+    it("AI Decide Model 子選單在上游是 Claude 時仍只顯示 Claude 三個模型", async () => {
+      // beforeEach 已設定 Claude 上游
+      const wrapper = mountMenu({ currentTriggerMode: "ai-decide" });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const labels = buttons.map((b) => b.text());
+      expect(labels.some((l) => l.includes("Haiku"))).toBe(true);
+      expect(labels.some((l) => l.includes("Sonnet"))).toBe(true);
+      expect(labels.some((l) => l.includes("Opus"))).toBe(true);
+      // 不應有 Codex 模型
+      expect(labels.some((l) => l.includes("GPT"))).toBe(false);
+    });
+
+    it("AI Decide Model 子選單在上游是 Codex 時仍只顯示 Claude 三個模型（不受 provider 影響）", async () => {
+      mockGetPodById.mockReturnValue({ id: "pod-upstream", provider: "codex" });
+      mockGetAvailableModels.mockReturnValue([
+        { value: "gpt-5.4", label: "GPT-5.4" },
+        { value: "gpt-5.5", label: "GPT-5.5" },
+      ]);
+
+      const wrapper = mountMenu({ currentTriggerMode: "ai-decide" });
+      await openAiModelMenu(wrapper);
+
+      const relativeWrappers = wrapper.findAll(".relative");
+      const aiModelWrapper = relativeWrappers[1]!;
+      const buttons = aiModelWrapper.findAll("button");
+      const labels = buttons.map((b) => b.text());
+      // AI Decide Model 硬編碼 Claude 三選一，不受上游 provider 影響
+      expect(labels.some((l) => l.includes("Haiku"))).toBe(true);
+      expect(labels.some((l) => l.includes("Sonnet"))).toBe(true);
+      expect(labels.some((l) => l.includes("Opus"))).toBe(true);
+      // 不應有 Codex 模型
+      expect(labels.some((l) => l.includes("GPT"))).toBe(false);
     });
   });
 });

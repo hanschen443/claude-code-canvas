@@ -19,7 +19,7 @@ describe("providerRegistry", () => {
 // getProvider — metadata.capabilities
 // ================================================================
 describe("getProvider().metadata.capabilities", () => {
-  it("claude 的 capabilities 應全部為 true", () => {
+  it("claude 的 capabilities 應全部為 true（runMode 已移除）", () => {
     const caps = getProvider("claude").metadata.capabilities;
 
     expect(caps.chat).toBe(true);
@@ -28,10 +28,9 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
     expect(caps.integration).toBe(true);
-    expect(caps.runMode).toBe(true);
   });
 
-  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true，其餘全部 false", () => {
+  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true，integration=false", () => {
     const caps = getProvider("codex").metadata.capabilities;
 
     expect(caps.chat).toBe(true);
@@ -40,7 +39,6 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
     expect(caps.integration).toBe(false);
-    expect(caps.runMode).toBe(false);
   });
 });
 

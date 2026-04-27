@@ -1,7 +1,6 @@
 import type {
   TriggerMode,
   Connection,
-  ModelType,
   ContentBlock,
 } from "../../types/index.js";
 import type {
@@ -13,6 +12,7 @@ import type {
   TriggerWorkflowWithSummaryParams,
   SettlementPathway,
 } from "./types.js";
+import type { ProviderName } from "../provider/index.js";
 import { connectionStore } from "../connectionStore.js";
 import { podStore } from "../podStore.js";
 import { summaryService } from "../summaryService.js";
@@ -69,11 +69,17 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     canvasId: string,
     sourcePodId: string,
     targetPodId: string,
+    provider: ProviderName,
+    summaryModel: string,
     runContext?: RunContext,
-    summaryModel?: ModelType,
     pathway?: SettlementPathway,
     delegate?: WorkflowStatusDelegate,
-  ): Promise<{ content: string; isSummarized: boolean } | null> {
+  ): Promise<{
+    content: string;
+    isSummarized: boolean;
+    /** disposableChatService 實際使用的模型；fallback 路徑下為 undefined */
+    resolvedModel?: string;
+  } | null> {
     const resolvedDelegate = delegate ?? createStatusDelegate(runContext);
 
     resolvedDelegate.markSummarizing(canvasId, sourcePodId);
@@ -82,13 +88,19 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
       canvasId,
       sourcePodId,
       targetPodId,
-      runContext,
+      provider,
       summaryModel,
+      runContext,
     );
 
     if (summaryResult.success) {
       resolvedDelegate.onSummaryComplete(canvasId, sourcePodId, pathway);
-      return { content: summaryResult.summary, isSummarized: true };
+      return {
+        content: summaryResult.summary,
+        isSummarized: true,
+        // resolvedModel 僅在 disposableChatService 成功時才有值
+        resolvedModel: summaryResult.resolvedModel,
+      };
     }
 
     logger.error("Workflow", "Error", `生成摘要失敗：${summaryResult.error}`);
@@ -100,6 +112,7 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
     }
 
     resolvedDelegate.onSummaryComplete(canvasId, sourcePodId, pathway);
+    // fallback 路徑沒有 resolvedModel（直接取原始訊息，未經 disposableChat）
     return fallback;
   }
 

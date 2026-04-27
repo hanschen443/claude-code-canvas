@@ -76,7 +76,6 @@ vi.mock("@/components/pod/PodActions.vue", () => ({
       "scheduleTooltip",
       "isScheduleFiredAnimating",
       "isWorkflowRunning",
-      "isRunModeEnabled",
     ],
   },
 }));
@@ -215,7 +214,13 @@ vi.mock("@/composables/pod/usePodAnchorDrag", () => ({
 
 vi.mock("@/composables/pod/usePodCapabilities", () => ({
   usePodCapabilities: () => ({
-    isRunModeEnabled: computed(() => false),
+    capabilities: computed(() => ({})),
+    isCodex: computed(() => false),
+    isPluginEnabled: computed(() => false),
+    isRepositoryEnabled: computed(() => false),
+    isCommandEnabled: computed(() => false),
+    isMcpEnabled: computed(() => false),
+    isIntegrationEnabled: computed(() => false),
   }),
 }));
 

@@ -4,7 +4,7 @@ import { commandService } from "../../src/services/commandService.js";
 import { podStore } from "../../src/services/podStore.js";
 import { messageStore } from "../../src/services/messageStore.js";
 import { runStore } from "../../src/services/runStore.js";
-import { claudeService } from "../../src/services/claude/claudeService.js";
+import * as disposableChatService from "../../src/services/disposableChatService.js";
 import { summaryPromptBuilder } from "../../src/services/summaryPromptBuilder.js";
 import { logger } from "../../src/utils/logger.js";
 import type { RunContext } from "../../src/types/run.js";
@@ -13,6 +13,7 @@ describe("SummaryService", () => {
   const mockSourcePod = {
     id: "source-pod",
     name: "Source Pod",
+    provider: "claude" as const,
     model: "claude-sonnet-4-5-20250929" as const,
     sessionId: null,
     repositoryId: null,
@@ -24,6 +25,7 @@ describe("SummaryService", () => {
   const mockTargetPod = {
     id: "target-pod",
     name: "Target Pod",
+    provider: "claude" as const,
     model: "claude-sonnet-4-5-20250929" as const,
     sessionId: null,
     repositoryId: null,
@@ -66,10 +68,11 @@ describe("SummaryService", () => {
     // runStore
     vi.spyOn(runStore, "getRunMessages").mockReturnValue(mockMessages);
 
-    // claudeService
-    vi.spyOn(claudeService, "executeDisposableChat").mockResolvedValue({
+    // disposableChatService
+    vi.spyOn(disposableChatService, "executeDisposableChat").mockResolvedValue({
       success: true,
       content: "Summary result",
+      resolvedModel: "claude-sonnet-4-5-20250929",
     });
 
     // summaryPromptBuilder
@@ -114,6 +117,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(commandService.getContent).toHaveBeenCalledWith("review-command");
@@ -129,6 +134,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(commandService.getContent).not.toHaveBeenCalled();
@@ -159,6 +166,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(commandService.getContent).toHaveBeenCalledWith(
@@ -194,6 +203,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(summaryPromptBuilder.buildUserPrompt).toHaveBeenCalledWith({
@@ -217,6 +228,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
         mockRunContext,
       );
 
@@ -232,6 +245,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(messageStore.getMessages).toHaveBeenCalledWith("source-pod");
@@ -245,6 +260,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
         mockRunContext,
       );
 
@@ -254,75 +271,61 @@ describe("SummaryService", () => {
   });
 
   describe("generateSummaryForTarget 使用傳入的 summaryModel 參數", () => {
-    it("呼叫 executeDisposableChat 時帶入傳入的 summaryModel", async () => {
+    it("呼叫 executeDisposableChat 時帶入傳入的 provider 與 summaryModel", async () => {
       await summaryService.generateSummaryForTarget(
         "canvas-1",
         "source-pod",
         "target-pod",
-        undefined,
+        "claude",
         "opus",
       );
 
-      expect(claudeService.executeDisposableChat).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "opus" }),
+      expect(disposableChatService.executeDisposableChat).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "claude", model: "opus" }),
+      );
+    });
+
+    it("codex provider 時帶入 provider=codex 與對應 model", async () => {
+      await summaryService.generateSummaryForTarget(
+        "canvas-1",
+        "source-pod",
+        "target-pod",
+        "codex",
+        "gpt-5.4",
+      );
+
+      expect(disposableChatService.executeDisposableChat).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "codex", model: "gpt-5.4" }),
       );
     });
   });
 
-  describe("generateSummaryForTarget 錯誤處理", () => {
-    it("Source Pod 不存在時回傳錯誤", async () => {
-      (podStore.getById as any).mockImplementation(
-        (canvasId: string, podId: string) => {
-          if (podId === "target-pod") return mockTargetPod;
-          return null;
-        },
-      );
-
-      const result = await summaryService.generateSummaryForTarget(
-        "canvas-1",
-        "nonexistent",
-        "target-pod",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("找不到來源 Pod：nonexistent");
-    });
-
-    it("Target Pod 不存在時回傳錯誤", async () => {
-      (podStore.getById as any).mockImplementation(
-        (canvasId: string, podId: string) => {
-          if (podId === "source-pod") return mockSourcePod;
-          return null;
-        },
-      );
-
-      const result = await summaryService.generateSummaryForTarget(
-        "canvas-1",
-        "source-pod",
-        "nonexistent",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("找不到目標 Pod：nonexistent");
-    });
-
-    it("Source Pod 沒有訊息時回傳錯誤", async () => {
-      (messageStore.getMessages as any).mockReturnValue([]);
+  describe("generateSummaryForTarget resolvedModel 回傳", () => {
+    it("成功時 resolvedModel 應包含實際使用的模型名稱", async () => {
+      (disposableChatService.executeDisposableChat as any).mockResolvedValue({
+        success: true,
+        content: "Summary result",
+        resolvedModel: "claude-sonnet-4-5-20250929",
+      });
 
       const result = await summaryService.generateSummaryForTarget(
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("沒有訊息記錄");
+      expect(result.success).toBe(true);
+      expect(result.resolvedModel).toBe("claude-sonnet-4-5-20250929");
     });
 
-    it("claude 執行失敗但有 fallback 訊息時，應回傳 success: true 並使用 fallback 內容", async () => {
-      (claudeService.executeDisposableChat as any).mockResolvedValue({
+    it("fallback 路徑時 resolvedModel 不應存在", async () => {
+      (disposableChatService.executeDisposableChat as any).mockResolvedValue({
         success: false,
-        error: "claude 發生錯誤",
+        content: "",
+        resolvedModel: "claude-sonnet-4-5-20250929",
+        error: "執行失敗",
       });
 
       const messagesWithAssistant: any[] = [
@@ -345,15 +348,112 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.resolvedModel).toBeUndefined();
+    });
+  });
+
+  describe("generateSummaryForTarget 錯誤處理", () => {
+    it("Source Pod 不存在時回傳錯誤", async () => {
+      (podStore.getById as any).mockImplementation(
+        (canvasId: string, podId: string) => {
+          if (podId === "target-pod") return mockTargetPod;
+          return null;
+        },
+      );
+
+      const result = await summaryService.generateSummaryForTarget(
+        "canvas-1",
+        "nonexistent",
+        "target-pod",
+        "claude",
+        "sonnet",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("找不到來源 Pod：nonexistent");
+    });
+
+    it("Target Pod 不存在時回傳錯誤", async () => {
+      (podStore.getById as any).mockImplementation(
+        (canvasId: string, podId: string) => {
+          if (podId === "source-pod") return mockSourcePod;
+          return null;
+        },
+      );
+
+      const result = await summaryService.generateSummaryForTarget(
+        "canvas-1",
+        "source-pod",
+        "nonexistent",
+        "claude",
+        "sonnet",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("找不到目標 Pod：nonexistent");
+    });
+
+    it("Source Pod 沒有訊息時回傳錯誤", async () => {
+      (messageStore.getMessages as any).mockReturnValue([]);
+
+      const result = await summaryService.generateSummaryForTarget(
+        "canvas-1",
+        "source-pod",
+        "target-pod",
+        "claude",
+        "sonnet",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("沒有訊息記錄");
+    });
+
+    it("disposableChat 執行失敗但有 fallback 訊息時，應回傳 success: true 並使用 fallback 內容", async () => {
+      (disposableChatService.executeDisposableChat as any).mockResolvedValue({
+        success: false,
+        content: "",
+        resolvedModel: "sonnet",
+        error: "執行失敗",
+      });
+
+      const messagesWithAssistant: any[] = [
+        {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Hello",
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "fallback content",
+          timestamp: new Date().toISOString(),
+        },
+      ];
+      (messageStore.getMessages as any).mockReturnValue(messagesWithAssistant);
+
+      const result = await summaryService.generateSummaryForTarget(
+        "canvas-1",
+        "source-pod",
+        "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(result.success).toBe(true);
       expect(result.summary).toBe("fallback content");
     });
 
-    it("claude 執行失敗且無 fallback 訊息時，應回傳 success: false", async () => {
-      (claudeService.executeDisposableChat as any).mockResolvedValue({
+    it("disposableChat 執行失敗且無 fallback 訊息時，應回傳 success: false", async () => {
+      (disposableChatService.executeDisposableChat as any).mockResolvedValue({
         success: false,
+        content: "",
+        resolvedModel: "sonnet",
         error: "some error",
       });
 
@@ -373,6 +473,8 @@ describe("SummaryService", () => {
         "canvas-1",
         "source-pod",
         "target-pod",
+        "claude",
+        "sonnet",
       );
 
       expect(result.success).toBe(false);

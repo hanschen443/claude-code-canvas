@@ -53,7 +53,6 @@ function mountPickerWithDefaults(options?: {
           command: true,
           mcp: true,
           integration: true,
-          runMode: true,
         },
         defaultOptions: { model: options?.claudeModel ?? CLAUDE_TEST_MODEL },
       },
@@ -72,7 +71,6 @@ function mountPickerWithDefaults(options?: {
           command: false,
           mcp: false,
           integration: false,
-          runMode: false,
         },
         defaultOptions: { model: options?.codexModel ?? CODEX_TEST_MODEL },
       },
@@ -202,7 +200,6 @@ describe("ProviderPicker", () => {
             command: true,
             mcp: true,
             integration: true,
-            runMode: true,
           },
           // 刻意不帶 defaultOptions
         },

@@ -8,7 +8,7 @@ import type {
   Connection,
   Pod,
   TriggerMode,
-  ModelType,
+  AiDecideModelType,
 } from "../types";
 import { toPodPublicView } from "../types/index.js";
 import type {
@@ -276,8 +276,8 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
 
     const updates: Partial<{
       triggerMode: TriggerMode;
-      summaryModel: ModelType;
-      aiDecideModel: ModelType;
+      summaryModel: string;
+      aiDecideModel: AiDecideModelType;
     }> = {};
     if (triggerMode !== undefined) {
       updates.triggerMode = triggerMode;

@@ -25,7 +25,6 @@ const TEST_CAPABILITIES = {
   command: false,
   mcp: false,
   integration: false,
-  runMode: false,
 };
 
 // -----------------------------------------------------------------------

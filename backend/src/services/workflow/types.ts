@@ -2,10 +2,10 @@ import type {
   Connection,
   TriggerMode,
   AutoTriggerMode,
-  ModelType,
 } from "../../types/index.js";
 import type { RunContext } from "../../types/run.js";
 import type { WorkflowStatusDelegate } from "./workflowStatusDelegate.js";
+import type { ProviderName } from "../provider/index.js";
 
 /** settle 階段的路徑類別。ai-decide 在 settle 時歸類為 'auto' */
 export type SettlementPathway = "auto" | "direct";
@@ -130,11 +130,17 @@ export interface ExecutionServiceMethods {
     canvasId: string,
     sourcePodId: string,
     targetPodId: string,
+    provider: ProviderName,
+    summaryModel: string,
     runContext?: RunContext,
-    summaryModel?: ModelType,
     pathway?: SettlementPathway,
     delegate?: WorkflowStatusDelegate,
-  ): Promise<{ content: string; isSummarized: boolean } | null>;
+  ): Promise<{
+    content: string;
+    isSummarized: boolean;
+    /** disposableChatService 實際使用的模型；fallback 路徑下為 undefined */
+    resolvedModel?: string;
+  } | null>;
 
   triggerWorkflowWithSummary(
     params: TriggerWorkflowWithSummaryParams,

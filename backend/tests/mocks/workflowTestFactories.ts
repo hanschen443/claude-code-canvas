@@ -62,6 +62,8 @@ export function createMockConnection(
     decideStatus: "none",
     decideReason: null,
     connectionStatus: "idle",
+    summaryModel: "sonnet",
+    aiDecideModel: "sonnet",
     ...overrides,
   } as Connection;
 }

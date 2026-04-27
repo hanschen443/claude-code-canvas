@@ -77,7 +77,6 @@ export const MYAI_CAPABILITIES: Readonly<ProviderCapabilities> = Object.freeze({
   command: false,
   mcp: false,
   integration: false,
-  runMode: false,
 });
 ```
 

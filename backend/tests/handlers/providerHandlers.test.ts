@@ -126,17 +126,16 @@ describe("handleProviderList", () => {
     expect(claude).toBeDefined();
 
     const caps = claude.capabilities;
-    // 所有能力欄位皆應為 true
+    // 所有能力欄位皆應為 true（runMode 已移除）
     expect(caps.chat).toBe(true);
     expect(caps.plugin).toBe(true);
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
     expect(caps.integration).toBe(true);
-    expect(caps.runMode).toBe(true);
   });
 
-  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true，其餘全部 false", async () => {
+  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true，integration=false", async () => {
     await handleProviderList(
       CONNECTION_ID,
       { requestId: REQUEST_ID },
@@ -152,14 +151,13 @@ describe("handleProviderList", () => {
     expect(codex).toBeDefined();
 
     const caps = codex.capabilities;
-    // chat、command、repository、plugin 為 true，其餘全部 false
+    // chat、command、repository、plugin、mcp 為 true；integration 為 false；runMode 已移除
     expect(caps.chat).toBe(true);
     expect(caps.plugin).toBe(true);
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
     expect(caps.integration).toBe(false);
-    expect(caps.runMode).toBe(false);
   });
 
   it("claude 的 defaultOptions.model 應與 providerRegistry.claude.metadata.defaultOptions.model 一致", async () => {

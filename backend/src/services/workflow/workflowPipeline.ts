@@ -7,6 +7,10 @@ import type {
 } from "./types.js";
 import type { WorkflowStatusDelegate } from "./workflowStatusDelegate.js";
 import { podStore } from "../podStore.js";
+import { connectionStore } from "../connectionStore.js";
+import { socketService } from "../socketService.js";
+import { WebSocketResponseEvents } from "../../schemas/index.js";
+import type { ConnectionUpdatedPayload } from "../../types/index.js";
 import { runStore, TRIGGERABLE_STATUSES } from "../runStore.js";
 import { logger } from "../../utils/logger.js";
 import { LazyInitializable } from "./lazyInitializable.js";
@@ -70,8 +74,10 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       }
     }
 
-    const sourcePodName =
-      podStore.getById(canvasId, sourcePodId)?.name ?? sourcePodId;
+    const sourcePod = podStore.getById(canvasId, sourcePodId);
+    const sourcePodName = sourcePod?.name ?? sourcePodId;
+    // provider 來自 sourcePod，若找不到則預設 "claude" 確保向下相容
+    const provider = sourcePod?.provider ?? "claude";
 
     logger.log(
       "Workflow",
@@ -86,8 +92,9 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
         canvasId,
         sourcePodId,
         targetPodId,
-        runContext,
+        provider,
         connection.summaryModel,
+        runContext,
         pathway,
         delegate,
       );
@@ -99,6 +106,36 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
         `[generateSummary] 無法生成摘要或取得備用內容`,
       );
       return;
+    }
+
+    // lazy 修正：若 disposableChatService 因 model 不合法做了 fallback，
+    // resolvedModel 與原本的 connection.summaryModel 會不同，此時將合法值寫回 connection，
+    // 讓下次右鍵選單前端拿到的是合法的 model 值。
+    if (
+      summaryResult.resolvedModel &&
+      summaryResult.resolvedModel !== connection.summaryModel
+    ) {
+      const updatedConnection = connectionStore.update(canvasId, connectionId, {
+        summaryModel: summaryResult.resolvedModel,
+      });
+      if (updatedConnection) {
+        const broadcastPayload: ConnectionUpdatedPayload = {
+          requestId: "",
+          canvasId,
+          success: true,
+          connection: updatedConnection,
+        };
+        socketService.emitToCanvas(
+          canvasId,
+          WebSocketResponseEvents.CONNECTION_UPDATED,
+          broadcastPayload,
+        );
+        logger.log(
+          "Workflow",
+          "Pipeline",
+          `[lazyModel] connection "${connectionId}" summaryModel 已由 "${connection.summaryModel}" 修正為 "${summaryResult.resolvedModel}"`,
+        );
+      }
     }
 
     const collectResult = await this.runCollectSourcesStage(

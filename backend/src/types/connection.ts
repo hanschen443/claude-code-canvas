@@ -1,5 +1,3 @@
-import type { ModelType } from "./pod.js";
-
 export type AnchorPosition = "top" | "bottom" | "left" | "right";
 
 export type TriggerMode = "auto" | "ai-decide" | "direct";
@@ -23,6 +21,9 @@ export type ConnectionStatus =
   | "ai-rejected"
   | "ai-error";
 
+/** aiDecideModel 硬性鎖定 Claude 三選一（不接受第三方模型） */
+export type AiDecideModelType = "opus" | "sonnet" | "haiku";
+
 export interface Connection {
   id: string;
   sourcePodId: string;
@@ -33,6 +34,8 @@ export interface Connection {
   decideStatus: DecideStatus;
   decideReason: string | null;
   connectionStatus: ConnectionStatus;
-  summaryModel: ModelType;
-  aiDecideModel: ModelType;
+  /** summaryModel 接受任意模型名稱（如 "sonnet"、"gpt-5.4"），由 service 層驗證 capability */
+  summaryModel: string;
+  /** aiDecideModel 僅允許 Claude 三選一 */
+  aiDecideModel: AiDecideModelType;
 }

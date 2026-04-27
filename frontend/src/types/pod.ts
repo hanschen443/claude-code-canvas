@@ -71,7 +71,6 @@ export interface ProviderCapabilities {
   command: boolean;
   mcp: boolean;
   integration: boolean;
-  runMode: boolean;
 }
 
 export type FrequencyType =

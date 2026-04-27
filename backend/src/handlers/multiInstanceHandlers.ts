@@ -5,7 +5,6 @@ import {
   validatePod,
   withCanvasId,
   emitPodUpdated,
-  assertCapability,
 } from "../utils/handlerHelpers.js";
 
 export const handlePodSetMultiInstance =
@@ -30,20 +29,7 @@ export const handlePodSetMultiInstance =
         return;
       }
 
-      // Capability 守門：僅在啟用方向（true）檢查，不支援 runMode 的 provider 拒絕開啟
-      if (
-        multiInstance === true &&
-        !assertCapability(
-          connectionId,
-          pod,
-          "runMode",
-          WebSocketResponseEvents.POD_MULTI_INSTANCE_SET,
-          requestId,
-        )
-      ) {
-        return;
-      }
-
+      // 所有 provider 均支援 multiInstance，直接寫入並廣播
       podStore.setMultiInstance(canvasId, podId, multiInstance);
 
       emitPodUpdated(

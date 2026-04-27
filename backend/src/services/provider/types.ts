@@ -48,8 +48,6 @@ export interface ProviderCapabilities {
   mcp: boolean;
   /** 是否支援 Integration */
   integration: boolean;
-  /** 是否支援 Run 模式 */
-  runMode: boolean;
 }
 
 /** Provider 串流事件的標準化格式（Discriminated Union） */

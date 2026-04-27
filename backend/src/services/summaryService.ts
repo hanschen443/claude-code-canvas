@@ -1,4 +1,4 @@
-import { claudeService } from "./claude/claudeService.js";
+import { executeDisposableChat } from "./disposableChatService.js";
 import { summaryPromptBuilder } from "./summaryPromptBuilder.js";
 import { podStore } from "./podStore.js";
 import { messageStore } from "./messageStore.js";
@@ -6,14 +6,17 @@ import { runStore } from "./runStore.js";
 import { commandService } from "./commandService.js";
 import { logger } from "../utils/logger.js";
 import { getLastAssistantMessage } from "../utils/messageHelper.js";
-import type { Pod, PersistedMessage, ModelType } from "../types/index.js";
+import type { Pod, PersistedMessage } from "../types/index.js";
 import type { RunContext } from "../types/run.js";
+import type { ProviderName } from "./provider/index.js";
 
 interface TargetSummaryResult {
   targetPodId: string;
   summary: string;
   success: boolean;
   error?: string;
+  /** 實際使用的模型名稱（disposableChatService 成功時才有值，可能因 fallback 與輸入不同） */
+  resolvedModel?: string;
 }
 
 async function buildSummaryContext(
@@ -46,8 +49,9 @@ class SummaryService {
     canvasId: string,
     sourcePodId: string,
     targetPodId: string,
+    provider: ProviderName,
+    summaryModel: string,
     runContext?: RunContext,
-    summaryModel?: ModelType,
   ): Promise<TargetSummaryResult> {
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) {
@@ -85,11 +89,12 @@ class SummaryService {
     const systemPrompt = summaryPromptBuilder.buildSystemPrompt();
     const userPrompt = summaryPromptBuilder.buildUserPrompt(context);
 
-    const result = await claudeService.executeDisposableChat({
+    const result = await executeDisposableChat({
+      provider,
+      model: summaryModel,
       systemPrompt,
       userMessage: userPrompt,
       workspacePath: sourcePod.workspacePath,
-      model: summaryModel ?? "sonnet",
     });
 
     if (!result.success) {
@@ -99,6 +104,7 @@ class SummaryService {
         `[SummaryService] 無法為目標 ${targetPodId} 生成摘要：${result.error ?? ""}`,
       );
 
+      // fallback 到上游最後一則 Assistant 訊息
       let fallbackContent: string | null;
       if (runContext) {
         const runMessages = runStore.getRunMessages(
@@ -125,7 +131,12 @@ class SummaryService {
       };
     }
 
-    return { targetPodId, summary: result.content, success: true };
+    return {
+      targetPodId,
+      summary: result.content,
+      success: true,
+      resolvedModel: result.resolvedModel,
+    };
   }
 }
 

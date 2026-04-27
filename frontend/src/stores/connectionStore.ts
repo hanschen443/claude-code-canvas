@@ -23,6 +23,7 @@ import { t } from "@/i18n";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
 import { DEFAULT_TOAST_DURATION_MS } from "@/lib/constants";
 import { DEFAULT_SUMMARY_MODEL, DEFAULT_AI_DECIDE_MODEL } from "@/types/config";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { createWorkflowEventHandlers } from "./workflowEventHandlers";
 import { removeById } from "@/lib/arrayHelpers";
 import type {
@@ -430,6 +431,18 @@ export const useConnectionStore = defineStore("connection", () => {
   ): Promise<Connection | null> {
     if (!validateNewConnection(sourcePodId, targetPodId)) return null;
 
+    // 依上游 Pod 的 provider 解析預設 summaryModel；
+    // 查不到 Pod 或 capability 尚未推送時 fallback 為 DEFAULT_SUMMARY_MODEL
+    const podStore = usePodStore();
+    const providerCapabilityStore = useProviderCapabilityStore();
+    const sourcePod = sourcePodId
+      ? podStore.getPodById(sourcePodId)
+      : undefined;
+    const resolvedSummaryModel: string =
+      (sourcePod
+        ? providerCapabilityStore.getDefaultModel(sourcePod.provider)
+        : undefined) ?? DEFAULT_SUMMARY_MODEL;
+
     const basePayload: {
       sourceAnchor: AnchorPosition;
       targetPodId: string;
@@ -462,7 +475,13 @@ export const useConnectionStore = defineStore("connection", () => {
 
     if (!result.success || !result.data.connection) return null;
 
-    return normalizeConnection(result.data.connection);
+    // 後端若未帶回 summaryModel，以上游 provider 預設模型填入
+    const rawConnection = result.data.connection;
+    if (!rawConnection.summaryModel) {
+      rawConnection.summaryModel = resolvedSummaryModel as ModelType;
+    }
+
+    return normalizeConnection(rawConnection);
   }
 
   async function deleteConnection(connectionId: string): Promise<void> {
@@ -670,6 +689,45 @@ export const useConnectionStore = defineStore("connection", () => {
     connections.value = removeById(connections.value, connectionId);
   }
 
+  /**
+   * 當上游 Pod 的 provider 被切換時，自動修正所有以該 Pod 為 source 的 connection summaryModel。
+   * 僅在「使用者主動切換 provider」的路徑呼叫，不在初始化載入時觸發，
+   * 避免 capability 尚未載入時把合法的 summaryModel 誤重置。
+   *
+   * 流程：
+   * 1. 找出所有 sourcePodId === podId 的 connection
+   * 2. 取上游 Pod 當前的 provider
+   * 3. 用 isModelValidForProvider 判斷 summaryModel 是否仍合法
+   * 4. 若不合法，取 getDefaultModel 作為新值，呼叫 updateConnectionSummaryModel
+   */
+  async function reconcileSummaryModelsForPod(podId: string): Promise<void> {
+    const podStore = usePodStore();
+    const providerCapabilityStore = useProviderCapabilityStore();
+
+    const pod = podStore.getPodById(podId);
+    if (!pod) return;
+
+    const provider = pod.provider;
+
+    const targets = connections.value.filter(
+      (conn) => conn.sourcePodId === podId,
+    );
+
+    for (const conn of targets) {
+      const currentModel = conn.summaryModel ?? DEFAULT_SUMMARY_MODEL;
+      const isValid = providerCapabilityStore.isModelValidForProvider(
+        provider,
+        currentModel,
+      );
+      if (!isValid) {
+        const newModel = providerCapabilityStore.getDefaultModel(provider);
+        if (newModel) {
+          await updateConnectionSummaryModel(conn.id, newModel as ModelType);
+        }
+      }
+    }
+  }
+
   // 切換 canvas 時重設 connection 相關狀態
   function resetForCanvasSwitch(): void {
     connections.value = [];
@@ -714,5 +772,6 @@ export const useConnectionStore = defineStore("connection", () => {
     updateConnectionFromEvent,
     removeConnectionFromEvent,
     resetForCanvasSwitch,
+    reconcileSummaryModelsForPod,
   };
 });

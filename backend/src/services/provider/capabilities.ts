@@ -9,10 +9,9 @@ export const CLAUDE_CAPABILITIES: Readonly<ProviderCapabilities> =
     command: true,
     mcp: true,
     integration: true,
-    runMode: true,
   });
 
-/** Codex Provider 支援聊天、指令、repository 與 plugin，其餘功能皆不支援 */
+/** Codex Provider 支援聊天、指令、repository 與 plugin，integration 不支援 */
 export const CODEX_CAPABILITIES: Readonly<ProviderCapabilities> = Object.freeze(
   {
     chat: true,
@@ -21,7 +20,6 @@ export const CODEX_CAPABILITIES: Readonly<ProviderCapabilities> = Object.freeze(
     command: true,
     mcp: true,
     integration: false,
-    runMode: false,
   },
 );
 

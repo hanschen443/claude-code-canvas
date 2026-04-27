@@ -15,7 +15,6 @@ import { usePodNoteBinding } from "@/composables/pod/usePodNoteBinding";
 import { useWorkflowClear } from "@/composables/pod/useWorkflowClear";
 import { usePodSchedule } from "@/composables/pod/usePodSchedule";
 import { usePodAnchorDrag } from "@/composables/pod/usePodAnchorDrag";
-import { usePodCapabilities } from "@/composables/pod/usePodCapabilities";
 import { useToast } from "@/composables/useToast";
 import { useI18n } from "vue-i18n";
 import {
@@ -140,9 +139,6 @@ const isWorkflowRunning = computed(() =>
 
 // toRef(() => ...) 的 getter 形式（Vue 3.3+）更語義化：此為「對 prop 的引用」非「衍生計算值」
 const computedPodId = toRef(() => props.pod.id);
-
-// 取得此 Pod 的 capability，用於守門不支援的功能入口
-const { isRunModeEnabled } = usePodCapabilities(computedPodId);
 
 const {
   showScheduleModal,
@@ -447,7 +443,6 @@ const handleContextMenu = (e: MouseEvent): void => {
         :schedule-tooltip="scheduleTooltip"
         :is-schedule-fired-animating="isScheduleFiredAnimating"
         :is-workflow-running="isWorkflowRunning"
-        :is-run-mode-enabled="isRunModeEnabled"
         @open-schedule-modal="handleOpenScheduleModal"
         @update:show-clear-dialog="showClearDialog = $event"
         @update:show-delete-dialog="showDeleteDialog = $event"

@@ -8,6 +8,13 @@ vi.mock("../../src/services/podStore.js", () => ({
 vi.mock("../../src/services/connectionStore.js", () => ({
   connectionStore: {
     findByTargetPodId: vi.fn().mockReturnValue([]),
+    update: vi.fn(),
+  },
+}));
+
+vi.mock("../../src/services/socketService.js", () => ({
+  socketService: {
+    emitToCanvas: vi.fn(),
   },
 }));
 
@@ -34,6 +41,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { workflowPipeline } from "../../src/services/workflow/workflowPipeline.js";
 import { podStore } from "../../src/services/podStore.js";
 import { connectionStore } from "../../src/services/connectionStore.js";
+import { socketService } from "../../src/services/socketService.js";
 import { runStore } from "../../src/services/runStore.js";
 import type {
   PipelineContext,
@@ -128,7 +136,8 @@ describe("WorkflowPipeline", () => {
         canvasId,
         sourcePodId,
         targetPodId,
-        undefined,
+        "claude",
+        "sonnet",
         undefined,
         "auto",
         undefined,
@@ -568,6 +577,86 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.generateSummaryWithFallback,
       ).toHaveBeenCalled();
+    });
+  });
+
+  describe("lazy 修正 summaryModel", () => {
+    it("resolvedModel 與 connection.summaryModel 不同時，應寫回並廣播", async () => {
+      const mockStrategy = createMockStrategy("auto");
+      const updatedConnection = createMockConnection({
+        id: connectionId,
+        sourcePodId,
+        targetPodId,
+        triggerMode: "auto",
+        summaryModel: "gpt-5.4",
+      });
+
+      // 模擬 disposableChatService fallback 到 gpt-5.4
+      (
+        mockExecutionService.generateSummaryWithFallback as any
+      ).mockResolvedValue({
+        content: "摘要",
+        isSummarized: true,
+        resolvedModel: "gpt-5.4",
+      });
+
+      (connectionStore.update as any).mockReturnValue(updatedConnection);
+
+      await workflowPipeline.execute(baseContext, mockStrategy);
+
+      // 應呼叫 connectionStore.update 寫回合法 model
+      expect(connectionStore.update).toHaveBeenCalledWith(
+        canvasId,
+        connectionId,
+        { summaryModel: "gpt-5.4" },
+      );
+
+      // 應廣播 CONNECTION_UPDATED 事件
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        canvasId,
+        expect.stringContaining("connection:updated"),
+        expect.objectContaining({
+          canvasId,
+          success: true,
+          connection: updatedConnection,
+        }),
+      );
+    });
+
+    it("resolvedModel 與 connection.summaryModel 相同時，不應觸發寫回", async () => {
+      const mockStrategy = createMockStrategy("auto");
+
+      // connection.summaryModel 預設為 "sonnet"，resolvedModel 也回傳 "sonnet"
+      (
+        mockExecutionService.generateSummaryWithFallback as any
+      ).mockResolvedValue({
+        content: "摘要",
+        isSummarized: true,
+        resolvedModel: "sonnet",
+      });
+
+      await workflowPipeline.execute(baseContext, mockStrategy);
+
+      expect(connectionStore.update).not.toHaveBeenCalled();
+      expect(socketService.emitToCanvas).not.toHaveBeenCalled();
+    });
+
+    it("resolvedModel 為 undefined（fallback 路徑）時，不應觸發寫回", async () => {
+      const mockStrategy = createMockStrategy("auto");
+
+      // fallback 路徑：resolvedModel 未定義
+      (
+        mockExecutionService.generateSummaryWithFallback as any
+      ).mockResolvedValue({
+        content: "fallback 內容",
+        isSummarized: false,
+        resolvedModel: undefined,
+      });
+
+      await workflowPipeline.execute(baseContext, mockStrategy);
+
+      expect(connectionStore.update).not.toHaveBeenCalled();
+      expect(socketService.emitToCanvas).not.toHaveBeenCalled();
     });
   });
 });

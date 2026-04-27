@@ -363,6 +363,26 @@ export const usePodStore = defineStore("pod", () => {
     }
   }
 
+  /**
+   * 切換指定 Pod 的 provider，並自動修正所有下游 connection 的 summaryModel。
+   * 此方法為「使用者主動切換 provider」的唯一入口，初始化載入時不應呼叫，
+   * 以避免 capability 尚未載入時誤重置 summaryModel。
+   */
+  async function updatePodProvider(
+    podId: string,
+    provider: string,
+    providerConfig: Record<string, unknown>,
+  ): Promise<void> {
+    const pod = findPodById(podId);
+    if (!pod) return;
+
+    pod.provider = provider;
+    pod.providerConfig = providerConfig as Pod["providerConfig"];
+
+    const connectionStore = useConnectionStore();
+    await connectionStore.reconcileSummaryModelsForPod(podId);
+  }
+
   /** 將 model 寫入 providerConfig.model（provider-agnostic） */
   function updatePodProviderConfigModel(podId: string, model: string): void {
     const pod = findPodById(podId);
@@ -527,6 +547,7 @@ export const usePodStore = defineStore("pod", () => {
     hideTypeMenu,
     updatePodField,
     clearPodOutputsByIds,
+    updatePodProvider,
     updatePodProviderConfigModel,
     updatePodRepository,
     updatePodCommand,

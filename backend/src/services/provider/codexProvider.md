@@ -104,7 +104,6 @@ abortSignal.addEventListener("abort", onAbort, { once: true });
 | `command` | ✗ | 無 Command 前綴機制 |
 | `mcp` | ✗ | 無 MCP Server 整合 |
 | `integration` | ✗ | 無 Integration Tool 建立機制 |
-| `runMode` | ✗ | 不支援 Run 模式（workflow 多 Pod 執行） |
 
 ---
 

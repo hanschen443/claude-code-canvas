@@ -250,7 +250,8 @@
       "summaryModelChangeFailed": "要約モデルを変更できません",
       "aiDecideModelChanged": "AI 判定モデルを変更しました",
       "aiDecideModelChangeFailed": "AI 判定モデルを変更できません",
-      "modelSwitched": "{model} に切り替えました"
+      "modelSwitched": "{model} に切り替えました",
+      "loading": "読み込み中..."
     },
     "confirmDelete": {
       "cannotDelete": "削除できません",

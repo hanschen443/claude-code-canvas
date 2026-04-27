@@ -22,7 +22,6 @@ import { executeStreamingChat } from "../services/claude/streamingChatExecutor.j
 import { injectUserMessage } from "../utils/chatHelpers.js";
 import { launchMultiInstanceRun } from "../utils/runChatHelpers.js";
 import { NormalModeExecutionStrategy } from "../services/normalExecutionStrategy.js";
-import { getProvider } from "../services/provider/index.js";
 import {
   buildCommandNotFoundMessage,
   tryExpandCommandMessage,
@@ -111,22 +110,6 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
     if (!pod) return;
 
     if (!validateIntegrationBindings(connectionId, pod, requestId)) return;
-
-    // Capability 守門：Codex Pod 不支援 Run 模式
-    if (
-      pod.multiInstance === true &&
-      !getProvider(pod.provider).metadata.capabilities.runMode
-    ) {
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_ERROR,
-        createI18nError("errors.runNotSupported", { provider: pod.provider }),
-        requestId,
-        pod.id,
-        "RUN_NOT_SUPPORTED",
-      );
-      return;
-    }
 
     const podName = pod.name;
 

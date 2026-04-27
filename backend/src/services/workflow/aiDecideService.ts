@@ -10,8 +10,7 @@ import { runStore } from "../runStore.js";
 import { commandService } from "../commandService.js";
 import { claudeService } from "../claude/claudeService.js";
 import { summaryPromptBuilder } from "../summaryPromptBuilder.js";
-import type { Connection } from "../../types/index.js";
-import type { ModelType } from "../../types/pod.js";
+import type { Connection, AiDecideModelType } from "../../types/index.js";
 import type { RunContext } from "../../types/run.js";
 import { logger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/errorHelpers.js";
@@ -54,7 +53,7 @@ class AiDecideService {
     sourcePod: NonNullable<ReturnType<typeof podStore.getById>>,
     sourceSummary: string,
     targets: AiDecideTargetInfo[],
-    model: ModelType,
+    model: AiDecideModelType,
   ): Promise<DecisionResults | null> {
     const context = {
       sourcePodName: sourcePod.name,
@@ -139,7 +138,7 @@ class AiDecideService {
     canvasId: string,
     sourcePodId: string,
     connections: Connection[],
-    summaryModel: ModelType,
+    summaryModel: string,
     runContext?: RunContext,
   ): Promise<
     | {
@@ -222,7 +221,7 @@ class AiDecideService {
     }
 
     // 依 aiDecideModel 分組，每組使用各自的模型進行 AI 決策
-    const groupByModel = new Map<ModelType, Connection[]>();
+    const groupByModel = new Map<AiDecideModelType, Connection[]>();
     for (const connection of connections) {
       const model = connection.aiDecideModel;
       const group = groupByModel.get(model) ?? [];
@@ -335,7 +334,7 @@ class AiDecideService {
     canvasId: string,
     sourcePodId: string,
     runContext?: RunContext,
-    summaryModel?: ModelType,
+    summaryModel?: string,
   ): Promise<string | null> {
     const sourcePod = podStore.getById(canvasId, sourcePodId);
     if (!sourcePod) return null;

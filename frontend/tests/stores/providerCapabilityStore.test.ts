@@ -27,7 +27,6 @@ const CLAUDE_TEST_CAPABILITIES = {
   command: true,
   mcp: true,
   integration: true,
-  runMode: true,
 };
 
 /** 測試用 Codex capabilities（chat + command + plugin 開啟） */
@@ -38,7 +37,6 @@ const CODEX_TEST_CAPABILITIES = {
   command: true,
   mcp: false,
   integration: false,
-  runMode: false,
 };
 
 /** 保守 fallback（找不到 provider 時應回傳的值） */
@@ -49,7 +47,6 @@ const CONSERVATIVE_FALLBACK = {
   command: false,
   mcp: false,
   integration: false,
-  runMode: false,
 };
 
 describe("providerCapabilityStore", () => {
@@ -89,11 +86,11 @@ describe("providerCapabilityStore", () => {
       store.syncFromPayload([
         {
           name: "codex",
-          capabilities: { ...CODEX_TEST_CAPABILITIES, runMode: true },
+          capabilities: { ...CODEX_TEST_CAPABILITIES, integration: true },
         },
       ]);
 
-      expect(store.capabilitiesByProvider["codex"]!.runMode).toBe(true);
+      expect(store.capabilitiesByProvider["codex"]!.integration).toBe(true);
     });
 
     it("多筆 providers 應全部寫入 state", () => {
@@ -320,7 +317,7 @@ describe("providerCapabilityStore", () => {
     it("provider 未寫入時 isCapabilityEnabled 應回 false", () => {
       const store = useProviderCapabilityStore();
 
-      expect(store.isCapabilityEnabled("codex", "runMode")).toBe(false);
+      expect(store.isCapabilityEnabled("codex", "integration")).toBe(false);
     });
 
     it("寫入後 isCapabilityEnabled('claude', 'plugin') 應回正確值", () => {
@@ -358,7 +355,7 @@ describe("providerCapabilityStore", () => {
         providers: [
           {
             name: "codex",
-            capabilities: { ...CODEX_TEST_CAPABILITIES, runMode: true },
+            capabilities: { ...CODEX_TEST_CAPABILITIES, integration: true },
           },
         ],
       });
@@ -366,7 +363,7 @@ describe("providerCapabilityStore", () => {
       await store.loadFromBackend();
 
       expect(store.loaded).toBe(true);
-      expect(store.capabilitiesByProvider["codex"]!.runMode).toBe(true);
+      expect(store.capabilitiesByProvider["codex"]!.integration).toBe(true);
     });
 
     it("後端回傳含 defaultOptions 時應寫入 defaultOptionsByProvider", async () => {

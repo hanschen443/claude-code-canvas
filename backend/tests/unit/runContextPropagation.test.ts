@@ -151,17 +151,6 @@ vi.mock("../../src/services/commandService.js", () => ({
   },
 }));
 
-// mock getProvider：claude 支援 runMode，codex 不支援
-vi.mock("../../src/services/provider/index.js", () => ({
-  getProvider: vi.fn((provider: string) => ({
-    metadata: {
-      capabilities: {
-        runMode: provider === "claude",
-      },
-    },
-  })),
-}));
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleChatSend } from "../../src/handlers/chatHandlers.js";
 import { podStore } from "../../src/services/podStore.js";

@@ -5,10 +5,13 @@ import type {
   TriggerMode,
   DecideStatus,
   ConnectionStatus,
-  ModelType,
+  AiDecideModelType,
 } from "../types";
 import { getDb } from "../database/index.js";
 import { getStatements } from "../database/statements.js";
+import { getProvider } from "./provider/index.js";
+import { podStore } from "./podStore.js";
+import { logger } from "../utils/logger.js";
 
 interface CreateConnectionData {
   sourcePodId: string;
@@ -16,8 +19,9 @@ interface CreateConnectionData {
   targetPodId: string;
   targetAnchor: AnchorPosition;
   triggerMode?: TriggerMode;
-  summaryModel?: ModelType;
-  aiDecideModel?: ModelType;
+  /** summaryModel 接受任意非空模型名稱 */
+  summaryModel?: string;
+  aiDecideModel?: AiDecideModelType;
 }
 
 function shouldResetDecideState(oldMode: string, newMode: string): boolean {
@@ -52,8 +56,8 @@ function rowToConnection(row: ConnectionRow): Connection {
     decideStatus: row.decide_status as DecideStatus,
     decideReason: row.decide_reason,
     connectionStatus: row.connection_status as ConnectionStatus,
-    summaryModel: row.summary_model as ModelType,
-    aiDecideModel: row.ai_decide_model as ModelType,
+    summaryModel: row.summary_model,
+    aiDecideModel: row.ai_decide_model as AiDecideModelType,
   };
 }
 
@@ -64,6 +68,30 @@ class ConnectionStore {
 
   create(canvasId: string, data: CreateConnectionData): Connection {
     const id = uuidv4();
+
+    // 從上游 Pod 取得 provider，用以決定 summaryModel 預設值與驗證合法性
+    const sourcePod = podStore.getById(canvasId, data.sourcePodId);
+    const provider = sourcePod?.provider ?? "claude";
+    const providerMeta = getProvider(provider).metadata;
+    const providerDefault =
+      (providerMeta.defaultOptions as { model?: string }).model ?? "sonnet";
+
+    let resolvedSummaryModel: string;
+    if (!data.summaryModel) {
+      // 客戶端未帶 summaryModel：使用上游 provider 的預設模型
+      resolvedSummaryModel = providerDefault;
+    } else if (providerMeta.availableModelValues.has(data.summaryModel)) {
+      // 客戶端帶了合法的 summaryModel：直接使用
+      resolvedSummaryModel = data.summaryModel;
+    } else {
+      // 客戶端帶了不合法的 summaryModel：fallback 到 provider 預設模型
+      logger.warn(
+        "Connection",
+        "Warn",
+        `[ConnectionStore] summaryModel "${data.summaryModel}" 不在 ${provider} 合法清單內，fallback 到預設模型 "${providerDefault}"`,
+      );
+      resolvedSummaryModel = providerDefault;
+    }
 
     this.stmts.insert.run({
       $id: id,
@@ -76,7 +104,7 @@ class ConnectionStore {
       $decideStatus: "none",
       $decideReason: null,
       $connectionStatus: "idle",
-      $summaryModel: data.summaryModel ?? "sonnet",
+      $summaryModel: resolvedSummaryModel,
       $aiDecideModel: data.aiDecideModel ?? "sonnet",
     });
 
@@ -132,8 +160,9 @@ class ConnectionStore {
       triggerMode: TriggerMode;
       decideStatus: DecideStatus;
       decideReason: string | null;
-      summaryModel: ModelType;
-      aiDecideModel: ModelType;
+      /** summaryModel 接受任意非空模型名稱 */
+      summaryModel: string;
+      aiDecideModel: AiDecideModelType;
     }>,
   ): Connection | undefined {
     const existing = this.getById(canvasId, id);

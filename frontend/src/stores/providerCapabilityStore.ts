@@ -24,7 +24,6 @@ const CONSERVATIVE_FALLBACK_CAPABILITIES: ProviderCapabilities = {
   command: false,
   mcp: false,
   integration: false,
-  runMode: false,
 };
 
 /**
@@ -177,6 +176,33 @@ export const useProviderCapabilityStore = defineStore(
         },
     );
 
+    /**
+     * 取得指定 Provider 的預設模型（availableModels 第一筆的 value）。
+     * 若 provider 尚未收到 metadata 或模型清單為空，回傳 undefined；
+     * 呼叫端應自行判斷是否 fallback 至 DEFAULT_SUMMARY_MODEL。
+     */
+    const getDefaultModel = computed(
+      () =>
+        (provider: PodProvider): string | undefined => {
+          const models = availableModelsByProvider.value[provider];
+          return models?.[0]?.value;
+        },
+    );
+
+    /**
+     * 判斷指定 model 是否為該 provider 的合法模型（存在於 availableModels 清單）。
+     * provider 尚未收到 metadata（清單為空）時，回傳 false，
+     * 避免在 capability 尚未載入時誤判所有 model 都合法。
+     */
+    const isModelValidForProvider = computed(
+      () =>
+        (provider: PodProvider, model: string): boolean => {
+          const models = availableModelsByProvider.value[provider];
+          if (!models || models.length === 0) return false;
+          return models.some((m) => m.value === model);
+        },
+    );
+
     // ---- Actions ----
 
     /**
@@ -250,6 +276,8 @@ export const useProviderCapabilityStore = defineStore(
       isCapabilityEnabled,
       getDefaultOptions,
       getAvailableModels,
+      getDefaultModel,
+      isModelValidForProvider,
       isKnownProvider,
       syncFromPayload,
       loadFromBackend,

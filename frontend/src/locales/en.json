@@ -403,7 +403,8 @@
       "summaryModelChangeFailed": "Unable to change summary model",
       "aiDecideModelChanged": "AI decide model changed",
       "aiDecideModelChangeFailed": "Unable to change AI decide model",
-      "modelSwitched": "Switched to {model}"
+      "modelSwitched": "Switched to {model}",
+      "loading": "Loading..."
     },
     "confirmDelete": {
       "cannotDelete": "Cannot delete",

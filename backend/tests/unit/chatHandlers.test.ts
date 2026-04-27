@@ -85,17 +85,6 @@ vi.mock("../../src/utils/chatCallbacks.js", () => ({
   onRunChatComplete: vi.fn(),
 }));
 
-// mock getProvider：預設 claude provider 支援 runMode
-vi.mock("../../src/services/provider/index.js", () => ({
-  getProvider: vi.fn((provider: string) => ({
-    metadata: {
-      capabilities: {
-        runMode: provider === "claude",
-      },
-    },
-  })),
-}));
-
 vi.mock("../../src/schemas/index.js", () => ({
   WebSocketResponseEvents: {
     POD_ERROR: "pod:error",
@@ -330,35 +319,11 @@ describe("handleChatSend", () => {
   });
 
   // ================================================================
-  // Capability 守門：Codex Pod + multiInstance 不支援 Run 模式
+  // 任何 provider 均可使用 multiInstance（runMode capability 已移除）
   // ================================================================
-  it("Codex Pod 且 multiInstance=true 時應回傳 RUN_NOT_SUPPORTED 錯誤，不執行後續 chat 邏輯", async () => {
-    // Codex provider：getProvider().metadata.capabilities.runMode === false
+  it("Codex Pod multiInstance=true 時應呼叫 launchMultiInstanceRun，不應有 RUN_NOT_SUPPORTED 錯誤", async () => {
+    // runMode capability 已移除，Codex 與 Claude 皆可使用 multiInstance
     const pod = makePod({ provider: "codex", multiInstance: true });
-    mockValidatePod.mockReturnValue(pod);
-
-    await handleChatSend(
-      CONNECTION_ID,
-      { podId: POD_ID, message: "開始 run" },
-      REQUEST_ID,
-    );
-
-    expect(mockEmitError).toHaveBeenCalledWith(
-      CONNECTION_ID,
-      "pod:error",
-      expect.objectContaining({ key: expect.any(String) }),
-      REQUEST_ID,
-      POD_ID,
-      "RUN_NOT_SUPPORTED",
-    );
-    // 不應進入後續的 launchMultiInstanceRun 或 executeStreamingChat
-    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
-    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
-  });
-
-  it("Claude Pod 且 multiInstance=true 時不應觸發 RUN_NOT_SUPPORTED 錯誤", async () => {
-    // Claude provider：getProvider().metadata.capabilities.runMode === true
-    const pod = makePod({ provider: "claude", multiInstance: true });
     mockValidatePod.mockReturnValue(pod);
     mockLaunchMultiInstanceRun.mockResolvedValue(undefined);
 
@@ -368,53 +333,9 @@ describe("handleChatSend", () => {
       REQUEST_ID,
     );
 
-    // 不應收到 RUN_NOT_SUPPORTED
-    const errorCalls = (mockEmitError.mock.calls as unknown[][]).filter(
-      (args) => args[5] === "RUN_NOT_SUPPORTED",
-    );
-    expect(errorCalls).toHaveLength(0);
+    expect(mockEmitError).not.toHaveBeenCalled();
     expect(mockLaunchMultiInstanceRun).toHaveBeenCalled();
-  });
-
-  // ================================================================
-  // Codex Pod multiInstance=false：走一般 chat 流程（review #29 + #36）
-  // ================================================================
-  it("Codex Pod multiInstance=false 時 capability 守門不應觸發，應走一般 chat 流程", async () => {
-    // capability 守門只在 multiInstance===true 時才判斷，false 時直接略過
-    const pod = makePod({
-      provider: "codex",
-      multiInstance: false,
-      status: "idle",
-    });
-    mockValidatePod.mockReturnValue(pod);
-    mockInjectUserMessage.mockResolvedValue(undefined);
-    mockExecuteStreamingChat.mockResolvedValue(undefined);
-
-    await handleChatSend(
-      CONNECTION_ID,
-      { podId: POD_ID, message: "codex 一般對話" },
-      REQUEST_ID,
-    );
-
-    // 不應觸發 RUN_NOT_SUPPORTED
-    const runNotSupportedCalls = (
-      mockEmitError.mock.calls as unknown[][]
-    ).filter((args) => args[5] === "RUN_NOT_SUPPORTED");
-    expect(runNotSupportedCalls).toHaveLength(0);
-    // 應走一般 chat 流程：呼叫 executeStreamingChat 而非 launchMultiInstanceRun
-    expect(mockExecuteStreamingChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        canvasId: CANVAS_ID,
-        podId: POD_ID,
-        message: "codex 一般對話",
-        abortable: true,
-      }),
-      expect.objectContaining({
-        onComplete: expect.any(Function),
-        onAborted: expect.any(Function),
-      }),
-    );
-    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
   });
 
   it("Codex Pod multiInstance=false 仍應通過 validateIntegrationBindings 與 validatePodNotBusy 驗證鏈", async () => {

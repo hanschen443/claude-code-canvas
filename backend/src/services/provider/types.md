@@ -162,7 +162,6 @@ interface ProviderCapabilities {
   command: boolean;     // Command 設定
   mcp: boolean;         // MCP Server 功能
   integration: boolean; // Integration Tool 功能
-  runMode: boolean;     // 支援 Run 模式（多 Pod workflow 執行）
 }
 ```
 
