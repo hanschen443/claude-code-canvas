@@ -129,6 +129,26 @@ export function useCopyPaste(): void {
 
     if (!response) return false;
 
+    const { showErrorToast, showSuccessToast } = useToast();
+
+    if (response.errors.length > 0) {
+      const firstErrorMessage = response.errors[0]!.error;
+
+      if (response.createdPods.length > 0) {
+        showSuccessToast(
+          "Paste",
+          `貼上完成（${response.createdPods.length} 成功 / ${response.errors.length} 錯誤）`,
+          firstErrorMessage,
+        );
+      } else {
+        showErrorToast(
+          "Paste",
+          `貼上發生 ${response.errors.length} 個錯誤`,
+          firstErrorMessage,
+        );
+      }
+    }
+
     const newSelectedElements: SelectableElement[] = [
       ...response.createdPods.map((pod) => ({
         type: "pod" as const,

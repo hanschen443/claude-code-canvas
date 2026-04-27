@@ -1,4 +1,9 @@
-import type { TriggerMode, Connection, ModelType } from "../../types/index.js";
+import type {
+  TriggerMode,
+  Connection,
+  ModelType,
+  ContentBlock,
+} from "../../types/index.js";
 import type {
   PipelineContext,
   PipelineMethods,
@@ -14,13 +19,13 @@ import { summaryService } from "../summaryService.js";
 import { logger } from "../../utils/logger.js";
 import { fireAndForget } from "../../utils/operationHelpers.js";
 import { executeStreamingChat } from "../claude/streamingChatExecutor.js";
+import { tryExpandCommandMessage } from "../commandExpander.js";
 import {
   buildTransferMessage,
   forEachMultiInputGroupConnection,
   isAutoTriggerable,
   resolveSettlementPathway,
 } from "./workflowHelpers.js";
-import { tryExpandCommandMessage } from "../commandExpander.js";
 import { LazyInitializable } from "./lazyInitializable.js";
 import type { RunContext } from "../../types/run.js";
 import {
@@ -396,31 +401,6 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
   ): Promise<void> {
     const { canvasId, targetPodId, content, runContext, delegate } = params;
     const baseMessage = buildTransferMessage(content);
-    const targetPod = podStore.getById(canvasId, targetPodId);
-
-    // 展開 Command 內容（使用共用的 tryExpandCommandMessage）
-    let messageToSend: string;
-    if (targetPod) {
-      const expandResult = await tryExpandCommandMessage(
-        targetPod,
-        baseMessage,
-        "workflow/executeClaudeQuery",
-      );
-      if (!expandResult.ok) {
-        // Command 檔案已消失：記錄警告並以原始訊息繼續（避免 workflow 卡死）
-        logger.warn(
-          "Workflow",
-          "Warn",
-          `[executeClaudeQuery] Command 不存在（commandId=${targetPod.commandId}, podId=${targetPodId}），使用原始訊息繼續`,
-        );
-        messageToSend = baseMessage;
-      } else {
-        // expandResult.message 此時一定是 string（baseMessage 是 string）
-        messageToSend = expandResult.message as string;
-      }
-    } else {
-      messageToSend = baseMessage;
-    }
 
     // 依據是否為 Run mode 建立對應的 strategy，並透過 strategy 注入使用者訊息
     const execStrategy =
@@ -428,15 +408,33 @@ class WorkflowExecutionService extends LazyInitializable<ExecutionServiceDeps> {
         ? new RunModeExecutionStrategy(canvasId, runContext)
         : new NormalModeExecutionStrategy(canvasId);
 
-    await execStrategy.addUserMessage(targetPodId, messageToSend);
+    // 在注入歷史記錄前先展開 Command，確保歷史與送給 Claude 的訊息一致
+    // Command 不存在時：記錄 warn 並以原始訊息繼續，避免 workflow 卡死
+    const targetPod = podStore.getById(canvasId, targetPodId);
+    let resolvedMessage: string | ContentBlock[] = baseMessage;
+    if (targetPod) {
+      const expandResult = await tryExpandCommandMessage(
+        targetPod,
+        baseMessage,
+        "workflow.executeClaudeQuery",
+      );
+      if (expandResult.ok) {
+        resolvedMessage = expandResult.message;
+      }
+      // Command 不存在時 tryExpandCommandMessage 內部已記錄 warn，直接繼續用原始訊息
+    }
+
+    await execStrategy.addUserMessage(targetPodId, resolvedMessage);
 
     await executeStreamingChat(
       {
         canvasId,
         podId: targetPodId,
-        message: messageToSend,
+        message: resolvedMessage,
         abortable: false,
         strategy: execStrategy,
+        // 上游已展開，跳過 executeStreamingChat 內部的二次展開
+        skipCommandExpand: true,
       },
       {
         onComplete: (_canvasId, _podId) => this.onWorkflowChatComplete(params),

@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
+import { Database } from "bun:sqlite";
 import { scheduleService } from "./scheduleService.js";
 import { backupScheduleService } from "./backupScheduleService.js";
 import { canvasStore } from "./canvasStore.js";
@@ -21,6 +22,12 @@ class StartupService {
     // 必須在 ensureDirectories 與 DB 任何初始化之前執行：
     // SQLite WAL 檔在 DB 打開後會被鎖住，無法 rename
     await this.migrateFromClaudeCanvas();
+    // 無條件執行 DB 路徑遷移：無論 fs.rename 是否發生（例如舊資料夾早已改名），
+    // 都需要確保 SQLite 內的路徑已從 ClaudeCanvas 更新為 AgentCanvas。
+    // 此函式具冪等性：無舊路徑紀錄時為 0 changes，不會有副作用。
+    await this.migrateDbPaths(
+      path.join(os.homedir(), "Documents", "AgentCanvas"),
+    );
 
     const dirResult = await this.ensureDirectories([
       config.appDataRoot,
@@ -98,6 +105,55 @@ class StartupService {
         "Warn",
         "同時偵測到 ~/Documents/ClaudeCanvas 與 ~/Documents/AgentCanvas，已跳過自動搬遷。請手動處理",
       );
+    }
+  }
+
+  /**
+   * 將 SQLite 內殘留的 ClaudeCanvas 絕對路徑全面替換為 AgentCanvas 路徑。
+   * 每次啟動都會無條件執行，確保即使 fs.rename 在先前版本已完成，DB 路徑仍會被更新。
+   * 此函式在 getDb() 初始化前呼叫，因此需要自行開啟 DB。
+   * 若 DB 檔案不存在（首次安裝），靜默跳過不報錯。
+   * 操作本身具冪等性：使用 LIKE '%/Documents/ClaudeCanvas/%' 過濾，
+   * 已替換或不含舊路徑的紀錄不受影響。
+   */
+  private async migrateDbPaths(newAppDataRoot: string): Promise<void> {
+    const dbPath = path.join(newAppDataRoot, "canvas.db");
+    const dbExists = await fs
+      .access(dbPath)
+      .then(() => true)
+      .catch(() => false);
+
+    if (!dbExists) {
+      // 首次安裝，DB 尚未建立，直接跳過
+      return;
+    }
+
+    const db = new Database(dbPath);
+    try {
+      // pods.workspace_path
+      const podsResult = db
+        .prepare(
+          "UPDATE pods SET workspace_path = REPLACE(workspace_path, '/Documents/ClaudeCanvas/', '/Documents/AgentCanvas/') WHERE workspace_path LIKE '%/Documents/ClaudeCanvas/%'",
+        )
+        .run();
+
+      // repository_metadata.path
+      const reposResult = db
+        .prepare(
+          "UPDATE repository_metadata SET path = REPLACE(path, '/Documents/ClaudeCanvas/', '/Documents/AgentCanvas/') WHERE path LIKE '%/Documents/ClaudeCanvas/%'",
+        )
+        .run();
+
+      const totalUpdated = podsResult.changes + reposResult.changes;
+      if (totalUpdated > 0) {
+        logger.log(
+          "Startup",
+          "Migrate",
+          `已更新 SQLite 路徑：pods ${podsResult.changes} 筆、repository_metadata ${reposResult.changes} 筆（共 ${totalUpdated} 筆）`,
+        );
+      }
+    } finally {
+      db.close();
     }
   }
 

@@ -189,14 +189,15 @@ class ScheduleService {
     logger.log("Schedule", "Update", `Pod「${pod.id}」排程已觸發`);
 
     if (pod.multiInstance === true) {
-      // 嘗試展開 command 訊息；無 commandId 時 tryExpandCommandMessage 直接回傳原始訊息
+      // 排程路徑需要特殊的空字串 fallback 邏輯，因此在此自行展開 Command 訊息，
+      // 並告知 launchMultiInstanceRun 跳過再次展開（skipCommandExpand: true），避免雙重展開。
+      // ok=false 代表 commandId 存在但 command 已被刪除；仍要觸發，用排程啟動語句避免 codex stdin 為空崩潰
       const expandResult = await tryExpandCommandMessage(
         pod,
         "",
         "schedule/multiInstance",
       );
 
-      // ok=false 代表 commandId 存在但 command 已被刪除；仍要觸發，用排程啟動語句避免 codex stdin 為空崩潰
       let runMessage: string | ContentBlock[];
       if (!expandResult.ok) {
         logger.warn(
@@ -214,11 +215,13 @@ class ScheduleService {
             : raw;
       }
 
+      // skipCommandExpand: true — 上方已自行處理展開與空字串 fallback，不需要再次展開
       await launchMultiInstanceRun({
         canvasId,
         podId: pod.id,
         message: runMessage,
         abortable: false,
+        skipCommandExpand: true,
         onComplete: (runContext) =>
           onRunChatComplete(runContext, canvasId, pod.id),
       });
@@ -230,14 +233,15 @@ class ScheduleService {
   private async sendScheduleMessage(canvasId: string, pod: Pod): Promise<void> {
     const podId = pod.id;
 
-    // 嘗試展開 command 訊息；無 commandId 時 tryExpandCommandMessage 直接回傳原始訊息
+    // 排程路徑需要特殊的空字串 fallback 邏輯，因此在此自行展開 Command 訊息，
+    // 並告知 executeStreamingChat 跳過再次展開（skipCommandExpand: true），避免雙重展開。
+    // ok=false 代表 commandId 存在但 command 已被刪除；仍要觸發，用排程啟動語句避免 codex stdin 為空崩潰
     const expandResult = await tryExpandCommandMessage(
       pod,
       "",
       "schedule/sendScheduleMessage",
     );
 
-    // ok=false 代表 commandId 存在但 command 已被刪除；仍要觸發，用排程啟動語句避免 codex stdin 為空崩潰
     let message: string | ContentBlock[];
     if (!expandResult.ok) {
       logger.warn(
@@ -281,8 +285,16 @@ class ScheduleService {
 
     const strategy = new NormalModeExecutionStrategy(canvasId);
 
+    // skipCommandExpand: true — 上方已自行處理展開與空字串 fallback，不需要再次展開
     await executeStreamingChat(
-      { canvasId, podId, message, abortable: false, strategy },
+      {
+        canvasId,
+        podId,
+        message,
+        abortable: false,
+        strategy,
+        skipCommandExpand: true,
+      },
       { onComplete: onScheduleChatComplete },
     );
   }

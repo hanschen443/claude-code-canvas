@@ -103,6 +103,7 @@ export const handleCanvasPaste = withCanvasId<CanvasPastePayload>(
     );
 
     const response: CanvasPasteResultPayload = {
+      canvasId,
       requestId,
       success: errors.length === 0,
       createdPods: createdPods.map(toPodPublicView),

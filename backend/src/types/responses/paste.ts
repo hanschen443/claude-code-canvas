@@ -11,6 +11,7 @@ export interface PasteError {
 }
 
 export interface CanvasPasteResultPayload {
+  canvasId: string;
   requestId: string;
   success: boolean;
   createdPods: PodPublicView[];

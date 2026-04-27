@@ -131,21 +131,14 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
     const podName = pod.name;
 
     if (pod.multiInstance === true) {
-      // multiInstance 分支也需展開 Command，確保 AI 收到 <command> xml tag
-      const runExpandResult = await tryExpandCommandMessage(
-        pod,
-        message,
-        "handleChatSend/multiInstance",
-      );
-      if (!runExpandResult.ok) {
-        handleCommandNotFound(canvasId, podId, runExpandResult.commandId);
-        return;
-      }
+      // Command 展開由 launchMultiInstanceRun 內部處理（在注入前展開，確保歷史與 Claude 一致）
       await launchMultiInstanceRun({
         canvasId,
         podId,
-        message: runExpandResult.message,
+        message,
         abortable: true,
+        onCommandNotFound: (commandId) =>
+          handleCommandNotFound(canvasId, podId, commandId),
         onComplete: (runContext) =>
           onRunChatComplete(runContext, canvasId, podId),
         onAborted: (abortedCanvasId, abortedPodId, messageId) =>
@@ -156,22 +149,24 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
 
     if (!validatePodNotBusy(connectionId, pod, requestId)) return;
 
-    // 展開 Command 內容（在 injectUserMessage 之前執行，確保 DB 存入展開版）
+    // 在注入歷史記錄前先展開 Command，確保歷史與送給 Claude 的訊息一致
     const expandResult = await tryExpandCommandMessage(
       pod,
       message,
       "handleChatSend",
     );
 
-    // DB 存入展開版（或原文，若 command 讀不到）
-    const contentToStore = expandResult.ok ? expandResult.message : message;
-    await injectUserMessage({ canvasId, podId, content: contentToStore });
-
     if (!expandResult.ok) {
-      // Command 檔案已消失：推送錯誤文字讓前端顯示，並將 pod 回到 idle
+      // Command 不存在：注入原始訊息、推送錯誤文字給前端，不呼叫 Claude
+      await injectUserMessage({ canvasId, podId, content: message });
       handleCommandNotFound(canvasId, podId, expandResult.commandId);
       return;
     }
+
+    const resolvedMessage = expandResult.message;
+
+    // 歷史記錄與 Claude 都使用展開版訊息
+    await injectUserMessage({ canvasId, podId, content: resolvedMessage });
 
     const strategy = new NormalModeExecutionStrategy(canvasId);
 
@@ -179,9 +174,11 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
       {
         canvasId,
         podId,
-        message: expandResult.message,
+        message: resolvedMessage,
         abortable: true,
         strategy,
+        // 上游已展開，跳過 executeStreamingChat 內部的二次展開
+        skipCommandExpand: true,
       },
       {
         onComplete: onChatComplete,
