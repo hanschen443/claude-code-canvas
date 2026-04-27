@@ -26,7 +26,7 @@ interface Config {
   appDataRoot: string;
   canvasRoot: string;
   repositoriesRoot: string;
-  /** CORS 來源驗證函式。生產環境請設定 ALLOWED_ORIGINS 環境變數（逗號分隔）以指定允許的精確來源 */
+  /** 根據 nodeEnv 與 ALLOWED_ORIGINS 動態決定來源是否允許 */
   corsOrigin: (origin: string | undefined) => boolean;
   allowedOrigins?: string[];
   githubToken?: string;
@@ -55,36 +55,50 @@ function loadConfig(): Config {
         .filter(Boolean)
     : undefined;
 
+  const localOriginPattern =
+    /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+  const ngrokFreePattern = /^https?:\/\/[\w-]+\.ngrok-free\.dev$/;
+  const ngrokProPattern = /^https?:\/\/[\w-]+\.ngrok\.io$/;
+
+  function isLocalOrigin(origin: string): boolean {
+    return localOriginPattern.test(origin);
+  }
+
+  function isNgrokOrigin(origin: string): boolean {
+    return ngrokFreePattern.test(origin) || ngrokProPattern.test(origin);
+  }
+
+  function isAllowedByWhitelist(
+    origin: string,
+    allowedList: string[] | undefined,
+  ): boolean {
+    return allowedList ? allowedList.includes(origin) : false;
+  }
+
+  // ALLOW_NGROK：非生產環境預設開啟（維持開發便利性）；生產環境預設關閉
+  const allowNgrok =
+    nodeEnv !== "production"
+      ? process.env.ALLOW_NGROK !== "0"
+      : process.env.ALLOW_NGROK === "1";
+
   const corsOrigin = (origin: string | undefined): boolean => {
     if (!origin) {
       return true;
     }
 
-    const localOriginPattern =
-      /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/;
-
     if (nodeEnv === "production") {
-      // 生產環境：只允許本地 pattern 以及 ALLOWED_ORIGINS 白名單中的精確匹配，不允許 ngrok wildcard
-      const isLocal = localOriginPattern.test(origin);
-      const isWhitelisted = allowedOrigins
-        ? allowedOrigins.includes(origin)
-        : false;
-      return isLocal || isWhitelisted;
+      // 生產環境：只允許本地 pattern 以及 ALLOWED_ORIGINS 白名單中的精確匹配
+      return (
+        isLocalOrigin(origin) || isAllowedByWhitelist(origin, allowedOrigins)
+      );
     }
 
-    // 非生產環境：允許本地、ngrok pattern 以及白名單
-    // 開發便利性設計：允許所有 ngrok pattern。staging / production 應改設 ALLOWED_ORIGINS 環境變數以收斂
-    const ngrokFreePattern = /^https?:\/\/[\w-]+\.ngrok-free\.dev$/;
-    const ngrokProPattern = /^https?:\/\/[\w-]+\.ngrok\.io$/;
-
-    const isLocal = localOriginPattern.test(origin);
-    const isNgrok =
-      ngrokFreePattern.test(origin) || ngrokProPattern.test(origin);
-    const isWhitelisted = allowedOrigins
-      ? allowedOrigins.includes(origin)
-      : false;
-
-    return isLocal || isNgrok || isWhitelisted;
+    // 非生產環境：允許本地、白名單，以及可選的 ngrok pattern
+    return (
+      isLocalOrigin(origin) ||
+      isAllowedByWhitelist(origin, allowedOrigins) ||
+      (allowNgrok && isNgrokOrigin(origin))
+    );
   };
 
   const dataRoot = path.join(os.homedir(), "Documents", "AgentCanvas");

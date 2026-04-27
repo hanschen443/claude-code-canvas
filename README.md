@@ -28,7 +28,7 @@
 - 建議在 **Local 環境** 使用，不建議部署到雲端（本工具目前沒有使用者認證機制）
 - 因為使用 **Claude Agent SDK**，請確保此服務啟動在**已登入 Claude 的環境**，暫時不支援 API Key
 - 目前在 **macOS / Linux** 上使用過，其他作業系統可能會有未知問題
-- 畫布資料會存放在 `~/Documents/ClaudeCanvas`
+- 畫布資料會存放在 `~/Documents/AgentCanvas`（啟動時會自動將舊路徑 `~/Documents/ClaudeCanvas` 搬遷至新路徑）
 - 目前是以**最大權限**開放給 AI，請小心操作
 
 ## 安裝

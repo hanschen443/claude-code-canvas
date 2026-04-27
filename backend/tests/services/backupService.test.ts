@@ -171,13 +171,13 @@ describe("BackupService", () => {
       expect(mockGit.commit).toHaveBeenCalled();
       expect(mockGit.raw).toHaveBeenCalledWith([
         "push",
-        "--force",
+        "--force-with-lease",
         "origin",
         "HEAD",
       ]);
     });
 
-    it("無檔案變更時仍執行 force push", async () => {
+    it("無檔案變更時仍執行 force-with-lease push", async () => {
       mockGit.add.mockResolvedValue(undefined);
       mockGit.commit.mockRejectedValue(new Error("nothing to commit"));
       mockGit.raw.mockResolvedValue(undefined);
@@ -187,7 +187,27 @@ describe("BackupService", () => {
       expect(result.success).toBe(true);
       expect(mockGit.raw).toHaveBeenCalledWith([
         "push",
-        "--force",
+        "--force-with-lease",
+        "origin",
+        "HEAD",
+      ]);
+    });
+
+    it("commit 失敗（非空 commit 情況）時回傳錯誤，不執行 push", async () => {
+      mockGit.add.mockResolvedValue(undefined);
+      mockGit.commit.mockRejectedValue(new Error("lock file exists"));
+      mockGit.raw.mockResolvedValue(undefined);
+
+      const result = await backupService.executeBackup(remoteUrl);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("備份 commit 失敗");
+      }
+      // push 不應被呼叫
+      expect(mockGit.raw).not.toHaveBeenCalledWith([
+        "push",
+        "--force-with-lease",
         "origin",
         "HEAD",
       ]);
@@ -293,6 +313,74 @@ describe("BackupService", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error).toBe("無法連線至遠端伺服器");
+      }
+    });
+
+    it("initRepo 失敗時 testConnection 提早回傳錯誤", async () => {
+      mockGit.checkIsRepo.mockRejectedValue(new Error("git not found"));
+
+      const result = await backupService.testConnection(remoteUrl);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("初始化備份倉庫失敗");
+      }
+    });
+
+    it("setupRemote 失敗時 testConnection 提早回傳錯誤", async () => {
+      mockGit.checkIsRepo.mockResolvedValue(true);
+      mockGit.getRemotes.mockRejectedValue(new Error("cannot list remotes"));
+
+      const result = await backupService.testConnection(remoteUrl);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("設定備份遠端倉庫失敗");
+      }
+    });
+  });
+
+  describe("setupRemote - getRemotes 失敗", () => {
+    it("getRemotes 拋錯時回傳 err", async () => {
+      mockGit.checkIsRepo.mockResolvedValue(true);
+      mockGit.getRemotes.mockRejectedValue(new Error("permission denied"));
+
+      const result = await backupService.setupRemote(
+        "https://github.com/user/backup.git",
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("設定備份遠端倉庫失敗");
+      }
+    });
+  });
+
+  describe("executeBackup - initRepo 或 setupRemote 失敗", () => {
+    it("initRepo 失敗時 executeBackup 提早回傳錯誤", async () => {
+      mockGit.checkIsRepo.mockRejectedValue(new Error("git not found"));
+
+      const result = await backupService.executeBackup(
+        "https://github.com/user/backup.git",
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("初始化備份倉庫失敗");
+      }
+    });
+
+    it("setupRemote 失敗時 executeBackup 提早回傳錯誤", async () => {
+      mockGit.checkIsRepo.mockResolvedValue(true);
+      mockGit.getRemotes.mockRejectedValue(new Error("cannot list remotes"));
+
+      const result = await backupService.executeBackup(
+        "https://github.com/user/backup.git",
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("設定備份遠端倉庫失敗");
       }
     });
   });

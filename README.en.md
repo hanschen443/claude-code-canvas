@@ -28,7 +28,7 @@ A canvas tool for visually designing and executing AI Agent workflows, powered b
 - Recommended for **local environment** use only, not recommended for cloud deployment (no user authentication is implemented).
 - Since it uses the **Claude Agent SDK**, make sure the service runs in an environment where **Claude is already logged in**. API Key is not supported.
 - Tested on **macOS / Linux**. Other operating systems may have unknown issues.
-- Canvas data is stored in `~/Documents/ClaudeCanvas`
+- Canvas data is stored in `~/Documents/AgentCanvas` (on first launch, the old path `~/Documents/ClaudeCanvas` will be automatically migrated to the new path)
 - AI is currently granted **maximum permissions**. Please be careful with operations.
 
 ## Installation

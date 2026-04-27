@@ -5,13 +5,15 @@ import fs from "fs/promises";
 // 覆寫為系統臨時目錄下的唯一子目錄，因此 commandService 的 baseService
 // 在第一次 import 時即綁定到該安全路徑，不會寫入 ~/Documents/AgentCanvas/。
 
-import { commandService } from "../../src/services/commandService.js";
+import {
+  commandService,
+  invalidateCache,
+} from "../../src/services/commandService.js";
 
 describe("commandService.read", () => {
   afterEach(async () => {
-    // 觸發 invalidateCache，清空 cachedCommandContents
-    await commandService.create("__reset__", "").catch(() => {});
-    await commandService.delete("__reset__").catch(() => {});
+    // 直接呼叫 invalidateCache 清除所有快取，不依賴副作用
+    invalidateCache();
     vi.restoreAllMocks();
   });
 
@@ -143,5 +145,65 @@ describe("commandService.read", () => {
     expect(updated).toBe("外部修改後的新內容");
 
     await commandService.delete("cmd-external").catch(() => {});
+  });
+
+  it("空字串 id 直接回傳 null，不執行 I/O", async () => {
+    const readFileSpy = vi.spyOn(fs, "readFile");
+    const result = await commandService.read("");
+    expect(result).toBeNull();
+    expect(readFileSpy).not.toHaveBeenCalled();
+  });
+
+  it("不存在的 id 回傳 null（非 ENOENT 以外的 findFilePath 失敗也回傳 null）", async () => {
+    const result = await commandService.read("completely-nonexistent-99999");
+    expect(result).toBeNull();
+  });
+});
+
+describe("commandService.list - TTL 快取", () => {
+  afterEach(() => {
+    invalidateCache();
+    vi.restoreAllMocks();
+  });
+
+  it("30 秒 TTL 內連續呼叫 list() 應回傳相同陣列參考（快取命中）", async () => {
+    // 第一次 list() 讀磁碟並建立快取，應回傳相同陣列
+    const first = await commandService.list();
+    const second = await commandService.list();
+
+    // 快取命中時回傳完全相同的陣列參考（same reference）
+    expect(second).toBe(first);
+  });
+
+  it("invalidateCache() 後 list() 重新讀取磁碟，回傳新陣列實例", async () => {
+    await commandService.create("cmd-ttl-inv", "inv 測試");
+
+    const before = await commandService.list();
+    const idsBefore = before.map((c) => c.id);
+    expect(idsBefore).toContain("cmd-ttl-inv");
+
+    invalidateCache(); // 手動作廢快取
+
+    // 快取作廢後重新讀取，應建立新陣列實例
+    const after = await commandService.list();
+    expect(after).not.toBe(before); // 不同陣列實例
+    const idsAfter = after.map((c) => c.id);
+    expect(idsAfter).toContain("cmd-ttl-inv");
+
+    await commandService.delete("cmd-ttl-inv").catch(() => {});
+  });
+
+  it("create 後快取作廢，list() 能感知新建立的 command", async () => {
+    const before = await commandService.list();
+    const countBefore = before.length;
+
+    await commandService.create("cmd-ttl-create", "ttl 測試");
+
+    // create 後快取被清除，list() 應重新讀取磁碟
+    const after = await commandService.list();
+    expect(after.length).toBe(countBefore + 1);
+    expect(after.map((c) => c.id)).toContain("cmd-ttl-create");
+
+    await commandService.delete("cmd-ttl-create").catch(() => {});
   });
 });

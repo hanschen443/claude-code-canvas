@@ -35,13 +35,9 @@ class StartupService {
 
     await this.migrateEncryptionIfNeeded();
 
-    const canvases = canvasStore.list();
-    if (canvases.length === 0) {
-      logger.log("Startup", "Create", "未找到任何畫布，建立預設畫布");
-      const defaultCanvasResult = await canvasStore.create("default");
-      if (!defaultCanvasResult.success) {
-        return err(`建立預設 Canvas 失敗: ${defaultCanvasResult.error}`);
-      }
+    const defaultCanvasResult = await this.ensureDefaultCanvas();
+    if (!defaultCanvasResult.success) {
+      return defaultCanvasResult;
     }
 
     scheduleService.start();
@@ -119,15 +115,34 @@ class StartupService {
         "已執行 VACUUM 清除 DB 中殘留的明文資料",
       );
 
-      // 清除備份 Git 歷史（舊 commit 可能包含明文 DB）
+      // 清除備份 Git 歷史（舊 commit 可能包含明文 DB），僅忽略目錄不存在的情況
       const backupGitDir = path.join(config.appDataRoot, ".git");
       try {
         await fs.rm(backupGitDir, { recursive: true, force: true });
         logger.log("Encryption", "Migrate", "已清除備份 Git 歷史");
-      } catch {
-        // .git 目錄不存在時忽略
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          const errMsg = error instanceof Error ? error.message : String(error);
+          logger.warn(
+            "Encryption",
+            "Warn",
+            `清除備份 Git 歷史失敗，請手動確認：${errMsg}`,
+          );
+        }
       }
     }
+  }
+
+  private async ensureDefaultCanvas(): Promise<Result<void>> {
+    const canvases = canvasStore.list();
+    if (canvases.length === 0) {
+      logger.log("Startup", "Create", "未找到任何畫布，建立預設畫布");
+      const defaultCanvasResult = await canvasStore.create("default");
+      if (!defaultCanvasResult.success) {
+        return err(`建立預設 Canvas 失敗: ${defaultCanvasResult.error}`);
+      }
+    }
+    return ok(undefined);
   }
 
   private async ensureDirectories(paths: string[]): Promise<Result<void>> {
@@ -147,31 +162,36 @@ class StartupService {
 
   private async restoreIntegrationConnections(): Promise<void> {
     const providers = integrationRegistry.list();
-    for (const provider of providers) {
-      const apps = integrationAppStore.list(provider.name);
-      if (apps.length === 0) continue;
+    await Promise.all(
+      providers.map(async (provider) => {
+        const apps = integrationAppStore.list(provider.name);
+        if (apps.length === 0) return;
 
-      let successCount = 0;
-      for (const app of apps) {
-        try {
-          await provider.initialize(app);
-          successCount++;
-        } catch (error) {
-          logger.error(
-            "Integration",
-            "Error",
-            `[StartupService] ${provider.name}:${app.id} 初始化失敗`,
-            error,
-          );
-        }
-      }
+        const results = await Promise.all(
+          apps.map(async (app) => {
+            try {
+              await provider.initialize(app);
+              return true;
+            } catch (error) {
+              logger.error(
+                "Integration",
+                "Error",
+                `[StartupService] ${provider.name}:${app.id} 初始化失敗`,
+                error,
+              );
+              return false;
+            }
+          }),
+        );
 
-      logger.log(
-        "Integration",
-        "Complete",
-        `[StartupService] ${provider.name} 已恢復 ${successCount} 個連線`,
-      );
-    }
+        const successCount = results.filter(Boolean).length;
+        logger.log(
+          "Integration",
+          "Complete",
+          `[StartupService] ${provider.name} 已恢復 ${successCount} 個連線`,
+        );
+      }),
+    );
   }
 }
 

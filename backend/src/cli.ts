@@ -74,6 +74,7 @@ function processArg(
     return i + 1;
   }
 
+  // -n 用於 logs 命令指定顯示行數
   if (arg === "-n" || arg.startsWith("--")) {
     const key = arg === "-n" ? "n" : arg.slice(2);
     const { value, skip } = parseFlagValue(rawArgs, i);
@@ -223,7 +224,7 @@ function resolvePort(flags: Record<string, string | boolean>): number {
     process.exit(1);
   }
 
-  return port!;
+  return port as number;
 }
 
 function checkAlreadyRunning(pidPath: string): void {
@@ -261,7 +262,11 @@ async function handleStart(
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const logFd = fs.openSync(LOG_FILE, "a");
 
-  const isCompiled = !process.argv[1] || process.argv[1].includes("$bunfs");
+  // 優先讀取 build-time 注入的環境變數，fallback 才用 $bunfs 字串檢查
+  const isCompiled =
+    process.env.AGENT_CANVAS_COMPILED === "1" ||
+    !process.argv[1] ||
+    process.argv[1].includes("$bunfs");
   const spawnArgs = isCompiled
     ? [process.execPath, "--daemon", "--port", String(port)]
     : [process.execPath, process.argv[1], "--daemon", "--port", String(port)];
@@ -331,8 +336,8 @@ function handleStatus(): void {
 }
 
 function handleConfigSet(args: string[]): void {
-  const key = args[1];
-  const value = args[2];
+  const key = args[0];
+  const value = args[1];
 
   if (!key || !value) {
     console.error("使用方式：agent-canvas config set <key> <value>");
@@ -348,7 +353,7 @@ function handleConfigSet(args: string[]): void {
 }
 
 function handleConfigGet(args: string[]): void {
-  const key = args[1];
+  const key = args[0];
 
   if (!key) {
     console.error("使用方式：agent-canvas config get <key>");
@@ -384,13 +389,14 @@ function handleConfigList(): void {
 
 export function handleConfig(args: string[]): void {
   const subCommand = args[0];
+  const subArgs = args.slice(1);
 
   if (subCommand === "set") {
-    handleConfigSet(args);
+    handleConfigSet(subArgs);
     return;
   }
   if (subCommand === "get") {
-    handleConfigGet(args);
+    handleConfigGet(subArgs);
     return;
   }
   if (subCommand === "list") {
@@ -493,7 +499,10 @@ async function main(): Promise<void> {
 // 只在直接執行時啟動，避免被 import 時觸發
 if (import.meta.main) {
   main().catch((err) => {
-    console.error("發生未預期的錯誤：", err);
+    console.error(
+      "發生未預期的錯誤：",
+      err instanceof Error ? err.message : String(err),
+    );
     process.exit(1);
   });
 }

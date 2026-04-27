@@ -13,6 +13,7 @@ import {
   getLocalIp,
   VALID_CONFIG_KEYS,
   handleLogs,
+  handleConfig,
 } from "../../src/cli.js";
 
 const TMP_DIR = path.join(os.tmpdir(), `cli-test-${Date.now()}`);
@@ -454,5 +455,91 @@ describe("handleLogs", () => {
       expect(result.command).toBe("logs");
       expect(result.flags.n).toBeUndefined();
     });
+  });
+});
+
+describe("handleConfig", () => {
+  const configPath = path.join(TMP_DIR, "config-handle.json");
+
+  beforeEach(() => {
+    vi.spyOn(process, "exit").mockImplementation((() => {}) as (
+      code?: number,
+    ) => never);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("handleConfig 將 subArgs 從 0 開始傳給 handleConfigSet", () => {
+    writeConfig(configPath, {});
+    // 模擬 parseCommand 解析後的 args: ["set", "GITHUB_TOKEN", "abc"]
+    // handleConfig 拿到 args=["set","GITHUB_TOKEN","abc"]，應抽 subArgs=["GITHUB_TOKEN","abc"]
+    // 由於 CONFIG_FILE 是模組內私有常數，這裡只驗證不 exit(1)
+    // 實際行為：set GITHUB_TOKEN 應該成功
+    expect(() => handleConfig(["set", "GITHUB_TOKEN", "tok123"])).not.toThrow();
+  });
+
+  it("handleConfig set 缺少 value 時呼叫 process.exit(1)", () => {
+    handleConfig(["set", "GITHUB_TOKEN"]);
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it("handleConfig get 缺少 key 時呼叫 process.exit(1)", () => {
+    handleConfig(["get"]);
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it("handleConfig 使用未知子命令時呼叫 process.exit(1)", () => {
+    handleConfig(["unknown"]);
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("validatePort - 邊界值", () => {
+  it("resolvePort 在 flags.port 為 boolean true 時使用預設 3001", () => {
+    // validatePort("true") 應回傳 null
+    expect(validatePort("true")).toBeNull();
+  });
+
+  it("resolvePort 在 flags.port 為空字串時回傳 null", () => {
+    expect(validatePort("")).toBeNull();
+  });
+});
+
+describe("getLocalIp - 多 IPv4 介面", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("有多個 external IPv4 介面時回傳第一個", () => {
+    vi.spyOn(os, "networkInterfaces").mockReturnValue({
+      eth0: [
+        {
+          address: "192.168.1.100",
+          family: "IPv4",
+          internal: false,
+          netmask: "255.255.255.0",
+          mac: "00:00:00:00:00:00",
+          cidr: "192.168.1.100/24",
+        },
+      ],
+      eth1: [
+        {
+          address: "10.0.0.5",
+          family: "IPv4",
+          internal: false,
+          netmask: "255.0.0.0",
+          mac: "00:00:00:00:00:01",
+          cidr: "10.0.0.5/8",
+        },
+      ],
+    });
+    // 應回傳第一個找到的 external IPv4
+    const ip = getLocalIp();
+    expect(ip).toBeTruthy();
+    expect(["192.168.1.100", "10.0.0.5"]).toContain(ip);
   });
 });

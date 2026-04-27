@@ -32,14 +32,14 @@ function getOutfile(target: string | undefined): string {
 /**
  * 遞迴掃描目錄，回傳所有檔案的絕對路徑（排除目錄本身）
  */
-function scanFiles(dir: string): string[] {
+function listFilesDeep(dir: string): string[] {
   const results: string[] = [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(...scanFiles(fullPath));
+      results.push(...listFilesDeep(fullPath));
     } else if (entry.isFile()) {
       results.push(fullPath);
     }
@@ -49,22 +49,20 @@ function scanFiles(dir: string): string[] {
 }
 
 /**
- * 讀取所有前端靜態檔案並生成 VFS 模組
+ * 讀取所有前端靜態檔案並生成 VFS 模組（非同步並行讀取）
  */
-function generateVFS(files: string[]): string {
-  const entries: string[] = [];
+async function generateVFS(files: string[]): Promise<string> {
+  const entries = await Promise.all(
+    files.map(async (filePath) => {
+      const relativePath = path.relative(FRONTEND_DIST, filePath);
+      const urlPath = "/" + relativePath.replace(/\\/g, "/");
+      const fileContent = await fs.promises.readFile(filePath);
+      const base64Content = Buffer.from(fileContent).toString("base64");
+      const mimeType = getMimeType(filePath);
 
-  for (const filePath of files) {
-    const relativePath = path.relative(FRONTEND_DIST, filePath);
-    const urlPath = "/" + relativePath.replace(/\\/g, "/");
-    const fileContent = fs.readFileSync(filePath);
-    const base64Content = Buffer.from(fileContent).toString("base64");
-    const mimeType = getMimeType(filePath);
-
-    entries.push(
-      `  ${JSON.stringify(urlPath)}: {\n    content: ${JSON.stringify(base64Content)},\n    mimeType: ${JSON.stringify(mimeType)},\n  }`,
-    );
-  }
+      return `  ${JSON.stringify(urlPath)}: {\n    content: ${JSON.stringify(base64Content)},\n    mimeType: ${JSON.stringify(mimeType)},\n  }`;
+    }),
+  );
 
   return [
     "// 此檔案由 scripts/compile.ts 自動生成，請勿手動修改",
@@ -103,8 +101,8 @@ async function compile(): Promise<void> {
   console.log(`前端靜態檔案目錄：${FRONTEND_DIST}`);
   console.log(`輸出：${outfile}`);
 
-  const allFiles = scanFiles(FRONTEND_DIST);
-  const vfsContent = generateVFS(allFiles);
+  const allFiles = listFilesDeep(FRONTEND_DIST);
+  const vfsContent = await generateVFS(allFiles);
   fs.writeFileSync(VFS_FILE, vfsContent, "utf-8");
   console.log(`已生成 VFS 模組：${VFS_FILE}（共 ${allFiles.length} 個檔案）`);
 
@@ -113,6 +111,9 @@ async function compile(): Promise<void> {
       "build",
       "--compile",
       ...(target ? ["--target", target] : []),
+      // 注入 build-time 常數，讓 cli.ts 能可靠判斷自身為 compiled binary
+      "--define",
+      'process.env.AGENT_CANVAS_COMPILED="1"',
       ENTRYPOINT,
       "--outfile",
       outfile,

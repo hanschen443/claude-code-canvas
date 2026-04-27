@@ -12,19 +12,23 @@ INSTALL_DIR="$HOME/.local/bin"
 # Color output helpers (only when stdout is a tty)
 # ---------------------------------------------------------------------------
 
-if [ -t 1 ]; then
-  BOLD="\033[1m"
-  GREEN="\033[0;32m"
-  RED="\033[0;31m"
-  YELLOW="\033[0;33m"
-  RESET="\033[0m"
-else
-  BOLD=""
-  GREEN=""
-  RED=""
-  YELLOW=""
-  RESET=""
-fi
+init_colors() {
+  if [ -t 1 ]; then
+    BOLD="\033[1m"
+    GREEN="\033[0;32m"
+    RED="\033[0;31m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m"
+  else
+    BOLD=""
+    GREEN=""
+    RED=""
+    YELLOW=""
+    RESET=""
+  fi
+}
+
+init_colors
 
 info()    { printf "  %b\n" "$1"; }
 success() { printf "  ${GREEN}✓${RESET} %b\n" "$1"; }
@@ -107,6 +111,15 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
+# 驗證版本格式，防止拼接 URL 時發生 shell injection
+case "$VERSION" in
+  v[0-9]*.[0-9]*.[0-9]*) ;;
+  *)
+    error "Invalid version format: ${VERSION}"
+    exit 1
+    ;;
+esac
+
 info "Fetching latest version... ${VERSION}"
 
 # ---------------------------------------------------------------------------
@@ -115,16 +128,33 @@ info "Fetching latest version... ${VERSION}"
 
 ASSET_NAME="${BINARY_NAME}-${OS_NAME}-${ARCH_NAME}"
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${ASSET_NAME}"
+CHECKSUMS_URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/checksums.txt"
 TMP_DIR="$(mktemp -d)"
 TMP_BIN="${TMP_DIR}/${BINARY_NAME}"
+TMP_CHECKSUMS="${TMP_DIR}/checksums.txt"
 
 info "Downloading ${ASSET_NAME}..."
 
 if command -v curl > /dev/null 2>&1; then
   curl -fL# -o "$TMP_BIN" "$DOWNLOAD_URL"
+  curl -fsSL -o "$TMP_CHECKSUMS" "$CHECKSUMS_URL"
 elif command -v wget > /dev/null 2>&1; then
   wget -qO "$TMP_BIN" "$DOWNLOAD_URL"
+  wget -qO "$TMP_CHECKSUMS" "$CHECKSUMS_URL"
 fi
+
+# 驗證 checksum（checksums.txt 格式：<sha256>  <filename>）
+info "Verifying checksum..."
+# 將二進位檔暫時命名為 ASSET_NAME 以符合 checksums.txt 中的檔名
+TMP_VERIFY_BIN="${TMP_DIR}/${ASSET_NAME}"
+cp "$TMP_BIN" "$TMP_VERIFY_BIN"
+if ! (cd "$TMP_DIR" && grep "${ASSET_NAME}" checksums.txt | shasum -a 256 -c -); then
+  error "Checksum verification failed. The downloaded file may be corrupted."
+  rm -rf "$TMP_DIR"
+  exit 1
+fi
+rm -f "$TMP_VERIFY_BIN"
+success "Checksum verified"
 
 chmod +x "$TMP_BIN"
 
@@ -153,6 +183,10 @@ if ! command -v "$BINARY_NAME" > /dev/null 2>&1; then
 fi
 
 INSTALLED_VERSION="$("$BINARY_NAME" --version 2>&1 || true)"
+
+if [ -n "$INSTALLED_VERSION" ] && [ "$INSTALLED_VERSION" != "${VERSION#v}" ]; then
+  warn "Installed version (${INSTALLED_VERSION}) may differ from expected (${VERSION}). Please verify the installation."
+fi
 
 printf "\n"
 success "Agent Canvas ${VERSION} installed successfully!"

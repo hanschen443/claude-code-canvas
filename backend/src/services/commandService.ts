@@ -45,11 +45,27 @@ function setCachedCommandContent(
   }
 }
 
-/** 清除 Command list 快取與 read 內容快取，強制下次重新讀取磁碟 */
-function invalidateCache(): void {
+/** 清除 Command list 快取，強制下次 list() 重新讀取磁碟 */
+function invalidateListCache(): void {
   cachedCommands = null;
   cacheTimestamp = 0;
-  cachedCommandContents.clear();
+}
+
+/** 清除指定 id 的 read 內容快取；不傳 id 則清除全部 */
+function invalidateContentCache(id?: string): void {
+  if (id !== undefined) {
+    cachedCommandContents.delete(id);
+  } else {
+    cachedCommandContents.clear();
+  }
+}
+
+/** 清除所有 Command 快取（list + content），強制下次重新讀取磁碟
+ * @internal 僅供測試使用
+ */
+export function invalidateCache(): void {
+  invalidateListCache();
+  invalidateContentCache();
 }
 
 export const commandService = {
@@ -70,24 +86,28 @@ export const commandService = {
 
   async create(name: string, content: string): Promise<Command> {
     const result = await baseService.create(name, content);
-    invalidateCache();
+    invalidateListCache();
+    invalidateContentCache();
     return result;
   },
 
   async update(id: string, content: string): Promise<Command> {
     const result = await baseService.update(id, content);
-    invalidateCache();
+    invalidateListCache();
+    invalidateContentCache(id);
     return result;
   },
 
   async delete(id: string): Promise<void> {
     await baseService.delete(id);
-    invalidateCache();
+    invalidateListCache();
+    invalidateContentCache(id);
   },
 
   async setGroupId(id: string, groupId: string | null): Promise<void> {
     await baseService.setGroupId(id, groupId);
-    invalidateCache();
+    invalidateListCache();
+    invalidateContentCache(id);
   },
 
   /**
