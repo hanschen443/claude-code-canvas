@@ -137,6 +137,7 @@ function buildStatements(db: Database): {
     insert: ReturnType<Database["prepare"]>;
     selectByCanvasId: ReturnType<Database["prepare"]>;
     selectById: ReturnType<Database["prepare"]>;
+    selectRunning: ReturnType<Database["prepare"]>;
     updateStatus: ReturnType<Database["prepare"]>;
     deleteById: ReturnType<Database["prepare"]>;
     countByCanvasId: ReturnType<Database["prepare"]>;
@@ -538,6 +539,10 @@ function buildStatements(db: Database): {
         "SELECT * FROM workflow_runs WHERE canvas_id = ? ORDER BY created_at DESC",
       ),
       selectById: db.prepare("SELECT * FROM workflow_runs WHERE id = ?"),
+      selectRunning: db.prepare(
+        `SELECT id, canvas_id, source_pod_id, trigger_message, status, created_at, completed_at
+        FROM workflow_runs WHERE status = 'running'`,
+      ),
       updateStatus: db.prepare(
         "UPDATE workflow_runs SET status = $status, completed_at = $completedAt WHERE id = $id",
       ),

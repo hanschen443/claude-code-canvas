@@ -22,13 +22,31 @@ const REQUIRED_BYTES = 1 * 1024 * 1024;
 
 const mockExecFile = vi.fn();
 
+/**
+ * 攔截 child_process.execFile 的 callback 版本。
+ *
+ * diskSpace.ts 使用 util.promisify(execFile) 來執行 df 指令。
+ * promisify 的實作原理：將原始的 callback 版 execFile 包成 Promise，
+ * 呼叫時仍會以 execFile(cmd, args, callback) 的形式執行，
+ * callback 會作為最後一個引數傳入。
+ *
+ * 此 mock 攔截方式：
+ * - 擷取最後一個引數（即 promisify 注入的 callback）
+ * - 將前面的引數（cmd, args）傳給 mockExecFile spy 以供斷言
+ * - mockExecFile 的實作可透過手動呼叫 callback 控制成功/失敗
+ *
+ * 注意限制：若未來 diskSpace.ts 改用非 promisify 的方式（例如直接用
+ * execFileSync 或原生 Promise 包裝），此 mock 攔截邏輯需要同步更新。
+ * 亦不支援 execFile 使用 AbortSignal / options 物件的情境（引數順序不同）。
+ */
 vi.mock("child_process", () => ({
   execFile: (...args: unknown[]) => {
-    // 模擬 promisify 的呼叫方式：最後一個參數是 callback
+    // 最後一個參數是 promisify 注入的 callback（Node.js callback 慣例：最末位）
     const callback = args[args.length - 1] as (
       err: Error | null,
       result?: { stdout: string; stderr: string },
     ) => void;
+    // 將 cmd + args 傳給 spy，讓測試可驗證被呼叫的指令與參數
     mockExecFile(...args.slice(0, -1), callback);
   },
 }));
@@ -155,5 +173,67 @@ describe("checkDiskSpace — statfs 主路徑（案例 15）", () => {
 
     expect(result.ok).toBe(true);
     expect((result as { skipped?: boolean }).skipped).toBe(true);
+  });
+});
+
+// ================================================================
+// checkDiskSpace — statfs 不存在時直接走 df fallback（項目 30）
+// ================================================================
+describe("checkDiskSpace — statfs 不存在時應直接走 df fallback", () => {
+  it("fs.statfs 為非 function（undefined）時不呼叫 statfs，直接走 df，df 成功 → ok:true", async () => {
+    // 模擬 statfs 不存在（typeof !== function）：暫時將屬性設為 undefined
+    const fsRecord = fs as unknown as Record<string, unknown>;
+    const original = fsRecord.statfs;
+    fsRecord.statfs = undefined;
+
+    // df 回傳充足空間（100 GB）
+    const availableKb = 100 * 1024 * 1024;
+    mockExecFile.mockImplementation(
+      (
+        _cmd: unknown,
+        _args: unknown,
+        callback: (err: null, result: { stdout: string }) => void,
+      ) => {
+        callback(null, { stdout: makeDfOutput(availableKb) });
+      },
+    );
+
+    try {
+      const result = await checkDiskSpace("/some/path", REQUIRED_BYTES);
+      // hasStatfsSupport() 回傳 false，直接走 df fallback
+      expect(result.ok).toBe(true);
+    } finally {
+      // 還原，避免污染其他測試
+      fsRecord.statfs = original;
+    }
+  });
+
+  it("fs.statfs 為非 function（undefined）時，df 回傳空間不足 → ok:false reason:disk-full", async () => {
+    // 模擬 statfs 不存在
+    const fsRecord = fs as unknown as Record<string, unknown>;
+    const original = fsRecord.statfs;
+    fsRecord.statfs = undefined;
+
+    // df 回傳極少空間（1 KB）
+    mockExecFile.mockImplementation(
+      (
+        _cmd: unknown,
+        _args: unknown,
+        callback: (err: null, result: { stdout: string }) => void,
+      ) => {
+        callback(null, { stdout: makeDfOutput(1) });
+      },
+    );
+
+    try {
+      const result = await checkDiskSpace("/some/path", REQUIRED_BYTES);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toBe("disk-full");
+      }
+    } finally {
+      // 還原，避免污染其他測試
+      fsRecord.statfs = original;
+    }
   });
 });

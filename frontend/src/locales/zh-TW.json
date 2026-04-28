@@ -695,6 +695,7 @@
     "activeCanvasNotFound": "找不到使用中的 Canvas",
     "capabilityNotSupported": "{provider} 不支援此功能",
     "resourceInUse": "{resource} 正在被 {count} 個 Pod 使用中，無法刪除",
+    "attachmentFolderNotAllowed": "不支援拖入資料夾",
     "attachmentEmpty": "沒有可上傳的檔案，請選擇檔案後再試一次",
     "attachmentTooLarge": "單檔大小超過 10 MB 上限",
     "attachmentInvalidName": "檔案名稱不合法",

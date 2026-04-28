@@ -92,6 +92,8 @@ const isSelected = computed(() =>
 
 // PodStatus 白名單（對應 types/pod.ts 的 PodStatus union）；
 // 未知 status 不注入任意 class，回傳空字串。
+// 此為靜態常數（不依賴 store），刻意定義在 script setup 頂層而非 computed 內，
+// 確保每次渲染不重新建立 Set，也方便日後新增 status 時集中維護。
 const ALLOWED_STATUSES = new Set<string>([
   "idle",
   "chatting",
@@ -464,7 +466,7 @@ const handleContextMenu = (e: MouseEvent): void => {
           >
             <span class="unknown-provider-badge__dot" />
             <span class="unknown-provider-badge__text">
-              此 Provider 已下線或尚未支援
+              {{ $t("pod.provider.unknownDescription") }}
             </span>
           </div>
 

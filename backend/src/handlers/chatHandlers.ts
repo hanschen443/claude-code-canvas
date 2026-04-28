@@ -77,6 +77,253 @@ function validatePodNotBusy(
 }
 
 /**
+ * 將 writeAttachments 拋出的各類型錯誤對應到對應 i18n key 並 emit POD_ERROR。
+ * caller 只需呼叫此函式後 return，不需再處理 error 細節。
+ */
+function emitAttachmentError(
+  err: unknown,
+  connectionId: string,
+  canvasId: string,
+  podId: string,
+  requestId: string,
+): void {
+  if (err instanceof AttachmentTooLargeError) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.attachmentTooLarge"),
+      canvasId,
+      requestId,
+      podId,
+      "ATTACHMENT_TOO_LARGE",
+    );
+  } else if (err instanceof AttachmentDiskFullError) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.attachmentDiskFull"),
+      canvasId,
+      requestId,
+      podId,
+      "ATTACHMENT_DISK_FULL",
+    );
+  } else if (err instanceof AttachmentInvalidNameError) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.attachmentInvalidName", {
+        name: err.fileName,
+      }),
+      canvasId,
+      requestId,
+      podId,
+      "ATTACHMENT_INVALID_NAME",
+    );
+  } else {
+    // AttachmentWriteError 或其他未知錯誤
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.attachmentWriteFailed"),
+      canvasId,
+      requestId,
+      podId,
+      "ATTACHMENT_WRITE_FAILED",
+    );
+  }
+}
+
+/**
+ * 處理帶有 attachments 的聊天訊息（multi-instance 與串行兩條路徑）。
+ */
+async function handleChatSendWithAttachments(
+  connectionId: string,
+  canvasId: string,
+  payload: ChatSendPayload,
+  requestId: string,
+  pod: Pod,
+): Promise<void> {
+  const { podId } = payload;
+  const attachments = payload.attachments!;
+  const podName = pod.name;
+
+  // 空陣列防線：schema 層（chatSchemas.ts attachments min(1)）已擋下空陣列，正常路徑不會觸達此處。
+  // 保留此檢查是 belt-and-suspenders 防禦：避免 schema 未來被放寬後產生隱性 bug，不視為死碼。
+  if (attachments.length === 0) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.attachmentEmpty"),
+      canvasId,
+      requestId,
+      podId,
+      "ATTACHMENT_EMPTY",
+    );
+    return;
+  }
+
+  // 串行 pod：先確認 pod 不忙碌，busy 直接拒絕，不寫檔
+  if (pod.multiInstance !== true) {
+    if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
+  }
+
+  // 預先產生 chatMessageId，同時給 attachmentWriter 與 DB，確保一致
+  const chatMessageId = uuidv4();
+
+  // 寫入附件（任一失敗都 early return，不建 chat message）
+  let attachWriteResult: { dir: string; files: string[] };
+  try {
+    attachWriteResult = await writeAttachments(chatMessageId, attachments);
+  } catch (err) {
+    emitAttachmentError(err, connectionId, canvasId, podId, requestId);
+    return;
+  }
+
+  // 組觸發訊息（zh-TW），前端 drop 路徑 message 永遠為空字串
+  // 安全 trade-off 說明：此處刻意將絕對路徑（attachWriteResult.dir）傳入 LLM prompt。
+  // 原因：agent 必須能以 Read tool 讀取附件目錄，若改用相對路徑或符號化名稱
+  // 則 agent 無法定位檔案，功能完全失效。
+  // 已知此設計會將伺服器 tmpRoot 絕對路徑洩漏給 LLM，屬必要 trade-off 而非 oversight。
+  // 若未來改為 per-pod workspace symlink 方案可消除洩漏，但需重構 tmpRoot 管理邏輯。
+  const fileList = attachWriteResult.files.join(", ");
+  const triggerText = `我提供了下列檔案在 \`${attachWriteResult.dir}\`：${fileList}`;
+
+  if (pod.multiInstance === true) {
+    // multi-instance pod：建新 Run，userMessageId 透傳確保落地一致
+    await launchMultiInstanceRun({
+      canvasId,
+      podId,
+      message: triggerText,
+      abortable: true,
+      commandNotFoundBehavior: "skip",
+      userMessageId: chatMessageId,
+      onCommandNotFound: (commandId) =>
+        handleCommandNotFound(canvasId, podId, commandId),
+      onComplete: (runContext) =>
+        onRunChatComplete(runContext, canvasId, podId),
+      onAborted: (abortedCanvasId, abortedPodId, messageId) =>
+        onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
+    });
+    return;
+  }
+
+  // 串行 pod：展開 Command（若訊息含 Command 語法）
+  const expandResult = await tryExpandCommandMessage(
+    pod,
+    triggerText,
+    "handleChatSend",
+  );
+
+  if (!expandResult.ok) {
+    // Command 不存在：注入原始觸發訊息、推送錯誤文字，不呼叫 Claude
+    await injectUserMessage({
+      canvasId,
+      podId,
+      content: triggerText,
+      id: chatMessageId,
+    });
+    handleCommandNotFound(canvasId, podId, expandResult.commandId);
+    return;
+  }
+
+  const resolvedTrigger = expandResult.message;
+
+  // 寫入 DB（chatMessageId 對齊 attachments dir）並送 LLM
+  await injectUserMessage({
+    canvasId,
+    podId,
+    content: resolvedTrigger,
+    id: chatMessageId,
+  });
+
+  const attachStrategy = new NormalModeExecutionStrategy(canvasId);
+
+  await executeStreamingChat(
+    {
+      canvasId,
+      podId,
+      message: resolvedTrigger,
+      abortable: true,
+      strategy: attachStrategy,
+    },
+    {
+      onComplete: onChatComplete,
+      onAborted: (abortedCanvasId, abortedPodId, messageId) =>
+        onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
+    },
+  );
+}
+
+/**
+ * 處理一般（無 attachments）的聊天訊息（multi-instance 與串行兩條路徑）。
+ */
+async function handleChatSendNormal(
+  connectionId: string,
+  canvasId: string,
+  payload: ChatSendPayload,
+  requestId: string,
+  pod: Pod,
+): Promise<void> {
+  const { podId, message } = payload;
+  const podName = pod.name;
+
+  if (pod.multiInstance === true) {
+    await launchMultiInstanceRun({
+      canvasId,
+      podId,
+      message,
+      abortable: true,
+      commandNotFoundBehavior: "skip",
+      onCommandNotFound: (commandId) =>
+        handleCommandNotFound(canvasId, podId, commandId),
+      onComplete: (runContext) =>
+        onRunChatComplete(runContext, canvasId, podId),
+      onAborted: (abortedCanvasId, abortedPodId, messageId) =>
+        onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
+    });
+    return;
+  }
+
+  if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
+
+  // 在注入歷史記錄前先展開 Command，確保歷史與送給 Claude 的訊息一致
+  const expandResult = await tryExpandCommandMessage(
+    pod,
+    message,
+    "handleChatSend",
+  );
+
+  if (!expandResult.ok) {
+    // Command 不存在：注入原始訊息、推送錯誤文字給前端，不呼叫 Claude
+    await injectUserMessage({ canvasId, podId, content: message });
+    handleCommandNotFound(canvasId, podId, expandResult.commandId);
+    return;
+  }
+
+  const resolvedMessage = expandResult.message;
+
+  // 歷史記錄與 Claude 都使用展開版訊息
+  await injectUserMessage({ canvasId, podId, content: resolvedMessage });
+
+  const strategy = new NormalModeExecutionStrategy(canvasId);
+
+  await executeStreamingChat(
+    {
+      canvasId,
+      podId,
+      message: resolvedMessage,
+      abortable: true,
+      strategy,
+    },
+    {
+      onComplete: onChatComplete,
+      onAborted: (abortedCanvasId, abortedPodId, messageId) =>
+        onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
+    },
+  );
+}
+
+/**
  * 處理 Command 不存在的情況：推送錯誤文字至前端，並將 Pod 狀態重設為 idle。
  * commandId 為 Command 的檔名（即展示用名稱），直接顯示給使用者是合適的。
  */
@@ -109,7 +356,7 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
     payload: ChatSendPayload,
     requestId: string,
   ): Promise<void> => {
-    const { podId, message } = payload;
+    const { podId } = payload;
 
     const pod = validatePod(
       connectionId,
@@ -122,213 +369,23 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
     if (!validateIntegrationBindings(connectionId, canvasId, pod, requestId))
       return;
 
-    const podName = pod.name;
-
-    // ── attachments 處理區塊 ──────────────────────────────────────────
     if (payload.attachments !== undefined) {
-      // 空陣列防線：schema 層已擋 min(1)，但防禦性保留
-      if (payload.attachments.length === 0) {
-        emitError(
-          connectionId,
-          WebSocketResponseEvents.POD_ERROR,
-          createI18nError("errors.attachmentEmpty"),
-          canvasId,
-          requestId,
-          podId,
-          "ATTACHMENT_EMPTY",
-        );
-        return;
-      }
-
-      // 串行 pod：先確認 pod 不忙碌，busy 直接拒絕，不寫檔
-      if (pod.multiInstance !== true) {
-        if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
-      }
-
-      // 預先產生 chatMessageId，同時給 attachmentWriter 與 DB，確保一致
-      const chatMessageId = uuidv4();
-
-      // 寫入附件（任一失敗都 early return，不建 chat message）
-      let attachWriteResult: { dir: string; files: string[] };
-      try {
-        attachWriteResult = await writeAttachments(
-          chatMessageId,
-          payload.attachments,
-        );
-      } catch (err) {
-        if (err instanceof AttachmentTooLargeError) {
-          emitError(
-            connectionId,
-            WebSocketResponseEvents.POD_ERROR,
-            createI18nError("errors.attachmentTooLarge"),
-            canvasId,
-            requestId,
-            podId,
-            "ATTACHMENT_TOO_LARGE",
-          );
-        } else if (err instanceof AttachmentDiskFullError) {
-          emitError(
-            connectionId,
-            WebSocketResponseEvents.POD_ERROR,
-            createI18nError("errors.attachmentDiskFull"),
-            canvasId,
-            requestId,
-            podId,
-            "ATTACHMENT_DISK_FULL",
-          );
-        } else if (err instanceof AttachmentInvalidNameError) {
-          emitError(
-            connectionId,
-            WebSocketResponseEvents.POD_ERROR,
-            createI18nError("errors.attachmentInvalidName", {
-              name: err.fileName,
-            }),
-            canvasId,
-            requestId,
-            podId,
-            "ATTACHMENT_INVALID_NAME",
-          );
-        } else {
-          // AttachmentWriteError 或其他未知錯誤
-          emitError(
-            connectionId,
-            WebSocketResponseEvents.POD_ERROR,
-            createI18nError("errors.attachmentWriteFailed"),
-            canvasId,
-            requestId,
-            podId,
-            "ATTACHMENT_WRITE_FAILED",
-          );
-        }
-        return;
-      }
-
-      // 組觸發訊息（zh-TW），前端 drop 路徑 message 永遠為空字串
-      const fileList = attachWriteResult.files.join(", ");
-      const triggerText = `我提供了下列檔案在 \`${attachWriteResult.dir}\`：${fileList}`;
-
-      if (pod.multiInstance === true) {
-        // multi-instance pod：建新 Run，userMessageId 透傳確保落地一致
-        await launchMultiInstanceRun({
-          canvasId,
-          podId,
-          message: triggerText,
-          abortable: true,
-          commandNotFoundBehavior: "skip",
-          userMessageId: chatMessageId,
-          onCommandNotFound: (commandId) =>
-            handleCommandNotFound(canvasId, podId, commandId),
-          onComplete: (runContext) =>
-            onRunChatComplete(runContext, canvasId, podId),
-          onAborted: (abortedCanvasId, abortedPodId, messageId) =>
-            onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
-        });
-        return;
-      }
-
-      // 串行 pod：展開 Command（若訊息含 Command 語法）
-      const expandResult = await tryExpandCommandMessage(
+      await handleChatSendWithAttachments(
+        connectionId,
+        canvasId,
+        payload,
+        requestId,
         pod,
-        triggerText,
-        "handleChatSend",
       );
-
-      if (!expandResult.ok) {
-        // Command 不存在：注入原始觸發訊息、推送錯誤文字，不呼叫 Claude
-        await injectUserMessage({
-          canvasId,
-          podId,
-          content: triggerText,
-          id: chatMessageId,
-        });
-        handleCommandNotFound(canvasId, podId, expandResult.commandId);
-        return;
-      }
-
-      const resolvedTrigger = expandResult.message;
-
-      // 寫入 DB（chatMessageId 對齊 attachments dir）並送 LLM
-      await injectUserMessage({
+    } else {
+      await handleChatSendNormal(
+        connectionId,
         canvasId,
-        podId,
-        content: resolvedTrigger,
-        id: chatMessageId,
-      });
-
-      const attachStrategy = new NormalModeExecutionStrategy(canvasId);
-
-      await executeStreamingChat(
-        {
-          canvasId,
-          podId,
-          message: resolvedTrigger,
-          abortable: true,
-          strategy: attachStrategy,
-        },
-        {
-          onComplete: onChatComplete,
-          onAborted: (abortedCanvasId, abortedPodId, messageId) =>
-            onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
-        },
+        payload,
+        requestId,
+        pod,
       );
-      return;
     }
-    // ── attachments 處理區塊結束 ──────────────────────────────────────
-
-    if (pod.multiInstance === true) {
-      await launchMultiInstanceRun({
-        canvasId,
-        podId,
-        message,
-        abortable: true,
-        commandNotFoundBehavior: "skip",
-        onCommandNotFound: (commandId) =>
-          handleCommandNotFound(canvasId, podId, commandId),
-        onComplete: (runContext) =>
-          onRunChatComplete(runContext, canvasId, podId),
-        onAborted: (abortedCanvasId, abortedPodId, messageId) =>
-          onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
-      });
-      return;
-    }
-
-    if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
-
-    // 在注入歷史記錄前先展開 Command，確保歷史與送給 Claude 的訊息一致
-    const expandResult = await tryExpandCommandMessage(
-      pod,
-      message,
-      "handleChatSend",
-    );
-
-    if (!expandResult.ok) {
-      // Command 不存在：注入原始訊息、推送錯誤文字給前端，不呼叫 Claude
-      await injectUserMessage({ canvasId, podId, content: message });
-      handleCommandNotFound(canvasId, podId, expandResult.commandId);
-      return;
-    }
-
-    const resolvedMessage = expandResult.message;
-
-    // 歷史記錄與 Claude 都使用展開版訊息
-    await injectUserMessage({ canvasId, podId, content: resolvedMessage });
-
-    const strategy = new NormalModeExecutionStrategy(canvasId);
-
-    await executeStreamingChat(
-      {
-        canvasId,
-        podId,
-        message: resolvedMessage,
-        abortable: true,
-        strategy,
-      },
-      {
-        onComplete: onChatComplete,
-        onAborted: (abortedCanvasId, abortedPodId, messageId) =>
-          onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
-      },
-    );
   },
 );
 

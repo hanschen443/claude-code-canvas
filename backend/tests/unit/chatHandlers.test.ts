@@ -829,6 +829,48 @@ describe("handleChatSend", () => {
       "ATTACHMENT_INVALID_NAME",
     );
   });
+
+  // ================================================================
+  // 測試案例 — writeAttachments 拋一般 IO 錯誤（ATTACHMENT_WRITE_FAILED）
+  // ================================================================
+  it("writeAttachments 拋一般 IO 錯誤時應回傳 ATTACHMENT_WRITE_FAILED 並不建立 chat message", async () => {
+    const { AttachmentWriteError } =
+      await import("../../src/services/attachmentErrors.js");
+    const pod = makePod({ status: "idle" });
+    mockValidatePod.mockReturnValue(pod);
+    // 模擬非 TooLarge / DiskFull / InvalidName 的一般 IO 錯誤
+    mockWriteAttachments.mockRejectedValue(
+      new AttachmentWriteError(new Error("EACCES: permission denied")),
+    );
+
+    const attachments = [
+      {
+        filename: "secret.txt",
+        contentBase64: Buffer.from("x").toString("base64"),
+      },
+    ];
+
+    await handleChatSend(
+      CONNECTION_ID,
+      { podId: POD_ID, message: "", attachments },
+      REQUEST_ID,
+    );
+
+    // 應 emit POD_ERROR 帶 ATTACHMENT_WRITE_FAILED code
+    expect(mockEmitError).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      "pod:error",
+      expect.objectContaining({ key: "errors.attachmentWriteFailed" }),
+      CANVAS_ID,
+      REQUEST_ID,
+      POD_ID,
+      "ATTACHMENT_WRITE_FAILED",
+    );
+    // 不應建立 chat message（injectUserMessage 未被呼叫）
+    expect(mockInjectUserMessage).not.toHaveBeenCalled();
+    // 不應啟動串流
+    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
+  });
 });
 
 // ================================================================

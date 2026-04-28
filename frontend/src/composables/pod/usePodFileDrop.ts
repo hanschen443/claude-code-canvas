@@ -4,6 +4,58 @@ import { t } from "@/i18n";
 import { MAX_POD_DROP_FILE_BYTES } from "@/lib/constants";
 import type { PodChatAttachment } from "@/types/websocket/requests";
 
+type ValidateDropResult = { ok: true } | { ok: false; toastKey: string };
+
+/**
+ * 純函式：驗證 drop 事件中的 items 與 files 是否合法。
+ * 回傳 { ok: true } 代表可繼續讀檔；{ ok: false, toastKey } 代表應顯示對應 i18n 錯誤。
+ *
+ * 驗證順序：
+ * 1. 資料夾偵測（透過 DataTransferItemList.webkitGetAsEntry）
+ * 2. 空檔清單
+ * 3. 單檔大小超過上限
+ */
+export function validateDropFiles(
+  items: DataTransferItemList | null | undefined,
+  files: FileList | null | undefined,
+): ValidateDropResult {
+  // 1. 資料夾偵測
+  if (items) {
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i]?.webkitGetAsEntry?.();
+      if (entry?.isDirectory) {
+        return { ok: false, toastKey: "errors.attachmentFolderNotAllowed" };
+      }
+    }
+  }
+
+  // 2. 空檔清單
+  if (!files || files.length === 0) {
+    return { ok: false, toastKey: "errors.attachmentEmpty" };
+  }
+
+  // 3. 單檔大小超過上限
+  for (const file of Array.from(files)) {
+    if (file.size > MAX_POD_DROP_FILE_BYTES) {
+      return { ok: false, toastKey: "errors.attachmentTooLarge" };
+    }
+  }
+
+  // 4. 檔案名稱路徑字元過濾（defense-in-depth：後端有雙重防禦，前端提前擋下）
+  // 含 '/'、'\'、或 '..' 的名稱視為路徑穿越風險，整批拒絕
+  for (const file of Array.from(files)) {
+    if (
+      file.name.includes("/") ||
+      file.name.includes("\\") ||
+      file.name.includes("..")
+    ) {
+      return { ok: false, toastKey: "errors.attachmentInvalidName" };
+    }
+  }
+
+  return { ok: true };
+}
+
 interface UsePodFileDropOptions {
   /** getter，回傳 true 時所有事件 early return */
   disabled: () => boolean;
@@ -19,6 +71,12 @@ interface UsePodFileDropReturn {
   handleDragLeave: (event: DragEvent) => void;
   handleDrop: (event: DragEvent) => Promise<void>;
 }
+
+/**
+ * 每批並行讀取的檔案數量上限。
+ * 限制 Promise.all 平行度，避免大量大檔同時讀進記憶體造成瞬間峰值過高。
+ */
+const READ_FILES_CHUNK_SIZE = 5;
 
 /**
  * 處理 Pod 聊天視窗的檔案拖曳上傳邏輯。
@@ -100,50 +158,37 @@ export function usePodFileDrop(
 
     if (disabled()) return;
 
-    // 1. 檢查是否含有資料夾（透過 DataTransferItemList.webkitGetAsEntry）
     const items = event.dataTransfer?.items;
-    if (items) {
-      for (let i = 0; i < items.length; i++) {
-        const entry = items[i]?.webkitGetAsEntry?.();
-        if (entry?.isDirectory) {
-          toast({ title: t("errors.attachmentEmpty"), variant: "destructive" });
-          return;
-        }
-      }
-    }
-
-    // 2. 確認有檔案
     const files = event.dataTransfer?.files;
-    if (!files || files.length === 0) {
-      toast({ title: t("errors.attachmentEmpty"), variant: "destructive" });
+
+    // 驗證：資料夾、空檔、大小
+    const validation = validateDropFiles(items, files);
+    if (!validation.ok) {
+      toast({ title: t(validation.toastKey), variant: "destructive" });
       return;
     }
 
-    const fileArray = Array.from(files);
+    const fileArray = Array.from(files!);
 
-    // 3. 逐檔比對大小，任一檔超過上限即整批拒絕
-    for (const file of fileArray) {
-      if (file.size > MAX_POD_DROP_FILE_BYTES) {
-        toast({
-          title: t("errors.attachmentTooLarge"),
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    // 讀取所有檔案（平行處理）
+    // 以 chunk 方式並行讀取檔案，避免大量大檔同時讀入記憶體造成瞬間峰值過高。
+    // 每批最多 READ_FILES_CHUNK_SIZE 個並行，讀完再處理下一批。
     let attachments: PodChatAttachment[];
     try {
-      attachments = await Promise.all(
-        fileArray.map(async (file): Promise<PodChatAttachment> => {
-          const contentBase64 = await readFileAsBase64(file);
-          return {
-            filename: file.name,
-            contentBase64,
-          };
-        }),
-      );
+      const results: PodChatAttachment[] = [];
+      for (let i = 0; i < fileArray.length; i += READ_FILES_CHUNK_SIZE) {
+        const chunk = fileArray.slice(i, i + READ_FILES_CHUNK_SIZE);
+        const chunkResults = await Promise.all(
+          chunk.map(async (file): Promise<PodChatAttachment> => {
+            const contentBase64 = await readFileAsBase64(file);
+            return {
+              filename: file.name,
+              contentBase64,
+            };
+          }),
+        );
+        results.push(...chunkResults);
+      }
+      attachments = results;
     } catch {
       toast({
         title: t("composable.chat.podDropReadFailed"),

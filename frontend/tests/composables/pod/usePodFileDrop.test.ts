@@ -424,6 +424,66 @@ describe("usePodFileDrop", () => {
   });
 
   // -------------------------------------------------------------------------
+  // 案例 32：handleDragOver — enabled / disabled 兩條路徑
+  // -------------------------------------------------------------------------
+  describe("案例 32：handleDragOver 行為", () => {
+    it("disabled=false 時，handleDragOver 應將 dropEffect 設為 'copy'", () => {
+      const { handleDragOver } = usePodFileDrop({
+        disabled: () => false,
+        onDrop: vi.fn(),
+      });
+
+      const event = createDragEvent("dragover");
+      // 注入可寫的 dataTransfer，模擬真實瀏覽器環境
+      const mockDataTransfer = { dropEffect: "none" as string };
+      Object.defineProperty(event, "dataTransfer", {
+        value: mockDataTransfer,
+        writable: true,
+      });
+
+      handleDragOver(event);
+
+      expect(mockDataTransfer.dropEffect).toBe("copy");
+    });
+
+    it("disabled=true 時，handleDragOver 不拋例外，且 early return 在 dropEffect 設定後執行", () => {
+      const { handleDragOver } = usePodFileDrop({
+        disabled: () => true,
+        onDrop: vi.fn(),
+      });
+
+      const event = createDragEvent("dragover");
+      // 注入可寫的 dataTransfer，初始 dropEffect 為 'none'
+      const mockDataTransfer = { dropEffect: "none" as string };
+      Object.defineProperty(event, "dataTransfer", {
+        value: mockDataTransfer,
+        writable: true,
+      });
+
+      // 不應拋出例外
+      expect(() => handleDragOver(event)).not.toThrow();
+
+      // 目前實作：dropEffect 的設定在 disabled() check 之前，
+      // 因此 disabled=true 時 dropEffect 仍被設為 'copy'（early return 在其後）。
+      // 此行為是實作細節，若未來將 disabled check 移到 dropEffect 前，需同步更新此斷言。
+      expect(mockDataTransfer.dropEffect).toBe("copy");
+    });
+
+    it("disabled=true 時，handleDragOver 不應影響 isDragOver 狀態", () => {
+      const { isDragOver, handleDragOver } = usePodFileDrop({
+        disabled: () => true,
+        onDrop: vi.fn(),
+      });
+
+      const event = createDragEvent("dragover");
+      handleDragOver(event);
+
+      // isDragOver 不應被 handleDragOver 改動
+      expect(isDragOver.value).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // 補充：disabled=true 時 dragenter 不應更新 isDragOver
   // -------------------------------------------------------------------------
   it("disabled=true 時 dragenter 不應設定 isDragOver", () => {

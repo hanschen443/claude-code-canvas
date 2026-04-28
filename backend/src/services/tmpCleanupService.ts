@@ -9,6 +9,9 @@ const TTL_MS = 6 * 60 * 60 * 1000;
 /** 每小時執行一次清理 */
 const INTERVAL_MS = 60 * 60 * 1000;
 
+/** 每批並行 stat 的 entry 數量上限，避免 entries 極多時 IO fan-out 過大 */
+const STAT_CHUNK_SIZE = 20;
+
 class TmpCleanupService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -45,6 +48,9 @@ class TmpCleanupService {
 
   /**
    * 執行單次清理：掃描 tmpRoot，刪除超過 6 小時未更新的目錄。
+   *
+   * 使用 chunk 並行策略（每批 STAT_CHUNK_SIZE 個）對 entries 做 fs.stat，
+   * 避免 entries 極多時同時發起大量 IO（fan-out 過大），同時比全串行快。
    */
   async runOnce(): Promise<void> {
     const tmpRoot = config.tmpRoot;
@@ -64,27 +70,36 @@ class TmpCleanupService {
     const now = Date.now();
     let cleanedCount = 0;
 
-    for (const entry of entries) {
-      const entryPath = path.join(tmpRoot, entry);
+    // 將 entries 切成每批 STAT_CHUNK_SIZE 個，逐批並行 stat + 清理
+    for (let start = 0; start < entries.length; start += STAT_CHUNK_SIZE) {
+      const chunk = entries.slice(start, start + STAT_CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (entry) => {
+          const entryPath = path.join(tmpRoot, entry);
+          try {
+            const stat = await fs.stat(entryPath);
 
-      try {
-        const stat = await fs.stat(entryPath);
+            // 只處理目錄，且 mtime 超過 6 小時
+            if (!stat.isDirectory()) {
+              return;
+            }
 
-        // 只處理目錄，且 mtime 超過 6 小時
-        if (!stat.isDirectory()) {
-          continue;
-        }
+            if (now - stat.mtimeMs < TTL_MS) {
+              return;
+            }
 
-        if (now - stat.mtimeMs < TTL_MS) {
-          continue;
-        }
-
-        await fs.rm(entryPath, { recursive: true, force: true });
-        cleanedCount++;
-      } catch {
-        // 單一目錄失敗不影響其他目錄的清理
-        logger.warn("Cleanup", "Warn", `清理 tmp 目錄失敗，跳過：${entryPath}`);
-      }
+            await fs.rm(entryPath, { recursive: true, force: true });
+            cleanedCount++;
+          } catch {
+            // 單一目錄失敗不影響其他目錄的清理
+            logger.warn(
+              "Cleanup",
+              "Warn",
+              `清理 tmp 目錄失敗，跳過：${entryPath}`,
+            );
+          }
+        }),
+      );
     }
 
     logger.log("Cleanup", "Complete", `清理 ${cleanedCount} 個過期 tmp 目錄`);

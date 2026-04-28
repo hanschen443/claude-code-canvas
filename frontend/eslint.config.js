@@ -34,6 +34,8 @@ const sharedGlobals = {
   File: "readonly",
   FileReader: "readonly",
   FileList: "readonly",
+  DataTransferItemList: "readonly",
+  DataTransfer: "readonly",
   navigator: "readonly",
   performance: "readonly",
   crypto: "readonly",

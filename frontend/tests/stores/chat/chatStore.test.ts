@@ -3,7 +3,7 @@ import {
   webSocketMockFactory,
   mockWebSocketClient,
 } from "../../helpers/mockWebSocket";
-import { setupStoreTest } from "../../helpers/testSetup";
+import { setupStoreTest, mockToastFactory } from "../../helpers/testSetup";
 import { createMockPod } from "../../helpers/factories";
 import { useChatStore, resetChatActionsCache } from "@/stores/chat/chatStore";
 import { usePodStore } from "@/stores/pod/podStore";
@@ -13,15 +13,7 @@ import type { PodChatAttachment } from "@/types/websocket/requests";
 
 vi.mock("@/services/websocket", () => webSocketMockFactory());
 
-vi.mock("@/composables/useToast", () => {
-  return {
-    useToast: () => ({
-      toast: vi.fn(),
-      showSuccessToast: vi.fn(),
-      showErrorToast: vi.fn(),
-    }),
-  };
-});
+vi.mock("@/composables/useToast", () => mockToastFactory());
 
 describe("chatStore", () => {
   setupStoreTest(() => {
@@ -397,6 +389,29 @@ describe("chatStore", () => {
     });
 
     // -----------------------------------------------------------------------
+    // 案例 11b：sendMessage 副作用 — podStore.updatePodStatus 應被呼叫為 chatting
+    //          （非 multi-instance source pod 路徑）
+    // -----------------------------------------------------------------------
+    it("案例 11b：sendMessage 成功後，podStore.updatePodStatus 應以 chatting 更新 pod 狀態", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const podStore = usePodStore();
+      const pod = createMockPod({ id: "pod-1", commandId: null });
+      podStore.pods = [pod];
+      const store = useChatStore();
+      store.connectionStatus = "connected";
+
+      const updateStatusSpy = vi.spyOn(podStore, "updatePodStatus");
+
+      await store.sendMessage("pod-1", "Hello");
+
+      // isTyping 應設為 true
+      expect(store.isTypingByPodId.get("pod-1")).toBe(true);
+      // podStore.updatePodStatus 應以 chatting 更新（非 multi-instance source pod）
+      expect(updateStatusSpy).toHaveBeenCalledWith("pod-1", "chatting");
+    });
+
+    // -----------------------------------------------------------------------
     // 案例 12：attachments 為空陣列時不送 attachments 欄位
     // -----------------------------------------------------------------------
     it("案例 12：attachments 為空陣列時，emit payload 不應含 attachments 欄位", async () => {
@@ -415,6 +430,34 @@ describe("chatStore", () => {
         .calls[0]?.[1] as Record<string, unknown>;
       // 空陣列不送，payload 不應含 attachments key
       expect(emittedPayload).not.toHaveProperty("attachments");
+    });
+
+    // -----------------------------------------------------------------------
+    // 案例 38：message 為空白字串但帶有 attachments 時，應送出（hasMessageContent = true）
+    // -----------------------------------------------------------------------
+    it("案例 38：message 為空白字串但帶有 attachments 時，emit 應正常發送且 payload 含 attachments", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const podStore = usePodStore();
+      const pod = createMockPod({ id: "pod-1", commandId: null });
+      podStore.pods = [pod];
+      const store = useChatStore();
+      store.connectionStatus = "connected";
+
+      const attachments: PodChatAttachment[] = [
+        { filename: "photo.jpg", contentBase64: "aW1hZ2VkYXRh" },
+      ];
+
+      // 空白訊息 + 附件 → hasMessageContent 應視為 true，不被 early return 攔截
+      await store.sendMessage("pod-1", "   ", undefined, attachments);
+
+      expect(mockWebSocketClient.emit).toHaveBeenCalledWith("pod:chat:send", {
+        requestId: expect.any(String),
+        canvasId: "canvas-1",
+        podId: "pod-1",
+        message: "   ",
+        attachments,
+      });
     });
 
     it("案例 12b：attachments 為 undefined 時，emit payload 不應含 attachments 欄位", async () => {
@@ -615,6 +658,30 @@ describe("chatStore", () => {
       });
 
       expect(store.isTypingByPodId.get("pod-1")).toBe(false);
+    });
+  });
+
+  describe("resetForCanvasSwitch", () => {
+    it("應清空所有五個 Map（messagesByPodId / isTypingByPodId / historyLoadingStatus / historyLoadingError / accumulatedLengthByMessageId）", () => {
+      const store = useChatStore();
+
+      // 各 Map 預先填入資料
+      store.messagesByPodId.set("pod-1", [
+        { id: "msg-1", role: "user", content: "Hi", timestamp: "" },
+      ]);
+      store.isTypingByPodId.set("pod-1", true);
+      store.historyLoadingStatus.set("pod-1", "loaded");
+      store.historyLoadingError.set("pod-1", "載入錯誤");
+      store.accumulatedLengthByMessageId.set("msg-1", 100);
+
+      store.resetForCanvasSwitch();
+
+      // 所有 Map 應全部清空
+      expect(store.messagesByPodId.size).toBe(0);
+      expect(store.isTypingByPodId.size).toBe(0);
+      expect(store.historyLoadingStatus.size).toBe(0);
+      expect(store.historyLoadingError.size).toBe(0);
+      expect(store.accumulatedLengthByMessageId.size).toBe(0);
     });
   });
 

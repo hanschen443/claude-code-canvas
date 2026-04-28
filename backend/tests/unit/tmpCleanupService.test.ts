@@ -138,6 +138,25 @@ describe("tmpCleanupService.runOnce — 刪除過期目錄（案例 16）", () =
 });
 
 // ================================================================
+// 測試案例 31 — `.staging` 子目錄也應被清除
+// ================================================================
+describe("tmpCleanupService.runOnce — .staging 殘餘目錄清理（案例 31）", () => {
+  it("mtime 超過 6h 的 .staging 子目錄應被刪除", async () => {
+    // 建立 <id>.staging 格式的殘餘目錄（writeAttachments 中途失敗殘留的 staging 目錄）
+    const stagingDir = path.join(sandboxDir, "some-msg-id.staging");
+    await fs.mkdir(stagingDir);
+
+    // 設 mtime 為 7 小時前（超過 6h TTL）
+    await setMtime(stagingDir, Date.now() - TTL_MS - 60 * 60 * 1000);
+
+    await tmpCleanupService.runOnce();
+
+    // staging 殘餘目錄應被刪除
+    await expect(fs.stat(stagingDir)).rejects.toThrow();
+  });
+});
+
+// ================================================================
 // 測試案例 17 — tmp/ 不存在靜默
 // ================================================================
 describe("tmpCleanupService.runOnce — tmpRoot 不存在靜默（案例 17）", () => {

@@ -18,17 +18,17 @@ import "./integration/providers/index.js";
 import { getDb } from "../database/index.js";
 import { encryptionService } from "./encryptionService.js";
 
+/**
+ * DB 路徑遷移用的舊/新目錄片段常數。
+ * 僅在 migrateDbPaths 的 SQL 中使用，集中定義避免硬編碼散落。
+ */
+const OLD_DATA_DIR_PATTERN = "/Documents/ClaudeCanvas/";
+const NEW_DATA_DIR_PATTERN = "/Documents/AgentCanvas/";
+
 class StartupService {
   async initialize(): Promise<Result<void>> {
-    // 必須在 ensureDirectories 與 DB 任何初始化之前執行：
-    // SQLite WAL 檔在 DB 打開後會被鎖住，無法 rename
-    await this.migrateFromClaudeCanvas();
-    // 無條件執行 DB 路徑遷移：無論 fs.rename 是否發生（例如舊資料夾早已改名），
-    // 都需要確保 SQLite 內的路徑已從 ClaudeCanvas 更新為 AgentCanvas。
-    // 此函式具冪等性：無舊路徑紀錄時為 0 changes，不會有副作用。
-    await this.migrateDbPaths(
-      path.join(os.homedir(), "Documents", "AgentCanvas"),
-    );
+    // 必須在 ensureDirectories 與 DB 任何初始化之前執行
+    await this.runMigrations();
 
     const dirResult = await this.ensureDirectories([
       config.appDataRoot,
@@ -48,10 +48,7 @@ class StartupService {
       return defaultCanvasResult;
     }
 
-    scheduleService.start();
-    backupScheduleService.start();
-    // 啟動 tmp 目錄定期清理（每小時執行一次，超過 24 小時的目錄會被刪除）
-    tmpCleanupService.start();
+    this.startBackgroundServices();
 
     this.restoreIntegrationConnections().catch((error) => {
       logger.error(
@@ -64,6 +61,36 @@ class StartupService {
 
     logger.log("Startup", "Complete", "伺服器初始化完成");
     return ok(undefined);
+  }
+
+  /**
+   * 執行所有資料遷移任務：
+   * 1. 資料目錄從 ClaudeCanvas → AgentCanvas
+   * 2. SQLite 內的絕對路徑更新
+   * 必須在 DB 初始化（getDb()）與 ensureDirectories 之前呼叫。
+   */
+  private async runMigrations(): Promise<void> {
+    // SQLite WAL 檔在 DB 打開後會被鎖住，無法 rename
+    await this.migrateFromClaudeCanvas();
+    // 無條件執行 DB 路徑遷移：無論 fs.rename 是否發生（例如舊資料夾早已改名），
+    // 都需要確保 SQLite 內的路徑已從 ClaudeCanvas 更新為 AgentCanvas。
+    // 此函式具冪等性：無舊路徑紀錄時為 0 changes，不會有副作用。
+    await this.migrateDbPaths(
+      path.join(os.homedir(), "Documents", "AgentCanvas"),
+    );
+  }
+
+  /**
+   * 啟動所有背景排程服務：
+   * - scheduleService（Pod 排程）
+   * - backupScheduleService（備份排程）
+   * - tmpCleanupService（tmp 目錄定期清理）
+   */
+  private startBackgroundServices(): void {
+    scheduleService.start();
+    backupScheduleService.start();
+    // 啟動 tmp 目錄定期清理（每小時執行一次，超過 6 小時的目錄會被刪除）
+    tmpCleanupService.start();
   }
 
   /**
@@ -113,13 +140,16 @@ class StartupService {
 
   /**
    * 將 SQLite 內殘留的 ClaudeCanvas 絕對路徑全面替換為 AgentCanvas 路徑。
-   * 每次啟動都會無條件執行，確保即使 fs.rename 在先前版本已完成，DB 路徑仍會被更新。
+   * 利用 SQLite PRAGMA user_version 作為遷移版本戳記，避免每次啟動都執行全表 LIKE 掃描：
+   *   - user_version < DB_PATHS_MIGRATION_VERSION → 執行遷移並更新版本號
+   *   - user_version >= DB_PATHS_MIGRATION_VERSION → 已完成，直接跳過
    * 此函式在 getDb() 初始化前呼叫，因此需要自行開啟 DB。
    * 若 DB 檔案不存在（首次安裝），靜默跳過不報錯。
-   * 操作本身具冪等性：使用 LIKE '%/Documents/ClaudeCanvas/%' 過濾，
-   * 已替換或不含舊路徑的紀錄不受影響。
    */
   private async migrateDbPaths(newAppDataRoot: string): Promise<void> {
+    /** PRAGMA user_version 版本號；累加此值可觸發下一輪路徑遷移 */
+    const DB_PATHS_MIGRATION_VERSION = 1;
+
     const dbPath = path.join(newAppDataRoot, "canvas.db");
     const dbExists = await fs
       .access(dbPath)
@@ -133,19 +163,33 @@ class StartupService {
 
     const db = new Database(dbPath);
     try {
+      // 讀取目前的遷移版本
+      const versionRow = db.prepare("PRAGMA user_version").get() as {
+        user_version: number;
+      };
+      const currentVersion = versionRow.user_version;
+
+      if (currentVersion >= DB_PATHS_MIGRATION_VERSION) {
+        // 已執行過路徑遷移，直接跳過
+        return;
+      }
+
       // pods.workspace_path
       const podsResult = db
         .prepare(
-          "UPDATE pods SET workspace_path = REPLACE(workspace_path, '/Documents/ClaudeCanvas/', '/Documents/AgentCanvas/') WHERE workspace_path LIKE '%/Documents/ClaudeCanvas/%'",
+          `UPDATE pods SET workspace_path = REPLACE(workspace_path, '${OLD_DATA_DIR_PATTERN}', '${NEW_DATA_DIR_PATTERN}') WHERE workspace_path LIKE '%${OLD_DATA_DIR_PATTERN}%'`,
         )
         .run();
 
       // repository_metadata.path
       const reposResult = db
         .prepare(
-          "UPDATE repository_metadata SET path = REPLACE(path, '/Documents/ClaudeCanvas/', '/Documents/AgentCanvas/') WHERE path LIKE '%/Documents/ClaudeCanvas/%'",
+          `UPDATE repository_metadata SET path = REPLACE(path, '${OLD_DATA_DIR_PATTERN}', '${NEW_DATA_DIR_PATTERN}') WHERE path LIKE '%${OLD_DATA_DIR_PATTERN}%'`,
         )
         .run();
+
+      // 更新版本戳記，後續啟動將跳過此遷移
+      db.exec(`PRAGMA user_version = ${DB_PATHS_MIGRATION_VERSION}`);
 
       const totalUpdated = podsResult.changes + reposResult.changes;
       if (totalUpdated > 0) {

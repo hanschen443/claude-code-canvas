@@ -26,7 +26,7 @@ interface Config {
   appDataRoot: string;
   canvasRoot: string;
   repositoriesRoot: string;
-  /** 暫存檔案根目錄（拖曳上傳的附件先落地於此，24h 後由 tmpCleanupService 清除） */
+  /** 暫存檔案根目錄（拖曳上傳的附件先落地於此，6h 後由 tmpCleanupService 清除） */
   tmpRoot: string;
   /** 根據 nodeEnv 與 ALLOWED_ORIGINS 動態決定來源是否允許 */
   corsOrigin: (origin: string | undefined) => boolean;

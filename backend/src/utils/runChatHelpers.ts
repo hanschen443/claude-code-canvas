@@ -39,6 +39,49 @@ export interface LaunchMultiInstanceRunParams {
   userMessageId?: string;
 }
 
+/**
+ * skip 策略：Command 不存在時，建立 Run 骨架並注入原始訊息後提早結束。
+ * 由 caller 透過 onCommandNotFound callback 負責向前端推送錯誤提示，不呼叫 Claude。
+ */
+async function handleCommandNotFound(params: {
+  canvasId: string;
+  podId: string;
+  message: string | ContentBlock[];
+  displayMessage?: string;
+  onRunContextCreated?: (runContext: RunContext) => void;
+  onCommandNotFound?: (commandId: string) => void;
+  commandId: string;
+}): Promise<RunContext> {
+  const {
+    canvasId,
+    podId,
+    message,
+    displayMessage,
+    onRunContextCreated,
+    onCommandNotFound,
+    commandId,
+  } = params;
+  const triggerMsg = displayMessage ?? extractDisplayContent(message);
+  const rc = await runExecutionService.createRun(canvasId, podId, triggerMsg);
+  runExecutionService.startPodInstance(rc, podId);
+  await injectRunUserMessage(rc, podId, displayMessage ?? message);
+  onRunContextCreated?.(rc);
+  onCommandNotFound?.(commandId);
+  return rc;
+}
+
+/**
+ * fallback 策略：Command 不存在時，僅記錄 warn 並以原始訊息繼續執行。
+ * 適用於上游（如 scheduleService）已完成展開的路徑。
+ */
+function handleCommandFallback(commandId: string, podId: string): void {
+  logger.warn(
+    "Run",
+    "Check",
+    `[launchMultiInstanceRun] Command 不存在（commandId=${commandId}, podId=${podId}），以原始訊息繼續執行`,
+  );
+}
+
 export async function launchMultiInstanceRun(
   params: LaunchMultiInstanceRunParams,
 ): Promise<RunContext> {
@@ -67,27 +110,17 @@ export async function launchMultiInstanceRun(
     );
     if (!expandResult.ok) {
       if (commandNotFoundBehavior === "skip") {
-        // skip 策略：建立 Run 骨架並注入原始訊息後提早結束，不呼叫 Claude
-        // 由 caller 透過 onCommandNotFound 負責向前端推送錯誤提示
-        const triggerMsg = displayMessage ?? extractDisplayContent(message);
-        const rc = await runExecutionService.createRun(
+        return await handleCommandNotFound({
           canvasId,
           podId,
-          triggerMsg,
-        );
-        runExecutionService.startPodInstance(rc, podId);
-        await injectRunUserMessage(rc, podId, displayMessage ?? message);
-        onRunContextCreated?.(rc);
-        onCommandNotFound?.(expandResult.commandId);
-        return rc;
+          message,
+          displayMessage,
+          onRunContextCreated,
+          onCommandNotFound,
+          commandId: expandResult.commandId,
+        });
       }
-      // fallback 策略：warn + 以原始訊息繼續執行
-      // 適用於上游已完成展開的路徑（例如 scheduleService 已透過 expandScheduleMessage 展開）
-      logger.warn(
-        "Run",
-        "Check",
-        `[launchMultiInstanceRun] Command 不存在（commandId=${expandResult.commandId}, podId=${podId}），以原始訊息繼續執行`,
-      );
+      handleCommandFallback(expandResult.commandId, podId);
     } else {
       resolvedMessage = expandResult.message;
     }

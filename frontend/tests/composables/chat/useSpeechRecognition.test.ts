@@ -204,8 +204,8 @@ describe("useSpeechRecognition", () => {
       (window as unknown as Record<string, unknown>).SpeechRecognition =
         TrackingMockClass;
 
-      // 建立接近 MAX_MESSAGE_LENGTH (1000) 的初始文字（995 字元）
-      const longText = "a".repeat(995);
+      // 建立接近 MAX_MESSAGE_LENGTH (10000) 的初始文字（9995 字元）
+      const longText = "a".repeat(9995);
       const { updateText, getComposable } = mountComposable({
         disabled: false,
         currentText: longText,
@@ -214,7 +214,7 @@ describe("useSpeechRecognition", () => {
       getComposable().toggleListening();
       expect(capturedRecognition).not.toBeNull();
 
-      // transcript 加上現有文字超過 1000（995 + 10 = 1005 > 1000）
+      // transcript 加上現有文字超過 10000（9995 + 10 = 10005 > 10000）
       const fakeEvent = {
         results: {
           length: 1,
@@ -227,7 +227,7 @@ describe("useSpeechRecognition", () => {
       expect(updateText).toHaveBeenCalled();
       const calledWith = (updateText as ReturnType<typeof vi.fn>).mock
         .calls[0]![0] as string;
-      expect(calledWith.length).toBe(1000);
+      expect(calledWith.length).toBe(10000);
 
       // 應呼叫 toast 提示
       expect(mockToast).toHaveBeenCalled();

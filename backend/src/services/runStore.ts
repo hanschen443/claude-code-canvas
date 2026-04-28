@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import type { PersistedMessage, PersistedSubMessage } from "../types";
 import type { PathwayState } from "../types/run.js";
 import { getStmts } from "../database/stmtsHelper.js";
-import { getDb } from "../database/index.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 import {
   pathwayStateToSqliteInt,
@@ -215,9 +214,7 @@ class RunStore {
    * 用於 graceful shutdown 時清理未完成的 Run
    */
   getRunningRuns(): WorkflowRun[] {
-    const rows = getDb()
-      .prepare("SELECT * FROM workflow_runs WHERE status = 'running'")
-      .all() as WorkflowRunRow[];
+    const rows = this.stmts.workflowRun.selectRunning.all() as WorkflowRunRow[];
     return rows.map(rowToWorkflowRun);
   }
 

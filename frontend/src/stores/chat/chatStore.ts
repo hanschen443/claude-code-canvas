@@ -29,11 +29,10 @@ import { usePodStore } from "../pod/podStore";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
 import { isMultiInstanceSourcePod } from "@/utils/multiInstanceGuard";
 import { t } from "@/i18n";
-
-/** 單一 ContentBlock base64Data 大小上限（5MB decoded） */
-const MAX_CONTENT_BLOCK_SIZE_BYTES = 5 * 1024 * 1024;
-/** 所有 contentBlocks base64Data 加總大小上限（20MB decoded） */
-const MAX_CONTENT_BLOCKS_TOTAL_BYTES = 20 * 1024 * 1024;
+import {
+  MAX_CONTENT_BLOCK_SIZE_BYTES,
+  MAX_CONTENT_BLOCKS_TOTAL_BYTES,
+} from "@/lib/constants";
 
 const ABORT_TIMEOUT_MS = 10_000;
 
@@ -43,11 +42,17 @@ let cachedConnectionActions: ReturnType<typeof createConnectionActions> | null =
 let cachedMessageActions: ReturnType<typeof createMessageActions> | null = null;
 let cachedHistoryActions: ReturnType<typeof createHistoryActions> | null = null;
 
+/** 清除 actions 快取，由 store lifecycle（disconnectWebSocket）自動觸發。
+ * 僅在測試的 beforeEach 中允許直接呼叫，生產端不需手動調用。
+ */
 export function resetChatActionsCache(): void {
   cachedConnectionActions = null;
   cachedMessageActions = null;
   cachedHistoryActions = null;
 }
+
+/** 內部別名，供 store lifecycle 使用，語意更明確 */
+const clearActionsCache = resetChatActionsCache;
 
 function hasMessageContent(
   content: string,
@@ -140,7 +145,7 @@ export const useChatStore = defineStore("chat", {
 
     disconnectWebSocket(): void {
       // 在 WebSocket 斷線時清除 actions 快取，避免跨測試或跨 session 的狀態污染
-      resetChatActionsCache();
+      clearActionsCache();
       const connectionActions = this.getConnectionActions();
       connectionActions.disconnectWebSocket();
     },

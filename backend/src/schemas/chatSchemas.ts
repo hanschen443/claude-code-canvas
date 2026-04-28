@@ -57,6 +57,39 @@ export const attachmentSchema = z.object({
     .regex(/^[A-Za-z0-9+/]*={0,2}$/, "contentBase64 包含非法字元"),
 });
 
+/**
+ * 逐附件估算 base64 解碼後 bytes，超過單檔上限時透過 ctx.addIssue 加入錯誤。
+ *
+ * 注意（項目 18）：此處為快擋估算（寬鬆路徑），公式為 length * 3/4 - padding 個數。
+ * 實際解碼後 bytes 以 attachmentWriter.ts 的 Buffer.from(...).length 為準（嚴格路徑）。
+ * padding 不齊時兩者可能差 1-2 bytes，因此「schema 通過 ≠ writer 通過」屬正常設計：
+ * fast path 寬鬆攔截明顯超大、嚴格 path 精準判定邊界案例，不是 bug。
+ *
+ * @param ctx - superRefine 傳入的 RefinementCtx
+ * @param attachments - 待驗證的附件陣列
+ * @param attachmentIndex - 各附件在父物件中的陣列索引起點（對應 path: ["attachments", i, ...]）
+ */
+function attachmentSizeRefine(
+  ctx: z.RefinementCtx,
+  attachments: z.infer<typeof attachmentSchema>[],
+): void {
+  // 單檔上限：10 MB（與 attachmentWriter.ts 保持一致）
+  const maxSingleBytes = 10 * 1024 * 1024;
+
+  for (let i = 0; i < attachments.length; i++) {
+    const b64 = attachments[i].contentBase64;
+    const padding = (b64.match(/={1,2}$/) ?? [])[0]?.length ?? 0;
+    const decodedBytes = Math.floor((b64.length * 3) / 4) - padding;
+    if (decodedBytes > maxSingleBytes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "單檔大小超過 10 MB 上限",
+        path: ["attachments", i, "contentBase64"],
+      });
+    }
+  }
+}
+
 export const chatSendSchema = z
   .object({
     requestId: requestIdSchema,
@@ -71,7 +104,7 @@ export const chatSendSchema = z
     attachments: z.array(attachmentSchema).min(1).max(50).optional(),
   })
   .superRefine((data, ctx) => {
-    // 無附件或附件為空時，純文字 message 不得為空白
+    // 職責一：無附件或附件為空時，純文字 message 不得為空白
     if (
       typeof data.message === "string" &&
       data.message.trim().length === 0 &&
@@ -84,22 +117,9 @@ export const chatSendSchema = z
       });
     }
 
-    if (!data.attachments) return;
-
-    // 逐檔估算 base64 解碼後 bytes，超過單檔 10 MB 上限即拒絕
-    // 公式：length * 3 / 4 - padding ('=') 個數
-    const maxSingleBytes = 10 * 1024 * 1024; // 10 MB
-    for (let i = 0; i < data.attachments.length; i++) {
-      const b64 = data.attachments[i].contentBase64;
-      const padding = (b64.match(/={1,2}$/) ?? [])[0]?.length ?? 0;
-      const decodedBytes = Math.floor((b64.length * 3) / 4) - padding;
-      if (decodedBytes > maxSingleBytes) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "單檔大小超過 10 MB 上限",
-          path: ["attachments", i, "contentBase64"],
-        });
-      }
+    // 職責二：逐附件估算大小，超過單檔 10 MB 上限即拒絕
+    if (data.attachments) {
+      attachmentSizeRefine(ctx, data.attachments);
     }
   });
 

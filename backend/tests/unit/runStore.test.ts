@@ -120,6 +120,25 @@ describe("RunStore", () => {
 
       expect(ids).toHaveLength(2);
     });
+
+    it("getOldestCompletedRunIds 應回傳最舊的 2 個（而非任意 2 個）", () => {
+      // 依序建立三個 completed run（SQLite createdAt 毫秒精度可能相同，
+      // 故使用不同 triggerMessage 作為語意區分，實際排序依 created_at ASC）
+      const run1 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "最早");
+      const run2 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "中間");
+      const run3 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "最新");
+      runStore.updateRunStatus(run1.id, "completed");
+      runStore.updateRunStatus(run2.id, "completed");
+      runStore.updateRunStatus(run3.id, "completed");
+
+      const ids = runStore.getOldestCompletedRunIds(CANVAS_ID, 2);
+
+      // limit=2 應回傳最舊的兩個（run1, run2），不應包含最新的 run3
+      expect(ids).toHaveLength(2);
+      expect(ids).toContain(run1.id);
+      expect(ids).toContain(run2.id);
+      expect(ids).not.toContain(run3.id);
+    });
   });
 
   describe("run_pod_instances CRUD", () => {
@@ -431,6 +450,60 @@ describe("RunStore", () => {
       const ids = messages.map((m) => m.id);
       expect(ids).toContain(id1);
       expect(ids).toContain(id2);
+    });
+  });
+
+  describe("getWorktreePathsByRunId / clearWorktreePathsByRunId", () => {
+    it("createPodInstance 帶 worktreePath 後 getWorktreePathsByRunId 應回傳正確清單", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      // 建立兩個 pod instance，一個有 worktreePath，一個沒有
+      runStore.createPodInstance(
+        run.id,
+        "pod-1",
+        "not-applicable",
+        "not-applicable",
+        "/repos/worktree-pod-1",
+      );
+      runStore.createPodInstance(
+        run.id,
+        "pod-2",
+        "not-applicable",
+        "not-applicable",
+        null,
+      );
+
+      const paths = runStore.getWorktreePathsByRunId(run.id);
+
+      // 只有 worktreePath 不為 null 的 pod 才會出現
+      expect(paths).toHaveLength(1);
+      expect(paths[0]).toMatchObject({
+        podId: "pod-1",
+        worktreePath: "/repos/worktree-pod-1",
+      });
+    });
+
+    it("clearWorktreePathsByRunId 後 getWorktreePathsByRunId 應回傳空陣列", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      runStore.createPodInstance(
+        run.id,
+        "pod-1",
+        "not-applicable",
+        "not-applicable",
+        "/repos/worktree-pod-1",
+      );
+      runStore.createPodInstance(
+        run.id,
+        "pod-2",
+        "not-applicable",
+        "not-applicable",
+        "/repos/worktree-pod-2",
+      );
+
+      // 清除後所有 worktreePath 應為 null
+      runStore.clearWorktreePathsByRunId(run.id);
+
+      const paths = runStore.getWorktreePathsByRunId(run.id);
+      expect(paths).toHaveLength(0);
     });
   });
 });

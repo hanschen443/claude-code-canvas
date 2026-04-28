@@ -83,9 +83,10 @@ describe("writeAttachments — filename sanitize（案例 4）", () => {
   it("filename 含路徑分隔符（../etc/passwd）應透過 path.basename 安全轉換為 passwd", async () => {
     // attachmentWriter 使用 path.basename 對 filename 做 sanitize，
     // '../etc/passwd' → basename = 'passwd'，不拋錯，安全落地為 passwd
-    const result = await writeAttachments("msg-sanitize-1", [
-      { filename: "../etc/passwd", contentBase64: toBase64("content") },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-000000000001",
+      [{ filename: "../etc/passwd", contentBase64: toBase64("content") }],
+    );
 
     // basename 後的名稱應為 'passwd'，安全落地
     expect(result.files).toEqual(["passwd"]);
@@ -98,7 +99,7 @@ describe("writeAttachments — filename sanitize（案例 4）", () => {
       await import("../../src/services/attachmentErrors.js");
 
     await expect(
-      writeAttachments("msg-sanitize-2", [
+      writeAttachments("00000000-0000-4000-8000-000000000002", [
         { filename: "   ", contentBase64: toBase64("content") },
       ]),
     ).rejects.toBeInstanceOf(AttachmentInvalidNameError);
@@ -109,16 +110,17 @@ describe("writeAttachments — filename sanitize（案例 4）", () => {
       await import("../../src/services/attachmentErrors.js");
 
     await expect(
-      writeAttachments("msg-sanitize-3", [
+      writeAttachments("00000000-0000-4000-8000-000000000003", [
         { filename: "..", contentBase64: toBase64("content") },
       ]),
     ).rejects.toBeInstanceOf(AttachmentInvalidNameError);
   });
 
   it("合法 filename 不拋錯，並正確落地", async () => {
-    const result = await writeAttachments("msg-sanitize-ok", [
-      { filename: "document.pdf", contentBase64: toBase64("hello") },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-000000000004",
+      [{ filename: "document.pdf", contentBase64: toBase64("hello") }],
+    );
 
     expect(result.files).toEqual(["document.pdf"]);
     const stat = await fs.stat(path.join(result.dir, "document.pdf"));
@@ -131,29 +133,38 @@ describe("writeAttachments — filename sanitize（案例 4）", () => {
 // ================================================================
 describe("writeAttachments — collision rename（案例 3）", () => {
   it("兩個同名檔案，第二個應被 rename 為 base-1.ext", async () => {
-    const result = await writeAttachments("msg-collision-1", [
-      { filename: "report.md", contentBase64: toBase64("first") },
-      { filename: "report.md", contentBase64: toBase64("second") },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-000000000005",
+      [
+        { filename: "report.md", contentBase64: toBase64("first") },
+        { filename: "report.md", contentBase64: toBase64("second") },
+      ],
+    );
 
     expect(result.files).toEqual(["report.md", "report-1.md"]);
   });
 
   it("三個同名檔案，應被 rename 為 name、name-1、name-2", async () => {
-    const result = await writeAttachments("msg-collision-2", [
-      { filename: "data.csv", contentBase64: toBase64("a") },
-      { filename: "data.csv", contentBase64: toBase64("b") },
-      { filename: "data.csv", contentBase64: toBase64("c") },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-000000000006",
+      [
+        { filename: "data.csv", contentBase64: toBase64("a") },
+        { filename: "data.csv", contentBase64: toBase64("b") },
+        { filename: "data.csv", contentBase64: toBase64("c") },
+      ],
+    );
 
     expect(result.files).toEqual(["data.csv", "data-1.csv", "data-2.csv"]);
   });
 
   it("dot-file（如 .gitignore）同名時以 .gitignore-1 命名，不拆副檔名", async () => {
-    const result = await writeAttachments("msg-collision-dot", [
-      { filename: ".gitignore", contentBase64: toBase64("x") },
-      { filename: ".gitignore", contentBase64: toBase64("y") },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-000000000007",
+      [
+        { filename: ".gitignore", contentBase64: toBase64("x") },
+        { filename: ".gitignore", contentBase64: toBase64("y") },
+      ],
+    );
 
     expect(result.files).toEqual([".gitignore", ".gitignore-1"]);
   });
@@ -171,7 +182,7 @@ describe("writeAttachments — 單檔超過 10 MB 拒絕（案例 8）", () => {
     const bigBase64 = makeBase64OfBytes(MAX_TOTAL_BYTES + 1);
 
     await expect(
-      writeAttachments("msg-too-large", [
+      writeAttachments("00000000-0000-4000-8000-000000000008", [
         { filename: "big.bin", contentBase64: bigBase64 },
       ]),
     ).rejects.toBeInstanceOf(AttachmentTooLargeError);
@@ -185,7 +196,7 @@ describe("writeAttachments — 單檔超過 10 MB 拒絕（案例 8）", () => {
     const bigBase64 = makeBase64OfBytes(MAX_TOTAL_BYTES + 1);
 
     await expect(
-      writeAttachments("msg-too-large-multi", [
+      writeAttachments("00000000-0000-4000-8000-000000000009", [
         { filename: "small.bin", contentBase64: smallBase64 },
         { filename: "big.bin", contentBase64: bigBase64 },
       ]),
@@ -195,9 +206,10 @@ describe("writeAttachments — 單檔超過 10 MB 拒絕（案例 8）", () => {
   it("剛好等於 10 MB 的單檔不應拋錯", async () => {
     const exactBase64 = makeBase64OfBytes(MAX_TOTAL_BYTES);
 
-    const result = await writeAttachments("msg-exact-size", [
-      { filename: "exact.bin", contentBase64: exactBase64 },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-00000000000a",
+      [{ filename: "exact.bin", contentBase64: exactBase64 }],
+    );
 
     expect(result.files).toEqual(["exact.bin"]);
   });
@@ -206,10 +218,13 @@ describe("writeAttachments — 單檔超過 10 MB 拒絕（案例 8）", () => {
     // 兩個各 9 MB，總計 18 MB，但單檔均未超 10 MB
     const nineMBBase64 = makeBase64OfBytes(9 * 1024 * 1024);
 
-    const result = await writeAttachments("msg-multi-ok", [
-      { filename: "file1.bin", contentBase64: nineMBBase64 },
-      { filename: "file2.bin", contentBase64: nineMBBase64 },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-00000000000b",
+      [
+        { filename: "file1.bin", contentBase64: nineMBBase64 },
+        { filename: "file2.bin", contentBase64: nineMBBase64 },
+      ],
+    );
 
     expect(result.files).toEqual(["file1.bin", "file2.bin"]);
   });
@@ -226,7 +241,7 @@ describe("writeAttachments — 磁碟不足（案例 5）", () => {
     mockCheckDiskSpace.mockResolvedValue({ ok: false, reason: "disk-full" });
 
     await expect(
-      writeAttachments("msg-disk-full", [
+      writeAttachments("00000000-0000-4000-8000-00000000000c", [
         { filename: "file.txt", contentBase64: toBase64("content") },
       ]),
     ).rejects.toBeInstanceOf(AttachmentDiskFullError);
@@ -238,7 +253,8 @@ describe("writeAttachments — 磁碟不足（案例 5）", () => {
 // ================================================================
 describe("writeAttachments — 寫入中途失敗清 staging（案例 6）", () => {
   it("writeFile 失敗後 staging 目錄應被清除", async () => {
-    const chatMessageId = "msg-write-fail";
+    // 使用合法 UUID，否則 writeAttachments 入口 UUID 驗證會提前拋錯
+    const chatMessageId = "00000000-0000-4000-8000-00000000000d";
     const stagingDir = path.join(sandboxDir, `${chatMessageId}.staging`);
 
     // spy fs.writeFile，第一次呼叫拋錯
@@ -272,7 +288,8 @@ describe("writeAttachments — 寫入中途失敗清 staging（案例 6）", () 
 // ================================================================
 describe("writeAttachments — atomic rename（案例 7）", () => {
   it("寫入成功後 staging 目錄消失，正式目錄存在並含所有檔案", async () => {
-    const chatMessageId = "msg-atomic";
+    // 使用合法 UUID，否則 writeAttachments 入口 UUID 驗證會提前拋錯
+    const chatMessageId = "00000000-0000-4000-8000-00000000000e";
     const stagingDir = path.join(sandboxDir, `${chatMessageId}.staging`);
     const finalDir = path.join(sandboxDir, chatMessageId);
 
@@ -313,9 +330,10 @@ describe("checkDiskSpace — fallback 路徑（案例 15）", () => {
     // 磁碟檢查跳過（skipped），writeAttachments 應繼續寫入
     mockCheckDiskSpace.mockResolvedValue({ ok: true, skipped: true });
 
-    const result = await writeAttachments("msg-skip-disk", [
-      { filename: "test.txt", contentBase64: toBase64("hello") },
-    ]);
+    const result = await writeAttachments(
+      "00000000-0000-4000-8000-00000000000f",
+      [{ filename: "test.txt", contentBase64: toBase64("hello") }],
+    );
 
     expect(result.files).toEqual(["test.txt"]);
     const content = await fs.readFile(

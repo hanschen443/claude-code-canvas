@@ -542,6 +542,7 @@
     "activeCanvasNotFound": "使用中の Canvas が見つかりません",
     "capabilityNotSupported": "{provider}はこの機能をサポートしていません",
     "resourceInUse": "{resource} は {count} 個の Pod で使用中のため、削除できません",
+    "attachmentFolderNotAllowed": "フォルダはサポートされていません",
     "attachmentEmpty": "アップロードできるファイルがありません。ファイルを選択して再試行してください",
     "attachmentTooLarge": "ファイルが 10 MB の上限を超えています",
     "attachmentInvalidName": "ファイル名が無効です",
