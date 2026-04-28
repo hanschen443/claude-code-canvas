@@ -283,6 +283,123 @@ describe("PluginPopover", () => {
     });
   });
 
+  // ── 搜尋功能 ─────────────────────────────────────────────────────────────
+
+  describe("搜尋功能", () => {
+    const PLUGINS: InstalledPlugin[] = [
+      {
+        id: "plugin-github",
+        name: "github",
+        version: "1.0.0",
+        description: "",
+        repo: "",
+        compatibleProviders: ["claude"],
+      },
+      {
+        id: "plugin-gitlab",
+        name: "gitlab",
+        version: "1.0.0",
+        description: "",
+        repo: "",
+        compatibleProviders: ["claude"],
+      },
+      {
+        id: "plugin-slack",
+        name: "slack",
+        version: "1.0.0",
+        description: "",
+        repo: "",
+        compatibleProviders: ["claude"],
+      },
+    ];
+
+    /** 設定 input.value 並觸發 Vue v-model 監聽的 input 事件 */
+    async function setInputValue(
+      input: HTMLInputElement,
+      value: string,
+    ): Promise<void> {
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await nextTick();
+    }
+
+    it("輸入搜尋字串後列表只顯示符合的 plugin", async () => {
+      mockListPlugins.mockResolvedValue(PLUGINS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+      expect(input).not.toBeNull();
+
+      await setInputValue(input, "git");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("github");
+      expect(popover!.textContent).toContain("gitlab");
+      expect(popover!.textContent).not.toContain("slack");
+    });
+
+    it("搜尋不分大小寫（輸入 'GIT' 仍能匹配 github/gitlab）", async () => {
+      mockListPlugins.mockResolvedValue(PLUGINS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+      await setInputValue(input, "GIT");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("github");
+      expect(popover!.textContent).toContain("gitlab");
+      expect(popover!.textContent).not.toContain("slack");
+    });
+
+    it("清空搜尋框後恢復顯示全量 plugin", async () => {
+      mockListPlugins.mockResolvedValue(PLUGINS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+
+      // 先過濾
+      await setInputValue(input, "git");
+
+      // 再清空
+      await setInputValue(input, "");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("github");
+      expect(popover!.textContent).toContain("gitlab");
+      expect(popover!.textContent).toContain("slack");
+    });
+
+    it("搜尋無結果時顯示 pod.slot.pluginsSearchEmpty", async () => {
+      mockListPlugins.mockResolvedValue(PLUGINS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+      await setInputValue(input, "xxx");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("pod.slot.pluginsSearchEmpty");
+    });
+
+    it("掛載後 searchInputRef 不為 null（搜尋框已渲染）", async () => {
+      mockListPlugins.mockResolvedValue(PLUGINS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      // jsdom + Teleport 環境下 focus 驗證不可靠，改驗 searchInputRef 存在
+      const input = bodyQuery(".pod-popover-search");
+      expect(input).not.toBeNull();
+    });
+  });
+
   // ── Codex 唯讀模式 ────────────────────────────────────────────────────────
 
   describe("Codex 唯讀模式", () => {

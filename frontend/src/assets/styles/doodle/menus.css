@@ -13,7 +13,8 @@
   z-index: 40;
 }
 
-.pod-menu-submenu-search {
+/* 搜尋框共用基底：pod-menu-submenu-search 與 pod-popover-search 共享 */
+:where(.pod-menu-submenu-search, .pod-popover-search) {
   width: 100%;
   padding: 4px 8px;
   border: none;
@@ -24,6 +25,10 @@
   font-family: var(--font-mono), monospace, sans-serif;
   color: var(--foreground);
   box-sizing: border-box;
+}
+
+.pod-menu-submenu-search {
+  /* 繼承共用基底，無需額外屬性 */
 }
 
 .pod-menu-submenu::before {
@@ -62,7 +67,7 @@
   overflow-y: auto;
 }
 
-/* Scrollbar 基礎樣式 */
+/* Scrollbar base styles */
 .pod-menu-submenu-scrollable::-webkit-scrollbar {
   width: 8px;
 }
@@ -104,8 +109,8 @@
   background: transparent;
 }
 
-/* Pod Menu Submenu Edit Button */
-.pod-menu-submenu-edit-btn {
+/* Pod Menu Submenu Action Button（共用基底：edit-btn 與 delete-btn 共享） */
+.pod-menu-submenu-action-btn {
   display: none;
   align-items: center;
   justify-content: center;
@@ -124,39 +129,17 @@
   flex-shrink: 0;
 }
 
-.pod-menu-submenu-item-wrapper:hover .pod-menu-submenu-edit-btn {
+.pod-menu-submenu-item-wrapper:hover .pod-menu-submenu-action-btn {
   display: flex;
 }
 
+/* Pod Menu Submenu Edit Button */
 .pod-menu-submenu-edit-btn:hover {
   background: oklch(0.85 0.08 200);
   color: oklch(0.4 0.12 200);
 }
 
 /* Pod Menu Submenu Delete Button */
-.pod-menu-submenu-delete-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-right: 4px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: oklch(0.5 0.02 50);
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-  flex-shrink: 0;
-}
-
-.pod-menu-submenu-item-wrapper:hover .pod-menu-submenu-delete-btn {
-  display: flex;
-}
-
 .pod-menu-submenu-delete-btn:hover {
   background: oklch(0.9 0.15 25);
   color: oklch(0.5 0.2 25);
@@ -210,18 +193,8 @@
   opacity: 0.4;
 }
 
-/* Pod Popover Search */
+/* Pod Popover Search：繼承共用基底，僅補 margin-bottom modifier */
 .pod-popover-search {
-  width: 100%;
-  padding: 4px 8px;
-  border: none;
-  border-bottom: 1.5px solid var(--doodle-ink);
-  outline: none;
-  background: transparent;
-  font-size: 0.825rem;
-  font-family: var(--font-mono), monospace, sans-serif;
-  color: var(--foreground);
-  box-sizing: border-box;
   margin-bottom: 4px;
 }
 
@@ -230,9 +203,7 @@
   max-height: calc(36px * 5);
 }
 
-/* reka-ui ScrollAreaViewport 預設 h-full 會跟著 Root 被撐開，
-   需明確繼承 max-height 並設 overflow-y: auto，
-   才能讓 viewport 在超過限制高度時觸發 scrollbar */
+/* reka-ui ScrollAreaViewport: explicit max-height to enable overflow */
 .pod-popover-scrollable [data-reka-scroll-area-viewport] {
   max-height: inherit;
   overflow-y: auto;

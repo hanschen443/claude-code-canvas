@@ -1,45 +1,51 @@
 <script setup lang="ts">
-import { Folder, FolderOpen, ChevronRight, ChevronDown, X } from 'lucide-vue-next'
+import {
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  X,
+} from "lucide-vue-next";
 
 interface Props {
-  group: { id: string; name: string; type: string }
-  isExpanded: boolean
-  isDragOver: boolean
-  canDelete: boolean
+  group: { id: string; name: string; type: string };
+  isExpanded: boolean;
+  isDragOver: boolean;
+  canDelete: boolean;
 }
 
-defineProps<Props>()
+defineProps<Props>();
 
 const emit = defineEmits<{
-  click: []
-  delete: [event: Event]
-  dragover: [event: DragEvent]
-  dragleave: [event: DragEvent]
-  drop: [event: DragEvent]
-}>()
+  click: [];
+  delete: [event: Event];
+  dragover: [event: DragEvent];
+  dragleave: [event: DragEvent];
+  drop: [event: DragEvent];
+}>();
 
 const handleClick = (): void => {
-  emit('click')
-}
+  emit("click");
+};
 
 const handleDelete = (event: Event): void => {
-  event.stopPropagation()
-  emit('delete', event)
-}
+  event.stopPropagation();
+  emit("delete", event);
+};
 
 const handleDragOver = (event: DragEvent): void => {
-  event.preventDefault()
-  emit('dragover', event)
-}
+  event.preventDefault();
+  emit("dragover", event);
+};
 
 const handleDragLeave = (event: DragEvent): void => {
-  emit('dragleave', event)
-}
+  emit("dragleave", event);
+};
 
 const handleDrop = (event: DragEvent): void => {
-  event.preventDefault()
-  emit('drop', event)
-}
+  event.preventDefault();
+  emit("drop", event);
+};
 </script>
 
 <template>
@@ -79,7 +85,7 @@ const handleDrop = (event: DragEvent): void => {
     </button>
     <button
       v-if="canDelete"
-      class="pod-menu-submenu-delete-btn"
+      class="pod-menu-submenu-action-btn pod-menu-submenu-delete-btn"
       @click.stop="handleDelete"
     >
       <X :size="14" />

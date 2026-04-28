@@ -405,7 +405,7 @@ describe("McpPopover", () => {
       );
     });
 
-    it("API 失敗時 toast description 應使用 err.message", async () => {
+    it("API 失敗時 toast description 應一律 fallback 到 i18n key（不洩漏後端 message）", async () => {
       mockListMcpServers.mockResolvedValue([MOCK_MCP_SERVER]);
       mockGetPodById.mockReturnValue({ id: "pod-1", mcpServerNames: [] });
       const errMsg = "MCP server toggle 發生錯誤";
@@ -419,7 +419,7 @@ describe("McpPopover", () => {
       await flushPromises();
 
       expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ description: errMsg }),
+        expect.objectContaining({ description: "pod.slot.mcpToggleFailed" }),
       );
     });
 
@@ -454,12 +454,11 @@ describe("McpPopover", () => {
       const wrapper = mountPopover({ provider: "claude" });
       await flushPromises();
 
-      // 透過存取 component expose 取得 loadFailed ref 或斷言 UI
-      // 因 loadFailed 未 expose，改斷言空狀態文字（與 installedMcpServers.length === 0 同 UI）
+      // 載入失敗時應顯示 mcpLoadFailed（與空清單分開的獨立分支）
       const popover = bodyQuery(".fixed.z-50");
       expect(popover).not.toBeNull();
-      // 空狀態時顯示 mcpEmpty
-      expect(popover!.textContent).toContain("pod.slot.mcpEmpty");
+      // 載入失敗時顯示 mcpLoadFailed，不應顯示 mcpEmpty
+      expect(popover!.textContent).toContain("pod.slot.mcpLoadFailed");
       // Switch 不應出現
       const switchBtn = bodyQuery(".switch-stub");
       expect(switchBtn).toBeNull();
@@ -493,10 +492,10 @@ describe("McpPopover", () => {
     });
   });
 
-  // ── 案例 9：busy=true 時強行觸發 toggle 不應呼叫 API ────────────────────
+  // ── 案例 9：busy=true 時 Switch 為 disabled，click 不會觸發 toggle ────────
 
-  describe("案例 9：busy=true 時強行觸發 toggle 不呼叫 updatePodMcpServersApi", () => {
-    it("busy=true 時直接呼叫 toggle handler，updatePodMcpServersApi 不應被呼叫", async () => {
+  describe("案例 9：busy=true 時 Switch 為 disabled，click 不觸發 updatePodMcpServersApi", () => {
+    it("busy=true 時 Switch stub 為 disabled，jsdom 攔截 click 事件，API 不應被呼叫", async () => {
       mockListMcpServers.mockResolvedValue([MOCK_MCP_SERVER]);
       mockGetPodById.mockReturnValue({ id: "pod-1", mcpServerNames: [] });
 
@@ -507,11 +506,13 @@ describe("McpPopover", () => {
       const switchBtn = bodyQuery(".switch-stub");
       expect(switchBtn).not.toBeNull();
 
-      // 強行觸發 click（即使 disabled，仍能用 dispatchEvent 送出事件）
+      // jsdom 會阻擋 disabled <button> 上的 click 事件冒泡，
+      // 因此 update:modelValue 不會 emit，handleToggle 不會被呼叫。
+      // （注意：handleToggle 本身沒有 busy guard，防護由 Switch disabled 提供）
       switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushPromises();
 
-      // busy=true 時 handleToggle 有 early return，API 不應被呼叫
+      // Switch 為 disabled，click 被 jsdom 攔截，API 不應被呼叫
       expect(mockUpdatePodMcpServersApi).not.toHaveBeenCalled();
     });
   });
@@ -539,6 +540,102 @@ describe("McpPopover", () => {
 
       const switchBtn = bodyQuery(".switch-stub");
       expect(switchBtn).toBeNull();
+    });
+  });
+
+  // ── 搜尋功能 ─────────────────────────────────────────────────────────────
+
+  describe("搜尋功能", () => {
+    const SERVERS: McpListItem[] = [
+      { name: "github" },
+      { name: "gitlab" },
+      { name: "slack" },
+    ];
+
+    /** 設定 input.value 並觸發 Vue v-model 監聽的 input 事件 */
+    async function setInputValue(
+      input: HTMLInputElement,
+      value: string,
+    ): Promise<void> {
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await nextTick();
+    }
+
+    it("輸入搜尋字串後列表只顯示符合的 server", async () => {
+      mockListMcpServers.mockResolvedValue(SERVERS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+      expect(input).not.toBeNull();
+
+      await setInputValue(input, "git");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("github");
+      expect(popover!.textContent).toContain("gitlab");
+      expect(popover!.textContent).not.toContain("slack");
+    });
+
+    it("搜尋不分大小寫（輸入 'GIT' 仍能匹配 github/gitlab）", async () => {
+      mockListMcpServers.mockResolvedValue(SERVERS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+      await setInputValue(input, "GIT");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("github");
+      expect(popover!.textContent).toContain("gitlab");
+      expect(popover!.textContent).not.toContain("slack");
+    });
+
+    it("清空搜尋框後恢復顯示全量 server", async () => {
+      mockListMcpServers.mockResolvedValue(SERVERS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+
+      // 先過濾
+      await setInputValue(input, "git");
+
+      // 再清空
+      await setInputValue(input, "");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("github");
+      expect(popover!.textContent).toContain("gitlab");
+      expect(popover!.textContent).toContain("slack");
+    });
+
+    it("搜尋無結果時顯示 pod.slot.mcpSearchEmpty", async () => {
+      mockListMcpServers.mockResolvedValue(SERVERS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
+      await setInputValue(input, "xxx");
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover!.textContent).toContain("pod.slot.mcpSearchEmpty");
+    });
+
+    it("掛載後 searchInputRef 不為 null（搜尋框已渲染）", async () => {
+      mockListMcpServers.mockResolvedValue(SERVERS);
+
+      mountPopover({ provider: "claude" });
+      await flushPromises();
+
+      // jsdom + Teleport 環境下 focus 驗證不可靠，改驗 searchInputRef 存在
+      const input = bodyQuery(".pod-popover-search");
+      expect(input).not.toBeNull();
     });
   });
 

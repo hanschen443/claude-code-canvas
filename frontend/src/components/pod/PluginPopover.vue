@@ -41,7 +41,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null);
  * 若搜尋字串為空則回傳完整清單；否則對 plugin.name 做大小寫不敏感比對。
  */
 const filteredPlugins = computed<InstalledPlugin[]>(() => {
-  if (searchQuery.value === "") {
+  if (!searchQuery.value) {
     return installedPlugins.value;
   }
   const query = searchQuery.value.toLowerCase();
@@ -49,6 +49,9 @@ const filteredPlugins = computed<InstalledPlugin[]>(() => {
     plugin.name.toLowerCase().includes(query),
   );
 });
+
+/** 將 localPluginIds 轉成 Set，讓 template v-for 中的查找從 O(n) 降為 O(1) */
+const localPluginIdsSet = computed(() => new Set(localPluginIds.value));
 
 /** Codex provider 唯讀模式：plugin 只展示不可 toggle */
 const isCodex = computed(() => props.provider === "codex");
@@ -67,6 +70,7 @@ const handleKeydown = (event: KeyboardEvent): void => {
  *  點觸發按鈕時讓 click 事件走到 handlePluginClick 的 toggle 邏輯，
  *  避免「mousedown 先關、click 再開」的競態導致 popover 無法關閉。
  */
+// 以 className 比對觸發區是一種 trade-off，攻擊者需注入相同 class 才能繞過，目前接受此風險
 const handleMousedown = (event: MouseEvent): void => {
   if (!rootRef.value) return;
   // 若點擊落在 Plugin 觸發區，略過此次關閉，交由 toggle handler 處理
@@ -85,7 +89,8 @@ onMounted(async () => {
   loading.value = true;
   try {
     installedPlugins.value = await listPlugins(props.provider);
-  } catch {
+  } catch (err) {
+    console.warn("[PluginPopover] Failed to load plugins:", err);
     loadFailed.value = true;
   } finally {
     loading.value = false;
@@ -104,7 +109,20 @@ onUnmounted(() => {
   document.removeEventListener("mousedown", handleMousedown, true);
 });
 
+/** 純函式：依 enabled 組裝下一個 plugin ID 清單 */
+const buildNextIds = (
+  current: string[],
+  pluginId: string,
+  enabled: boolean,
+): string[] => {
+  if (enabled) {
+    return current.includes(pluginId) ? [...current] : [...current, pluginId];
+  }
+  return current.filter((id) => id !== pluginId);
+};
+
 /** 依 reason 欄位決定 plugin toggle 的錯誤描述字串 */
+// reason 欄位由後端控制；此處僅辨識已知值 pod-busy，其他 reason 一律 fallback
 const resolvePluginErrorDescription = (err: unknown): string => {
   const reason =
     err !== null && typeof err === "object" && "reason" in err
@@ -123,15 +141,7 @@ const handleToggle = async (
   // Codex pod 不支援 toggle，防呆直接 return
   if (isCodex.value) return;
 
-  // 組裝下一個狀態清單
-  let nextIds: string[];
-  if (enabled) {
-    nextIds = localPluginIds.value.includes(pluginId)
-      ? [...localPluginIds.value]
-      : [...localPluginIds.value, pluginId];
-  } else {
-    nextIds = localPluginIds.value.filter((id) => id !== pluginId);
-  }
+  const nextIds = buildNextIds(localPluginIds.value, pluginId, enabled);
 
   // 取得 canvasId，取不到直接 return（不進入樂觀更新）
   const canvasId = getActiveCanvasIdOrWarn("PluginPopover");
@@ -248,7 +258,7 @@ const handleToggle = async (
                 </p>
               </div>
               <Switch
-                :model-value="localPluginIds.includes(plugin.id)"
+                :model-value="localPluginIdsSet.has(plugin.id)"
                 :disabled="busy"
                 @click.stop
                 @update:model-value="

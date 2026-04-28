@@ -47,6 +47,11 @@ const filteredMcpServers = computed<McpListItem[]>(() => {
   );
 });
 
+/** 將 localMcpServerNames 轉成 Set，讓 template v-for 中的查找從 O(n) 降為 O(1) */
+const localMcpServerNamesSet = computed(
+  () => new Set(localMcpServerNames.value),
+);
+
 /** Codex provider 唯讀模式：MCP 只展示不可 toggle */
 const isCodex = computed(() => props.provider === "codex");
 
@@ -64,6 +69,7 @@ const handleKeydown = (event: KeyboardEvent): void => {
  *  點觸發按鈕時讓 click 事件走到 handleMcpClick 的 toggle 邏輯，
  *  避免「mousedown 先關、click 再開」的競態導致 popover 無法關閉。
  */
+// 以 className 比對觸發區是一種 trade-off，攻擊者需注入相同 class 才能繞過，目前接受此風險
 const handleMousedown = (event: MouseEvent): void => {
   if (!rootRef.value) return;
   // 若點擊落在 MCP 觸發區，略過此次關閉，交由 toggle handler 處理
@@ -82,7 +88,8 @@ onMounted(async () => {
   loading.value = true;
   try {
     installedMcpServers.value = await listMcpServers(props.provider);
-  } catch {
+  } catch (err) {
+    console.warn("[McpPopover] Failed to load MCP servers:", err);
     loadFailed.value = true;
   } finally {
     loading.value = false;
@@ -101,25 +108,27 @@ onUnmounted(() => {
   document.removeEventListener("mousedown", handleMousedown, true);
 });
 
-/** 從例外取得錯誤描述字串；直接顯示後端回傳的 i18n 翻譯訊息，fallback 到 mcpToggleFailed */
-const resolveErrorDescription = (err: unknown): string =>
-  err instanceof Error && err.message
-    ? err.message
-    : t("pod.slot.mcpToggleFailed");
+/** 純函式：依 enabled 組裝下一個 MCP server 名稱清單 */
+const buildNextNames = (
+  current: string[],
+  name: string,
+  enabled: boolean,
+): string[] => {
+  if (enabled) {
+    return current.includes(name) ? [...current] : [...current, name];
+  }
+  return current.filter((n) => n !== name);
+};
+
+/** 從例外取得錯誤描述字串；一律使用 i18n fallback，避免後端 message 未過濾直接洩漏到 UI */
+const resolveMcpErrorDescription = (_err: unknown): string =>
+  t("pod.slot.mcpToggleFailed");
 
 const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
   // Codex pod 不支援 toggle，防呆直接 return
   if (isCodex.value) return;
 
-  // 組裝下一個狀態清單
-  let nextNames: string[];
-  if (enabled) {
-    nextNames = localMcpServerNames.value.includes(name)
-      ? [...localMcpServerNames.value]
-      : [...localMcpServerNames.value, name];
-  } else {
-    nextNames = localMcpServerNames.value.filter((n) => n !== name);
-  }
+  const nextNames = buildNextNames(localMcpServerNames.value, name, enabled);
 
   // 取得 canvasId，取不到直接 return（不進入樂觀更新）
   const canvasId = getActiveCanvasIdOrWarn("McpPopover");
@@ -132,7 +141,7 @@ const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
     },
     setStore: (items) => podStore.updatePodMcpServers(props.podId, items),
     callApi: (items) => updatePodMcpServersApi(canvasId, props.podId, items),
-    resolveError: resolveErrorDescription,
+    resolveError: resolveMcpErrorDescription,
     failToast: { title: "Pod" },
   });
 };
@@ -171,9 +180,17 @@ const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
         <span>{{ t("pod.slot.mcpLoading") }}</span>
       </div>
 
-      <!-- 空狀態（載入失敗或無 MCP server） -->
+      <!-- 載入失敗 -->
       <div
-        v-else-if="loadFailed || installedMcpServers.length === 0"
+        v-else-if="loadFailed"
+        class="px-2 py-1 text-xs font-mono text-muted-foreground"
+      >
+        {{ t("pod.slot.mcpLoadFailed") }}
+      </div>
+
+      <!-- 空狀態（無 MCP server） -->
+      <div
+        v-else-if="installedMcpServers.length === 0"
         class="px-2 py-1 text-xs font-mono text-muted-foreground whitespace-pre-wrap"
       >
         <p>{{ t("pod.slot.mcpEmpty") }}</p>
@@ -246,7 +263,7 @@ const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
                 {{ server.name }}
               </p>
               <Switch
-                :model-value="localMcpServerNames.includes(server.name)"
+                :model-value="localMcpServerNamesSet.has(server.name)"
                 :disabled="busy"
                 @click.stop
                 @update:model-value="

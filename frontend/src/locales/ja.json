@@ -54,6 +54,159 @@
     "confirmDeleteMessage": "「{name}」を削除してもよろしいですか？この操作は元に戻せません。",
     "cannotDelete": "削除できません"
   },
+  "integration": {
+    "select": {
+      "title": "インテグレーション"
+    },
+    "apps": {
+      "title": "{provider} Apps",
+      "addApp": "App を追加",
+      "connecting": "接続中...",
+      "confirmAdd": "追加する"
+    },
+    "connect": {
+      "title": "{provider} を接続",
+      "descriptionNoResource": "この Pod に接続する {provider} App を選択してください",
+      "descriptionWithResource": "この Pod に接続する {provider} App と{resourceLabel}を選択してください",
+      "noAppsHint": "利用可能な {provider} App がありません。先に管理画面から追加してください。",
+      "selectApp": "App を選択",
+      "selectResource": "{resourceLabel}を選択"
+    },
+    "status": {
+      "appRemoved": "{provider} App が削除されました",
+      "appStatus": "{provider} {status}：{name}"
+    },
+    "toast": {
+      "bindFailed": "バインドに失敗しました",
+      "unbindFailed": "バインド解除に失敗しました",
+      "noCanvas": "キャンバスが選択されていません"
+    },
+    "slack": {
+      "emptyAppHint": "Slack App がまだ登録されていません",
+      "emptyResourceHint": "この App に利用可能なチャンネルがありません",
+      "resourceLabel": "チャンネル",
+      "field": {
+        "name": {
+          "label": "名前",
+          "placeholder": "例：My Slack Bot"
+        },
+        "botToken": {
+          "label": "Bot Token",
+          "placeholder": "xoxb-..."
+        },
+        "signingSecret": {
+          "label": "Signing Secret",
+          "placeholder": "Signing Secret"
+        }
+      },
+      "validate": {
+        "nameRequired": "名前を入力してください",
+        "botTokenRequired": "Bot Token を入力してください",
+        "botTokenPrefix": "Bot Token は xoxb- で始まる必要があります",
+        "signingSecretRequired": "Signing Secret を入力してください"
+      }
+    },
+    "telegram": {
+      "emptyAppHint": "Telegram Bot がまだ登録されていません",
+      "emptyResourceHint": "",
+      "resourceLabel": "ユーザー ID",
+      "field": {
+        "name": {
+          "label": "名前",
+          "placeholder": "例：My Telegram Bot"
+        },
+        "botToken": {
+          "label": "Bot Token",
+          "placeholder": "123456:ABC-DEF..."
+        },
+        "userId": {
+          "label": "Telegram ユーザー ID",
+          "placeholder": "ユーザー ID を入力",
+          "hint": "Telegram ユーザー ID を入力してください（{'@'}userinfobot で確認できます）"
+        }
+      },
+      "validate": {
+        "nameRequired": "名前を入力してください",
+        "botTokenRequired": "Bot Token を入力してください",
+        "userIdInvalid": "ユーザー ID は正の整数である必要があります"
+      }
+    },
+    "jira": {
+      "emptyAppHint": "Jira App がまだ登録されていません",
+      "emptyResourceHint": "",
+      "resourceLabel": "",
+      "field": {
+        "name": {
+          "label": "名前",
+          "placeholder": "例：my-project"
+        },
+        "siteUrl": {
+          "label": "サイト URL",
+          "placeholder": "https://your-domain.atlassian.net"
+        },
+        "webhookSecret": {
+          "label": "Webhook Secret",
+          "placeholder": "Webhook リクエスト検証用のシークレット"
+        }
+      },
+      "validate": {
+        "nameRequired": "名前を入力してください",
+        "nameInvalid": "名前には英数字、アンダースコア、ハイフンのみ使用できます",
+        "siteUrlRequired": "サイト URL を入力してください",
+        "siteUrlPrefix": "サイト URL は https:// で始まる必要があります",
+        "webhookSecretRequired": "Webhook Secret を入力してください",
+        "webhookSecretLength": "Webhook Secret は 16 文字以上必要です"
+      },
+      "eventFilter": {
+        "label": "イベントフィルターモード",
+        "all": "すべてのイベント",
+        "statusChanged": "ステータス変更のみ"
+      }
+    },
+    "sentry": {
+      "emptyAppHint": "Sentry App がまだ登録されていません",
+      "emptyResourceHint": "",
+      "resourceLabel": "",
+      "field": {
+        "name": {
+          "label": "名前",
+          "placeholder": "例：my-sentry-app"
+        },
+        "clientSecret": {
+          "label": "Client Secret",
+          "placeholder": "Sentry Internal Integration の Client Secret"
+        }
+      },
+      "validate": {
+        "nameRequired": "名前を入力してください",
+        "nameTooLong": "名前は 50 文字以内にしてください",
+        "nameInvalid": "名前には英数字、アンダースコア、ハイフンのみ使用できます",
+        "clientSecretRequired": "Client Secret を入力してください",
+        "clientSecretLength": "Client Secret は 32 文字以上必要です"
+      }
+    },
+    "webhook": {
+      "description": "カスタム Webhook エンドポイントで外部 HTTP リクエストから Pod をトリガー",
+      "emptyAppHint": "Webhook App がまだ作成されていません",
+      "emptyResourceHint": "",
+      "resourceLabel": "",
+      "field": {
+        "name": {
+          "label": "名前",
+          "placeholder": "例：deploy-hook"
+        }
+      },
+      "validate": {
+        "nameRequired": "名前は必須です",
+        "nameTooLong": "名前は 50 文字以内にしてください",
+        "nameInvalid": "名前には英字、数字、アンダースコア、ハイフンのみ使用できます"
+      },
+      "token": {
+        "label": "Token",
+        "copied": "Token をコピーしました"
+      }
+    }
+  },
   "pod": {
     "multiInstance": {
       "readonlyHint": "この Pod は Multi-Instance ワークフローの一部です。詳細は実行履歴からご確認ください。"
@@ -90,6 +243,7 @@
       "mcpClaudeEmptyHint": "`claude mcp add` でインストールしてください",
       "mcpCodexEmptyHint": "`codex mcp add` でインストールしてください",
       "mcpToggleFailed": "MCP server の切替に失敗しました",
+      "mcpLoadFailed": "読み込み失敗",
       "mcpCodexHint": "Codex MCP server は codex でグローバル管理されます",
       "searchPlaceholder": "検索…",
       "pluginsSearchEmpty": "該当する plugin が見つかりません",
@@ -579,158 +733,5 @@
     "loadFailed": "読み込みに失敗しました",
     "saveFailed": "保存に失敗しました",
     "saveSuccess": "保存しました"
-  },
-  "integration": {
-    "select": {
-      "title": "インテグレーション"
-    },
-    "apps": {
-      "title": "{provider} Apps",
-      "addApp": "App を追加",
-      "connecting": "接続中...",
-      "confirmAdd": "追加する"
-    },
-    "connect": {
-      "title": "{provider} を接続",
-      "descriptionNoResource": "この Pod に接続する {provider} App を選択してください",
-      "descriptionWithResource": "この Pod に接続する {provider} App と{resourceLabel}を選択してください",
-      "noAppsHint": "利用可能な {provider} App がありません。先に管理画面から追加してください。",
-      "selectApp": "App を選択",
-      "selectResource": "{resourceLabel}を選択"
-    },
-    "status": {
-      "appRemoved": "{provider} App が削除されました",
-      "appStatus": "{provider} {status}：{name}"
-    },
-    "toast": {
-      "bindFailed": "バインドに失敗しました",
-      "unbindFailed": "バインド解除に失敗しました",
-      "noCanvas": "キャンバスが選択されていません"
-    },
-    "slack": {
-      "emptyAppHint": "Slack App がまだ登録されていません",
-      "emptyResourceHint": "この App に利用可能なチャンネルがありません",
-      "resourceLabel": "チャンネル",
-      "field": {
-        "name": {
-          "label": "名前",
-          "placeholder": "例：My Slack Bot"
-        },
-        "botToken": {
-          "label": "Bot Token",
-          "placeholder": "xoxb-..."
-        },
-        "signingSecret": {
-          "label": "Signing Secret",
-          "placeholder": "Signing Secret"
-        }
-      },
-      "validate": {
-        "nameRequired": "名前を入力してください",
-        "botTokenRequired": "Bot Token を入力してください",
-        "botTokenPrefix": "Bot Token は xoxb- で始まる必要があります",
-        "signingSecretRequired": "Signing Secret を入力してください"
-      }
-    },
-    "telegram": {
-      "emptyAppHint": "Telegram Bot がまだ登録されていません",
-      "emptyResourceHint": "",
-      "resourceLabel": "ユーザー ID",
-      "field": {
-        "name": {
-          "label": "名前",
-          "placeholder": "例：My Telegram Bot"
-        },
-        "botToken": {
-          "label": "Bot Token",
-          "placeholder": "123456:ABC-DEF..."
-        },
-        "userId": {
-          "label": "Telegram ユーザー ID",
-          "placeholder": "ユーザー ID を入力",
-          "hint": "Telegram ユーザー ID を入力してください（{'@'}userinfobot で確認できます）"
-        }
-      },
-      "validate": {
-        "nameRequired": "名前を入力してください",
-        "botTokenRequired": "Bot Token を入力してください",
-        "userIdInvalid": "ユーザー ID は正の整数である必要があります"
-      }
-    },
-    "jira": {
-      "emptyAppHint": "Jira App がまだ登録されていません",
-      "emptyResourceHint": "",
-      "resourceLabel": "",
-      "field": {
-        "name": {
-          "label": "名前",
-          "placeholder": "例：my-project"
-        },
-        "siteUrl": {
-          "label": "サイト URL",
-          "placeholder": "https://your-domain.atlassian.net"
-        },
-        "webhookSecret": {
-          "label": "Webhook Secret",
-          "placeholder": "Webhook リクエスト検証用のシークレット"
-        }
-      },
-      "validate": {
-        "nameRequired": "名前を入力してください",
-        "nameInvalid": "名前には英数字、アンダースコア、ハイフンのみ使用できます",
-        "siteUrlRequired": "サイト URL を入力してください",
-        "siteUrlPrefix": "サイト URL は https:// で始まる必要があります",
-        "webhookSecretRequired": "Webhook Secret を入力してください",
-        "webhookSecretLength": "Webhook Secret は 16 文字以上必要です"
-      },
-      "eventFilter": {
-        "label": "イベントフィルターモード",
-        "all": "すべてのイベント",
-        "statusChanged": "ステータス変更のみ"
-      }
-    },
-    "sentry": {
-      "emptyAppHint": "Sentry App がまだ登録されていません",
-      "emptyResourceHint": "",
-      "resourceLabel": "",
-      "field": {
-        "name": {
-          "label": "名前",
-          "placeholder": "例：my-sentry-app"
-        },
-        "clientSecret": {
-          "label": "Client Secret",
-          "placeholder": "Sentry Internal Integration の Client Secret"
-        }
-      },
-      "validate": {
-        "nameRequired": "名前を入力してください",
-        "nameTooLong": "名前は 50 文字以内にしてください",
-        "nameInvalid": "名前には英数字、アンダースコア、ハイフンのみ使用できます",
-        "clientSecretRequired": "Client Secret を入力してください",
-        "clientSecretLength": "Client Secret は 32 文字以上必要です"
-      }
-    },
-    "webhook": {
-      "description": "カスタム Webhook エンドポイントで外部 HTTP リクエストから Pod をトリガー",
-      "emptyAppHint": "Webhook App がまだ作成されていません",
-      "emptyResourceHint": "",
-      "resourceLabel": "",
-      "field": {
-        "name": {
-          "label": "名前",
-          "placeholder": "例：deploy-hook"
-        }
-      },
-      "validate": {
-        "nameRequired": "名前は必須です",
-        "nameTooLong": "名前は 50 文字以内にしてください",
-        "nameInvalid": "名前には英字、数字、アンダースコア、ハイフンのみ使用できます"
-      },
-      "token": {
-        "label": "Token",
-        "copied": "Token をコピーしました"
-      }
-    }
   }
 }
