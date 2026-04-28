@@ -3,6 +3,7 @@ import type { TriggerMode } from "@/types/connection";
 import type { ModelType } from "@/types/pod";
 import { Zap, Brain, ArrowRight, ChevronRight } from "lucide-vue-next";
 import { ref, computed, onMounted, onUnmounted } from "vue";
+
 import { useConnectionStore } from "@/stores/connectionStore";
 import { usePodStore } from "@/stores/pod/podStore";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
@@ -184,68 +185,22 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("mousedown", handleOutsideClick, true);
-  // 清理子選單延遲關閉 timer，避免 unmount 後 timer 仍觸發
-  if (summaryMenuCloseTimer.value !== null) {
-    clearTimeout(summaryMenuCloseTimer.value);
-  }
-  if (aiModelMenuCloseTimer.value !== null) {
-    clearTimeout(aiModelMenuCloseTimer.value);
-  }
 });
 
 const isSummaryMenuOpen = ref(false);
 const isAiModelMenuOpen = ref(false);
 
-/**
- * 子選單 hover 關閉延遲（180ms）：
- * 避免滑鼠從觸發項往子選單移動途中（經過 menu 背景或微小 gap）誤觸 mouseleave 而關閉。
- * 同時解決 Mac IME 候選視窗出現時 pointer hit-test 被劫持導致誤關的問題。
- */
-const SUBMENU_CLOSE_DELAY_MS = 180;
-const summaryMenuCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null);
-const aiModelMenuCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null);
-
-const openSummaryMenu = (): void => {
-  if (summaryMenuCloseTimer.value !== null) {
-    clearTimeout(summaryMenuCloseTimer.value);
-    summaryMenuCloseTimer.value = null;
-  }
-  isSummaryMenuOpen.value = true;
-};
-
-const closeSummaryMenuDelayed = (): void => {
-  summaryMenuCloseTimer.value = setTimeout(() => {
-    isSummaryMenuOpen.value = false;
-    summaryMenuCloseTimer.value = null;
-  }, SUBMENU_CLOSE_DELAY_MS);
-};
-
-const openAiModelMenu = (): void => {
-  if (aiModelMenuCloseTimer.value !== null) {
-    clearTimeout(aiModelMenuCloseTimer.value);
-    aiModelMenuCloseTimer.value = null;
-  }
-  isAiModelMenuOpen.value = true;
-};
-
-const closeAiModelMenuDelayed = (): void => {
-  aiModelMenuCloseTimer.value = setTimeout(() => {
-    isAiModelMenuOpen.value = false;
-    aiModelMenuCloseTimer.value = null;
-  }, SUBMENU_CLOSE_DELAY_MS);
-};
-
 /** ai-model 觸發器區塊的 mouseenter handler */
 const handleAiModelMenuEnter = (): void => {
   if (props.currentTriggerMode === "ai-decide") {
-    openAiModelMenu();
+    isAiModelMenuOpen.value = true;
   }
 };
 
 /** ai-model 觸發器區塊的 mouseleave handler */
 const handleAiModelMenuLeave = (): void => {
   if (props.currentTriggerMode === "ai-decide") {
-    closeAiModelMenuDelayed();
+    isAiModelMenuOpen.value = false;
   }
 };
 
@@ -378,11 +333,10 @@ const summaryModelOptions = computed(() => {
     <div class="border-t border-border my-1" />
 
     <!-- Summary Model 子選單觸發器 -->
-    <!-- @mouseenter/@mouseleave 改用延遲函式，避免滑鼠途經間隙或 IME 視窗時誤關 -->
     <div
       class="relative"
-      @mouseenter="openSummaryMenu"
-      @mouseleave="closeSummaryMenuDelayed"
+      @mouseenter="isSummaryMenuOpen = true"
+      @mouseleave="isSummaryMenuOpen = false"
     >
       <button
         class="w-full flex items-center justify-between gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
@@ -403,8 +357,8 @@ const summaryModelOptions = computed(() => {
       <div
         v-if="isSummaryMenuOpen"
         class="absolute left-full top-0 pl-1 z-50"
-        @mouseenter="openSummaryMenu"
-        @mouseleave="closeSummaryMenuDelayed"
+        @mouseenter="isSummaryMenuOpen = true"
+        @mouseleave="isSummaryMenuOpen = false"
       >
         <div
           class="bg-card border border-doodle-ink rounded-md p-1 min-w-[120px]"
@@ -446,7 +400,6 @@ const summaryModelOptions = computed(() => {
     </div>
 
     <!-- AI Model 子選單觸發器 -->
-    <!-- @mouseenter/@mouseleave 改用延遲函式，避免滑鼠途經間隙或 IME 視窗時誤關 -->
     <div
       class="relative"
       :class="{
@@ -472,8 +425,8 @@ const summaryModelOptions = computed(() => {
       <div
         v-if="isAiModelMenuOpen"
         class="absolute left-full top-0 pl-1 z-50"
-        @mouseenter="openAiModelMenu"
-        @mouseleave="closeAiModelMenuDelayed"
+        @mouseenter="isAiModelMenuOpen = true"
+        @mouseleave="isAiModelMenuOpen = false"
       >
         <div
           class="bg-card border border-doodle-ink rounded-md p-1 min-w-[120px]"
