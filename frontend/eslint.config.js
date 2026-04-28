@@ -51,6 +51,8 @@ const sharedGlobals = {
   Blob: "readonly",
   ArrayBuffer: "readonly",
   ReadableStream: "readonly",
+  XMLHttpRequest: "readonly",
+  ProgressEvent: "readonly",
 };
 
 export default [

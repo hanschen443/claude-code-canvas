@@ -18,7 +18,7 @@ const mockBuildCommandNotFoundMessage = vi.fn();
 const mockTryExpandCommandMessage = vi.fn();
 const mockSocketServiceEmitToCanvas = vi.fn();
 const mockLoggerWarn = vi.fn();
-const mockWriteAttachments = vi.fn();
+const mockPromoteStagingToFinal = vi.fn();
 
 // --- vi.mock ---
 
@@ -125,7 +125,8 @@ vi.mock("../../src/utils/logger.js", () => ({
 }));
 
 vi.mock("../../src/services/attachmentWriter.js", () => ({
-  writeAttachments: (...args: unknown[]) => mockWriteAttachments(...args),
+  promoteStagingToFinal: (...args: unknown[]) =>
+    mockPromoteStagingToFinal(...args),
 }));
 
 vi.mock("../../src/services/normalExecutionStrategy.js", () => ({
@@ -512,41 +513,36 @@ describe("handleChatSend", () => {
     expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
   });
 
+  const UPLOAD_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+
   // ================================================================
-  // 測試案例 10 — 串行 idle pod 收 attachments
+  // 測試案例 10 — 串行 idle pod 收 uploadSessionId
   // ================================================================
-  it("串行 idle pod 帶 attachments：寫檔成功後呼叫 injectUserMessage 並執行串流（案例 10）", async () => {
+  it("串行 idle pod 帶 uploadSessionId：promote 成功後呼叫 injectUserMessage 並執行串流（案例 10）", async () => {
     const pod = makePod({ status: "idle", multiInstance: false });
     mockValidatePod.mockReturnValue(pod);
 
     const chatMessageId = "test-chat-msg-id";
-    const writeResult = {
+    const promoteResult = {
       dir: `/tmp/attachments/${chatMessageId}`,
       files: ["report.pdf"],
     };
-    mockWriteAttachments.mockResolvedValue(writeResult);
+    mockPromoteStagingToFinal.mockResolvedValue(promoteResult);
     mockInjectUserMessage.mockResolvedValue(undefined);
     mockExecuteStreamingChat.mockResolvedValue(undefined);
 
-    const attachments = [
-      {
-        filename: "report.pdf",
-        contentBase64: Buffer.from("content").toString("base64"),
-      },
-    ];
-
     await handleChatSend(
       CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
+      { podId: POD_ID, message: "", uploadSessionId: UPLOAD_SESSION_ID },
       REQUEST_ID,
     );
 
-    // writeAttachments 應被呼叫（chatMessageId 由 uuidv4 產生，只驗附件）
-    expect(mockWriteAttachments).toHaveBeenCalledWith(
+    // promoteStagingToFinal 應被呼叫（第一個參數為 uploadSessionId，第二個為生成的 chatMessageId）
+    expect(mockPromoteStagingToFinal).toHaveBeenCalledWith(
+      UPLOAD_SESSION_ID,
       expect.any(String),
-      attachments,
     );
-    // injectUserMessage 應被呼叫，id 應與 writeAttachments 的第一個參數相同
+    // injectUserMessage 應被呼叫，id 應與 promoteStagingToFinal 的第二個參數相同
     expect(mockInjectUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         canvasId: CANVAS_ID,
@@ -555,11 +551,12 @@ describe("handleChatSend", () => {
         id: expect.any(String),
       }),
     );
-    // writeAttachments 的 chatMessageId 應與 injectUserMessage 的 id 相同
-    const writeChatMsgId = mockWriteAttachments.mock.calls[0][0] as string;
+    // promoteStagingToFinal 的 chatMessageId 應與 injectUserMessage 的 id 相同
+    const promoteChatMsgId = mockPromoteStagingToFinal.mock
+      .calls[0][1] as string;
     const injectId = (mockInjectUserMessage.mock.calls[0][0] as { id: string })
       .id;
-    expect(writeChatMsgId).toBe(injectId);
+    expect(promoteChatMsgId).toBe(injectId);
     // 最終應呼叫串流
     expect(mockExecuteStreamingChat).toHaveBeenCalled();
   });
@@ -567,25 +564,18 @@ describe("handleChatSend", () => {
   // ================================================================
   // 測試案例 11 — 串行 busy pod reject POD_BUSY
   // ================================================================
-  it("串行 busy pod 帶 attachments：應直接拒絕 POD_BUSY，不寫檔（案例 11）", async () => {
+  it("串行 busy pod 帶 uploadSessionId：應直接拒絕 POD_BUSY，不 promote（案例 11）", async () => {
     const pod = makePod({ status: "chatting", multiInstance: false });
     mockValidatePod.mockReturnValue(pod);
 
-    const attachments = [
-      {
-        filename: "file.txt",
-        contentBase64: Buffer.from("x").toString("base64"),
-      },
-    ];
-
     await handleChatSend(
       CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
+      { podId: POD_ID, message: "", uploadSessionId: UPLOAD_SESSION_ID },
       REQUEST_ID,
     );
 
-    // 不應寫檔
-    expect(mockWriteAttachments).not.toHaveBeenCalled();
+    // 不應呼叫 promote
+    expect(mockPromoteStagingToFinal).not.toHaveBeenCalled();
     // 應回傳 POD_BUSY 錯誤
     expect(mockEmitError).toHaveBeenCalledWith(
       CONNECTION_ID,
@@ -600,36 +590,29 @@ describe("handleChatSend", () => {
   });
 
   // ================================================================
-  // 測試案例 12 — multi-instance pod 收 attachments
+  // 測試案例 12 — multi-instance pod 收 uploadSessionId
   // ================================================================
-  it("multi-instance pod 帶 attachments：寫檔成功後呼叫 launchMultiInstanceRun（案例 12）", async () => {
+  it("multi-instance pod 帶 uploadSessionId：promote 成功後呼叫 launchMultiInstanceRun（案例 12）", async () => {
     const pod = makePod({ status: "idle", multiInstance: true });
     mockValidatePod.mockReturnValue(pod);
 
-    const writeResult = {
+    const promoteResult = {
       dir: "/tmp/attachments/run-msg-id",
       files: ["data.csv"],
     };
-    mockWriteAttachments.mockResolvedValue(writeResult);
+    mockPromoteStagingToFinal.mockResolvedValue(promoteResult);
     mockLaunchMultiInstanceRun.mockResolvedValue(undefined);
-
-    const attachments = [
-      {
-        filename: "data.csv",
-        contentBase64: Buffer.from("csv").toString("base64"),
-      },
-    ];
 
     await handleChatSend(
       CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
+      { podId: POD_ID, message: "", uploadSessionId: UPLOAD_SESSION_ID },
       REQUEST_ID,
     );
 
-    // writeAttachments 應被呼叫
-    expect(mockWriteAttachments).toHaveBeenCalledWith(
+    // promoteStagingToFinal 應被呼叫
+    expect(mockPromoteStagingToFinal).toHaveBeenCalledWith(
+      UPLOAD_SESSION_ID,
       expect.any(String),
-      attachments,
     );
     // launchMultiInstanceRun 應被呼叫，而非 executeStreamingChat
     expect(mockLaunchMultiInstanceRun).toHaveBeenCalledWith(
@@ -640,55 +623,29 @@ describe("handleChatSend", () => {
         userMessageId: expect.any(String),
       }),
     );
-    // writeAttachments chatMessageId 應與 launchMultiInstanceRun userMessageId 一致
-    const writeChatMsgId = mockWriteAttachments.mock.calls[0][0] as string;
+    // promoteStagingToFinal chatMessageId 應與 launchMultiInstanceRun userMessageId 一致
+    const promoteChatMsgId = mockPromoteStagingToFinal.mock
+      .calls[0][1] as string;
     const launchParams = mockLaunchMultiInstanceRun.mock.calls[0][0] as {
       userMessageId: string;
     };
-    expect(writeChatMsgId).toBe(launchParams.userMessageId);
+    expect(promoteChatMsgId).toBe(launchParams.userMessageId);
     expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
   });
 
   // ================================================================
-  // 測試案例 13 — 0 個檔案 reject（空陣列防線）
+  // 測試案例 14 — command 注入 + uploadSessionId 共存
   // ================================================================
-  it("attachments 為空陣列時應回傳 ATTACHMENT_EMPTY 錯誤，不呼叫 writeAttachments（案例 13）", async () => {
-    const pod = makePod({ status: "idle" });
-    mockValidatePod.mockReturnValue(pod);
-
-    await handleChatSend(
-      CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments: [] },
-      REQUEST_ID,
-    );
-
-    // 不應寫檔
-    expect(mockWriteAttachments).not.toHaveBeenCalled();
-    // 應回傳 ATTACHMENT_EMPTY 錯誤
-    expect(mockEmitError).toHaveBeenCalledWith(
-      CONNECTION_ID,
-      "pod:error",
-      expect.objectContaining({ key: expect.any(String) }),
-      CANVAS_ID,
-      REQUEST_ID,
-      POD_ID,
-      "ATTACHMENT_EMPTY",
-    );
-  });
-
-  // ================================================================
-  // 測試案例 14 — command 注入 + attachments 共存
-  // ================================================================
-  it("attachments + command 不存在時，injectUserMessage 收觸發訊息，推送錯誤文字，不呼叫串流（案例 14）", async () => {
+  it("uploadSessionId + command 不存在時，injectUserMessage 收觸發訊息，推送錯誤文字，不呼叫串流（案例 14）", async () => {
     const commandId = "missing-cmd";
     const pod = makePod({ status: "idle", commandId, multiInstance: false });
     mockValidatePod.mockReturnValue(pod);
 
-    const writeResult = {
+    const promoteResult = {
       dir: "/tmp/attachments/cmd-msg-id",
       files: ["note.txt"],
     };
-    mockWriteAttachments.mockResolvedValue(writeResult);
+    mockPromoteStagingToFinal.mockResolvedValue(promoteResult);
     // Command 不存在
     mockTryExpandCommandMessage.mockResolvedValue({ ok: false, commandId });
     mockBuildCommandNotFoundMessage.mockReturnValue(
@@ -696,21 +653,14 @@ describe("handleChatSend", () => {
     );
     mockInjectUserMessage.mockResolvedValue(undefined);
 
-    const attachments = [
-      {
-        filename: "note.txt",
-        contentBase64: Buffer.from("note").toString("base64"),
-      },
-    ];
-
     await handleChatSend(
       CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
+      { podId: POD_ID, message: "", uploadSessionId: UPLOAD_SESSION_ID },
       REQUEST_ID,
     );
 
-    // 寫檔應成功
-    expect(mockWriteAttachments).toHaveBeenCalled();
+    // promote 應成功被呼叫
+    expect(mockPromoteStagingToFinal).toHaveBeenCalled();
     // injectUserMessage 應被呼叫（帶觸發訊息 + id）
     expect(mockInjectUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -731,25 +681,20 @@ describe("handleChatSend", () => {
   });
 
   // ================================================================
-  // writeAttachments 拋錯時的 handler 行為
+  // promoteStagingToFinal 拋錯時的 handler 行為
   // ================================================================
-  it("writeAttachments 拋 AttachmentTooLargeError 時應回傳 ATTACHMENT_TOO_LARGE 錯誤", async () => {
-    const { AttachmentTooLargeError } =
+  it("promoteStagingToFinal 拋 UploadSessionNotFoundError 時應回傳 UPLOAD_SESSION_NOT_FOUND 錯誤", async () => {
+    const { UploadSessionNotFoundError } =
       await import("../../src/services/attachmentErrors.js");
     const pod = makePod({ status: "idle" });
     mockValidatePod.mockReturnValue(pod);
-    mockWriteAttachments.mockRejectedValue(new AttachmentTooLargeError());
-
-    const attachments = [
-      {
-        filename: "big.bin",
-        contentBase64: Buffer.from("x").toString("base64"),
-      },
-    ];
+    mockPromoteStagingToFinal.mockRejectedValue(
+      new UploadSessionNotFoundError(UPLOAD_SESSION_ID),
+    );
 
     await handleChatSend(
       CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
+      { podId: POD_ID, message: "", uploadSessionId: UPLOAD_SESSION_ID },
       REQUEST_ID,
     );
 
@@ -760,99 +705,23 @@ describe("handleChatSend", () => {
       CANVAS_ID,
       REQUEST_ID,
       POD_ID,
-      "ATTACHMENT_TOO_LARGE",
+      "UPLOAD_SESSION_NOT_FOUND",
     );
     expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
   });
 
-  it("writeAttachments 拋 AttachmentDiskFullError 時應回傳 ATTACHMENT_DISK_FULL 錯誤", async () => {
-    const { AttachmentDiskFullError } =
-      await import("../../src/services/attachmentErrors.js");
-    const pod = makePod({ status: "idle" });
-    mockValidatePod.mockReturnValue(pod);
-    mockWriteAttachments.mockRejectedValue(new AttachmentDiskFullError());
-
-    const attachments = [
-      {
-        filename: "file.txt",
-        contentBase64: Buffer.from("x").toString("base64"),
-      },
-    ];
-
-    await handleChatSend(
-      CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
-      REQUEST_ID,
-    );
-
-    expect(mockEmitError).toHaveBeenCalledWith(
-      CONNECTION_ID,
-      "pod:error",
-      expect.objectContaining({ key: expect.any(String) }),
-      CANVAS_ID,
-      REQUEST_ID,
-      POD_ID,
-      "ATTACHMENT_DISK_FULL",
-    );
-    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
-  });
-
-  it("writeAttachments 拋 AttachmentInvalidNameError 時應回傳 ATTACHMENT_INVALID_NAME 錯誤", async () => {
-    const { AttachmentInvalidNameError } =
-      await import("../../src/services/attachmentErrors.js");
-    const pod = makePod({ status: "idle" });
-    mockValidatePod.mockReturnValue(pod);
-    mockWriteAttachments.mockRejectedValue(
-      new AttachmentInvalidNameError("../bad"),
-    );
-
-    const attachments = [
-      {
-        filename: "../bad",
-        contentBase64: Buffer.from("x").toString("base64"),
-      },
-    ];
-
-    await handleChatSend(
-      CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
-      REQUEST_ID,
-    );
-
-    expect(mockEmitError).toHaveBeenCalledWith(
-      CONNECTION_ID,
-      "pod:error",
-      expect.objectContaining({ key: expect.any(String) }),
-      CANVAS_ID,
-      REQUEST_ID,
-      POD_ID,
-      "ATTACHMENT_INVALID_NAME",
-    );
-  });
-
-  // ================================================================
-  // 測試案例 — writeAttachments 拋一般 IO 錯誤（ATTACHMENT_WRITE_FAILED）
-  // ================================================================
-  it("writeAttachments 拋一般 IO 錯誤時應回傳 ATTACHMENT_WRITE_FAILED 並不建立 chat message", async () => {
+  it("promoteStagingToFinal 拋 AttachmentWriteError 時應回傳 ATTACHMENT_WRITE_FAILED 並不建立 chat message", async () => {
     const { AttachmentWriteError } =
       await import("../../src/services/attachmentErrors.js");
     const pod = makePod({ status: "idle" });
     mockValidatePod.mockReturnValue(pod);
-    // 模擬非 TooLarge / DiskFull / InvalidName 的一般 IO 錯誤
-    mockWriteAttachments.mockRejectedValue(
+    mockPromoteStagingToFinal.mockRejectedValue(
       new AttachmentWriteError(new Error("EACCES: permission denied")),
     );
 
-    const attachments = [
-      {
-        filename: "secret.txt",
-        contentBase64: Buffer.from("x").toString("base64"),
-      },
-    ];
-
     await handleChatSend(
       CONNECTION_ID,
-      { podId: POD_ID, message: "", attachments },
+      { podId: POD_ID, message: "", uploadSessionId: UPLOAD_SESSION_ID },
       REQUEST_ID,
     );
 

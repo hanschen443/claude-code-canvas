@@ -1,14 +1,9 @@
 /**
  * attachmentWriter 單元測試
  *
- * 覆蓋以下測試案例（依計畫書編號）：
- * 3 - collision rename（同名加 -1、-2...，副檔名分離）
- * 4 - filename sanitize（拒絕路徑穿越字元）
- * 5 - 磁碟不足時拋 AttachmentDiskFullError
- * 6 - 寫到中途失敗清除 staging 目錄
- * 7 - atomic rename staging → 正式目錄
- * 8 - handler 端嚴格判定單檔 > 10 MB（writeAttachments 層）
- * 15 - 磁碟檢查 fallback 路徑（statfs 不可用 → df → 兩者都失敗 skipped）
+ * 覆蓋以下測試案例：
+ * - writeAttachmentToStaging：filename sanitize、collision rename、大小限制、寫入失敗清除
+ * - promoteStagingToFinal：staging 不存在拋錯、atomic rename、正式目錄正確落地
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,92 +11,88 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-// 注意：mock 必須在 import 目標模組之前設定
-// 用 mock factory 讓 checkDiskSpace 可被單獨控制，
-// attachmentWriter 本身的 fs 操作仍使用真實 fs
-
-const mockCheckDiskSpace = vi.fn();
-
-vi.mock("../../src/services/diskSpace.js", () => ({
-  checkDiskSpace: (...args: unknown[]) => mockCheckDiskSpace(...args),
-}));
-
 vi.mock("../../src/config/index.js", () => ({
   config: {
-    // tmpRoot 由 beforeEach 動態替換
+    // tmpRoot / stagingRoot 由 beforeEach 動態替換
     tmpRoot: "/mock-tmp-root",
+    stagingRoot: "/mock-staging-root",
   },
 }));
 
 // 動態 import（在 mock 設定後才 import 確保 mock 生效）
-const { writeAttachments } =
+const { writeAttachmentToStaging, promoteStagingToFinal } =
   await import("../../src/services/attachmentWriter.js");
 const { config } = await import("../../src/config/index.js");
 
 /** 單檔最大允許 bytes（10 MB） */
-const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+const MAX_SINGLE_BYTES = 10 * 1024 * 1024;
+
+/** 合法的 uploadSessionId UUID v4 */
+const VALID_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+/** 合法的 chatMessageId UUID */
+const VALID_CHAT_MSG_ID = "660e8400-e29b-41d4-a716-446655440001";
 
 /** 建立一個 sandbox tmp 目錄，並在測試後清除 */
 let sandboxDir: string;
-
-/**
- * 把字串內容 encode 成 base64
- */
-function toBase64(content: string): string {
-  return Buffer.from(content).toString("base64");
-}
-
-/**
- * 建立恰好 bytes 大小的 base64 字串（每 3 bytes 對應 4 個 base64 字元）
- */
-function makeBase64OfBytes(bytes: number): string {
-  return Buffer.alloc(bytes).toString("base64");
-}
+let stagingDir: string;
 
 beforeEach(async () => {
   vi.clearAllMocks();
 
   // 建立 sandbox 暫存目錄
   sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), "attach-writer-test-"));
-  // 讓 config.tmpRoot 指向 sandbox
-  (config as { tmpRoot: string }).tmpRoot = sandboxDir;
+  stagingDir = path.join(sandboxDir, "staging");
+  await fs.mkdir(stagingDir, { recursive: true });
 
-  // 預設磁碟空間充足
-  mockCheckDiskSpace.mockResolvedValue({ ok: true });
+  // 讓 config 指向 sandbox
+  (config as { tmpRoot: string; stagingRoot: string }).tmpRoot = sandboxDir;
+  (config as { tmpRoot: string; stagingRoot: string }).stagingRoot = stagingDir;
 });
 
 afterEach(async () => {
-  // 清除 sandbox，避免污染
   await fs.rm(sandboxDir, { recursive: true, force: true }).catch(() => void 0);
   vi.restoreAllMocks();
 });
 
 // ================================================================
-// 測試案例 4 — filename sanitize
+// writeAttachmentToStaging — filename sanitize
 // ================================================================
-describe("writeAttachments — filename sanitize（案例 4）", () => {
-  it("filename 含路徑分隔符（../etc/passwd）應透過 path.basename 安全轉換為 passwd", async () => {
-    // attachmentWriter 使用 path.basename 對 filename 做 sanitize，
-    // '../etc/passwd' → basename = 'passwd'，不拋錯，安全落地為 passwd
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-000000000001",
-      [{ filename: "../etc/passwd", contentBase64: toBase64("content") }],
+describe("writeAttachmentToStaging — filename sanitize", () => {
+  it("合法 filename 應正確落地到 staging 目錄", async () => {
+    const file = new File(["hello"], "document.pdf", {
+      type: "application/pdf",
+    });
+    const result = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file,
+      "document.pdf",
     );
 
-    // basename 後的名稱應為 'passwd'，安全落地
-    expect(result.files).toEqual(["passwd"]);
-    const stat = await fs.stat(path.join(result.dir, "passwd"));
+    expect(result.filename).toBe("document.pdf");
+    const stat = await fs.stat(
+      path.join(stagingDir, VALID_SESSION_ID, "document.pdf"),
+    );
     expect(stat.isFile()).toBe(true);
   });
 
-  it("filename 只有空白字元應拋 AttachmentInvalidNameError", async () => {
+  it("filename 含路徑分隔符（../etc/passwd）應透過 basename 轉為 passwd", async () => {
+    const file = new File(["content"], "../etc/passwd");
+    const result = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file,
+      "../etc/passwd",
+    );
+
+    expect(result.filename).toBe("passwd");
+  });
+
+  it("filename 為純空白應拋 AttachmentInvalidNameError", async () => {
     const { AttachmentInvalidNameError } =
       await import("../../src/services/attachmentErrors.js");
 
+    const file = new File(["x"], "   ");
     await expect(
-      writeAttachments("00000000-0000-4000-8000-000000000002", [
-        { filename: "   ", contentBase64: toBase64("content") },
-      ]),
+      writeAttachmentToStaging(VALID_SESSION_ID, file, "   "),
     ).rejects.toBeInstanceOf(AttachmentInvalidNameError);
   });
 
@@ -109,237 +100,145 @@ describe("writeAttachments — filename sanitize（案例 4）", () => {
     const { AttachmentInvalidNameError } =
       await import("../../src/services/attachmentErrors.js");
 
+    const file = new File(["x"], "..");
     await expect(
-      writeAttachments("00000000-0000-4000-8000-000000000003", [
-        { filename: "..", contentBase64: toBase64("content") },
-      ]),
+      writeAttachmentToStaging(VALID_SESSION_ID, file, ".."),
     ).rejects.toBeInstanceOf(AttachmentInvalidNameError);
   });
+});
 
-  it("合法 filename 不拋錯，並正確落地", async () => {
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-000000000004",
-      [{ filename: "document.pdf", contentBase64: toBase64("hello") }],
+// ================================================================
+// writeAttachmentToStaging — collision rename
+// ================================================================
+describe("writeAttachmentToStaging — collision rename", () => {
+  it("同 session 連續上傳兩個同名檔案，第二個應被 rename 為 base-1.ext", async () => {
+    const file1 = new File(["first"], "report.md");
+    const file2 = new File(["second"], "report.md");
+
+    const r1 = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file1,
+      "report.md",
+    );
+    const r2 = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file2,
+      "report.md",
     );
 
-    expect(result.files).toEqual(["document.pdf"]);
-    const stat = await fs.stat(path.join(result.dir, "document.pdf"));
-    expect(stat.isFile()).toBe(true);
+    expect(r1.filename).toBe("report.md");
+    expect(r2.filename).toBe("report-1.md");
+  });
+
+  it("dot-file 同名時以 .gitignore-1 命名，不拆副檔名", async () => {
+    const file1 = new File(["x"], ".gitignore");
+    const file2 = new File(["y"], ".gitignore");
+
+    const r1 = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file1,
+      ".gitignore",
+    );
+    const r2 = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file2,
+      ".gitignore",
+    );
+
+    expect(r1.filename).toBe(".gitignore");
+    expect(r2.filename).toBe(".gitignore-1");
   });
 });
 
 // ================================================================
-// 測試案例 3 — collision rename
+// writeAttachmentToStaging — 大小限制
 // ================================================================
-describe("writeAttachments — collision rename（案例 3）", () => {
-  it("兩個同名檔案，第二個應被 rename 為 base-1.ext", async () => {
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-000000000005",
-      [
-        { filename: "report.md", contentBase64: toBase64("first") },
-        { filename: "report.md", contentBase64: toBase64("second") },
-      ],
-    );
-
-    expect(result.files).toEqual(["report.md", "report-1.md"]);
-  });
-
-  it("三個同名檔案，應被 rename 為 name、name-1、name-2", async () => {
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-000000000006",
-      [
-        { filename: "data.csv", contentBase64: toBase64("a") },
-        { filename: "data.csv", contentBase64: toBase64("b") },
-        { filename: "data.csv", contentBase64: toBase64("c") },
-      ],
-    );
-
-    expect(result.files).toEqual(["data.csv", "data-1.csv", "data-2.csv"]);
-  });
-
-  it("dot-file（如 .gitignore）同名時以 .gitignore-1 命名，不拆副檔名", async () => {
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-000000000007",
-      [
-        { filename: ".gitignore", contentBase64: toBase64("x") },
-        { filename: ".gitignore", contentBase64: toBase64("y") },
-      ],
-    );
-
-    expect(result.files).toEqual([".gitignore", ".gitignore-1"]);
-  });
-});
-
-// ================================================================
-// 測試案例 8 — 單檔 > 10 MB 拒絕
-// ================================================================
-describe("writeAttachments — 單檔超過 10 MB 拒絕（案例 8）", () => {
-  it("單一附件 base64 解碼後 bytes > 10 MB 應拋 AttachmentTooLargeError", async () => {
+describe("writeAttachmentToStaging — 大小限制", () => {
+  it("單檔超過 10 MB 應拋 AttachmentTooLargeError", async () => {
     const { AttachmentTooLargeError } =
       await import("../../src/services/attachmentErrors.js");
 
-    // 10 MB + 1 byte 的空白內容
-    const bigBase64 = makeBase64OfBytes(MAX_TOTAL_BYTES + 1);
+    const bigContent = new Uint8Array(MAX_SINGLE_BYTES + 1);
+    const file = new File([bigContent], "big.bin");
 
     await expect(
-      writeAttachments("00000000-0000-4000-8000-000000000008", [
-        { filename: "big.bin", contentBase64: bigBase64 },
-      ]),
-    ).rejects.toBeInstanceOf(AttachmentTooLargeError);
-  });
-
-  it("多個附件其中一個 > 10 MB 應拋 AttachmentTooLargeError", async () => {
-    const { AttachmentTooLargeError } =
-      await import("../../src/services/attachmentErrors.js");
-
-    const smallBase64 = makeBase64OfBytes(1024);
-    const bigBase64 = makeBase64OfBytes(MAX_TOTAL_BYTES + 1);
-
-    await expect(
-      writeAttachments("00000000-0000-4000-8000-000000000009", [
-        { filename: "small.bin", contentBase64: smallBase64 },
-        { filename: "big.bin", contentBase64: bigBase64 },
-      ]),
+      writeAttachmentToStaging(VALID_SESSION_ID, file, "big.bin"),
     ).rejects.toBeInstanceOf(AttachmentTooLargeError);
   });
 
   it("剛好等於 10 MB 的單檔不應拋錯", async () => {
-    const exactBase64 = makeBase64OfBytes(MAX_TOTAL_BYTES);
+    const exactContent = new Uint8Array(MAX_SINGLE_BYTES);
+    const file = new File([exactContent], "exact.bin");
 
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-00000000000a",
-      [{ filename: "exact.bin", contentBase64: exactBase64 }],
+    const result = await writeAttachmentToStaging(
+      VALID_SESSION_ID,
+      file,
+      "exact.bin",
     );
 
-    expect(result.files).toEqual(["exact.bin"]);
+    expect(result.filename).toBe("exact.bin");
+    expect(result.size).toBe(MAX_SINGLE_BYTES);
   });
+});
 
-  it("多個附件各自 <= 10 MB 不應拋錯（不做加總限制）", async () => {
-    // 兩個各 9 MB，總計 18 MB，但單檔均未超 10 MB
-    const nineMBBase64 = makeBase64OfBytes(9 * 1024 * 1024);
+// ================================================================
+// promoteStagingToFinal — staging 不存在拋 UploadSessionNotFoundError
+// ================================================================
+describe("promoteStagingToFinal — staging 不存在", () => {
+  it("staging 目錄不存在時應拋 UploadSessionNotFoundError", async () => {
+    const { UploadSessionNotFoundError } =
+      await import("../../src/services/attachmentErrors.js");
 
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-00000000000b",
-      [
-        { filename: "file1.bin", contentBase64: nineMBBase64 },
-        { filename: "file2.bin", contentBase64: nineMBBase64 },
-      ],
+    // 沒有事先建立 staging 子目錄
+    await expect(
+      promoteStagingToFinal(VALID_SESSION_ID, VALID_CHAT_MSG_ID),
+    ).rejects.toBeInstanceOf(UploadSessionNotFoundError);
+  });
+});
+
+// ================================================================
+// promoteStagingToFinal — atomic rename staging → 正式目錄
+// ================================================================
+describe("promoteStagingToFinal — atomic rename", () => {
+  it("staging 存在時應成功 rename 為正式目錄並回傳 dir + files", async () => {
+    // 預先建立 staging session 目錄並放入檔案
+    const sessionDir = path.join(stagingDir, VALID_SESSION_ID);
+    await fs.mkdir(sessionDir, { recursive: true });
+    await fs.writeFile(path.join(sessionDir, "report.pdf"), "pdf content");
+    await fs.writeFile(path.join(sessionDir, "data.csv"), "csv content");
+
+    const result = await promoteStagingToFinal(
+      VALID_SESSION_ID,
+      VALID_CHAT_MSG_ID,
     );
 
-    expect(result.files).toEqual(["file1.bin", "file2.bin"]);
-  });
-});
-
-// ================================================================
-// 測試案例 5 — 磁碟不足
-// ================================================================
-describe("writeAttachments — 磁碟不足（案例 5）", () => {
-  it("checkDiskSpace 回 ok:false 時應拋 AttachmentDiskFullError", async () => {
-    const { AttachmentDiskFullError } =
-      await import("../../src/services/attachmentErrors.js");
-
-    mockCheckDiskSpace.mockResolvedValue({ ok: false, reason: "disk-full" });
-
-    await expect(
-      writeAttachments("00000000-0000-4000-8000-00000000000c", [
-        { filename: "file.txt", contentBase64: toBase64("content") },
-      ]),
-    ).rejects.toBeInstanceOf(AttachmentDiskFullError);
-  });
-});
-
-// ================================================================
-// 測試案例 6 — 寫到中途失敗清 staging
-// ================================================================
-describe("writeAttachments — 寫入中途失敗清 staging（案例 6）", () => {
-  it("writeFile 失敗後 staging 目錄應被清除", async () => {
-    // 使用合法 UUID，否則 writeAttachments 入口 UUID 驗證會提前拋錯
-    const chatMessageId = "00000000-0000-4000-8000-00000000000d";
-    const stagingDir = path.join(sandboxDir, `${chatMessageId}.staging`);
-
-    // spy fs.writeFile，第一次呼叫拋錯
-    const originalWriteFile = fs.writeFile.bind(fs);
-    let callCount = 0;
-    vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
-      callCount++;
-      if (callCount === 1) {
-        throw new Error("模擬 I/O 寫入失敗");
-      }
-      // @ts-expect-error 轉型讓 bind 正常運作
-      return originalWriteFile(...args);
-    });
-
-    const { AttachmentWriteError } =
-      await import("../../src/services/attachmentErrors.js");
-
-    await expect(
-      writeAttachments(chatMessageId, [
-        { filename: "a.txt", contentBase64: toBase64("content") },
-      ]),
-    ).rejects.toBeInstanceOf(AttachmentWriteError);
-
-    // staging 目錄應已被清除
-    await expect(fs.stat(stagingDir)).rejects.toThrow();
-  });
-});
-
-// ================================================================
-// 測試案例 7 — atomic rename staging → 正式目錄
-// ================================================================
-describe("writeAttachments — atomic rename（案例 7）", () => {
-  it("寫入成功後 staging 目錄消失，正式目錄存在並含所有檔案", async () => {
-    // 使用合法 UUID，否則 writeAttachments 入口 UUID 驗證會提前拋錯
-    const chatMessageId = "00000000-0000-4000-8000-00000000000e";
-    const stagingDir = path.join(sandboxDir, `${chatMessageId}.staging`);
-    const finalDir = path.join(sandboxDir, chatMessageId);
-
-    const result = await writeAttachments(chatMessageId, [
-      { filename: "file1.txt", contentBase64: toBase64("content 1") },
-      { filename: "file2.txt", contentBase64: toBase64("content 2") },
-    ]);
-
-    // 正式目錄存在
+    // 正式目錄應存在
+    const finalDir = path.join(sandboxDir, VALID_CHAT_MSG_ID);
     const stat = await fs.stat(finalDir);
     expect(stat.isDirectory()).toBe(true);
 
-    // staging 目錄不存在
-    await expect(fs.stat(stagingDir)).rejects.toThrow();
+    // staging 目錄應消失
+    await expect(fs.stat(sessionDir)).rejects.toThrow();
 
-    // 回傳的 dir 與正式目錄一致
+    // 回傳值正確
     expect(result.dir).toBe(finalDir);
-    expect(result.files).toEqual(["file1.txt", "file2.txt"]);
-
-    // 正式目錄中的檔案內容正確
-    const content1 = await fs.readFile(
-      path.join(finalDir, "file1.txt"),
-      "utf-8",
-    );
-    expect(content1).toBe("content 1");
+    expect(result.files.sort()).toEqual(["data.csv", "report.pdf"]);
   });
-});
 
-// ================================================================
-// 測試案例 15 — 磁碟檢查 fallback 路徑
-// ================================================================
-describe("checkDiskSpace — fallback 路徑（案例 15）", () => {
-  // 注意：diskSpace.ts 本身透過 mockCheckDiskSpace 被替換掉了，
-  // 所以此處直接測試 diskSpace.ts 的實際實作。
-  // 需要 un-mock diskSpace 並直接 import 真實模組。
+  it("promote 後正式目錄中的檔案內容正確", async () => {
+    const sessionDir = path.join(stagingDir, VALID_SESSION_ID);
+    await fs.mkdir(sessionDir, { recursive: true });
+    await fs.writeFile(path.join(sessionDir, "note.txt"), "hello world");
 
-  it("checkDiskSpace 回 skipped 時，writeAttachments 應繼續（不阻擋）", async () => {
-    // 磁碟檢查跳過（skipped），writeAttachments 應繼續寫入
-    mockCheckDiskSpace.mockResolvedValue({ ok: true, skipped: true });
-
-    const result = await writeAttachments(
-      "00000000-0000-4000-8000-00000000000f",
-      [{ filename: "test.txt", contentBase64: toBase64("hello") }],
+    const result = await promoteStagingToFinal(
+      VALID_SESSION_ID,
+      VALID_CHAT_MSG_ID,
     );
 
-    expect(result.files).toEqual(["test.txt"]);
     const content = await fs.readFile(
-      path.join(result.dir, "test.txt"),
+      path.join(result.dir, "note.txt"),
       "utf-8",
     );
-    expect(content).toBe("hello");
+    expect(content).toBe("hello world");
   });
 });

@@ -1,4 +1,3 @@
-import path from "path";
 import { z } from "zod";
 import { requestIdSchema, podIdSchema, canvasIdSchema } from "./base.js";
 
@@ -40,86 +39,44 @@ export const ContentBlockSchema = z.discriminatedUnion("type", [
 /** 向下相容別名，供現有程式碼繼續使用 */
 export const contentBlockSchema = ContentBlockSchema;
 
-/** 附件 schema：單一檔案的 filename 與 base64 內容 */
-export const attachmentSchema = z.object({
-  filename: z
-    .string()
-    .min(1)
-    .max(255)
-    .refine((name) => name.trim().length > 0, {
-      message: "filename 不得為純空白",
-    })
-    .refine((name) => path.basename(name) === name, {
-      message: "filename 不得包含路徑分隔符或 '..'",
-    }),
-  contentBase64: z
-    .string()
-    .regex(/^[A-Za-z0-9+/]*={0,2}$/, "contentBase64 包含非法字元"),
-});
-
 /**
- * 逐附件估算 base64 解碼後 bytes，超過單檔上限時透過 ctx.addIssue 加入錯誤。
+ * WS `chat:send` 訊息驗證 schema。
  *
- * 注意（項目 18）：此處為快擋估算（寬鬆路徑），公式為 length * 3/4 - padding 個數。
- * 實際解碼後 bytes 以 attachmentWriter.ts 的 Buffer.from(...).length 為準（嚴格路徑）。
- * padding 不齊時兩者可能差 1-2 bytes，因此「schema 通過 ≠ writer 通過」屬正常設計：
- * fast path 寬鬆攔截明顯超大、嚴格 path 精準判定邊界案例，不是 bug。
+ * 雙階段附件流程：
+ * - 第一階段（HTTP）：前端先呼叫 `POST /api/upload` 取得 uploadSessionId，
+ *   並將檔案寫入 staging 目錄。
+ * - 第二階段（WS）：發送 `chat:send` 時帶入 uploadSessionId，
+ *   handler 呼叫 `promoteStagingToFinal` 以 atomic rename 將 staging
+ *   搬移至正式附件目錄，再執行訊息處理。
  *
- * @param ctx - superRefine 傳入的 RefinementCtx
- * @param attachments - 待驗證的附件陣列
- * @param attachmentIndex - 各附件在父物件中的陣列索引起點（對應 path: ["attachments", i, ...]）
+ * 無 uploadSessionId 時，純文字 message 不得為空白（superRefine 保證）。
  */
-function attachmentSizeRefine(
-  ctx: z.RefinementCtx,
-  attachments: z.infer<typeof attachmentSchema>[],
-): void {
-  // 單檔上限：10 MB（與 attachmentWriter.ts 保持一致）
-  const maxSingleBytes = 10 * 1024 * 1024;
-
-  for (let i = 0; i < attachments.length; i++) {
-    const b64 = attachments[i].contentBase64;
-    const padding = (b64.match(/={1,2}$/) ?? [])[0]?.length ?? 0;
-    const decodedBytes = Math.floor((b64.length * 3) / 4) - padding;
-    if (decodedBytes > maxSingleBytes) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "單檔大小超過 10 MB 上限",
-        path: ["attachments", i, "contentBase64"],
-      });
-    }
-  }
-}
-
 export const chatSendSchema = z
   .object({
     requestId: requestIdSchema,
     canvasId: canvasIdSchema,
     podId: podIdSchema,
     message: z.union([
-      // 允許空字串，讓拖檔流程（attachments 不為空）能通過 schema；
-      // 無附件時的空字串檢查交由下方 superRefine 處理
+      // 允許空字串，讓拖檔流程（uploadSessionId 存在）能通過 schema；
+      // 無 uploadSessionId 時的空字串檢查交由下方 superRefine 處理
       z.string().max(MAX_MESSAGE_LENGTH),
       z.array(contentBlockSchema).min(1),
     ]),
-    attachments: z.array(attachmentSchema).min(1).max(50).optional(),
+    /** 拖檔流程上傳 session ID，使用 UUID v4 格式；存在時允許 message 為空字串 */
+    uploadSessionId: z.string().uuid().optional(),
   })
   .superRefine((data, ctx) => {
-    // 職責一：無附件或附件為空時，純文字 message 不得為空白
+    // 無 uploadSessionId 時，純文字 message 不得為空白
     if (
       typeof data.message === "string" &&
       data.message.trim().length === 0 &&
-      (!data.attachments || data.attachments.length === 0)
+      !data.uploadSessionId
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Too small: expected string to have >=1 characters",
         path: ["message"],
       });
-    }
-
-    // 職責二：逐附件估算大小，超過單檔 10 MB 上限即拒絕
-    if (data.attachments) {
-      attachmentSizeRefine(ctx, data.attachments);
     }
   });
 
@@ -135,8 +92,6 @@ export const chatAbortSchema = z.object({
   podId: podIdSchema,
 });
 
-export type Attachment = z.infer<typeof attachmentSchema>;
-export type AttachmentInput = z.input<typeof attachmentSchema>;
 export type ChatSendPayload = z.infer<typeof chatSendSchema>;
 export type ChatHistoryPayload = z.infer<typeof chatHistorySchema>;
 export type ChatAbortPayload = z.infer<typeof chatAbortSchema>;

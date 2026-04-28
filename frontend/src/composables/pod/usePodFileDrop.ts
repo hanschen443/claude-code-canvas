@@ -2,18 +2,25 @@ import { ref, type Ref } from "vue";
 import { useToast } from "@/composables/useToast";
 import { t } from "@/i18n";
 import { MAX_POD_DROP_FILE_BYTES } from "@/lib/constants";
-import type { PodChatAttachment } from "@/types/websocket/requests";
+import {
+  uploadFile,
+  UploadError,
+  type UploadFailureReason,
+} from "@/api/uploadApi";
+import { useUploadStore } from "@/stores/upload/uploadStore";
+import { useChatStore } from "@/stores/chat/chatStore";
 
 type ValidateDropResult = { ok: true } | { ok: false; toastKey: string };
 
 /**
  * 純函式：驗證 drop 事件中的 items 與 files 是否合法。
- * 回傳 { ok: true } 代表可繼續讀檔；{ ok: false, toastKey } 代表應顯示對應 i18n 錯誤。
+ * 回傳 { ok: true } 代表可繼續上傳；{ ok: false, toastKey } 代表應顯示對應 i18n 錯誤。
  *
  * 驗證順序：
  * 1. 資料夾偵測（透過 DataTransferItemList.webkitGetAsEntry）
  * 2. 空檔清單
  * 3. 單檔大小超過上限
+ * 4. 檔案名稱路徑字元過濾
  */
 export function validateDropFiles(
   items: DataTransferItemList | null | undefined,
@@ -59,8 +66,6 @@ export function validateDropFiles(
 interface UsePodFileDropOptions {
   /** getter，回傳 true 時所有事件 early return */
   disabled: () => boolean;
-  /** 合法 drop 且所有檔案讀取成功後觸發 */
-  onDrop: (attachments: PodChatAttachment[]) => void | Promise<void>;
 }
 
 interface UsePodFileDropReturn {
@@ -69,23 +74,37 @@ interface UsePodFileDropReturn {
   handleDragEnter: (event: DragEvent) => void;
   handleDragOver: (event: DragEvent) => void;
   handleDragLeave: (event: DragEvent) => void;
-  handleDrop: (event: DragEvent) => Promise<void>;
+  /**
+   * DragEvent 版本的 drop 處理入口，供 CanvasPod.vue `@drop` 事件綁定使用。
+   * 內部取出 File 列表後呼叫 handleDrop。
+   */
+  handleDropEvent: (event: DragEvent, podId: string) => Promise<void>;
+  /**
+   * 主上傳入口，接受 podId 與 File 陣列。
+   * 可直接由 PodUploadOverlay 等元件呼叫。
+   */
+  handleDrop: (podId: string, files: File[]) => Promise<void>;
+  /** 重試目前 upload-failed 狀態中所有失敗的檔案 */
+  retryFailed: (podId: string) => Promise<void>;
 }
 
 /**
- * 每批並行讀取的檔案數量上限。
- * 限制 Promise.all 平行度，避免大量大檔同時讀進記憶體造成瞬間峰值過高。
+ * 從 UploadError 取得對應的 UploadFailureReason。
+ * 非 UploadError 型別的錯誤一律回傳 'unknown'。
  */
-const READ_FILES_CHUNK_SIZE = 5;
+function resolveFailureReason(err: unknown): UploadFailureReason {
+  if (err instanceof UploadError) return err.reason;
+  return "unknown";
+}
 
 /**
  * 處理 Pod 聊天視窗的檔案拖曳上傳邏輯。
- * 不做檔案類型白名單，不需預覽 / 確認步驟，drop 即送。
+ * 採用 HTTP POST 並行上傳，支援聚合進度追蹤、單檔失敗隔離與失敗重試。
  */
 export function usePodFileDrop(
   options: UsePodFileDropOptions,
 ): UsePodFileDropReturn {
-  const { disabled, onDrop } = options;
+  const { disabled } = options;
   const { toast } = useToast();
 
   const isDragOver = ref(false);
@@ -125,34 +144,65 @@ export function usePodFileDrop(
   };
 
   /**
-   * 將 File 讀成純 base64 字串（剝離 dataURL 前綴）。
-   * 讀取失敗時 reject。
+   * 主上傳入口：對每個 file 並行呼叫 uploadApi.uploadFile，
+   * 單檔失敗不中斷其他檔案上傳，結束後統一 finalize。
+   *
+   * 若 isUploading 為 true（上傳中再拖入），直接 return 忽略。
    */
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event): void => {
-        const result = event.target?.result;
-        if (typeof result !== "string") {
-          reject(new Error("讀取結果非字串"));
-          return;
+  const handleDrop = async (podId: string, files: File[]): Promise<void> => {
+    const uploadStore = useUploadStore();
+    const chatStore = useChatStore();
+
+    // 上傳中再拖入時忽略，避免覆蓋進行中的狀態
+    if (uploadStore.isUploading(podId)) return;
+
+    // 建立上傳 session，取得 sessionId 與各檔案的 entry id
+    const uploadSessionId = uploadStore.startUpload(podId, files);
+
+    // 取得剛建立的 file entries，讓後續操作能對應 fileId
+    const podState = uploadStore.getUploadState(podId);
+    const fileEntries = podState.files;
+
+    // 對每個檔案並行上傳；個別包 try/catch，單檔失敗不中斷其他
+    await Promise.allSettled(
+      fileEntries.map(async (entry) => {
+        try {
+          await uploadFile(entry.file, uploadSessionId, ({ loaded }) => {
+            uploadStore.updateFileProgress(podId, entry.id, loaded);
+          });
+          uploadStore.markFileSuccess(podId, entry.id);
+        } catch (err) {
+          const reason = resolveFailureReason(err);
+          uploadStore.markFileFailed(podId, entry.id, reason);
         }
-        // dataURL 格式：data:<mime>;base64,<base64data>
-        const base64Data = result.split(",")[1];
-        if (!base64Data) {
-          reject(new Error("無法剝離 base64 前綴"));
-          return;
-        }
-        resolve(base64Data);
-      };
-      reader.onerror = (): void => {
-        reject(new Error(`讀取檔案 "${file.name}" 失敗`));
-      };
-      reader.readAsDataURL(file);
-    });
+      }),
+    );
+
+    // 所有上傳結束後，依結果決定後續行為
+    const result = uploadStore.finalizeUpload(podId);
+
+    if (result.ok) {
+      // 全部成功：送 WS 訊息，由後端根據 uploadSessionId 組裝附件
+      try {
+        await chatStore.sendMessageWithUploadSession(podId, uploadSessionId);
+      } catch {
+        toast({
+          title: t("composable.chat.podDropSendFailed"),
+          variant: "destructive",
+        });
+      }
+    }
+    // ok=false 時不送訊息，UI 由 PodUploadOverlay 顯示失敗清單
   };
 
-  const handleDrop = async (event: DragEvent): Promise<void> => {
+  /**
+   * DragEvent 版本的 drop 處理入口，供 CanvasPod.vue `@drop` 事件綁定使用。
+   * 負責取出 File 列表、執行驗證，並呼叫主入口 handleDrop。
+   */
+  const handleDropEvent = async (
+    event: DragEvent,
+    podId: string,
+  ): Promise<void> => {
     event.preventDefault();
     isDragOver.value = false;
 
@@ -161,51 +211,70 @@ export function usePodFileDrop(
     const items = event.dataTransfer?.items;
     const files = event.dataTransfer?.files;
 
-    // 驗證：資料夾、空檔、大小
+    // 驗證：資料夾、空檔、大小、名稱
     const validation = validateDropFiles(items, files);
     if (!validation.ok) {
       toast({ title: t(validation.toastKey), variant: "destructive" });
       return;
     }
 
-    const fileArray = Array.from(files!);
+    await handleDrop(podId, Array.from(files!));
+  };
 
-    // 以 chunk 方式並行讀取檔案，避免大量大檔同時讀入記憶體造成瞬間峰值過高。
-    // 每批最多 READ_FILES_CHUNK_SIZE 個並行，讀完再處理下一批。
-    let attachments: PodChatAttachment[];
-    try {
-      const results: PodChatAttachment[] = [];
-      for (let i = 0; i < fileArray.length; i += READ_FILES_CHUNK_SIZE) {
-        const chunk = fileArray.slice(i, i + READ_FILES_CHUNK_SIZE);
-        const chunkResults = await Promise.all(
-          chunk.map(async (file): Promise<PodChatAttachment> => {
-            const contentBase64 = await readFileAsBase64(file);
-            return {
-              filename: file.name,
-              contentBase64,
-            };
-          }),
-        );
-        results.push(...chunkResults);
+  /**
+   * 重試失敗的檔案：
+   * 1. 從 store 撈出所有 status=failed 的 entry
+   * 2. 呼叫 markRetrying 將失敗檔重設為 pending，進度從 0% 起跳（成功檔排除在計算外）
+   * 3. 重新對這些檔案執行上傳，重用既有的 uploadSessionId
+   * 4. 結束後呼叫 finalize，全部成功則送 WS 訊息
+   */
+  const retryFailed = async (podId: string): Promise<void> => {
+    const uploadStore = useUploadStore();
+    const chatStore = useChatStore();
+
+    const podState = uploadStore.getUploadState(podId);
+    const failedEntries = podState.files.filter((f) => f.status === "failed");
+
+    // 沒有失敗檔案時不做任何事
+    if (failedEntries.length === 0) return;
+
+    const { uploadSessionId } = podState;
+
+    // 將失敗檔案重設為 pending，切回 uploading 狀態，進度從 0% 起跳
+    uploadStore.markRetrying(
+      podId,
+      failedEntries.map((f) => f.id),
+    );
+
+    // 只對失敗的檔案重新上傳；成功的檔案不重傳
+    await Promise.allSettled(
+      failedEntries.map(async (entry) => {
+        try {
+          await uploadFile(entry.file, uploadSessionId, ({ loaded }) => {
+            uploadStore.updateFileProgress(podId, entry.id, loaded);
+          });
+          uploadStore.markFileSuccess(podId, entry.id);
+        } catch (err) {
+          const reason = resolveFailureReason(err);
+          uploadStore.markFileFailed(podId, entry.id, reason);
+        }
+      }),
+    );
+
+    const result = uploadStore.finalizeUpload(podId);
+
+    if (result.ok) {
+      // 所有（含先前已成功的）檔案均成功，送 WS 訊息
+      try {
+        await chatStore.sendMessageWithUploadSession(podId, uploadSessionId);
+      } catch {
+        toast({
+          title: t("composable.chat.podDropSendFailed"),
+          variant: "destructive",
+        });
       }
-      attachments = results;
-    } catch {
-      toast({
-        title: t("composable.chat.podDropReadFailed"),
-        variant: "destructive",
-      });
-      return;
     }
-
-    // 觸發 onDrop
-    try {
-      await onDrop(attachments);
-    } catch {
-      toast({
-        title: t("composable.chat.podDropSendFailed"),
-        variant: "destructive",
-      });
-    }
+    // ok=false：部分仍失敗，維持 upload-failed 狀態，UI 繼續顯示失敗清單
   };
 
   return {
@@ -213,6 +282,8 @@ export function usePodFileDrop(
     handleDragEnter,
     handleDragOver,
     handleDragLeave,
+    handleDropEvent,
     handleDrop,
+    retryFailed,
   };
 }

@@ -40,7 +40,8 @@ export type LogCategory =
   | "Backup"
   | "Encryption"
   | "Cleanup"
-  | "Shutdown";
+  | "Shutdown"
+  | "Upload";
 
 /**
  * Category 顏色映射表
@@ -72,6 +73,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Encryption: ANSI_COLORS.MAGENTA,
   Cleanup: ANSI_COLORS.GRAY,
   Shutdown: ANSI_COLORS.GRAY,
+  Upload: ANSI_COLORS.GREEN,
 };
 
 /**

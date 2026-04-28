@@ -20,7 +20,6 @@ import type {
   PodErrorPayload,
   PodMessagesClearedPayload,
 } from "@/types/websocket";
-import type { PodChatAttachment } from "@/types/websocket/requests";
 import { createMessageActions } from "./chatMessageActions";
 import { createConnectionActions } from "./chatConnectionActions";
 import { createHistoryActions } from "./chatHistoryActions";
@@ -57,10 +56,7 @@ const clearActionsCache = resetChatActionsCache;
 function hasMessageContent(
   content: string,
   contentBlocks: ContentBlock[] | undefined,
-  attachments: PodChatAttachment[] | undefined,
 ): boolean {
-  // 有附件時即使 content 為空也允許送出（純拖檔情境）
-  if (attachments && attachments.length > 0) return true;
   return !!contentBlocks?.length || content.trim().length > 0;
 }
 
@@ -235,13 +231,12 @@ export const useChatStore = defineStore("chat", {
       podId: string,
       content: string,
       contentBlocks?: ContentBlock[],
-      attachments?: PodChatAttachment[],
     ): Promise<void> {
       if (!this.isConnected) {
         throw new Error(t("composable.chat.websocketNotConnected"));
       }
 
-      if (!hasMessageContent(content, contentBlocks, attachments)) return;
+      if (!hasMessageContent(content, contentBlocks)) return;
 
       // contentBlocks 大小驗證：單 block < 5MB，總計 < 20MB（decoded bytes 估算）
       if (contentBlocks && contentBlocks.length > 0) {
@@ -276,13 +271,45 @@ export const useChatStore = defineStore("chat", {
           canvasId,
           podId,
           message: messagePayload,
-          // 僅在有附件時帶入，避免送出空陣列給後端
-          ...(attachments && attachments.length > 0 ? { attachments } : {}),
         },
       );
 
       this.setTyping(podId, true);
       // 前端發送時立即更新，不等待 WebSocket 事件來回
+      // multi-instance run 模式下源頭 pod 狀態由 run 流程管控，不應覆蓋為 chatting
+      if (!isMultiInstanceSourcePod(podId)) {
+        podStore.updatePodStatus(podId, "chatting");
+      }
+    },
+
+    /** 拖曳上傳流程專用的發送方法。
+     * 純上傳情境不需要 content / contentBlocks，後端根據 uploadSessionId 取得已上傳檔案並組裝 triggerText。
+     */
+    async sendMessageWithUploadSession(
+      podId: string,
+      uploadSessionId: string,
+    ): Promise<void> {
+      if (!this.isConnected) {
+        throw new Error(t("composable.chat.websocketNotConnected"));
+      }
+
+      const podStore = usePodStore();
+      const canvasId = getActiveCanvasIdOrWarn("ChatStore");
+      if (!canvasId) return;
+
+      // 純拖曳流程：不帶 message / contentBlocks，僅帶 uploadSessionId 交由後端處理
+      websocketClient.emit<PodChatSendPayload>(
+        WebSocketRequestEvents.POD_CHAT_SEND,
+        {
+          requestId: generateRequestId(),
+          canvasId,
+          podId,
+          message: "",
+          uploadSessionId,
+        },
+      );
+
+      this.setTyping(podId, true);
       // multi-instance run 模式下源頭 pod 狀態由 run 流程管控，不應覆蓋為 chatting
       if (!isMultiInstanceSourcePod(podId)) {
         podStore.updatePodStatus(podId, "chatting");

@@ -9,7 +9,6 @@ import {
   WebSocketResponseEvents,
 } from "@/services/websocket";
 import type { PodSetModelPayload, PodModelSetPayload } from "@/types/websocket";
-import type { PodChatAttachment } from "@/types/websocket/requests";
 import { useSendCanvasAction } from "@/composables/useSendCanvasAction";
 import { usePodDrag } from "@/composables/pod/usePodDrag";
 import { usePodNoteBinding } from "@/composables/pod/usePodNoteBinding";
@@ -26,7 +25,9 @@ import {
 } from "@/utils/multiInstanceGuard";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useRunStore } from "@/stores/run/runStore";
+import { useUploadStore } from "@/stores/upload/uploadStore";
 import PodHeader from "@/components/pod/PodHeader.vue";
+import PodUploadOverlay from "@/components/pod/PodUploadOverlay.vue";
 import PodMiniScreen from "@/components/pod/PodMiniScreen.vue";
 import PodSlots from "@/components/pod/PodSlots.vue";
 import PodAnchors from "@/components/pod/PodAnchors.vue";
@@ -51,6 +52,7 @@ const {
   chatStore,
 } = useCanvasContext();
 const runStore = useRunStore();
+const uploadStore = useUploadStore();
 const { startBatchDrag, isElementSelected, isBatchDragging } = useBatchDrag();
 const { toast } = useToast();
 const { sendCanvasAction } = useSendCanvasAction();
@@ -205,19 +207,24 @@ const {
   handleDragEnter,
   handleDragOver,
   handleDragLeave,
-  handleDrop,
+  handleDropEvent,
 } = usePodFileDrop({
   disabled: () => isFileDropDisabled.value,
-  onDrop: async (attachments: PodChatAttachment[]): Promise<void> => {
-    await chatStore.sendMessage(props.pod.id, "", undefined, attachments);
-
-    // multi-instance source pod 送出後自動開啟 history panel，
-    // 行為與 ChatModal.handleMultiInstanceSend 一致
-    if (isMultiInstanceSourcePod(props.pod.id)) {
-      runStore.openHistoryPanel();
-    }
-  },
 });
+
+/**
+ * 包裝 handleDropEvent，綁定當前 pod.id。
+ * 模板中 `@drop` 只傳 DragEvent，podId 由此閉包注入。
+ * 上傳流程結束後，若為 multi-instance source pod 則自動開啟 history panel。
+ */
+const handleDrop = async (event: DragEvent): Promise<void> => {
+  await handleDropEvent(event, props.pod.id);
+  // multi-instance source pod 送出後自動開啟 history panel，
+  // 行為與 ChatModal.handleMultiInstanceSend 一致
+  if (isMultiInstanceSourcePod(props.pod.id)) {
+    runStore.openHistoryPanel();
+  }
+};
 
 const {
   showPluginPopover,
@@ -230,6 +237,18 @@ const {
 
 // MCP notch 相關狀態
 const podMcpActiveCount = computed(() => props.pod.mcpServerNames?.length ?? 0);
+
+// ---- 上傳狀態（來自 uploadStore，避免與 chatStore 狀態互相覆蓋）----
+/**
+ * 判斷此 Pod 是否正在上傳中（uploadStore.isUploading getter）。
+ * 封鎖右鍵選單、連線把手、刪除按鈕等互動，但放行 Pod 拖移。
+ */
+const isPodUploading = computed(() => uploadStore.isUploading(props.pod.id));
+
+/** 上傳狀態（uploading / upload-failed / idle），用於控制 overlay 渲染 */
+const podUploadStatus = computed(
+  () => uploadStore.getUploadState(props.pod.id).status,
+);
 
 // 合併成單一 CSS selector 字串，closest() 一次查詢取代原本最差 4 次 DOM 遍歷
 const SLOT_CLASSES =
@@ -355,6 +374,11 @@ const handleToggleMultiInstance = async (): Promise<void> => {
 };
 
 const handleContextMenu = (e: MouseEvent): void => {
+  // 上傳中封鎖右鍵選單，避免誤觸刪除或其他操作
+  if (isPodUploading.value) {
+    e.preventDefault();
+    return;
+  }
   e.preventDefault();
   emit("contextmenu", { podId: props.pod.id, event: e });
 };
@@ -434,7 +458,9 @@ const handleContextMenu = (e: MouseEvent): void => {
         <div class="repository-notch" />
         <div class="command-notch" />
 
+        <!-- 上傳中隱藏連線把手，避免誤建立連線；放行 Pod 拖移（標題列邏輯未動） -->
         <PodAnchors
+          v-if="!isPodUploading"
           :pod-id="pod.id"
           @drag-start="handleAnchorDragStart"
           @drag-move="handleAnchorDragMove"
@@ -443,7 +469,8 @@ const handleContextMenu = (e: MouseEvent): void => {
 
         <IntegrationStatusIcon :bindings="pod.integrationBindings ?? []" />
 
-        <div class="p-3">
+        <!-- 聊天區容器：加 relative 使 PodUploadOverlay 的 absolute inset-0 可正確定位 -->
+        <div class="p-3 relative">
           <PodHeader
             :name="pod.name"
             :is-editing="isEditing"
@@ -467,9 +494,19 @@ const handleContextMenu = (e: MouseEvent): void => {
           </div>
 
           <PodMiniScreen :output="pod.output" />
+
+          <!-- 上傳中 / 上傳失敗 overlay：
+               absolute inset-0 蓋住聊天區（輸入區 + 訊息區），封鎖所有點擊。
+               僅在 uploading 或 upload-failed 時渲染，idle 時不 mount，避免不必要的 re-render。
+               overlay 自身內部已有 v-if 控制，外層再加 v-if 雙重保險。 -->
+          <PodUploadOverlay
+            v-if="isPodUploading || podUploadStatus === 'upload-failed'"
+            :pod-id="pod.id"
+          />
         </div>
       </div>
 
+      <!-- is-uploading 傳入，讓刪除按鈕在上傳中 disabled + tooltip -->
       <PodActions
         :pod-id="pod.id"
         :pod-name="pod.name"
@@ -486,6 +523,7 @@ const handleContextMenu = (e: MouseEvent): void => {
         :schedule-tooltip="scheduleTooltip"
         :is-schedule-fired-animating="isScheduleFiredAnimating"
         :is-workflow-running="isWorkflowRunning"
+        :is-uploading="isPodUploading"
         @open-schedule-modal="handleOpenScheduleModal"
         @update:show-clear-dialog="showClearDialog = $event"
         @update:show-delete-dialog="showDeleteDialog = $event"

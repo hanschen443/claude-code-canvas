@@ -1,26 +1,24 @@
 /**
  * attachmentWriter — 附件寫檔模組。
  *
- * 先寫到 staging 目錄再 rename 為正式目錄，確保對外部觀察者的原子性：
- * 在 rename 完成前任何失敗都不會留下不完整的正式目錄。
- * 任一步驟失敗 → 清除 staging 後 rethrow 對應 Error class。
+ * writeAttachmentToStaging：將單一上傳檔案寫入 staging 目錄。
+ * promoteStagingToFinal：staging → 正式目錄 atomic rename（WS handler 呼叫）。
+ * 任一步驟失敗 → 清除已寫入的部分後 rethrow 對應 Error class。
  */
 
 import fs from "fs/promises";
 import path from "path";
 import { config } from "../config/index.js";
-import type { Attachment } from "../schemas/chatSchemas.js";
 import {
-  AttachmentDiskFullError,
-  AttachmentEmptyError,
   AttachmentInvalidNameError,
   AttachmentTooLargeError,
   AttachmentWriteError,
+  UploadSessionNotFoundError,
 } from "./attachmentErrors.js";
-import { checkDiskSpace } from "./diskSpace.js";
-
-/** 10 MB（base64 解碼後 bytes，單檔上限） */
-const MAX_SINGLE_BYTES = 10 * 1024 * 1024;
+import {
+  MAX_SINGLE_BYTES,
+  UPLOAD_SESSION_ID_REGEX,
+} from "./uploadConstants.js";
 
 export interface WriteAttachmentsResult {
   /** 最終落地目錄絕對路徑（<tmpRoot>/<chatMessageId>/） */
@@ -28,6 +26,20 @@ export interface WriteAttachmentsResult {
   /** 最終 filename 清單，依輸入順序 */
   files: string[];
 }
+
+/** staging 單一上傳結果 */
+export interface StagingWriteResult {
+  /** 落地後的 sanitized filename（含 collision rename） */
+  filename: string;
+  /** 檔案 bytes 大小 */
+  size: number;
+  /** MIME type（由瀏覽器 File.type 傳入） */
+  mime: string;
+}
+
+/** chatMessageId UUID 驗證正則（寬鬆版：任意版本 UUID，defense-in-depth） */
+const CHAT_MESSAGE_ID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * 將名稱拆成 `{ base, ext }` 以便 collision rename。
@@ -70,84 +82,119 @@ function resolveUniqueFilename(name: string, usedSet: Set<string>): string {
 }
 
 /**
- * 對每個附件執行 filename sanitize（步驟 2），回傳 sanitize 後的名稱陣列。
- * 若任一名稱不合法則拋出 AttachmentInvalidNameError，中斷後續流程。
+ * 將單一檔案寫入 staging 目錄（`<stagingRoot>/<uploadSessionId>/`）。
  *
- * 結果陣列直接供步驟 5（collision rename）使用，避免重複呼叫 path.basename().trim()。
+ * - 驗證 uploadSessionId 為 UUID v4 格式（防路徑穿越）
+ * - sanitize 檔名，不合法直接拋出 AttachmentInvalidNameError
+ * - 讀取目錄已有檔案後做 collision rename，確保不覆蓋同名檔
+ * - 單檔超過 MAX_SINGLE_BYTES 拋出 AttachmentTooLargeError
+ * - 寫入失敗時清除已寫入的部分檔案後 rethrow AttachmentWriteError
  */
-function resolveSanitizedFilenames(attachments: Attachment[]): string[] {
-  return attachments.map((attachment) => {
-    const sanitized = path.basename(attachment.filename).trim();
-    if (sanitized === "" || sanitized === ".." || sanitized === ".") {
-      throw new AttachmentInvalidNameError(attachment.filename);
-    }
-    return sanitized;
-  });
-}
-
-/**
- * 對 sanitized 名稱陣列執行 collision rename（步驟 5）。
- * 使用 usedSet 追蹤已佔用名稱，同名時加 -1、-2...，副檔名保留。
- * 回傳最終唯一 filename 陣列，順序與輸入一致。
- */
-function resolveUniqueFilenames(sanitized: string[]): string[] {
-  const usedSet = new Set<string>();
-  const finalFilenames: string[] = [];
-  for (const name of sanitized) {
-    const unique = resolveUniqueFilename(name, usedSet);
-    usedSet.add(unique);
-    finalFilenames.push(unique);
+export async function writeAttachmentToStaging(
+  uploadSessionId: string,
+  file: File,
+  originalName: string,
+): Promise<StagingWriteResult> {
+  // 驗證 uploadSessionId 為 UUID v4 格式
+  if (!UPLOAD_SESSION_ID_REGEX.test(uploadSessionId)) {
+    throw new AttachmentWriteError(
+      new Error(`無效的 uploadSessionId 格式：${uploadSessionId}`),
+    );
   }
-  return finalFilenames;
+
+  // sanitize 檔名：取 basename 並去除首尾空白
+  const sanitized = path.basename(originalName).trim();
+  if (sanitized === "" || sanitized === ".." || sanitized === ".") {
+    throw new AttachmentInvalidNameError(originalName);
+  }
+
+  // 大小檢查
+  if (file.size > MAX_SINGLE_BYTES) {
+    throw new AttachmentTooLargeError();
+  }
+
+  const sessionDir = path.join(config.stagingRoot, uploadSessionId);
+
+  // 邊界檢查：確保 sessionDir 仍在 stagingRoot 之內（path traversal 防禦）
+  if (
+    !path
+      .resolve(sessionDir)
+      .startsWith(path.resolve(config.stagingRoot) + path.sep)
+  ) {
+    throw new AttachmentWriteError(
+      new Error(`sessionDir 超出 stagingRoot 邊界：${sessionDir}`),
+    );
+  }
+
+  // 建立 staging 子目錄（mkdir -p）
+  try {
+    await fs.mkdir(sessionDir, { recursive: true });
+  } catch (err) {
+    throw new AttachmentWriteError(err instanceof Error ? err : undefined);
+  }
+
+  // 讀取目錄內已有的檔名，供 collision rename 使用
+  let existingFiles: string[] = [];
+  try {
+    existingFiles = await fs.readdir(sessionDir);
+  } catch {
+    // 目錄剛建立時可能尚無內容，保持空陣列即可
+  }
+
+  const usedSet = new Set(existingFiles);
+  const finalFilename = resolveUniqueFilename(sanitized, usedSet);
+  const destPath = path.join(sessionDir, finalFilename);
+
+  // 讀取 File 內容
+  const arrayBuffer = await file.arrayBuffer();
+  const buf = Buffer.from(arrayBuffer);
+
+  try {
+    await fs.writeFile(destPath, buf);
+  } catch (err) {
+    // 清除寫到一半的檔案後 rethrow
+    await fs.rm(destPath, { force: true }).catch(() => void 0);
+    throw new AttachmentWriteError(err instanceof Error ? err : undefined);
+  }
+
+  return {
+    filename: finalFilename,
+    size: buf.length,
+    mime: file.type,
+  };
 }
 
 /**
- * 寫入附件到 `<tmpRoot>/<chatMessageId>/`，使用 staging → rename atomic 模式。
+ * 將 staging 目錄 atomic rename 為正式附件目錄（`<tmpRoot>/<chatMessageId>/`）。
+ *
+ * - 驗證兩個 ID 皆為合法 UUID 格式
+ * - 檢查 stagingDir 存在；不存在拋出 UploadSessionNotFoundError
+ * - 邊界檢查確保兩個目錄皆在 tmpRoot 之內
+ * - 用 fs.rename atomic 搬移；失敗則清除 finalDir 殘留並 rethrow AttachmentWriteError
+ * - 回傳 WriteAttachmentsResult（dir + files）
  */
-export async function writeAttachments(
+export async function promoteStagingToFinal(
+  uploadSessionId: string,
   chatMessageId: string,
-  attachments: Attachment[],
 ): Promise<WriteAttachmentsResult> {
-  // defense-in-depth：防止路徑穿越攻擊，後端其他層也有驗證，此為第一道防線
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      chatMessageId,
-    )
-  ) {
+  // 驗證 uploadSessionId 為 UUID v4 格式
+  if (!UPLOAD_SESSION_ID_REGEX.test(uploadSessionId)) {
+    throw new AttachmentWriteError(
+      new Error(`無效的 uploadSessionId 格式：${uploadSessionId}`),
+    );
+  }
+
+  // 驗證 chatMessageId 為 UUID 格式
+  if (!CHAT_MESSAGE_ID_REGEX.test(chatMessageId)) {
     throw new AttachmentWriteError(
       new Error(`無效的 chatMessageId 格式：${chatMessageId}`),
     );
   }
 
-  if (attachments.length === 0) {
-    throw new AttachmentEmptyError();
-  }
-
-  const sanitizedNames = resolveSanitizedFilenames(attachments);
-
-  const buffers: Buffer[] = [];
-  let totalBytes = 0;
-  for (const attachment of attachments) {
-    const buf = Buffer.from(attachment.contentBase64, "base64");
-    if (buf.length > MAX_SINGLE_BYTES) {
-      throw new AttachmentTooLargeError();
-    }
-    buffers.push(buf);
-    totalBytes += buf.length;
-  }
-
-  const diskResult = await checkDiskSpace(config.tmpRoot, totalBytes);
-  if (!diskResult.ok) {
-    throw new AttachmentDiskFullError();
-  }
-  // ok 或 skipped 都繼續，skipped 代表磁碟空間檢查不支援，不應因此阻擋寫入
-
-  const finalFilenames = resolveUniqueFilenames(sanitizedNames);
-
-  const stagingDir = path.join(config.tmpRoot, `${chatMessageId}.staging`);
+  const stagingDir = path.join(config.stagingRoot, uploadSessionId);
   const finalDir = path.join(config.tmpRoot, chatMessageId);
 
-  // 邊界檢查：確保 stagingDir 仍在 tmpRoot 之內（path traversal 防禦）
+  // 邊界檢查：stagingDir 必須在 tmpRoot（stagingRoot 掛在 tmpRoot 下）之內
   if (
     !path
       .resolve(stagingDir)
@@ -158,30 +205,41 @@ export async function writeAttachments(
     );
   }
 
+  // 邊界檢查：finalDir 必須在 tmpRoot 之內
+  if (
+    !path.resolve(finalDir).startsWith(path.resolve(config.tmpRoot) + path.sep)
+  ) {
+    throw new AttachmentWriteError(
+      new Error(`finalDir 超出 tmpRoot 邊界：${finalDir}`),
+    );
+  }
+
+  // 確認 staging 目錄存在；不存在代表 session 無效或已過期
   try {
-    await fs.mkdir(stagingDir, { recursive: true });
+    await fs.access(stagingDir);
+  } catch {
+    throw new UploadSessionNotFoundError(uploadSessionId);
+  }
+
+  // 列出 staging 內所有檔案（即最終 files 清單）
+  let files: string[];
+  try {
+    files = await fs.readdir(stagingDir);
   } catch (err) {
     throw new AttachmentWriteError(err instanceof Error ? err : undefined);
   }
 
+  // atomic rename：staging → 正式目錄
   try {
-    for (let i = 0; i < attachments.length; i++) {
-      const destPath = path.join(stagingDir, finalFilenames[i]);
-      await fs.writeFile(destPath, buffers[i]);
-    }
-
-    // atomic rename：staging → 正式目錄，對外部觀察者只會看到完整目錄或不存在，不會有中間狀態
     await fs.rename(stagingDir, finalDir);
   } catch (err) {
-    // 任一步驟失敗 → 清除 staging，避免殘留不完整目錄佔用空間
-    await fs
-      .rm(stagingDir, { recursive: true, force: true })
-      .catch(() => void 0);
+    // 清除可能殘留的 finalDir，避免不完整目錄佔用空間
+    await fs.rm(finalDir, { recursive: true, force: true }).catch(() => void 0);
     throw new AttachmentWriteError(err instanceof Error ? err : undefined);
   }
 
   return {
     dir: finalDir,
-    files: finalFilenames,
+    files,
   };
 }

@@ -12,3 +12,4 @@ export * from "./group";
 export * from "./config";
 export * from "./run";
 export * from "./mcp";
+export * from "./upload";

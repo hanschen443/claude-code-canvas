@@ -9,7 +9,6 @@ import { useChatStore, resetChatActionsCache } from "@/stores/chat/chatStore";
 import { usePodStore } from "@/stores/pod/podStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import type { ContentBlock, TextContentBlock } from "@/types/websocket";
-import type { PodChatAttachment } from "@/types/websocket/requests";
 
 vi.mock("@/services/websocket", () => webSocketMockFactory());
 
@@ -360,35 +359,6 @@ describe("chatStore", () => {
     });
 
     // -----------------------------------------------------------------------
-    // 案例 11：帶 attachments 時 emit 的 PodChatSendPayload 含 attachments 欄位
-    // -----------------------------------------------------------------------
-    it("案例 11：帶有效 attachments 時，emit payload 應含 attachments 欄位", async () => {
-      const canvasStore = useCanvasStore();
-      canvasStore.activeCanvasId = "canvas-1";
-      const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", commandId: null });
-      podStore.pods = [pod];
-      const store = useChatStore();
-      store.connectionStatus = "connected";
-
-      const attachments: PodChatAttachment[] = [
-        { filename: "report.pdf", contentBase64: "YWJj" },
-        { filename: "image.png", contentBase64: "eHl6" },
-      ];
-
-      // 帶空字串 content 與 attachments，模擬純拖曳上傳情境
-      await store.sendMessage("pod-1", "", undefined, attachments);
-
-      expect(mockWebSocketClient.emit).toHaveBeenCalledWith("pod:chat:send", {
-        requestId: expect.any(String),
-        canvasId: "canvas-1",
-        podId: "pod-1",
-        message: "",
-        attachments,
-      });
-    });
-
-    // -----------------------------------------------------------------------
     // 案例 11b：sendMessage 副作用 — podStore.updatePodStatus 應被呼叫為 chatting
     //          （非 multi-instance source pod 路徑）
     // -----------------------------------------------------------------------
@@ -409,72 +379,6 @@ describe("chatStore", () => {
       expect(store.isTypingByPodId.get("pod-1")).toBe(true);
       // podStore.updatePodStatus 應以 chatting 更新（非 multi-instance source pod）
       expect(updateStatusSpy).toHaveBeenCalledWith("pod-1", "chatting");
-    });
-
-    // -----------------------------------------------------------------------
-    // 案例 12：attachments 為空陣列時不送 attachments 欄位
-    // -----------------------------------------------------------------------
-    it("案例 12：attachments 為空陣列時，emit payload 不應含 attachments 欄位", async () => {
-      const canvasStore = useCanvasStore();
-      canvasStore.activeCanvasId = "canvas-1";
-      const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", commandId: null });
-      podStore.pods = [pod];
-      const store = useChatStore();
-      store.connectionStatus = "connected";
-
-      // 空陣列 attachments
-      await store.sendMessage("pod-1", "Hello", undefined, []);
-
-      const emittedPayload = mockWebSocketClient.emit.mock
-        .calls[0]?.[1] as Record<string, unknown>;
-      // 空陣列不送，payload 不應含 attachments key
-      expect(emittedPayload).not.toHaveProperty("attachments");
-    });
-
-    // -----------------------------------------------------------------------
-    // 案例 38：message 為空白字串但帶有 attachments 時，應送出（hasMessageContent = true）
-    // -----------------------------------------------------------------------
-    it("案例 38：message 為空白字串但帶有 attachments 時，emit 應正常發送且 payload 含 attachments", async () => {
-      const canvasStore = useCanvasStore();
-      canvasStore.activeCanvasId = "canvas-1";
-      const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", commandId: null });
-      podStore.pods = [pod];
-      const store = useChatStore();
-      store.connectionStatus = "connected";
-
-      const attachments: PodChatAttachment[] = [
-        { filename: "photo.jpg", contentBase64: "aW1hZ2VkYXRh" },
-      ];
-
-      // 空白訊息 + 附件 → hasMessageContent 應視為 true，不被 early return 攔截
-      await store.sendMessage("pod-1", "   ", undefined, attachments);
-
-      expect(mockWebSocketClient.emit).toHaveBeenCalledWith("pod:chat:send", {
-        requestId: expect.any(String),
-        canvasId: "canvas-1",
-        podId: "pod-1",
-        message: "   ",
-        attachments,
-      });
-    });
-
-    it("案例 12b：attachments 為 undefined 時，emit payload 不應含 attachments 欄位", async () => {
-      const canvasStore = useCanvasStore();
-      canvasStore.activeCanvasId = "canvas-1";
-      const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", commandId: null });
-      podStore.pods = [pod];
-      const store = useChatStore();
-      store.connectionStatus = "connected";
-
-      // 不傳 attachments 參數
-      await store.sendMessage("pod-1", "Hello");
-
-      const emittedPayload = mockWebSocketClient.emit.mock
-        .calls[0]?.[1] as Record<string, unknown>;
-      expect(emittedPayload).not.toHaveProperty("attachments");
     });
   });
 

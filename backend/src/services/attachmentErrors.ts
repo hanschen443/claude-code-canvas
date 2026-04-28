@@ -5,11 +5,13 @@ import {
   ERROR_CODE_ATTACHMENT_INVALID_NAME,
   ERROR_CODE_ATTACHMENT_DISK_FULL,
   ERROR_CODE_ATTACHMENT_WRITE_FAILED,
+  ERROR_CODE_UPLOAD_SESSION_NOT_FOUND,
   I18N_KEY_ATTACHMENT_EMPTY,
   I18N_KEY_ATTACHMENT_TOO_LARGE,
   I18N_KEY_ATTACHMENT_INVALID_NAME,
   I18N_KEY_ATTACHMENT_DISK_FULL,
   I18N_KEY_ATTACHMENT_WRITE_FAILED,
+  I18N_KEY_UPLOAD_SESSION_NOT_FOUND,
 } from "../types/errorCodes.js";
 
 /**
@@ -82,5 +84,23 @@ export class AttachmentWriteError extends Error {
     if (cause) {
       this.cause = cause;
     }
+  }
+}
+
+/**
+ * 找不到對應的 staging session（可能已過期或從未建立）。
+ */
+export class UploadSessionNotFoundError extends Error {
+  readonly code = ERROR_CODE_UPLOAD_SESSION_NOT_FOUND;
+  readonly i18nError: ReturnType<typeof createI18nError>;
+  readonly uploadSessionId: string;
+
+  constructor(uploadSessionId: string) {
+    super(`找不到 staging session：${uploadSessionId}`);
+    this.name = "UploadSessionNotFoundError";
+    this.uploadSessionId = uploadSessionId;
+    this.i18nError = createI18nError(I18N_KEY_UPLOAD_SESSION_NOT_FOUND, {
+      uploadSessionId,
+    });
   }
 }

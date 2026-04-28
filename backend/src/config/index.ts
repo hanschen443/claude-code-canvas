@@ -26,8 +26,27 @@ interface Config {
   appDataRoot: string;
   canvasRoot: string;
   repositoriesRoot: string;
-  /** 暫存檔案根目錄（拖曳上傳的附件先落地於此，6h 後由 tmpCleanupService 清除） */
+  /**
+   * 暫存檔案根目錄（拖曳上傳的附件先落地於此，6h 後由 tmpCleanupService 清除）
+   *
+   * staging 與正式附件目錄都直接掛在 tmpRoot 下，6h TTL 由 tmpCleanupService 一併清理。
+   *
+   * 正式附件目錄結構：<tmpRoot>/<chatMessageId>/
+   *   - promote 階段把 staging 子目錄 rename 過去
+   */
   tmpRoot: string;
+  /**
+   * 上傳暫存區根目錄（`tmpRoot/staging`）
+   *
+   * 角色分工：
+   *   - stagingRoot：附件上傳後先落地於此，尚未與任何 chatMessage 綁定
+   *   - tmpRoot：正式附件目錄，每則訊息送出後才從 staging promote 過來
+   *
+   * staging 子目錄結構：<stagingRoot>/<uploadSessionId>/<sanitized filename>
+   *   - uploadSessionId：單次上傳工作階段的唯一識別碼
+   *   - sanitized filename：經過安全處理的原始檔案名稱
+   */
+  stagingRoot: string;
   /** 根據 nodeEnv 與 ALLOWED_ORIGINS 動態決定來源是否允許 */
   corsOrigin: (origin: string | undefined) => boolean;
   allowedOrigins?: string[];
@@ -112,6 +131,8 @@ function loadConfig(): Config {
   const commandsPath = path.join(dataRoot, "commands");
   // 暫存目錄：不在此建立，寫檔時由 attachmentWriter 以 mkdir -p 建立
   const tmpRoot = path.join(dataRoot, "tmp");
+  // staging 目錄掛在 tmpRoot 下，與正式附件目錄共用同一層；由 tmpCleanupService 6h 一併清理
+  const stagingRoot = path.join(tmpRoot, "staging");
 
   if (isNaN(port) || port < 1 || port > 65535) {
     throw new Error("PORT 必須是 1 到 65535 之間的有效數字");
@@ -124,6 +145,7 @@ function loadConfig(): Config {
     canvasRoot,
     repositoriesRoot,
     tmpRoot,
+    stagingRoot,
     corsOrigin,
     allowedOrigins,
     githubToken,

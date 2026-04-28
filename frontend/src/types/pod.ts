@@ -3,7 +3,12 @@ import type { IntegrationBinding } from "./integration";
 
 export type ModelType = "opus" | "sonnet" | "haiku";
 
-export type PodStatus = "idle" | "chatting" | "summarizing" | "error";
+export type PodStatus =
+  | "idle"
+  | "chatting"
+  | "summarizing"
+  | "error"
+  | "uploading";
 
 /**
  * Pod 所屬的 Provider 名稱。

@@ -227,6 +227,25 @@
       "description": "「{name}」を削除してもよろしいですか？この操作は元に戻せません。",
       "confirm": "削除を確認"
     },
+    "upload": {
+      "uploading": "アップロード中... {percent}%",
+      "fileCount": "全 {count} 件",
+      "failedTitle": "一部のファイルのアップロードに失敗しました",
+      "failedAllTitle": "すべてのファイルのアップロードに失敗しました",
+      "retry": "失敗したファイルを再試行",
+      "cannotDeleteWhileUploading": "アップロード中は削除できません",
+      "failureReason": {
+        "network": "ネットワークエラー",
+        "unknown": "不明なエラー",
+        "aborted": "アップロードがキャンセルされました",
+        "UPLOAD_NO_FILE": "ファイルが指定されていません",
+        "UPLOAD_INVALID_SESSION_ID": "アップロードセッション ID の形式が正しくありません",
+        "ATTACHMENT_TOO_LARGE": "ファイルが 10MB の上限を超えています",
+        "ATTACHMENT_INVALID_NAME": "ファイル名が無効です",
+        "ATTACHMENT_WRITE_FAILED": "サーバーへの書き込みに失敗しました",
+        "ATTACHMENT_DISK_FULL": "サーバーのディスク容量が不足しています"
+      }
+    },
     "slot": {
       "duplicateTitle": "すでに存在しています",
       "codexDisabled": "Codex はこの機能をサポートしていません",
@@ -704,7 +723,10 @@
     "attachmentTooLarge": "ファイルが 10 MB の上限を超えています",
     "attachmentInvalidName": "ファイル名が無効です",
     "attachmentDiskFull": "ディスク容量が不足しているため、ファイルを書き込めません",
-    "attachmentWriteFailed": "ファイルの書き込みに失敗しました。しばらくしてから再試行してください"
+    "attachmentWriteFailed": "ファイルの書き込みに失敗しました。しばらくしてから再試行してください",
+    "uploadSessionNotFound": "アップロードセッションが見つからないか、期限切れです。再度アップロードしてください",
+    "uploadInvalidSessionId": "アップロードセッション ID の形式が無効です",
+    "uploadNoFile": "リクエストにファイルが含まれていません。ファイルを選択して再試行してください"
   },
   "progress": {
     "preparingPull": "Pull を準備中...",

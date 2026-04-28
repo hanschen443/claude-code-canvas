@@ -25,6 +25,16 @@ export const ERROR_CODE_ATTACHMENT_DISK_FULL = "ATTACHMENT_DISK_FULL" as const;
 export const ERROR_CODE_ATTACHMENT_WRITE_FAILED =
   "ATTACHMENT_WRITE_FAILED" as const;
 
+// ── Upload 錯誤碼 ─────────────────────────────────────────────────
+/** 找不到對應 staging session（前端可能上傳未完成或 session 已過期） */
+export const ERROR_CODE_UPLOAD_SESSION_NOT_FOUND =
+  "UPLOAD_SESSION_NOT_FOUND" as const;
+/** sessionId 格式不合法 */
+export const ERROR_CODE_UPLOAD_INVALID_SESSION_ID =
+  "UPLOAD_INVALID_SESSION_ID" as const;
+/** HTTP 請求缺少檔案欄位 */
+export const ERROR_CODE_UPLOAD_NO_FILE = "UPLOAD_NO_FILE" as const;
+
 // ── Attachment i18n key 常量 ──────────────────────────────────────
 export const I18N_KEY_ATTACHMENT_EMPTY = "errors.attachmentEmpty" as const;
 export const I18N_KEY_ATTACHMENT_TOO_LARGE =
@@ -35,3 +45,10 @@ export const I18N_KEY_ATTACHMENT_DISK_FULL =
   "errors.attachmentDiskFull" as const;
 export const I18N_KEY_ATTACHMENT_WRITE_FAILED =
   "errors.attachmentWriteFailed" as const;
+
+// ── Upload i18n key 常量 ──────────────────────────────────────────
+export const I18N_KEY_UPLOAD_SESSION_NOT_FOUND =
+  "errors.uploadSessionNotFound" as const;
+export const I18N_KEY_UPLOAD_INVALID_SESSION_ID =
+  "errors.uploadInvalidSessionId" as const;
+export const I18N_KEY_UPLOAD_NO_FILE = "errors.uploadNoFile" as const;

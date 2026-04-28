@@ -27,11 +27,13 @@ import {
   tryExpandCommandMessage,
 } from "../services/commandExpander.js";
 import { socketService } from "../services/socketService.js";
-import { writeAttachments } from "../services/attachmentWriter.js";
+import { promoteStagingToFinal } from "../services/attachmentWriter.js";
 import {
   AttachmentTooLargeError,
   AttachmentDiskFullError,
   AttachmentInvalidNameError,
+  AttachmentWriteError,
+  UploadSessionNotFoundError,
 } from "../services/attachmentErrors.js";
 
 function validateIntegrationBindings(
@@ -77,7 +79,7 @@ function validatePodNotBusy(
 }
 
 /**
- * 將 writeAttachments 拋出的各類型錯誤對應到對應 i18n key 並 emit POD_ERROR。
+ * 將 promoteStagingToFinal 拋出的各類型錯誤對應到對應 i18n key 並 emit POD_ERROR。
  * caller 只需呼叫此函式後 return，不需再處理 error 細節。
  */
 function emitAttachmentError(
@@ -87,7 +89,17 @@ function emitAttachmentError(
   podId: string,
   requestId: string,
 ): void {
-  if (err instanceof AttachmentTooLargeError) {
+  if (err instanceof UploadSessionNotFoundError) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.uploadSessionNotFound"),
+      canvasId,
+      requestId,
+      podId,
+      "UPLOAD_SESSION_NOT_FOUND",
+    );
+  } else if (err instanceof AttachmentTooLargeError) {
     emitError(
       connectionId,
       WebSocketResponseEvents.POD_ERROR,
@@ -119,8 +131,18 @@ function emitAttachmentError(
       podId,
       "ATTACHMENT_INVALID_NAME",
     );
+  } else if (err instanceof AttachmentWriteError) {
+    emitError(
+      connectionId,
+      WebSocketResponseEvents.POD_ERROR,
+      createI18nError("errors.attachmentWriteFailed"),
+      canvasId,
+      requestId,
+      podId,
+      "ATTACHMENT_WRITE_FAILED",
+    );
   } else {
-    // AttachmentWriteError 或其他未知錯誤
+    // 未預期的錯誤
     emitError(
       connectionId,
       WebSocketResponseEvents.POD_ERROR,
@@ -134,9 +156,11 @@ function emitAttachmentError(
 }
 
 /**
- * 處理帶有 attachments 的聊天訊息（multi-instance 與串行兩條路徑）。
+ * 處理帶有 uploadSessionId 的聊天訊息（multi-instance 與串行兩條路徑）。
+ * 呼叫 promoteStagingToFinal 將 staging 目錄 atomic rename 為正式附件目錄，
+ * 失敗時 emit 對應錯誤並 early return，不建立 chat message。
  */
-async function handleChatSendWithAttachments(
+async function handleChatSendWithUploadSession(
   connectionId: string,
   canvasId: string,
   payload: ChatSendPayload,
@@ -144,49 +168,35 @@ async function handleChatSendWithAttachments(
   pod: Pod,
 ): Promise<void> {
   const { podId } = payload;
-  const attachments = payload.attachments!;
+  const uploadSessionId = payload.uploadSessionId!;
   const podName = pod.name;
 
-  // 空陣列防線：schema 層（chatSchemas.ts attachments min(1)）已擋下空陣列，正常路徑不會觸達此處。
-  // 保留此檢查是 belt-and-suspenders 防禦：避免 schema 未來被放寬後產生隱性 bug，不視為死碼。
-  if (attachments.length === 0) {
-    emitError(
-      connectionId,
-      WebSocketResponseEvents.POD_ERROR,
-      createI18nError("errors.attachmentEmpty"),
-      canvasId,
-      requestId,
-      podId,
-      "ATTACHMENT_EMPTY",
-    );
-    return;
-  }
-
-  // 串行 pod：先確認 pod 不忙碌，busy 直接拒絕，不寫檔
+  // 串行 pod：先確認 pod 不忙碌，busy 直接拒絕。
+  // 注意：busy 時不主動清除 staging，留給 6h tmpCleanup 定時清理（YAGNI）。
   if (pod.multiInstance !== true) {
     if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
   }
 
-  // 預先產生 chatMessageId，同時給 attachmentWriter 與 DB，確保一致
+  // 預先產生 chatMessageId，與 promoteStagingToFinal 目標目錄名稱一致
   const chatMessageId = uuidv4();
 
-  // 寫入附件（任一失敗都 early return，不建 chat message）
-  let attachWriteResult: { dir: string; files: string[] };
+  // 將 staging 目錄 atomic rename 為正式目錄（任一失敗都 early return，不建 chat message）
+  let promoteResult: { dir: string; files: string[] };
   try {
-    attachWriteResult = await writeAttachments(chatMessageId, attachments);
+    promoteResult = await promoteStagingToFinal(uploadSessionId, chatMessageId);
   } catch (err) {
     emitAttachmentError(err, connectionId, canvasId, podId, requestId);
     return;
   }
 
   // 組觸發訊息（zh-TW），前端 drop 路徑 message 永遠為空字串
-  // 安全 trade-off 說明：此處刻意將絕對路徑（attachWriteResult.dir）傳入 LLM prompt。
+  // 安全 trade-off 說明：此處刻意將絕對路徑（promoteResult.dir）傳入 LLM prompt。
   // 原因：agent 必須能以 Read tool 讀取附件目錄，若改用相對路徑或符號化名稱
   // 則 agent 無法定位檔案，功能完全失效。
   // 已知此設計會將伺服器 tmpRoot 絕對路徑洩漏給 LLM，屬必要 trade-off 而非 oversight。
   // 若未來改為 per-pod workspace symlink 方案可消除洩漏，但需重構 tmpRoot 管理邏輯。
-  const fileList = attachWriteResult.files.join(", ");
-  const triggerText = `我提供了下列檔案在 \`${attachWriteResult.dir}\`：${fileList}`;
+  const fileList = promoteResult.files.join(", ");
+  const triggerText = `我提供了下列檔案在 \`${promoteResult.dir}\`：${fileList}`;
 
   if (pod.multiInstance === true) {
     // multi-instance pod：建新 Run，userMessageId 透傳確保落地一致
@@ -369,8 +379,8 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
     if (!validateIntegrationBindings(connectionId, canvasId, pod, requestId))
       return;
 
-    if (payload.attachments !== undefined) {
-      await handleChatSendWithAttachments(
+    if (payload.uploadSessionId !== undefined) {
+      await handleChatSendWithUploadSession(
         connectionId,
         canvasId,
         payload,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Eraser, Trash2, Timer } from "lucide-vue-next";
 import {
   Dialog,
@@ -28,10 +29,13 @@ const props = withDefaults(
     scheduleEnabled: boolean;
     scheduleTooltip: string;
     isScheduleFiredAnimating?: boolean;
+    /** 上傳中時為 true，刪除按鈕應 disabled */
+    isUploading?: boolean;
   }>(),
   {
     isScheduleFiredAnimating: false,
     isWorkflowRunning: false,
+    isUploading: false,
   },
 );
 
@@ -48,6 +52,8 @@ const emit = defineEmits<{
   "open-schedule-modal": [];
   "clear-schedule-fired-animation": [];
 }>();
+
+const { t } = useI18n();
 
 const SCHEDULE_FIRED_ANIMATION_DURATION_MS = 1800;
 const TOGGLE_DEBOUNCE_GUARD_MS = 5000;
@@ -195,8 +201,13 @@ watch(
     >
       <Timer :size="16" />
     </button>
+    <!-- 上傳中禁用刪除：disabled 封鎖點擊，title 提供原生 tooltip 說明 -->
     <button
       class="pod-action-button-base pod-delete-button"
+      :disabled="isUploading"
+      :title="
+        isUploading ? t('pod.upload.cannotDeleteWhileUploading') : undefined
+      "
       @click.stop="handleDelete"
     >
       <Trash2 :size="16" />

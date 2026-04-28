@@ -227,6 +227,25 @@
       "description": "確定要刪除「{name}」嗎？此操作無法復原。",
       "confirm": "確認刪除"
     },
+    "upload": {
+      "uploading": "上傳中... {percent}%",
+      "fileCount": "共 {count} 個檔案",
+      "failedTitle": "部分檔案上傳失敗",
+      "failedAllTitle": "所有檔案上傳失敗",
+      "retry": "重試失敗的檔案",
+      "cannotDeleteWhileUploading": "上傳中無法刪除",
+      "failureReason": {
+        "network": "網路錯誤",
+        "unknown": "未知錯誤",
+        "aborted": "上傳已取消",
+        "UPLOAD_NO_FILE": "未提供檔案",
+        "UPLOAD_INVALID_SESSION_ID": "上傳識別碼格式錯誤",
+        "ATTACHMENT_TOO_LARGE": "檔案超過 10MB 上限",
+        "ATTACHMENT_INVALID_NAME": "檔名不合法",
+        "ATTACHMENT_WRITE_FAILED": "伺服器寫入失敗",
+        "ATTACHMENT_DISK_FULL": "伺服器磁碟空間不足"
+      }
+    },
     "slot": {
       "duplicateTitle": "已存在，無法插入",
       "codexDisabled": "Codex 不支援此功能",
@@ -704,7 +723,10 @@
     "attachmentTooLarge": "單檔大小超過 10 MB 上限",
     "attachmentInvalidName": "檔案名稱不合法",
     "attachmentDiskFull": "磁碟空間不足，無法寫入檔案",
-    "attachmentWriteFailed": "檔案寫入失敗，請稍後再試"
+    "attachmentWriteFailed": "檔案寫入失敗，請稍後再試",
+    "uploadSessionNotFound": "找不到對應的上傳 session，可能已過期，請重新上傳",
+    "uploadInvalidSessionId": "上傳 session ID 格式不合法",
+    "uploadNoFile": "請求中缺少檔案欄位，請重新選擇檔案上傳"
   },
   "progress": {
     "preparingPull": "準備 Pull...",
