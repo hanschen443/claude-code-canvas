@@ -27,6 +27,12 @@ import {
   tryExpandCommandMessage,
 } from "../services/commandExpander.js";
 import { socketService } from "../services/socketService.js";
+import { writeAttachments } from "../services/attachmentWriter.js";
+import {
+  AttachmentTooLargeError,
+  AttachmentDiskFullError,
+  AttachmentInvalidNameError,
+} from "../services/attachmentErrors.js";
 
 function validateIntegrationBindings(
   connectionId: string,
@@ -117,6 +123,157 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
       return;
 
     const podName = pod.name;
+
+    // ── attachments 處理區塊 ──────────────────────────────────────────
+    if (payload.attachments !== undefined) {
+      // 空陣列防線：schema 層已擋 min(1)，但防禦性保留
+      if (payload.attachments.length === 0) {
+        emitError(
+          connectionId,
+          WebSocketResponseEvents.POD_ERROR,
+          createI18nError("errors.attachmentEmpty"),
+          canvasId,
+          requestId,
+          podId,
+          "ATTACHMENT_EMPTY",
+        );
+        return;
+      }
+
+      // 串行 pod：先確認 pod 不忙碌，busy 直接拒絕，不寫檔
+      if (pod.multiInstance !== true) {
+        if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
+      }
+
+      // 預先產生 chatMessageId，同時給 attachmentWriter 與 DB，確保一致
+      const chatMessageId = uuidv4();
+
+      // 寫入附件（任一失敗都 early return，不建 chat message）
+      let attachWriteResult: { dir: string; files: string[] };
+      try {
+        attachWriteResult = await writeAttachments(
+          chatMessageId,
+          payload.attachments,
+        );
+      } catch (err) {
+        if (err instanceof AttachmentTooLargeError) {
+          emitError(
+            connectionId,
+            WebSocketResponseEvents.POD_ERROR,
+            createI18nError("errors.attachmentTooLarge"),
+            canvasId,
+            requestId,
+            podId,
+            "ATTACHMENT_TOO_LARGE",
+          );
+        } else if (err instanceof AttachmentDiskFullError) {
+          emitError(
+            connectionId,
+            WebSocketResponseEvents.POD_ERROR,
+            createI18nError("errors.attachmentDiskFull"),
+            canvasId,
+            requestId,
+            podId,
+            "ATTACHMENT_DISK_FULL",
+          );
+        } else if (err instanceof AttachmentInvalidNameError) {
+          emitError(
+            connectionId,
+            WebSocketResponseEvents.POD_ERROR,
+            createI18nError("errors.attachmentInvalidName", {
+              name: err.fileName,
+            }),
+            canvasId,
+            requestId,
+            podId,
+            "ATTACHMENT_INVALID_NAME",
+          );
+        } else {
+          // AttachmentWriteError 或其他未知錯誤
+          emitError(
+            connectionId,
+            WebSocketResponseEvents.POD_ERROR,
+            createI18nError("errors.attachmentWriteFailed"),
+            canvasId,
+            requestId,
+            podId,
+            "ATTACHMENT_WRITE_FAILED",
+          );
+        }
+        return;
+      }
+
+      // 組觸發訊息（zh-TW），前端 drop 路徑 message 永遠為空字串
+      const fileList = attachWriteResult.files.join(", ");
+      const triggerText = `我提供了下列檔案在 \`${attachWriteResult.dir}\`：${fileList}`;
+
+      if (pod.multiInstance === true) {
+        // multi-instance pod：建新 Run，userMessageId 透傳確保落地一致
+        await launchMultiInstanceRun({
+          canvasId,
+          podId,
+          message: triggerText,
+          abortable: true,
+          commandNotFoundBehavior: "skip",
+          userMessageId: chatMessageId,
+          onCommandNotFound: (commandId) =>
+            handleCommandNotFound(canvasId, podId, commandId),
+          onComplete: (runContext) =>
+            onRunChatComplete(runContext, canvasId, podId),
+          onAborted: (abortedCanvasId, abortedPodId, messageId) =>
+            onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
+        });
+        return;
+      }
+
+      // 串行 pod：展開 Command（若訊息含 Command 語法）
+      const expandResult = await tryExpandCommandMessage(
+        pod,
+        triggerText,
+        "handleChatSend",
+      );
+
+      if (!expandResult.ok) {
+        // Command 不存在：注入原始觸發訊息、推送錯誤文字，不呼叫 Claude
+        await injectUserMessage({
+          canvasId,
+          podId,
+          content: triggerText,
+          id: chatMessageId,
+        });
+        handleCommandNotFound(canvasId, podId, expandResult.commandId);
+        return;
+      }
+
+      const resolvedTrigger = expandResult.message;
+
+      // 寫入 DB（chatMessageId 對齊 attachments dir）並送 LLM
+      await injectUserMessage({
+        canvasId,
+        podId,
+        content: resolvedTrigger,
+        id: chatMessageId,
+      });
+
+      const attachStrategy = new NormalModeExecutionStrategy(canvasId);
+
+      await executeStreamingChat(
+        {
+          canvasId,
+          podId,
+          message: resolvedTrigger,
+          abortable: true,
+          strategy: attachStrategy,
+        },
+        {
+          onComplete: onChatComplete,
+          onAborted: (abortedCanvasId, abortedPodId, messageId) =>
+            onChatAborted(abortedCanvasId, abortedPodId, messageId, podName),
+        },
+      );
+      return;
+    }
+    // ── attachments 處理區塊結束 ──────────────────────────────────────
 
     if (pod.multiInstance === true) {
       await launchMultiInstanceRun({

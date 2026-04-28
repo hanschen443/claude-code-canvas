@@ -26,6 +26,8 @@ interface Config {
   appDataRoot: string;
   canvasRoot: string;
   repositoriesRoot: string;
+  /** 暫存檔案根目錄（拖曳上傳的附件先落地於此，24h 後由 tmpCleanupService 清除） */
+  tmpRoot: string;
   /** 根據 nodeEnv 與 ALLOWED_ORIGINS 動態決定來源是否允許 */
   corsOrigin: (origin: string | undefined) => boolean;
   allowedOrigins?: string[];
@@ -108,6 +110,8 @@ function loadConfig(): Config {
   const repositoriesRoot = path.join(dataRoot, "repositories");
   const agentsPath = path.join(dataRoot, "agents");
   const commandsPath = path.join(dataRoot, "commands");
+  // 暫存目錄：不在此建立，寫檔時由 attachmentWriter 以 mkdir -p 建立
+  const tmpRoot = path.join(dataRoot, "tmp");
 
   if (isNaN(port) || port < 1 || port > 65535) {
     throw new Error("PORT 必須是 1 到 65535 之間的有效數字");
@@ -119,6 +123,7 @@ function loadConfig(): Config {
     appDataRoot,
     canvasRoot,
     repositoriesRoot,
+    tmpRoot,
     corsOrigin,
     allowedOrigins,
     githubToken,

@@ -338,6 +338,16 @@
   outline-offset: 0px;
 }
 
+/* Drop Target 狀態：藍紫色（violet，hue 280）外圈 glow
+   與 selected 薄荷綠（hue 170）明顯區分，
+   與 deciding 紫色（hue 300）也有 20 度色相差距。
+   使用 box-shadow 而非 outline，讓光量感更明顯（drop 是互動提示需要即時回饋）。*/
+.pod-glow-layer.pod-glow-drop-target {
+  box-shadow:
+    0 0 0 3px oklch(0.65 0.18 280 / 0.7),
+    0 0 16px 4px oklch(0.65 0.18 280 / 0.4);
+}
+
 /* keyframes：只動 opacity（Compositor Thread 可加速，無 Paint）
    chatting 與 summarizing 共用此動畫，兩者僅 box-shadow 色彩不同 */
 @keyframes pod-glow-pulse-opacity {

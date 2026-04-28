@@ -19,13 +19,27 @@ export async function injectUserMessage(params: {
   canvasId: string;
   podId: string;
   content: string | ContentBlock[];
+  /** 可選的外部 id，用於對齊附件目錄與 DB message id */
+  id?: string;
 }): Promise<void> {
-  const { canvasId, podId, content } = params;
+  const { canvasId, podId, content, id } = params;
 
   const displayContent = extractDisplayContent(content);
 
   podStore.setStatus(canvasId, podId, "chatting");
-  await messageStore.addMessage(canvasId, podId, "user", displayContent);
+  if (id) {
+    // 帶入外部 id，確保附件目錄與 DB message id 一致
+    await messageStore.addMessage(
+      canvasId,
+      podId,
+      "user",
+      displayContent,
+      undefined,
+      { id },
+    );
+  } else {
+    await messageStore.addMessage(canvasId, podId, "user", displayContent);
+  }
 
   socketService.emitToCanvas(
     canvasId,

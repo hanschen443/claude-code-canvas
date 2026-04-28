@@ -25,6 +25,8 @@ export const NOTE_HEIGHT = 30;
 export const PASTE_TIMEOUT_MS = 10000;
 
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+/** 單檔大小上限 10 MB */
+export const MAX_POD_DROP_FILE_BYTES = 10 * 1024 * 1024;
 export const SUPPORTED_IMAGE_MEDIA_TYPES = [
   "image/jpeg",
   "image/png",

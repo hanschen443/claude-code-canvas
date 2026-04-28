@@ -20,6 +20,7 @@ import type {
   PodErrorPayload,
   PodMessagesClearedPayload,
 } from "@/types/websocket";
+import type { PodChatAttachment } from "@/types/websocket/requests";
 import { createMessageActions } from "./chatMessageActions";
 import { createConnectionActions } from "./chatConnectionActions";
 import { createHistoryActions } from "./chatHistoryActions";
@@ -51,7 +52,10 @@ export function resetChatActionsCache(): void {
 function hasMessageContent(
   content: string,
   contentBlocks: ContentBlock[] | undefined,
+  attachments: PodChatAttachment[] | undefined,
 ): boolean {
+  // 有附件時即使 content 為空也允許送出（純拖檔情境）
+  if (attachments && attachments.length > 0) return true;
   return !!contentBlocks?.length || content.trim().length > 0;
 }
 
@@ -226,12 +230,13 @@ export const useChatStore = defineStore("chat", {
       podId: string,
       content: string,
       contentBlocks?: ContentBlock[],
+      attachments?: PodChatAttachment[],
     ): Promise<void> {
       if (!this.isConnected) {
         throw new Error(t("composable.chat.websocketNotConnected"));
       }
 
-      if (!hasMessageContent(content, contentBlocks)) return;
+      if (!hasMessageContent(content, contentBlocks, attachments)) return;
 
       // contentBlocks 大小驗證：單 block < 5MB，總計 < 20MB（decoded bytes 估算）
       if (contentBlocks && contentBlocks.length > 0) {
@@ -266,6 +271,8 @@ export const useChatStore = defineStore("chat", {
           canvasId,
           podId,
           message: messagePayload,
+          // 僅在有附件時帶入，避免送出空陣列給後端
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
         },
       );
 

@@ -408,7 +408,9 @@
       "imageInvalidData": "画像データが無効です",
       "uploadTooMany": "一度にアップロードできる画像は 1 枚までです",
       "speechMaxLength": "最大テキスト長に達しました",
-      "speechUnsupported": "このブラウザは音声入力をサポートしていません"
+      "speechUnsupported": "このブラウザは音声入力をサポートしていません",
+      "podDropReadFailed": "ファイルの読み込みに失敗しました",
+      "podDropSendFailed": "ファイルの送信に失敗しました"
     },
     "eventHandler": {
       "podCreated": "Pod を作成しました",
@@ -539,7 +541,12 @@
     "connectionCreateFailed": "コネクションの作成に失敗しました：{message}",
     "activeCanvasNotFound": "使用中の Canvas が見つかりません",
     "capabilityNotSupported": "{provider}はこの機能をサポートしていません",
-    "resourceInUse": "{resource} は {count} 個の Pod で使用中のため、削除できません"
+    "resourceInUse": "{resource} は {count} 個の Pod で使用中のため、削除できません",
+    "attachmentEmpty": "アップロードできるファイルがありません。ファイルを選択して再試行してください",
+    "attachmentTooLarge": "ファイルが 10 MB の上限を超えています",
+    "attachmentInvalidName": "ファイル名が無効です",
+    "attachmentDiskFull": "ディスク容量が不足しているため、ファイルを書き込めません",
+    "attachmentWriteFailed": "ファイルの書き込みに失敗しました。しばらくしてから再試行してください"
   },
   "progress": {
     "preparingPull": "Pull を準備中...",

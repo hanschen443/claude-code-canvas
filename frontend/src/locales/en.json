@@ -561,7 +561,9 @@
       "imageInvalidData": "Invalid image data",
       "uploadTooMany": "You can only upload 1 image at a time",
       "speechMaxLength": "Maximum text length reached",
-      "speechUnsupported": "Speech input is not supported by this browser"
+      "speechUnsupported": "Speech input is not supported by this browser",
+      "podDropReadFailed": "Failed to read file.",
+      "podDropSendFailed": "Failed to send file."
     },
     "eventHandler": {
       "podCreated": "Pod created",
@@ -692,7 +694,12 @@
     "connectionCreateFailed": "Failed to create connection: {message}",
     "activeCanvasNotFound": "No active Canvas found",
     "capabilityNotSupported": "{provider} does not support this capability",
-    "resourceInUse": "{resource} is being used by {count} Pod(s), cannot delete"
+    "resourceInUse": "{resource} is being used by {count} Pod(s), cannot delete",
+    "attachmentEmpty": "No files to upload. Please select files and try again.",
+    "attachmentTooLarge": "A single file exceeds the 10 MB limit.",
+    "attachmentInvalidName": "Invalid file name.",
+    "attachmentDiskFull": "Disk space is full. Unable to write file.",
+    "attachmentWriteFailed": "Failed to write file. Please try again later."
   },
   "progress": {
     "preparingPull": "Preparing pull...",

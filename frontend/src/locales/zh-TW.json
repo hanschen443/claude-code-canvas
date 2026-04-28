@@ -561,7 +561,9 @@
       "imageInvalidData": "圖片資料無效",
       "uploadTooMany": "一次最多只能上傳 1 張圖片",
       "speechMaxLength": "已達到最大文字長度限制",
-      "speechUnsupported": "此瀏覽器不支援語音輸入功能"
+      "speechUnsupported": "此瀏覽器不支援語音輸入功能",
+      "podDropReadFailed": "檔案讀取失敗",
+      "podDropSendFailed": "檔案送出失敗"
     },
     "eventHandler": {
       "podCreated": "Pod 建立成功",
@@ -692,7 +694,12 @@
     "connectionCreateFailed": "建立連線失敗：{message}",
     "activeCanvasNotFound": "找不到使用中的 Canvas",
     "capabilityNotSupported": "{provider} 不支援此功能",
-    "resourceInUse": "{resource} 正在被 {count} 個 Pod 使用中，無法刪除"
+    "resourceInUse": "{resource} 正在被 {count} 個 Pod 使用中，無法刪除",
+    "attachmentEmpty": "沒有可上傳的檔案，請選擇檔案後再試一次",
+    "attachmentTooLarge": "單檔大小超過 10 MB 上限",
+    "attachmentInvalidName": "檔案名稱不合法",
+    "attachmentDiskFull": "磁碟空間不足，無法寫入檔案",
+    "attachmentWriteFailed": "檔案寫入失敗，請稍後再試"
   },
   "progress": {
     "preparingPull": "準備 Pull...",

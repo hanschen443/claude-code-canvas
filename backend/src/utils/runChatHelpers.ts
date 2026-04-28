@@ -32,6 +32,11 @@ export interface LaunchMultiInstanceRunParams {
    * commandNotFoundBehavior 為 "fallback" 時忽略此 callback。
    */
   onCommandNotFound?: (commandId: string) => void;
+  /**
+   * 可選的外部 user message id，用於對齊附件目錄與 DB run message id。
+   * 傳入時會作為 injectRunUserMessage 的 id，確保兩者一致。
+   */
+  userMessageId?: string;
 }
 
 export async function launchMultiInstanceRun(
@@ -48,6 +53,7 @@ export async function launchMultiInstanceRun(
     onRunContextCreated,
     commandNotFoundBehavior = "fallback",
     onCommandNotFound,
+    userMessageId,
   } = params;
 
   let resolvedMessage: string | ContentBlock[] = message;
@@ -99,6 +105,7 @@ export async function launchMultiInstanceRun(
     runContext,
     podId,
     displayMessage ?? resolvedMessage,
+    userMessageId,
   );
 
   onRunContextCreated?.(runContext);
@@ -132,11 +139,30 @@ export async function injectRunUserMessage(
   runContext: RunContext,
   podId: string,
   content: string | ContentBlock[],
+  /** 可選的外部 id，用於對齊附件目錄與 DB run message id */
+  id?: string,
 ): Promise<void> {
   const displayContent = extractDisplayContent(content);
 
   // 不呼叫 podStore.setStatus（pod 全域狀態不變）
-  await runStore.addRunMessage(runContext.runId, podId, "user", displayContent);
+  if (id) {
+    // 帶入外部 id，確保附件目錄與 DB run message id 一致
+    await runStore.addRunMessage(
+      runContext.runId,
+      podId,
+      "user",
+      displayContent,
+      undefined,
+      id,
+    );
+  } else {
+    await runStore.addRunMessage(
+      runContext.runId,
+      podId,
+      "user",
+      displayContent,
+    );
+  }
 
   socketService.emitToCanvas(
     runContext.canvasId,

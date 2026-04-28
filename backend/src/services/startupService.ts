@@ -4,6 +4,7 @@ import path from "path";
 import { Database } from "bun:sqlite";
 import { scheduleService } from "./scheduleService.js";
 import { backupScheduleService } from "./backupScheduleService.js";
+import { tmpCleanupService } from "./tmpCleanupService.js";
 import { canvasStore } from "./canvasStore.js";
 import { Result, ok, err } from "../types";
 import { config } from "../config";
@@ -49,6 +50,8 @@ class StartupService {
 
     scheduleService.start();
     backupScheduleService.start();
+    // 啟動 tmp 目錄定期清理（每小時執行一次，超過 24 小時的目錄會被刪除）
+    tmpCleanupService.start();
 
     this.restoreIntegrationConnections().catch((error) => {
       logger.error(

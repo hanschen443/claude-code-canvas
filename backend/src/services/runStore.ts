@@ -369,15 +369,22 @@ class RunStore {
     return rows.map(rowToRunPodInstance);
   }
 
+  /**
+   * 新增一筆 Run 訊息到 DB 並回傳完整 PersistedMessage。
+   *
+   * @param id - 選填。當 caller 需要讓「外部資源（如附件目錄）的路徑」與 message id 對齊時，
+   *             可預先產生 uuid 並傳入；未傳則由函式內部自動產生。
+   */
   addRunMessage(
     runId: string,
     podId: string,
     role: "user" | "assistant",
     content: string,
     subMessages?: PersistedSubMessage[],
+    id?: string,
   ): PersistedMessage {
     const message: PersistedMessage = {
-      id: randomUUID(),
+      id: id ?? randomUUID(),
       role,
       content,
       timestamp: new Date().toISOString(),

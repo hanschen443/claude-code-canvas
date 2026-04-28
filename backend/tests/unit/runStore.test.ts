@@ -377,5 +377,60 @@ describe("RunStore", () => {
       expect(fetched[0].subMessages).toEqual(subMessages);
       expect(message.subMessages).toEqual(subMessages);
     });
+
+    // ================================================================
+    // 測試案例 9 — addRunMessage 傳入外部 id 與不傳兩種路徑
+    // ================================================================
+    it("傳入外部 id 時，run message 的 id 應與傳入值相同", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      const externalId = "attach-dir-uuid-run-123";
+
+      const message = runStore.addRunMessage(
+        run.id,
+        "pod-1",
+        "user",
+        "拖檔觸發訊息",
+        undefined,
+        externalId,
+      );
+
+      // id 應與傳入的外部 id 一致（而非自動產生）
+      expect(message.id).toBe(externalId);
+
+      // getRunMessages 讀回也應該是同樣的 id
+      const fetched = runStore.getRunMessages(run.id, "pod-1");
+      expect(fetched).toHaveLength(1);
+      expect(fetched[0].id).toBe(externalId);
+    });
+
+    it("未傳入外部 id 時，run message 的 id 應由內部自動產生（非空字串）", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+
+      const message = runStore.addRunMessage(
+        run.id,
+        "pod-1",
+        "user",
+        "一般 run 訊息",
+      );
+
+      // id 應為非空字串（randomUUID 格式）
+      expect(message.id).toBeTruthy();
+      expect(typeof message.id).toBe("string");
+    });
+
+    it("兩個訊息分別傳入不同外部 id，DB 中 id 應各自對齊", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      const id1 = "attach-run-1-uuid";
+      const id2 = "attach-run-2-uuid";
+
+      runStore.addRunMessage(run.id, "pod-1", "user", "訊息一", undefined, id1);
+      runStore.addRunMessage(run.id, "pod-1", "user", "訊息二", undefined, id2);
+
+      const messages = runStore.getRunMessages(run.id, "pod-1");
+      expect(messages).toHaveLength(2);
+      const ids = messages.map((m) => m.id);
+      expect(ids).toContain(id1);
+      expect(ids).toContain(id2);
+    });
   });
 });

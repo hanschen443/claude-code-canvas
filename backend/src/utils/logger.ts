@@ -39,6 +39,7 @@ export type LogCategory =
   | "Run"
   | "Backup"
   | "Encryption"
+  | "Cleanup"
   | "Shutdown";
 
 /**
@@ -69,6 +70,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Run: ANSI_COLORS.GREEN,
   Backup: ANSI_COLORS.YELLOW,
   Encryption: ANSI_COLORS.MAGENTA,
+  Cleanup: ANSI_COLORS.GRAY,
   Shutdown: ANSI_COLORS.GRAY,
 };
 

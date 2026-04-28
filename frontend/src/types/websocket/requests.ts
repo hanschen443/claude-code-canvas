@@ -79,11 +79,21 @@ export interface ImageContentBlock {
 
 export type ContentBlock = TextContentBlock | ImageContentBlock;
 
+/** 拖曳上傳的附件，對應後端 PodChatAttachment schema */
+export interface PodChatAttachment {
+  /** 檔名（不含路徑） */
+  filename: string;
+  /** 純 base64 字串（不含 dataURL 前綴） */
+  contentBase64: string;
+}
+
 export interface PodChatSendPayload {
   requestId: string;
   canvasId: string;
   podId: string;
   message: string | ContentBlock[];
+  /** 隨訊息一起送出的附件清單（可選） */
+  attachments?: PodChatAttachment[];
 }
 
 export interface PodChatHistoryPayload {

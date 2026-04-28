@@ -90,10 +90,17 @@ export interface PodChatAbortedPayload {
   messageId: string;
 }
 
+/** 後端 i18nError 格式：key 為 i18n 翻譯 key，params 為插值參數 */
+export interface I18nErrorPayload {
+  key: string;
+  params?: Record<string, string | number>;
+}
+
 export interface PodErrorPayload {
   requestId?: string;
   podId?: string;
-  error: string;
+  /** 後端可能傳純字串或 i18nError 格式物件，前端需統一處理 */
+  error: string | I18nErrorPayload;
   code: string;
 }
 

@@ -9,12 +9,14 @@ import {
   WebSocketResponseEvents,
 } from "@/services/websocket";
 import type { PodSetModelPayload, PodModelSetPayload } from "@/types/websocket";
+import type { PodChatAttachment } from "@/types/websocket/requests";
 import { useSendCanvasAction } from "@/composables/useSendCanvasAction";
 import { usePodDrag } from "@/composables/pod/usePodDrag";
 import { usePodNoteBinding } from "@/composables/pod/usePodNoteBinding";
 import { useWorkflowClear } from "@/composables/pod/useWorkflowClear";
 import { usePodSchedule } from "@/composables/pod/usePodSchedule";
 import { usePodAnchorDrag } from "@/composables/pod/usePodAnchorDrag";
+import { usePodFileDrop } from "@/composables/pod/usePodFileDrop";
 import { useToast } from "@/composables/useToast";
 import { useI18n } from "vue-i18n";
 import {
@@ -22,6 +24,7 @@ import {
   isMultiInstanceSourcePod,
 } from "@/utils/multiInstanceGuard";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
+import { useRunStore } from "@/stores/run/runStore";
 import PodHeader from "@/components/pod/PodHeader.vue";
 import PodMiniScreen from "@/components/pod/PodMiniScreen.vue";
 import PodSlots from "@/components/pod/PodSlots.vue";
@@ -46,6 +49,7 @@ const {
   connectionStore,
   chatStore,
 } = useCanvasContext();
+const runStore = useRunStore();
 const { startBatchDrag, isElementSelected, isBatchDragging } = useBatchDrag();
 const { toast } = useToast();
 const { sendCanvasAction } = useSendCanvasAction();
@@ -187,6 +191,38 @@ const pluginActiveCount = computed(() => props.pod.pluginIds?.length ?? 0);
 const isPodBusy = computed(
   () => props.pod.status === "chatting" || props.pod.status === "summarizing",
 );
+
+/**
+ * 以下任一為真時禁用 file drop：
+ * - pod 正在 chatting / summarizing（busy）
+ * - 為 multi-instance chain 下游 pod（target），使用者已決策由來源觸發
+ * - 未知 provider，封鎖所有對話入口
+ */
+const isFileDropDisabled = computed(
+  () =>
+    isPodBusy.value ||
+    isDownstreamMultiInstance.value ||
+    isUnknownProvider.value,
+);
+
+const {
+  isDragOver,
+  handleDragEnter,
+  handleDragOver,
+  handleDragLeave,
+  handleDrop,
+} = usePodFileDrop({
+  disabled: () => isFileDropDisabled.value,
+  onDrop: async (attachments: PodChatAttachment[]): Promise<void> => {
+    await chatStore.sendMessage(props.pod.id, "", undefined, attachments);
+
+    // multi-instance source pod 送出後自動開啟 history panel，
+    // 行為與 ChatModal.handleMultiInstanceSend 一致
+    if (isMultiInstanceSourcePod(props.pod.id)) {
+      runStore.openHistoryPanel();
+    }
+  },
+});
 
 const showPluginPopover = ref(false);
 const pluginAnchorRect = ref<DOMRect | null>(null);
@@ -339,12 +375,21 @@ const handleContextMenu = (e: MouseEvent): void => {
       zIndex: isActive ? 100 : 10,
     }"
     @mousedown="handleMouseDown"
+    @dragenter="handleDragEnter"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
   >
     <!-- 光暈層：放在 pod-wrapper 之外，不受 transform: rotate 影響 -->
     <!-- position: absolute; inset: 0 讓此層與外層 wrapper 等大（即 pod-doodle 等大） -->
+    <!-- isDragOver 時套用 pod-glow-drop-target（獨立藍紫色），與 selected 薄荷綠視覺區分 -->
     <div
       class="pod-glow-layer"
-      :class="[podStatusClass, { 'pod-glow-selected': isSelected }]"
+      :class="[
+        podStatusClass,
+        { 'pod-glow-selected': isSelected },
+        { 'pod-glow-drop-target': isDragOver },
+      ]"
     />
 
     <div

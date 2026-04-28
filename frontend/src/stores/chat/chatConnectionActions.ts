@@ -4,9 +4,11 @@ import type {
   ConnectionReadyPayload,
   HeartbeatPingPayload,
   PodErrorPayload,
+  I18nErrorPayload,
 } from "@/types/websocket";
 import { t } from "@/i18n";
 import type { ChatStoreInstance } from "./chatStore";
+import { usePodStore } from "../pod/podStore";
 
 const CLOSE_CODE_I18N_MAP: Record<string, string> = {
   "1000": "composable.chat.disconnectReasons.1000",
@@ -123,6 +125,17 @@ export function createConnectionActions(store: ChatStoreInstance): {
     });
   };
 
+  /**
+   * 將後端 error 欄位（純字串或 i18nError 物件）轉為使用者可讀的翻譯訊息
+   */
+  const resolveErrorMessage = (error: string | I18nErrorPayload): string => {
+    if (typeof error === "string") {
+      return error;
+    }
+    // I18nErrorPayload：用 key 查找翻譯，帶入插值參數
+    return t(error.key, error.params ?? {});
+  };
+
   const handleError = (payload: PodErrorPayload): void => {
     if (!websocketClient.isConnected.value) {
       store.connectionStatus = "error";
@@ -130,7 +143,17 @@ export function createConnectionActions(store: ChatStoreInstance): {
 
     if (payload.podId) {
       store.setTyping(payload.podId, false);
+      // 後端回傳錯誤時，pod 可能已被樂觀更新為 chatting，需回滾為 idle
+      const podStore = usePodStore();
+      podStore.updatePodStatus(payload.podId, "idle");
     }
+
+    // 將後端錯誤訊息翻譯後以 toast 顯示，讓使用者能即時得知錯誤原因
+    const { toast } = useToast();
+    toast({
+      title: resolveErrorMessage(payload.error),
+      variant: "destructive",
+    });
   };
 
   return {
