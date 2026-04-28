@@ -246,7 +246,6 @@ describe("claudeProvider.buildOptions()", () => {
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
       // 其他必要欄位...
       createAppSchema: {} as any,
-      bindSchema: {} as any,
       validateCreate: vi.fn(),
       sanitizeConfig: vi.fn(),
       initialize: vi.fn(),
@@ -307,7 +306,6 @@ describe("claudeProvider.buildOptions()", () => {
       displayName: "Read-Only Integration",
       // sendMessage 未定義
       createAppSchema: {} as any,
-      bindSchema: {} as any,
       validateCreate: vi.fn(),
       sanitizeConfig: vi.fn(),
       initialize: vi.fn(),
@@ -368,7 +366,6 @@ describe("claudeProvider.buildOptions()", () => {
       displayName: "Slack",
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
       createAppSchema: {} as any,
-      bindSchema: {} as any,
       validateCreate: vi.fn(),
       sanitizeConfig: vi.fn(),
       initialize: vi.fn(),

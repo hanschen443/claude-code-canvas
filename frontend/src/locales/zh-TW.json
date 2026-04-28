@@ -691,6 +691,7 @@
     "noteCreateFailed": "建立 {type} 失敗",
     "connectionCreateFailed": "建立連線失敗：{message}",
     "activeCanvasNotFound": "找不到使用中的 Canvas",
+    "capabilityNotSupported": "{provider} 不支援此功能",
     "resourceInUse": "{resource} 正在被 {count} 個 Pod 使用中，無法刪除"
   },
   "progress": {

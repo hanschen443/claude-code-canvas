@@ -538,6 +538,7 @@
     "noteCreateFailed": "{type} の作成に失敗しました",
     "connectionCreateFailed": "コネクションの作成に失敗しました：{message}",
     "activeCanvasNotFound": "使用中の Canvas が見つかりません",
+    "capabilityNotSupported": "{provider}はこの機能をサポートしていません",
     "resourceInUse": "{resource} は {count} 個の Pod で使用中のため、削除できません"
   },
   "progress": {

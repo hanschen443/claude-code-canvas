@@ -34,7 +34,6 @@ const CLAUDE_FULL_CAPABILITIES = {
   repository: true,
   command: true,
   mcp: true,
-  integration: true,
 };
 
 /** Phase 2 後，Codex 的 capabilities（需由 syncFromPayload 注入） */
@@ -44,7 +43,6 @@ const CODEX_CAPABILITIES = {
   repository: false,
   command: true,
   mcp: false,
-  integration: false,
 };
 
 /**
@@ -57,7 +55,6 @@ const CONSERVATIVE_FALLBACK = {
   repository: false,
   command: false,
   mcp: false,
-  integration: false,
 };
 
 describe("usePodCapabilities", () => {
@@ -135,14 +132,6 @@ describe("usePodCapabilities", () => {
       expect(isMcpEnabled.value).toBe(false);
     });
 
-    it("isIntegrationEnabled 應為 false（Codex 不支援）", () => {
-      injectAllCapabilities();
-      const podId = setupPod("codex");
-      const { isIntegrationEnabled } = usePodCapabilities(podId);
-
-      expect(isIntegrationEnabled.value).toBe(false);
-    });
-
     it("capabilities 應等於 Codex capabilities（從 store 讀取）", () => {
       injectAllCapabilities();
       const podId = setupPod("codex");
@@ -170,14 +159,12 @@ describe("usePodCapabilities", () => {
         isRepositoryEnabled,
         isCommandEnabled,
         isMcpEnabled,
-        isIntegrationEnabled,
       } = usePodCapabilities(podId);
 
       expect(isPluginEnabled.value).toBe(true);
       expect(isRepositoryEnabled.value).toBe(true);
       expect(isCommandEnabled.value).toBe(true);
       expect(isMcpEnabled.value).toBe(true);
-      expect(isIntegrationEnabled.value).toBe(true);
     });
 
     it("capabilities 應等於 Claude full capabilities（從 store 讀取）", () => {
@@ -215,14 +202,12 @@ describe("usePodCapabilities", () => {
         isRepositoryEnabled,
         isCommandEnabled,
         isMcpEnabled,
-        isIntegrationEnabled,
       } = usePodCapabilities(podId);
 
       expect(isPluginEnabled.value).toBe(false);
       expect(isRepositoryEnabled.value).toBe(false);
       expect(isCommandEnabled.value).toBe(false);
       expect(isMcpEnabled.value).toBe(false);
-      expect(isIntegrationEnabled.value).toBe(false);
     });
   });
 

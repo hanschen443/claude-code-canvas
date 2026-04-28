@@ -308,7 +308,6 @@ describe("connectionStore", () => {
             repository: true,
             command: true,
             mcp: true,
-            integration: true,
           },
           availableModels: [
             { value: "sonnet", label: "Sonnet" },
@@ -323,7 +322,6 @@ describe("connectionStore", () => {
             repository: false,
             command: true,
             mcp: false,
-            integration: false,
           },
           availableModels: [
             { value: "gpt-5.4", label: "GPT-5.4" },
@@ -2302,7 +2300,6 @@ describe("connectionStore", () => {
             repository: true,
             command: true,
             mcp: true,
-            integration: true,
           },
           availableModels: [
             { value: "sonnet", label: "Sonnet" },
@@ -2318,7 +2315,6 @@ describe("connectionStore", () => {
             repository: false,
             command: false,
             mcp: false,
-            integration: false,
           },
           availableModels: [
             { value: "gpt-5.4", label: "GPT-5.4" },

@@ -23,7 +23,6 @@ const CONSERVATIVE_FALLBACK_CAPABILITIES: ProviderCapabilities = {
   repository: false,
   command: false,
   mcp: false,
-  integration: false,
 };
 
 /**

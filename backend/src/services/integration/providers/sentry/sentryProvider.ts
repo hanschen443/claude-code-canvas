@@ -92,10 +92,6 @@ class SentryProvider implements IntegrationProvider {
     clientSecret: z.string().min(32, "Client Secret 至少需要 32 個字元"),
   });
 
-  readonly bindSchema = z.object({
-    resourceId: z.literal("*"),
-  });
-
   validateCreate(config: IntegrationAppConfig): Result<void> {
     const name = config.name as string | undefined;
     if (name !== undefined) {

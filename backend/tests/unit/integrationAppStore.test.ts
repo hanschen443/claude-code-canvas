@@ -50,7 +50,6 @@ function makeProvider(
     name,
     displayName: name,
     createAppSchema: z.object({}),
-    bindSchema: z.object({ resourceId: z.string() }),
     validateCreate: vi.fn().mockReturnValue(validateResult),
     sanitizeConfig(): Record<string, unknown> {
       return {};

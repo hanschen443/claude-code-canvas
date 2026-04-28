@@ -30,6 +30,7 @@ import { socketService } from "../services/socketService.js";
 
 function validateIntegrationBindings(
   connectionId: string,
+  canvasId: string,
   pod: Pod,
   requestId: string,
 ): boolean {
@@ -38,6 +39,7 @@ function validateIntegrationBindings(
       connectionId,
       WebSocketResponseEvents.POD_ERROR,
       createI18nError("errors.podIntegrationBound", { name: pod.name }),
+      canvasId,
       requestId,
       pod.id,
       "INTEGRATION_BOUND",
@@ -49,6 +51,7 @@ function validateIntegrationBindings(
 
 function validatePodNotBusy(
   connectionId: string,
+  canvasId: string,
   pod: Pod,
   requestId: string,
 ): boolean {
@@ -57,6 +60,7 @@ function validatePodNotBusy(
       connectionId,
       WebSocketResponseEvents.POD_ERROR,
       createI18nError("errors.podBusy", { id: pod.id, status: pod.status }),
+      canvasId,
       requestId,
       pod.id,
       "POD_BUSY",
@@ -109,7 +113,8 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
     );
     if (!pod) return;
 
-    if (!validateIntegrationBindings(connectionId, pod, requestId)) return;
+    if (!validateIntegrationBindings(connectionId, canvasId, pod, requestId))
+      return;
 
     const podName = pod.name;
 
@@ -130,7 +135,7 @@ export const handleChatSend = withCanvasId<ChatSendPayload>(
       return;
     }
 
-    if (!validatePodNotBusy(connectionId, pod, requestId)) return;
+    if (!validatePodNotBusy(connectionId, canvasId, pod, requestId)) return;
 
     // 在注入歷史記錄前先展開 Command，確保歷史與送給 Claude 的訊息一致
     const expandResult = await tryExpandCommandMessage(
@@ -193,6 +198,7 @@ export const handleChatAbort = withCanvasId<ChatAbortPayload>(
         connectionId,
         WebSocketResponseEvents.POD_ERROR,
         createI18nError("errors.podNotChatting", { id: podId }),
+        canvasId,
         requestId,
         podId,
         "POD_NOT_CHATTING",
@@ -208,6 +214,7 @@ export const handleChatAbort = withCanvasId<ChatAbortPayload>(
         connectionId,
         WebSocketResponseEvents.POD_ERROR,
         createI18nError("errors.noActiveQuery", { id: podId }),
+        canvasId,
         requestId,
         podId,
         "NO_ACTIVE_QUERY",
@@ -233,6 +240,7 @@ export const handleChatHistory = withCanvasId<ChatHistoryPayload>(
         connectionId,
         WebSocketResponseEvents.POD_CHAT_HISTORY_RESULT,
         createI18nError("errors.podNotFound", { id: podId }),
+        canvasId,
         requestId,
         podId,
         "NOT_FOUND",

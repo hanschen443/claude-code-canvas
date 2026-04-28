@@ -291,6 +291,7 @@ describe("handlePodSetModel", () => {
         CONNECTION_ID,
         "pod:model:set",
         expect.objectContaining({ key: expect.any(String) }),
+        "canvas-1",
         REQUEST_ID,
         POD_ID,
         "INTERNAL_ERROR",

@@ -26,7 +26,6 @@ const CLAUDE_TEST_CAPABILITIES = {
   repository: true,
   command: true,
   mcp: true,
-  integration: true,
 };
 
 /** 測試用 Codex capabilities（chat + command + plugin 開啟） */
@@ -36,7 +35,6 @@ const CODEX_TEST_CAPABILITIES = {
   repository: false,
   command: true,
   mcp: false,
-  integration: false,
 };
 
 /** 保守 fallback（找不到 provider 時應回傳的值） */
@@ -46,7 +44,6 @@ const CONSERVATIVE_FALLBACK = {
   repository: false,
   command: false,
   mcp: false,
-  integration: false,
 };
 
 describe("providerCapabilityStore", () => {
@@ -76,11 +73,11 @@ describe("providerCapabilityStore", () => {
       store.syncFromPayload([
         {
           name: "codex",
-          capabilities: { ...CODEX_TEST_CAPABILITIES, integration: true },
+          capabilities: { ...CODEX_TEST_CAPABILITIES, mcp: true },
         },
       ]);
 
-      expect(store.capabilitiesByProvider["codex"]!.integration).toBe(true);
+      expect(store.capabilitiesByProvider["codex"]!.mcp).toBe(true);
     });
 
     it("多筆 providers 應全部寫入 state", () => {
@@ -307,7 +304,7 @@ describe("providerCapabilityStore", () => {
     it("provider 未寫入時 isCapabilityEnabled 應回 false", () => {
       const store = useProviderCapabilityStore();
 
-      expect(store.isCapabilityEnabled("codex", "integration")).toBe(false);
+      expect(store.isCapabilityEnabled("codex", "mcp")).toBe(false);
     });
 
     it("寫入後 isCapabilityEnabled('claude', 'plugin') 應回正確值", () => {
@@ -345,7 +342,7 @@ describe("providerCapabilityStore", () => {
         providers: [
           {
             name: "codex",
-            capabilities: { ...CODEX_TEST_CAPABILITIES, integration: true },
+            capabilities: { ...CODEX_TEST_CAPABILITIES, mcp: true },
           },
         ],
       });
@@ -353,7 +350,7 @@ describe("providerCapabilityStore", () => {
       await store.loadFromBackend();
 
       expect(store.loaded).toBe(true);
-      expect(store.capabilitiesByProvider["codex"]!.integration).toBe(true);
+      expect(store.capabilitiesByProvider["codex"]!.mcp).toBe(true);
     });
 
     it("後端回傳含 defaultOptions 時應寫入 defaultOptionsByProvider", async () => {

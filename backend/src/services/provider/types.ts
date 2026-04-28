@@ -46,8 +46,6 @@ export interface ProviderCapabilities {
   command: boolean;
   /** 是否支援 MCP */
   mcp: boolean;
-  /** 是否支援 Integration */
-  integration: boolean;
 }
 
 /** Provider 串流事件的標準化格式（Discriminated Union） */

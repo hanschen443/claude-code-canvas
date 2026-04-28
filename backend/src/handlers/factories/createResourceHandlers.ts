@@ -1,10 +1,10 @@
-import type { WebSocketResponseEvents } from '../../schemas';
-import type { Pod } from '../../types/index.js';
-import { socketService } from '../../services/socketService.js';
-import { emitError, emitNotFound } from '../../utils/websocketResponse.js';
-import { createI18nError } from '../../utils/i18nError.js';
-import { logger, type LogCategory } from '../../utils/logger.js';
-import { handleResourceDelete } from '../../utils/handlerHelpers.js';
+import type { WebSocketResponseEvents } from "../../schemas";
+import type { Pod } from "../../types/index.js";
+import { socketService } from "../../services/socketService.js";
+import { emitError, emitNotFound } from "../../utils/websocketResponse.js";
+import { createI18nError } from "../../utils/i18nError.js";
+import { logger, type LogCategory } from "../../utils/logger.js";
+import { handleResourceDelete } from "../../utils/handlerHelpers.js";
 
 interface ResourceService<T = { id: string; name: string }> {
   list(): Promise<T[]>;
@@ -15,7 +15,10 @@ interface ResourceService<T = { id: string; name: string }> {
   delete(id: string): Promise<void>;
 }
 
-export type DeleteResourcePayload<TIdField extends string = string> = Record<TIdField, string>;
+export type DeleteResourcePayload<TIdField extends string = string> = Record<
+  TIdField,
+  string
+>;
 
 interface DeleteHandlerConfig {
   deleted: WebSocketResponseEvents;
@@ -24,7 +27,10 @@ interface DeleteHandlerConfig {
   idFieldName?: string;
 }
 
-interface ResourceHandlerConfig<T = { id: string; name: string }, TIdField extends string = string> {
+interface ResourceHandlerConfig<
+  T = { id: string; name: string },
+  TIdField extends string = string,
+> {
   service: ResourceService<T>;
   events: {
     listResult: WebSocketResponseEvents;
@@ -44,11 +50,17 @@ export interface CreateResourcePayload {
   content: string;
 }
 
-export type UpdateResourcePayload<TIdField extends string = string> = Record<TIdField, string> & {
+export type UpdateResourcePayload<TIdField extends string = string> = Record<
+  TIdField,
+  string
+> & {
   content: string;
 };
 
-export type ReadResourcePayload<TIdField extends string = string> = Record<TIdField, string>;
+export type ReadResourcePayload<TIdField extends string = string> = Record<
+  TIdField,
+  string
+>;
 
 interface BaseResponse {
   requestId: string;
@@ -61,8 +73,16 @@ export function createListHandler<T>(config: {
   service: { list(): Promise<T[]> };
   event: WebSocketResponseEvents;
   responseKey: string;
-}): (connectionId: string, payload: unknown, requestId: string) => Promise<void> {
-  return async function (connectionId: string, _payload: unknown, requestId: string): Promise<void> {
+}): (
+  connectionId: string,
+  payload: unknown,
+  requestId: string,
+) => Promise<void> {
+  return async function (
+    connectionId: string,
+    _payload: unknown,
+    requestId: string,
+  ): Promise<void> {
     const items = await config.service.list();
 
     const response: DynamicResponse = {
@@ -76,12 +96,23 @@ export function createListHandler<T>(config: {
 }
 
 export function createDeleteHandler<TIdField extends string>(config: {
-  service: { exists(id: string): Promise<boolean>; delete(id: string): Promise<void> };
+  service: {
+    exists(id: string): Promise<boolean>;
+    delete(id: string): Promise<void>;
+  };
   resourceName: LogCategory;
   idField: TIdField;
   deleteConfig: DeleteHandlerConfig;
-}): (connectionId: string, payload: DeleteResourcePayload<TIdField>, requestId: string) => Promise<void> {
-  return async function (connectionId: string, payload: DeleteResourcePayload<TIdField>, requestId: string): Promise<void> {
+}): (
+  connectionId: string,
+  payload: DeleteResourcePayload<TIdField>,
+  requestId: string,
+) => Promise<void> {
+  return async function (
+    connectionId: string,
+    payload: DeleteResourcePayload<TIdField>,
+    requestId: string,
+  ): Promise<void> {
     const resourceId = payload[config.idField];
     const deleteConfig = config.deleteConfig;
 
@@ -92,24 +123,56 @@ export function createDeleteHandler<TIdField extends string>(config: {
       resourceName: config.resourceName,
       responseEvent: deleteConfig.deleted,
       existsCheck: () => config.service.exists(resourceId),
-      findPodsUsing: (canvasId: string) => deleteConfig.findPodsUsing(canvasId, resourceId),
-      deleteNotes: (canvasId: string) => deleteConfig.deleteNotes(canvasId, resourceId),
+      findPodsUsing: (canvasId: string) =>
+        deleteConfig.findPodsUsing(canvasId, resourceId),
+      deleteNotes: (canvasId: string) =>
+        deleteConfig.deleteNotes(canvasId, resourceId),
       deleteResource: () => config.service.delete(resourceId),
       idFieldName: deleteConfig.idFieldName,
     });
   };
 }
 
-export function createResourceHandlers<T extends { id: string; name: string }, TIdField extends string>(
-  config: ResourceHandlerConfig<T, TIdField>
+export function createResourceHandlers<
+  T extends { id: string; name: string },
+  TIdField extends string,
+>(
+  config: ResourceHandlerConfig<T, TIdField>,
 ): {
-  handleList: (connectionId: string, payload: unknown, requestId: string) => Promise<void>;
-  handleCreate: (connectionId: string, payload: CreateResourcePayload, requestId: string) => Promise<void>;
-  handleUpdate: (connectionId: string, payload: UpdateResourcePayload<TIdField>, requestId: string) => Promise<void>;
-  handleRead: (connectionId: string, payload: ReadResourcePayload<TIdField>, requestId: string) => Promise<void>;
-  handleDelete: (connectionId: string, payload: DeleteResourcePayload<TIdField>, requestId: string) => Promise<void>;
+  handleList: (
+    connectionId: string,
+    payload: unknown,
+    requestId: string,
+  ) => Promise<void>;
+  handleCreate: (
+    connectionId: string,
+    payload: CreateResourcePayload,
+    requestId: string,
+  ) => Promise<void>;
+  handleUpdate: (
+    connectionId: string,
+    payload: UpdateResourcePayload<TIdField>,
+    requestId: string,
+  ) => Promise<void>;
+  handleRead: (
+    connectionId: string,
+    payload: ReadResourcePayload<TIdField>,
+    requestId: string,
+  ) => Promise<void>;
+  handleDelete: (
+    connectionId: string,
+    payload: DeleteResourcePayload<TIdField>,
+    requestId: string,
+  ) => Promise<void>;
 } {
-  const { service, events, resourceName, responseKey, listResponseKey, idField } = config;
+  const {
+    service,
+    events,
+    resourceName,
+    responseKey,
+    listResponseKey,
+    idField,
+  } = config;
 
   const handleList = createListHandler({
     service,
@@ -120,7 +183,7 @@ export function createResourceHandlers<T extends { id: string; name: string }, T
   async function handleCreate(
     connectionId: string,
     payload: CreateResourcePayload,
-    requestId: string
+    requestId: string,
   ): Promise<void> {
     const { name, content } = payload;
 
@@ -129,10 +192,14 @@ export function createResourceHandlers<T extends { id: string; name: string }, T
       emitError(
         connectionId,
         events.created,
-        createI18nError('errors.resourceExists', { resource: resourceName, name }),
+        createI18nError("errors.resourceExists", {
+          resource: resourceName,
+          name,
+        }),
+        null,
         requestId,
         undefined,
-        'ALREADY_EXISTS'
+        "ALREADY_EXISTS",
       );
       return;
     }
@@ -147,20 +214,31 @@ export function createResourceHandlers<T extends { id: string; name: string }, T
 
     socketService.emitToConnection(connectionId, events.created, response);
 
-    logger.log(resourceName, 'Create', `已建立${resourceName.toLowerCase()}「${resource.name}」`);
+    logger.log(
+      resourceName,
+      "Create",
+      `已建立${resourceName.toLowerCase()}「${resource.name}」`,
+    );
   }
 
   async function handleUpdate(
     connectionId: string,
     payload: UpdateResourcePayload<TIdField>,
-    requestId: string
+    requestId: string,
   ): Promise<void> {
     const resourceId = payload[idField];
     const { content } = payload;
 
     const exists = await service.exists(resourceId);
     if (!exists) {
-      emitNotFound(connectionId, events.updated, resourceName, resourceId, requestId);
+      emitNotFound(
+        connectionId,
+        events.updated,
+        resourceName,
+        resourceId,
+        requestId,
+        null,
+      );
       return;
     }
 
@@ -177,19 +255,30 @@ export function createResourceHandlers<T extends { id: string; name: string }, T
 
     socketService.emitToConnection(connectionId, events.updated, response);
 
-    logger.log(resourceName, 'Update', `已更新${resourceName.toLowerCase()}「${resource.name}」`);
+    logger.log(
+      resourceName,
+      "Update",
+      `已更新${resourceName.toLowerCase()}「${resource.name}」`,
+    );
   }
 
   async function handleRead(
     connectionId: string,
     payload: ReadResourcePayload<TIdField>,
-    requestId: string
+    requestId: string,
   ): Promise<void> {
     const resourceId = payload[idField];
 
     const content = await service.getContent(resourceId);
     if (content === null) {
-      emitNotFound(connectionId, events.readResult, resourceName, resourceId, requestId);
+      emitNotFound(
+        connectionId,
+        events.readResult,
+        resourceName,
+        resourceId,
+        requestId,
+        null,
+      );
       return;
     }
 
@@ -209,7 +298,7 @@ export function createResourceHandlers<T extends { id: string; name: string }, T
   async function handleDelete(
     connectionId: string,
     payload: DeleteResourcePayload<TIdField>,
-    requestId: string
+    requestId: string,
   ): Promise<void> {
     if (!events.deleted) {
       return;

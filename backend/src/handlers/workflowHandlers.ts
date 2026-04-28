@@ -29,7 +29,7 @@ function findSourcePodOrEmitNotFound(
 ): Pod | undefined {
   const sourcePod = podStore.getById(canvasId, sourcePodId);
   if (!sourcePod) {
-    emitNotFound(connectionId, event, "Pod", sourcePodId, requestId);
+    emitNotFound(connectionId, event, "Pod", sourcePodId, requestId, canvasId);
     return undefined;
   }
   return sourcePod;
@@ -121,6 +121,7 @@ export const handleWorkflowClear = withCanvasId<WorkflowClearPayload>(
         connectionId,
         WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT,
         result.error ?? createI18nError("errors.workflowClearFailed"),
+        canvasId,
         requestId,
         undefined,
         "INTERNAL_ERROR",

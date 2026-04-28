@@ -59,6 +59,7 @@ export const handlePodCreate = withCanvasId<PodCreatePayload>(
         WebSocketResponseEvents.POD_CREATED,
         requestId,
         createI18nError("errors.podCreateFailed"),
+        canvasId,
       )
     )
       return;
@@ -135,6 +136,7 @@ export const handlePodDelete = withCanvasId<PodDeletePayload>(
       WebSocketResponseEvents.POD_DELETED,
       requestId,
       createI18nError("errors.podDeleteFailed"),
+      canvasId,
     );
   },
 );
@@ -164,6 +166,7 @@ function handlePodUpdate<TResponse>(
       connectionId,
       responseEvent,
       createI18nError("errors.podUpdateFailed", { id: podId }),
+      canvasId,
       requestId,
       podId,
       "INTERNAL_ERROR",
@@ -219,6 +222,7 @@ function checkPodNameConflict(
       connectionId,
       WebSocketResponseEvents.POD_RENAMED,
       createI18nError("errors.podNameDuplicate"),
+      canvasId,
       requestId,
       podId,
       "DUPLICATE_NAME",
@@ -236,6 +240,7 @@ function checkPodNameConflict(
         connectionId,
         WebSocketResponseEvents.POD_RENAMED,
         createI18nError("errors.podNameDuplicate"),
+        canvasId,
         requestId,
         podId,
         "POD_NAME_DUPLICATE",
@@ -284,6 +289,7 @@ export const handlePodRename = withCanvasId<PodRenamePayload>(
         connectionId,
         WebSocketResponseEvents.POD_RENAMED,
         createI18nError("errors.podUpdateFailed", { id: podId }),
+        canvasId,
         requestId,
         podId,
         "INTERNAL_ERROR",
@@ -440,6 +446,7 @@ export const handlePodSetSchedule = withCanvasId<PodSetSchedulePayload>(
         connectionId,
         WebSocketResponseEvents.POD_SCHEDULE_SET,
         createI18nError("errors.podUpdateFailed", { id: podId }),
+        canvasId,
         requestId,
         podId,
         "INTERNAL_ERROR",
@@ -519,6 +526,7 @@ export const handlePodSetPlugins = withCanvasId<PodSetPluginsPayload>(
         connectionId,
         WebSocketResponseEvents.POD_PLUGINS_SET,
         createI18nError("errors.podUpdateFailed", { id: podId }),
+        canvasId,
         requestId,
         podId,
         "INTERNAL_ERROR",

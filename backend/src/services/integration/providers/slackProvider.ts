@@ -222,10 +222,6 @@ class SlackProvider implements IntegrationProvider {
       .regex(/^[a-f0-9]{32}$/, "Signing Secret 格式不正確"),
   });
 
-  readonly bindSchema = z.object({
-    resourceId: z.string().min(1),
-  });
-
   private clients: Map<string, WebClient> = new Map();
 
   validateCreate(config: IntegrationAppConfig): Result<void> {

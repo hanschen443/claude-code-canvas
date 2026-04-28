@@ -32,7 +32,6 @@ import {
   getPodDisplayName,
   validatePod,
   withCanvasId,
-  assertCapability,
 } from "../utils/handlerHelpers.js";
 
 function sanitizeApp(app: IntegrationApp): SanitizedIntegrationApp {
@@ -53,6 +52,7 @@ function getProviderOrEmitError(
   providerName: string,
   responseEvent: WebSocketResponseEvents,
   requestId: string,
+  canvasId: string | null,
 ): IntegrationProvider | null {
   try {
     return integrationRegistry.getOrThrow(providerName);
@@ -61,6 +61,7 @@ function getProviderOrEmitError(
       connectionId,
       responseEvent,
       createI18nError("errors.providerNotFound", { name: providerName }),
+      canvasId,
       requestId,
       undefined,
       "PROVIDER_NOT_FOUND",
@@ -83,6 +84,7 @@ function getAppOrEmitError(
       "Integration App",
       appId,
       requestId,
+      null,
     );
     return null;
   }
@@ -101,6 +103,7 @@ export async function handleIntegrationAppCreate(
     providerName,
     WebSocketResponseEvents.INTEGRATION_APP_CREATED,
     requestId,
+    null,
   );
   if (!provider) return;
 
@@ -113,6 +116,7 @@ export async function handleIntegrationAppCreate(
       connectionId,
       WebSocketResponseEvents.INTEGRATION_APP_CREATED,
       createI18nError("errors.configValidationFailed", { message }),
+      null,
       requestId,
       undefined,
       "VALIDATION_ERROR",
@@ -132,6 +136,7 @@ export async function handleIntegrationAppCreate(
       WebSocketResponseEvents.INTEGRATION_APP_CREATED,
       requestId,
       createI18nError("errors.integrationAppCreateFailed"),
+      null,
     )
   )
     return;
@@ -188,6 +193,7 @@ export async function handleIntegrationAppDelete(
     app.provider,
     WebSocketResponseEvents.INTEGRATION_APP_DELETED,
     requestId,
+    null,
   );
   if (!provider) return;
 
@@ -320,6 +326,7 @@ export async function handleIntegrationAppResourcesRefresh(
     app.provider,
     WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_REFRESHED,
     requestId,
+    null,
   );
   if (!provider) return;
 
@@ -333,6 +340,7 @@ export async function handleIntegrationAppResourcesRefresh(
       createI18nError("errors.refreshResourcesFailed", {
         message: getErrorMessage(error),
       }),
+      null,
       requestId,
     );
     return;
@@ -374,17 +382,6 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
     );
     if (!pod) return;
 
-    if (
-      !assertCapability(
-        connectionId,
-        pod,
-        "integration",
-        WebSocketResponseEvents.POD_INTEGRATION_BOUND,
-        requestId,
-      )
-    )
-      return;
-
     const app = integrationAppStore.getById(appId);
     if (!app) {
       emitNotFound(
@@ -393,6 +390,7 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
         "Integration App",
         appId,
         requestId,
+        canvasId,
       );
       return;
     }
@@ -404,6 +402,7 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
         createI18nError("errors.integrationAppNotConnected", {
           name: app.name,
         }),
+        canvasId,
         requestId,
         undefined,
         "NOT_CONNECTED",
@@ -416,25 +415,9 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
       providerName,
       WebSocketResponseEvents.POD_INTEGRATION_BOUND,
       requestId,
+      canvasId,
     );
     if (!provider) return;
-
-    const bindPayload = { resourceId, ...(extra ? { extra } : {}) };
-    const bindResult = provider.bindSchema.safeParse(bindPayload);
-    if (!bindResult.success) {
-      const message = bindResult.error.issues
-        .map((issue) => issue.message)
-        .join("；");
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_INTEGRATION_BOUND,
-        createI18nError("errors.bindConfigValidationFailed", { message }),
-        requestId,
-        undefined,
-        "VALIDATION_ERROR",
-      );
-      return;
-    }
 
     const resource = app.resources.find((r) => r.id === resourceId);
     if (!resource && provider.strictResourceValidation) {
@@ -444,6 +427,7 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
         "Resource",
         resourceId,
         requestId,
+        canvasId,
       );
       return;
     }
@@ -501,6 +485,7 @@ export const handlePodUnbindIntegration =
             podName: getPodDisplayName(canvasId, podId),
             provider: providerName,
           }),
+          canvasId,
           requestId,
           undefined,
           "NOT_BOUND",

@@ -70,7 +70,6 @@ export interface ProviderCapabilities {
   repository: boolean;
   command: boolean;
   mcp: boolean;
-  integration: boolean;
 }
 
 export type FrequencyType =

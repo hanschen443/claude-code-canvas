@@ -691,6 +691,7 @@
     "noteCreateFailed": "Failed to create {type}",
     "connectionCreateFailed": "Failed to create connection: {message}",
     "activeCanvasNotFound": "No active Canvas found",
+    "capabilityNotSupported": "{provider} does not support this capability",
     "resourceInUse": "{resource} is being used by {count} Pod(s), cannot delete"
   },
   "progress": {

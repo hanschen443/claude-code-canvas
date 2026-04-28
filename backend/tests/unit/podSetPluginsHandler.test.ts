@@ -179,6 +179,7 @@ describe("handlePodSetPlugins", () => {
       CONNECTION_ID,
       "pod:plugins:set",
       expect.objectContaining({ key: expect.any(String) }),
+      CANVAS_ID,
       REQUEST_ID,
       POD_ID,
       "INTERNAL_ERROR",

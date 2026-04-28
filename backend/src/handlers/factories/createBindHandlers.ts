@@ -60,6 +60,7 @@ async function validatePodAndResource<
   TIdField extends string,
 >(
   connectionId: string,
+  canvasId: string,
   podId: string,
   resourceId: string,
   config: BindResourceConfig<TService, TIdField>,
@@ -79,6 +80,7 @@ async function validatePodAndResource<
         resource: config.resourceName,
         id: resourceId,
       }),
+      canvasId,
       requestId,
       podId,
       "NOT_FOUND",
@@ -91,6 +93,7 @@ async function validatePodAndResource<
 
 function checkConflict<TService, TIdField extends string>(
   connectionId: string,
+  canvasId: string,
   podId: string,
   resourceId: string,
   pod: Pod,
@@ -122,6 +125,7 @@ function checkConflict<TService, TIdField extends string>(
     connectionId,
     config.events.bound,
     conflictMessage,
+    canvasId,
     requestId,
     podId,
     "CONFLICT",
@@ -177,6 +181,7 @@ export function createBindHandler<
 
       const pod = await validatePodAndResource(
         connectionId,
+        canvasId,
         podId,
         resourceId,
         config,
@@ -194,6 +199,7 @@ export function createBindHandler<
             config.requiredCapability,
             config.events.bound,
             requestId,
+            canvasId,
           )
         )
           return;
@@ -201,6 +207,7 @@ export function createBindHandler<
 
       const hasConflict = checkConflict(
         connectionId,
+        canvasId,
         podId,
         resourceId,
         pod,

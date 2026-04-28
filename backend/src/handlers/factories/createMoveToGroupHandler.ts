@@ -34,6 +34,7 @@ export function createMoveToGroupHandler<TIdField extends string>(
         config.resourceName,
         resourceId,
         requestId,
+        null,
       );
       return;
     }
@@ -48,6 +49,7 @@ export function createMoveToGroupHandler<TIdField extends string>(
           "Group",
           groupId,
           requestId,
+          null,
         );
         return;
       }

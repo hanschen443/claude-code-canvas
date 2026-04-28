@@ -51,7 +51,6 @@ describe("enrichPod", () => {
             repository: true,
             command: true,
             mcp: true,
-            integration: true,
           },
           defaultOptions: { model: "claude-opus-4-5" },
         },
@@ -77,7 +76,6 @@ describe("enrichPod", () => {
             repository: false,
             command: false,
             mcp: false,
-            integration: false,
           },
           defaultOptions: { model: "gpt-5.4" },
         },
@@ -107,7 +105,6 @@ describe("enrichPod", () => {
             repository: true,
             command: true,
             mcp: true,
-            integration: true,
           },
           // 刻意不帶 defaultOptions，syncFromPayload 會寫入 {}
         },

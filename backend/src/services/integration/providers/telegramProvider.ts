@@ -60,18 +60,10 @@ const createAppSchema = z.object({
   botToken: z.string().regex(/^\d+:[A-Za-z0-9_-]+$/, "Bot Token 格式不正確"),
 });
 
-const bindSchema = z.object({
-  resourceId: z.string().min(1),
-  extra: z.object({
-    chatType: z.enum(["private"]),
-  }),
-});
-
 class TelegramProvider implements IntegrationProvider {
   readonly name = "telegram";
   readonly displayName = "Telegram";
   readonly createAppSchema = createAppSchema;
-  readonly bindSchema = bindSchema;
 
   private pollingControllers: Map<string, AbortController> = new Map();
   private pollingOffsets: Map<string, number> = new Map();

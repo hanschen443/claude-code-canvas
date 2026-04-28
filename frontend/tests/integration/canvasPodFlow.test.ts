@@ -471,7 +471,6 @@ describe("Canvas/Pod 操作完整流程", () => {
             repository: false,
             command: false,
             mcp: false,
-            integration: false,
           },
           availableModels: [
             { label: "Opus", value: "opus" },

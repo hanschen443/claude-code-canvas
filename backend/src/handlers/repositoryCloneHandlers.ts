@@ -116,6 +116,7 @@ export async function handleRepositoryGitClone(
       WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT,
       requestId,
       createI18nError("errors.repoUrlValidationFailed"),
+      null,
       "INVALID_INPUT",
     )
   )
@@ -137,6 +138,7 @@ export async function handleRepositoryGitClone(
       connectionId,
       WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT,
       createI18nError("errors.repoExists", { name: repoName }),
+      null,
       requestId,
       undefined,
       "ALREADY_EXISTS",
@@ -163,6 +165,7 @@ export async function handleRepositoryGitClone(
       connectionId,
       WebSocketResponseEvents.REPOSITORY_GIT_CLONE_RESULT,
       createI18nError("errors.repoCloneFailed"),
+      null,
       requestId,
       undefined,
       "INTERNAL_ERROR",
@@ -208,6 +211,7 @@ export async function handleRepositoryCheckGit(
       WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT,
       requestId,
       createI18nError("errors.repoNotFound"),
+      null,
       "NOT_FOUND",
     )
   )
@@ -223,6 +227,7 @@ export async function handleRepositoryCheckGit(
       WebSocketResponseEvents.REPOSITORY_CHECK_GIT_RESULT,
       requestId,
       createI18nError("errors.gitCheckFailed"),
+      null,
     )
   )
     return;

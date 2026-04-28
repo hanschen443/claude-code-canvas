@@ -27,6 +27,7 @@ export async function handleGroupCreate(
       connectionId,
       WebSocketResponseEvents.GROUP_CREATED,
       createI18nError("errors.groupNameExists"),
+      null,
       requestId,
       undefined,
       "ALREADY_EXISTS",
@@ -74,6 +75,7 @@ export async function handleGroupDelete(
       "Group",
       groupId,
       requestId,
+      null,
     );
     return;
   }
@@ -84,6 +86,7 @@ export async function handleGroupDelete(
       connectionId,
       WebSocketResponseEvents.GROUP_DELETED,
       createI18nError("errors.groupNotEmpty"),
+      null,
       requestId,
       undefined,
       "GROUP_NOT_EMPTY",
@@ -99,6 +102,7 @@ export async function handleGroupDelete(
       "Group",
       groupId,
       requestId,
+      null,
     );
     return;
   }

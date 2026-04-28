@@ -86,7 +86,6 @@ function makeProvider(name: string): IntegrationProvider {
     name,
     displayName: name,
     createAppSchema: z.object({}),
-    bindSchema: z.object({ resourceId: z.string() }),
     validateCreate(): Result<void> {
       return ok();
     },

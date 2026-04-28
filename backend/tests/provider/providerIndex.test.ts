@@ -27,10 +27,9 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
-    expect(caps.integration).toBe(true);
   });
 
-  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true，integration=false", () => {
+  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true、mcp=true", () => {
     const caps = getProvider("codex").metadata.capabilities;
 
     expect(caps.chat).toBe(true);
@@ -38,7 +37,6 @@ describe("getProvider().metadata.capabilities", () => {
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
-    expect(caps.integration).toBe(false);
   });
 });
 

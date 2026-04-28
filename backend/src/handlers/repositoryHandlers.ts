@@ -65,6 +65,7 @@ export async function handleRepositoryCreate(
       connectionId,
       WebSocketResponseEvents.REPOSITORY_CREATED,
       createI18nError("errors.repoExists", { name }),
+      null,
       requestId,
       undefined,
       "ALREADY_EXISTS",
@@ -155,6 +156,7 @@ export const handlePodBindRepository = withCanvasId<PodBindRepositoryPayload>(
         "repository",
         WebSocketResponseEvents.POD_REPOSITORY_BOUND,
         requestId,
+        canvasId,
       )
     )
       return;
@@ -167,6 +169,7 @@ export const handlePodBindRepository = withCanvasId<PodBindRepositoryPayload>(
         WebSocketResponseEvents.POD_REPOSITORY_BOUND,
         requestId,
         createI18nError("errors.repoNotFound"),
+        canvasId,
         "NOT_FOUND",
       )
     )

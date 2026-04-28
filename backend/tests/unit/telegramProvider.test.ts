@@ -268,28 +268,4 @@ describe("TelegramProvider - 基本屬性", () => {
     });
     expect(invalidResult.success).toBe(false);
   });
-
-  it("bindSchema 應驗證 resourceId 和 chatType private", () => {
-    const validResult = telegramProvider.bindSchema.safeParse({
-      resourceId: "123456",
-      extra: { chatType: "private" },
-    });
-    expect(validResult.success).toBe(true);
-  });
-
-  it("bindSchema 應拒絕 chatType group", () => {
-    const invalidResult = telegramProvider.bindSchema.safeParse({
-      resourceId: "123456",
-      extra: { chatType: "group" },
-    });
-    expect(invalidResult.success).toBe(false);
-  });
-
-  it("bindSchema 應拒絕 chatType supergroup", () => {
-    const invalidResult = telegramProvider.bindSchema.safeParse({
-      resourceId: "123456",
-      extra: { chatType: "supergroup" },
-    });
-    expect(invalidResult.success).toBe(false);
-  });
 });

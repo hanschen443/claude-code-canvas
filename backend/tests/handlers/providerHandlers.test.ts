@@ -132,10 +132,9 @@ describe("handleProviderList", () => {
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
-    expect(caps.integration).toBe(true);
   });
 
-  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true，integration=false", async () => {
+  it("codex 的 capabilities 中 chat=true、command=true、repository=true、plugin=true、mcp=true", async () => {
     await handleProviderList(
       CONNECTION_ID,
       { requestId: REQUEST_ID },
@@ -151,13 +150,12 @@ describe("handleProviderList", () => {
     expect(codex).toBeDefined();
 
     const caps = codex.capabilities;
-    // chat、command、repository、plugin、mcp 為 true；integration 為 false；runMode 已移除
+    // chat、command、repository、plugin、mcp 為 true；runMode 已移除
     expect(caps.chat).toBe(true);
     expect(caps.plugin).toBe(true);
     expect(caps.repository).toBe(true);
     expect(caps.command).toBe(true);
     expect(caps.mcp).toBe(true);
-    expect(caps.integration).toBe(false);
   });
 
   it("claude 的 defaultOptions.model 應與 providerRegistry.claude.metadata.defaultOptions.model 一致", async () => {

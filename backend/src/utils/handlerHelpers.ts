@@ -18,6 +18,7 @@ export function handleResultError<T>(
   event: WebSocketResponseEvents,
   requestId: string,
   fallbackError: string | I18nError,
+  canvasId: string | null,
   errorCode?: string,
 ): result is {
   success: false;
@@ -28,6 +29,7 @@ export function handleResultError<T>(
       connectionId,
       event,
       result.error ?? fallbackError,
+      canvasId,
       requestId,
       undefined,
       errorCode ?? "INTERNAL_ERROR",
@@ -49,6 +51,7 @@ export function getCanvasId(
       connectionId,
       responseEvent,
       createI18nError("errors.activeCanvasNotFound"),
+      null,
       requestId,
       undefined,
       "INTERNAL_ERROR",
@@ -101,6 +104,7 @@ export function assertCapability(
   key: keyof ProviderCapabilities,
   responseEvent: WebSocketResponseEvents,
   requestId: string,
+  canvasId: string | null,
 ): boolean {
   const cap = getProvider(pod.provider).metadata.capabilities;
   if (cap[key]) return true;
@@ -110,6 +114,7 @@ export function assertCapability(
     createI18nError("errors.capabilityNotSupported", {
       provider: pod.provider,
     }),
+    canvasId,
     requestId,
     pod.id,
     "CAPABILITY_NOT_SUPPORTED",
@@ -131,7 +136,14 @@ export function validatePod(
   const pod = podStore.getById(canvasId, podId);
 
   if (!pod) {
-    emitNotFound(connectionId, responseEvent, "Pod", podId, requestId);
+    emitNotFound(
+      connectionId,
+      responseEvent,
+      "Pod",
+      podId,
+      requestId,
+      canvasId,
+    );
     return undefined;
   }
 
@@ -199,6 +211,7 @@ export async function handleResourceDelete(
       resourceName,
       resourceId,
       requestId,
+      canvasId,
     );
     return;
   }
@@ -212,6 +225,7 @@ export async function handleResourceDelete(
         resource: resourceName,
         count: String(podsUsing.length),
       }),
+      canvasId,
       requestId,
       undefined,
       "IN_USE",

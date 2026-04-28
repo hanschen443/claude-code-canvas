@@ -14,6 +14,7 @@ export function emitError(
   connectionId: string,
   event: WebSocketResponseEvents,
   error: string | Error | I18nError,
+  canvasId: string | null,
   requestId?: string,
   podId?: string,
   code: string = "INTERNAL_ERROR",
@@ -27,6 +28,7 @@ export function emitError(
   }
 
   socketService.emitToConnection(connectionId, event, {
+    canvasId,
     requestId,
     podId,
     success: false,
@@ -41,11 +43,13 @@ export function emitNotFound(
   entityName: string,
   resourceId: string,
   requestId: string,
+  canvasId: string | null,
 ): void {
   emitError(
     connectionId,
     responseEvent,
     createI18nError("errors.notFound", { entity: entityName, id: resourceId }),
+    canvasId,
     requestId,
     undefined,
     "NOT_FOUND",

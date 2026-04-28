@@ -46,6 +46,7 @@ function findConnectionOrEmitError(
       "Connection",
       connectionId,
       requestId,
+      canvasId,
     );
     return undefined;
   }
@@ -68,6 +69,7 @@ function findPodsOrEmitError(
       wsConnectionId,
       responseEvent,
       createI18nError("errors.sourcePodNotFound", { id: sourcePodId }),
+      canvasId,
       requestId,
       undefined,
       "NOT_FOUND",
@@ -82,6 +84,7 @@ function findPodsOrEmitError(
       wsConnectionId,
       responseEvent,
       createI18nError("errors.targetPodNotFound", { id: targetPodId }),
+      canvasId,
       requestId,
       undefined,
       "NOT_FOUND",
@@ -227,6 +230,7 @@ export const handleConnectionDelete = withCanvasId<ConnectionDeletePayload>(
         wsConnectionId,
         WebSocketResponseEvents.CONNECTION_DELETED,
         createI18nError("errors.connectionDeleteFailed", { id: connectionId }),
+        canvasId,
         requestId,
         undefined,
         "INTERNAL_ERROR",
@@ -303,6 +307,7 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
         wsConnectionId,
         WebSocketResponseEvents.CONNECTION_UPDATED,
         createI18nError("errors.connectionUpdateFailed", { id: connectionId }),
+        canvasId,
         requestId,
         undefined,
         "INTERNAL_ERROR",

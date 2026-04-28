@@ -13,7 +13,6 @@ export interface UsePodCapabilitiesReturn {
   isRepositoryEnabled: ComputedRef<boolean>;
   isCommandEnabled: ComputedRef<boolean>;
   isMcpEnabled: ComputedRef<boolean>;
-  isIntegrationEnabled: ComputedRef<boolean>;
 }
 
 /**
@@ -53,11 +52,6 @@ export function usePodCapabilities(
   /** MCP slot 是否啟用 */
   const isMcpEnabled = computed((): boolean => capabilities.value.mcp);
 
-  /** Integration 是否啟用 */
-  const isIntegrationEnabled = computed(
-    (): boolean => capabilities.value.integration,
-  );
-
   return {
     capabilities,
     isCodex,
@@ -65,6 +59,5 @@ export function usePodCapabilities(
     isRepositoryEnabled,
     isCommandEnabled,
     isMcpEnabled,
-    isIntegrationEnabled,
   };
 }
