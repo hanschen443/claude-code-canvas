@@ -84,27 +84,11 @@ export async function executeDisposableChat(
     return { ...result, resolvedModel };
   }
 
-  if (provider === "codex") {
-    const result = await codexService.executeDisposableChat({
-      systemPrompt,
-      userMessage,
-      workspacePath,
-      model: resolvedModel,
-    });
-    return { ...result, resolvedModel };
-  }
-
-  // 未支援的 provider（理論上 TypeScript 型別系統已防止，但防禦性處理）
-  // 內部 log 保留原始 provider 字串方便除錯，但回給客戶端的 error 不含使用者輸入
-  logger.error(
-    "Chat",
-    "Error",
-    `[DisposableChatService] 不支援的 provider：${String(provider)}`,
-  );
-  return {
-    content: "",
-    success: false,
-    error: "不支援的 provider",
-    resolvedModel: input.model,
-  };
+  const result = await codexService.executeDisposableChat({
+    systemPrompt,
+    userMessage,
+    workspacePath,
+    model: resolvedModel,
+  });
+  return { ...result, resolvedModel };
 }

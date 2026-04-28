@@ -30,27 +30,6 @@ const BOX_SELECT_THRESHOLD = 5;
 describe("useBoxSelect", () => {
   setupStoreTest();
 
-  describe("回傳值", () => {
-    it("應回傳 isBoxSelecting ref 和 startBoxSelect 函數", () => {
-      const TestComponent = defineComponent({
-        setup() {
-          const result = useBoxSelect();
-          return { result };
-        },
-        render() {
-          return h("div");
-        },
-      });
-
-      const wrapper = mount(TestComponent);
-      const { result } = wrapper.vm;
-
-      expect(result.isBoxSelecting).toBeDefined();
-      expect(result.isBoxSelecting.value).toBe(false);
-      expect(result.startBoxSelect).toBeTypeOf("function");
-    });
-  });
-
   describe("startBoxSelect - 按鈕過濾", () => {
     it("非左鍵點擊時不應啟動框選", () => {
       const selectionStore = useSelectionStore();

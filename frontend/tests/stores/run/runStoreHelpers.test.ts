@@ -10,21 +10,11 @@ describe("createAssistantMessageWithTool", () => {
     status: "running",
   };
 
-  it("role 應為 assistant", () => {
+  it("初始狀態：role 應為 assistant、content 應為空字串、isPartial 應為 true", () => {
     const msg = createAssistantMessageWithTool("msg-1", toolUseInfo);
 
     expect(msg.role).toBe("assistant");
-  });
-
-  it("content 應為空字串", () => {
-    const msg = createAssistantMessageWithTool("msg-1", toolUseInfo);
-
     expect(msg.content).toBe("");
-  });
-
-  it("isPartial 應為 true", () => {
-    const msg = createAssistantMessageWithTool("msg-1", toolUseInfo);
-
     expect(msg.isPartial).toBe(true);
   });
 

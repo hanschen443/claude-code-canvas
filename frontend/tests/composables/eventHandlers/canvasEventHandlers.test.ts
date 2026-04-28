@@ -108,8 +108,8 @@ describe("canvasEventHandlers", () => {
 
       expect(podSpy).toHaveBeenCalledWith(pod);
       expect(connSpy).toHaveBeenCalledWith(connection);
-      expect(repoSpy).toHaveBeenCalled();
-      expect(commandSpy).toHaveBeenCalled();
+      expect(repoSpy).toHaveBeenCalledWith({ id: "rp-1" });
+      expect(commandSpy).toHaveBeenCalledWith({ id: "cmd-1" });
     });
   });
 });

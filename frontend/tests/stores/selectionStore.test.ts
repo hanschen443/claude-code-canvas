@@ -14,33 +14,13 @@ describe("selectionStore", () => {
   setupStoreTest();
 
   describe("初始狀態", () => {
-    it("isSelecting 應為 false", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useSelectionStore();
 
       expect(store.isSelecting).toBe(false);
-    });
-
-    it("box 應為 null", () => {
-      const store = useSelectionStore();
-
       expect(store.box).toBeNull();
-    });
-
-    it("selectedElements 應為空陣列", () => {
-      const store = useSelectionStore();
-
       expect(store.selectedElements).toEqual([]);
-    });
-
-    it("boxSelectJustEnded 應為 false", () => {
-      const store = useSelectionStore();
-
       expect(store.boxSelectJustEnded).toBe(false);
-    });
-
-    it("isCtrlMode 應為 false", () => {
-      const store = useSelectionStore();
-
       expect(store.isCtrlMode).toBe(false);
     });
   });

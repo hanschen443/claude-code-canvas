@@ -87,18 +87,12 @@ describe("ConfirmDeleteModal", () => {
       expect(wrapper.text()).toContain("我的 Output Style");
     });
 
-    it("isInUse 為 false 時顯示取消和刪除按鈕", () => {
+    it("isInUse 為 false 時顯示取消和刪除兩個按鈕，不顯示只有確定的按鈕", () => {
       const wrapper = mountModal({ isInUse: false });
 
       const buttons = wrapper.findAll("button");
       expect(buttons.some((btn) => btn.text().includes("取消"))).toBe(true);
       expect(buttons.some((btn) => btn.text().includes("刪除"))).toBe(true);
-    });
-
-    it("isInUse 為 false 時不顯示只有確定的按鈕", () => {
-      const wrapper = mountModal({ isInUse: false });
-
-      const buttons = wrapper.findAll("button");
       // 應有取消和刪除兩個按鈕，而不是只有確定
       expect(buttons.length).toBe(2);
     });

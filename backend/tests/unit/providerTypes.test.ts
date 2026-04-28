@@ -45,15 +45,6 @@ describe("providerRegistry metadata 一致性", () => {
         metadata.availableModels.length,
       );
     });
-
-    it("每個 model 都有非空的 label 與 value", () => {
-      for (const model of metadata.availableModels) {
-        expect(typeof model.label).toBe("string");
-        expect(model.label.length).toBeGreaterThan(0);
-        expect(typeof model.value).toBe("string");
-        expect(model.value.length).toBeGreaterThan(0);
-      }
-    });
   });
 
   describe("codexProvider.metadata.availableModels", () => {
@@ -79,15 +70,6 @@ describe("providerRegistry metadata 一致性", () => {
       expect(metadata.availableModelValues.size).toBe(
         metadata.availableModels.length,
       );
-    });
-
-    it("每個 model 都有非空的 label 與 value", () => {
-      for (const model of metadata.availableModels) {
-        expect(typeof model.label).toBe("string");
-        expect(model.label.length).toBeGreaterThan(0);
-        expect(typeof model.value).toBe("string");
-        expect(model.value.length).toBeGreaterThan(0);
-      }
     });
   });
 

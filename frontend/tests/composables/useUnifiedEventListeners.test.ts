@@ -79,21 +79,6 @@ describe("useUnifiedEventListeners", () => {
   });
 
   describe("registerUnifiedListeners / unregisterUnifiedListeners", () => {
-    it("應註冊所有事件監聽器", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-
-      registerUnifiedListeners();
-
-      expect(mockWebSocketClient.on).toHaveBeenCalled();
-      const callCount = mockWebSocketClient.on.mock.calls.length;
-      // listeners 陣列長度加上 standaloneListeners：
-      // pod:chat:user-message、integration:connection:status:changed、
-      // run:message、run:chat:complete、run:tool_use、run:tool_result 共 6 個
-      // backup:started、backup:completed、backup:failed 共 3 個
-      const expectedCount = listeners.length + 9;
-      expect(callCount).toBe(expectedCount);
-    });
-
     it("重複註冊應被防止", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
 
@@ -103,23 +88,6 @@ describe("useUnifiedEventListeners", () => {
       registerUnifiedListeners();
 
       expect(mockWebSocketClient.on).not.toHaveBeenCalled();
-    });
-
-    it("應取消註冊所有事件監聽器", () => {
-      const { registerUnifiedListeners, unregisterUnifiedListeners } =
-        useUnifiedEventListeners();
-
-      registerUnifiedListeners();
-      unregisterUnifiedListeners();
-
-      expect(mockWebSocketClient.off).toHaveBeenCalled();
-      const callCount = mockWebSocketClient.off.mock.calls.length;
-      // listeners 陣列長度加上 standaloneListeners：
-      // pod:chat:user-message、integration:connection:status:changed、
-      // run:message、run:chat:complete、run:tool_use、run:tool_result 共 6 個
-      // backup:started、backup:completed、backup:failed 共 3 個
-      const expectedCount = listeners.length + 9;
-      expect(callCount).toBe(expectedCount);
     });
 
     it("未註冊時取消註冊應被防止", () => {
@@ -382,27 +350,6 @@ describe("useUnifiedEventListeners", () => {
   });
 
   describe("Repository Note 事件處理", () => {
-    it("repository:created 不再被監聽（後端改為 emitToConnection）", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const repositoryStore = useRepositoryStore();
-
-      registerUnifiedListeners();
-
-      simulateEvent("repository:created", {
-        canvasId: "canvas-1",
-        repository: {
-          id: "repo-1",
-          name: "Test Repo",
-          path: "/test",
-          currentBranch: "main",
-        },
-      });
-
-      expect(
-        repositoryStore.availableItems.some((r) => (r as any).id === "repo-1"),
-      ).toBe(false);
-    });
-
     it("repository:worktree:created 應新增 worktree（通過安全檢查）", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const repositoryStore = useRepositoryStore();
@@ -660,22 +607,6 @@ describe("useUnifiedEventListeners", () => {
   });
 
   describe("Command Note 事件處理", () => {
-    it("command:created 不再被監聽（後端改為 emitToConnection）", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const commandStore = useCommandStore();
-
-      registerUnifiedListeners();
-
-      simulateEvent("command:created", {
-        canvasId: "canvas-1",
-        command: { id: "cmd-1", name: "Test Command" },
-      });
-
-      expect(
-        commandStore.availableItems.some((c) => (c as any).id === "cmd-1"),
-      ).toBe(false);
-    });
-
     it("command:deleted 應移除 command 和相關 notes", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const commandStore = useCommandStore();

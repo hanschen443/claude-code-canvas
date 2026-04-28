@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  COMMAND_EXPAND_FALLBACK_MESSAGE,
   buildCommandNotFoundMessage,
   expandCommandMessage,
 } from "../../src/services/commandExpander.js";
@@ -9,15 +8,6 @@ import type {
   ImageContentBlock,
   TextContentBlock,
 } from "../../src/types/message.js";
-
-// ─── COMMAND_EXPAND_FALLBACK_MESSAGE ────────────────────────────────────────
-
-describe("COMMAND_EXPAND_FALLBACK_MESSAGE", () => {
-  it("為非空字串", () => {
-    expect(typeof COMMAND_EXPAND_FALLBACK_MESSAGE).toBe("string");
-    expect(COMMAND_EXPAND_FALLBACK_MESSAGE.length).toBeGreaterThan(0);
-  });
-});
 
 // ─── buildCommandNotFoundMessage ────────────────────────────────────────────
 
@@ -71,14 +61,6 @@ describe("expandCommandMessage（string 訊息）", () => {
       markdown: "",
     });
     expect(result).toBe("<command>\n\n</command>\n訊息");
-  });
-
-  it("回傳型別為 string", () => {
-    const result = expandCommandMessage({
-      message: "測試",
-      markdown: "md",
-    });
-    expect(typeof result).toBe("string");
   });
 });
 

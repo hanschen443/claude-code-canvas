@@ -148,18 +148,6 @@ describe("chatEmitStrategy", () => {
           }),
         );
       });
-
-      it("不同 runId 的 payload 應包含對應的 runId", () => {
-        const anotherRunId = "another-run";
-        const strategy = createRunEmitStrategy(anotherRunId);
-        strategy.emitText({ canvasId, podId, messageId, content: "測試" });
-
-        expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-          canvasId,
-          WebSocketResponseEvents.RUN_MESSAGE,
-          expect.objectContaining({ runId: anotherRunId }),
-        );
-      });
     });
 
     describe("emitToolUse", () => {

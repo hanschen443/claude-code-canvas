@@ -57,21 +57,11 @@ describe("providerCapabilityStore", () => {
   // 初始 State
   // ----------------------------------------------------------------
   describe("初始狀態", () => {
-    it("loaded 應為 false", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useProviderCapabilityStore();
 
       expect(store.loaded).toBe(false);
-    });
-
-    it("capabilitiesByProvider 初值應為空物件（不含 hardcode claude/codex）", () => {
-      const store = useProviderCapabilityStore();
-
       expect(store.capabilitiesByProvider).toEqual({});
-    });
-
-    it("defaultOptionsByProvider 初值應為空物件", () => {
-      const store = useProviderCapabilityStore();
-
       expect(store.defaultOptionsByProvider).toEqual({});
     });
   });

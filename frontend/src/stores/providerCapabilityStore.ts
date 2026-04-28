@@ -266,9 +266,6 @@ export const useProviderCapabilityStore = defineStore(
         // 理由：WebSocket 瞬斷重連期間，UI 應繼續使用上一次有效的模型清單，
         // 避免下拉選單瞬間變空導致使用者已選的模型被 fallback 邏輯誤重置。
         // 僅在從未成功載入時才 reset loaded，已成功過的失敗只 toast 不退回未載入狀態。
-        if (!loaded.value) {
-          loaded.value = false;
-        }
         toast({
           title: t("pod.provider.title"),
           description: t("pod.provider.loadFailedDescription"),

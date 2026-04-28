@@ -66,7 +66,7 @@ function normalizeConnection(raw: RawConnection): Connection {
     triggerMode: (raw.triggerMode ?? "auto") as TriggerMode,
     summaryModel: raw.summaryModel ?? DEFAULT_SUMMARY_MODEL,
     aiDecideModel: raw.aiDecideModel ?? DEFAULT_AI_DECIDE_MODEL,
-    status: (raw.connectionStatus as ConnectionStatus) ?? "idle",
+    status: (raw.connectionStatus ?? "idle") as ConnectionStatus,
     decideReason: raw.decideReason ?? undefined,
   };
 }
@@ -118,7 +118,10 @@ function isAnyNeighborRunning(
   queue: string[],
 ): boolean {
   for (const { neighborId, connection } of neighbors) {
-    if (connection.status && RUNNING_CONNECTION_STATUSES.has(connection.status))
+    if (
+      connection.status !== undefined &&
+      RUNNING_CONNECTION_STATUSES.has(connection.status)
+    )
       return true;
     if (!visited.has(neighborId)) {
       visited.add(neighborId);
@@ -165,7 +168,10 @@ function buildIsRunningPod(
 ): (podId: string) => boolean {
   return (podId: string) => {
     const pod = podStore.getPodById(podId);
-    return pod !== undefined && RUNNING_POD_STATUSES.has(pod.status ?? "");
+    return (
+      pod !== undefined &&
+      (pod.status ? RUNNING_POD_STATUSES.has(pod.status) : false)
+    );
   };
 }
 
@@ -667,9 +673,15 @@ export const useConnectionStore = defineStore("connection", () => {
     connectionId: string,
     aiDecideModel: string,
   ): Promise<Connection | null> {
+    const MODEL_TYPES: ModelType[] = ["opus", "sonnet", "haiku"];
+    const validatedModel: ModelType = MODEL_TYPES.includes(
+      aiDecideModel as ModelType,
+    )
+      ? (aiDecideModel as ModelType)
+      : "sonnet";
     return executeConnectionUpdate(
       connectionId,
-      { aiDecideModel: aiDecideModel as ModelType },
+      { aiDecideModel: validatedModel },
       t("store.connection.aiDecideModelUpdateFailed"),
     );
   }
@@ -715,20 +727,20 @@ export const useConnectionStore = defineStore("connection", () => {
     );
     if (index === -1) return;
 
-    const existingConnection = connections.value[index];
+    const existingConnection = connections.value[index]!;
     const enrichedConnection: Connection = {
       ...connection,
       triggerMode: connection.triggerMode ?? "auto",
       summaryModel:
         connection.summaryModel ??
-        existingConnection?.summaryModel ??
+        existingConnection.summaryModel ??
         DEFAULT_SUMMARY_MODEL,
       aiDecideModel:
         connection.aiDecideModel ??
-        existingConnection?.aiDecideModel ??
+        existingConnection.aiDecideModel ??
         DEFAULT_AI_DECIDE_MODEL,
-      status: existingConnection?.status ?? ("idle" as ConnectionStatus),
-      decideReason: connection.decideReason ?? existingConnection?.decideReason,
+      status: existingConnection.status,
+      decideReason: connection.decideReason ?? existingConnection.decideReason,
     };
 
     connections.value.splice(index, 1, enrichedConnection);

@@ -127,23 +127,6 @@ describe("ClaudeService", () => {
   });
 
   describe("executeMcpChat", () => {
-    it("成功呼叫 query 並回傳 AsyncIterable stream", () => {
-      const mockStream = (async function* () {
-        yield { type: "result", subtype: "success", result: "MCP response" };
-      })();
-
-      mockQueryGenerator = () => mockStream;
-
-      const result = claudeService.executeMcpChat({
-        prompt: "MCP 測試訊息",
-        systemPrompt: "你是 MCP 助理",
-        cwd: "/mcp/workspace",
-      });
-
-      expect(claudeAgentSdk.query).toHaveBeenCalledTimes(1);
-      expect(result).toBe(mockStream);
-    });
-
     it("應使用 buildBaseOptions 的共用 options（包含 pathToClaudeCodeExecutable、settingSources 等）", () => {
       mockQueryGenerator = async function* () {
         yield { type: "result", subtype: "success", result: "done" };

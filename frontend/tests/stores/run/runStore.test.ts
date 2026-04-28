@@ -63,33 +63,14 @@ describe("runStore", () => {
   });
 
   describe("初始狀態", () => {
-    it("runs 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useRunStore();
+
       expect(store.runs).toEqual([]);
-    });
-
-    it("isHistoryPanelOpen 應為 false", () => {
-      const store = useRunStore();
       expect(store.isHistoryPanelOpen).toBe(false);
-    });
-
-    it("expandedRunIds 應為空 Set", () => {
-      const store = useRunStore();
       expect(store.expandedRunIds.size).toBe(0);
-    });
-
-    it("activeRunChatModal 應為 null", () => {
-      const store = useRunStore();
       expect(store.activeRunChatModal).toBeNull();
-    });
-
-    it("runChatMessages 應為空 Map", () => {
-      const store = useRunStore();
       expect(store.runChatMessages.size).toBe(0);
-    });
-
-    it("isLoadingPodMessages 應為 false", () => {
-      const store = useRunStore();
       expect(store.isLoadingPodMessages).toBe(false);
     });
   });

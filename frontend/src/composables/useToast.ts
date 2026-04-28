@@ -23,7 +23,8 @@ export type ToastCategory =
   | "Telegram"
   | "Config"
   | "Jira"
-  | "Integration";
+  | "Integration"
+  | "Run";
 
 interface ToastOptions {
   title: string;

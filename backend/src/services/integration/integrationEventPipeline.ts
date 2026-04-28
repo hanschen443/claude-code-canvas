@@ -394,6 +394,7 @@ class IntegrationEventPipeline {
         `[IntegrationEventPipeline] Pod「${podId}」multiInstance Run 執行失敗`,
         error,
       );
+      throw error;
     } finally {
       if (replyKey) {
         replyContextStore.delete(replyKey);

@@ -164,15 +164,6 @@ describe("chatConnectionActions", () => {
 
       expect(store.connectionStatus).toBe("connected");
     });
-
-    it("已為 connected 狀態時保持 connected", () => {
-      const store = useChatStore();
-      store.connectionStatus = "connected";
-
-      store.handleHeartbeatPing({} as unknown as HeartbeatPingPayload);
-
-      expect(store.connectionStatus).toBe("connected");
-    });
   });
 
   describe("心跳超時", () => {

@@ -312,7 +312,8 @@
       "deleted": "{name} が削除されました",
       "orderSaveFailed": "順序の保存に失敗しました",
       "renameFailed": "名前の変更に失敗しました",
-      "renamed": "名前を変更しました"
+      "renamed": "名前を変更しました",
+      "switchFailed": "キャンバスの切り替えに失敗しました"
     },
     "connection": {
       "alreadyExists": "接続は既に存在します",
@@ -343,6 +344,9 @@
     },
     "backup": {
       "completed": "バックアップが完了しました"
+    },
+    "run": {
+      "loadFailed": "実行履歴の読み込みに失敗しました"
     },
     "repository": {
       "createFailed": "フォルダーの作成に失敗しました",

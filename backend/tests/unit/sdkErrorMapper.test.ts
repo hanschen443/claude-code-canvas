@@ -9,15 +9,6 @@ import {
 } from "../../src/services/claude/sdkErrorMapper.js";
 
 describe("sdkErrorMapper", () => {
-  describe("SDK_ERROR_MESSAGES", () => {
-    it("應包含所有預期的錯誤類型", () => {
-      expect(SDK_ERROR_MESSAGES).toHaveProperty("rate_limit");
-      expect(SDK_ERROR_MESSAGES).toHaveProperty("authentication_failed");
-      expect(SDK_ERROR_MESSAGES).toHaveProperty("billing_error");
-      expect(SDK_ERROR_MESSAGES).toHaveProperty("server_error");
-    });
-  });
-
   describe("getSdkErrorMessage", () => {
     it("已知的錯誤類型應回傳對應訊息", () => {
       expect(getSdkErrorMessage("rate_limit")).toBe(

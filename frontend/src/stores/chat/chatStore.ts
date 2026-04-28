@@ -52,7 +52,7 @@ function hasMessageContent(
   content: string,
   contentBlocks: ContentBlock[] | undefined,
 ): boolean {
-  return (contentBlocks?.length ?? 0) > 0 || content.trim().length > 0;
+  return !!contentBlocks?.length || content.trim().length > 0;
 }
 
 export type ChatStoreInstance = ReturnType<typeof useChatStore>;

@@ -68,13 +68,6 @@ describe("NormalModeExecutionStrategy", () => {
         "chatting",
       );
     });
-
-    it("傳入不同狀態也應正確轉送", () => {
-      const strategy = makeStrategy();
-      strategy.setStatus(podId, "idle");
-
-      expect(podStore.setStatus).toHaveBeenCalledWith(canvasId, podId, "idle");
-    });
   });
 
   describe("getSessionId", () => {

@@ -28,19 +28,13 @@ describe("ConfigStore", () => {
       expect(config.timezoneOffset).toBe(-5);
     });
 
-    it("只更新 timezoneOffset 不影響其他設定", () => {
+    it("timezoneOffset 更新應與其他設定互不影響", () => {
       configStore.update({ timezoneOffset: 3 });
+      expect(configStore.getAll().timezoneOffset).toBe(3);
 
-      const config = configStore.getAll();
-      expect(config.timezoneOffset).toBe(3);
-    });
-
-    it("更新其他設定不影響 timezoneOffset", () => {
       configStore.update({ timezoneOffset: 5 });
       configStore.update({ backupEnabled: true });
-
-      const config = configStore.getAll();
-      expect(config.timezoneOffset).toBe(5);
+      expect(configStore.getAll().timezoneOffset).toBe(5);
     });
 
     it("getTimezoneOffset 回傳正確值", () => {

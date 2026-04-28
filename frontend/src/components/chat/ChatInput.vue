@@ -10,10 +10,15 @@ import { useImageAttachment } from "@/composables/chat/useImageAttachment";
 import { useContentBlocks } from "@/composables/chat/useContentBlocks";
 import { useSelectionManager } from "@/composables/chat/useSelectionManager";
 
-const props = defineProps<{
-  isTyping?: boolean;
-  disabled?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    isTyping?: boolean;
+    disabled?: boolean;
+  }>(),
+  {
+    disabled: false,
+  },
+);
 
 const emit = defineEmits<{
   send: [message: string, contentBlocks?: ContentBlock[]];
@@ -27,7 +32,7 @@ const isAborting = ref(false);
 const { t } = useI18n();
 const inputPlaceholder = computed(() => t("chat.inputPlaceholder"));
 
-const disabledRef = computed(() => props.disabled ?? false);
+const disabledRef = computed(() => props.disabled);
 
 const {
   moveCursorToEnd,

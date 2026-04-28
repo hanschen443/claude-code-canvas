@@ -50,39 +50,14 @@ describe("podStore", () => {
   });
 
   describe("初始狀態", () => {
-    it("pods 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = usePodStore();
 
       expect(store.pods).toEqual([]);
-    });
-
-    it("selectedPodId 應為 null", () => {
-      const store = usePodStore();
-
       expect(store.selectedPodId).toBeNull();
-    });
-
-    it("activePodId 應為 null", () => {
-      const store = usePodStore();
-
       expect(store.activePodId).toBeNull();
-    });
-
-    it("typeMenu.visible 應為 false", () => {
-      const store = usePodStore();
-
       expect(store.typeMenu.visible).toBe(false);
-    });
-
-    it("typeMenu.position 應為 null", () => {
-      const store = usePodStore();
-
       expect(store.typeMenu.position).toBeNull();
-    });
-
-    it("scheduleFiredPodIds 應為空 Set", () => {
-      const store = usePodStore();
-
       expect(store.scheduleFiredPodIds).toBeInstanceOf(Set);
       expect(store.scheduleFiredPodIds.size).toBe(0);
     });

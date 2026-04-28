@@ -94,10 +94,11 @@ function isFirstTriggerOrNewDay(
   now: Date,
   offset: number,
 ): boolean {
-  if (isFirstTrigger(schedule.lastTriggeredAt)) {
+  const lastTriggeredAt = schedule.lastTriggeredAt;
+  if (isFirstTrigger(lastTriggeredAt) || lastTriggeredAt === null) {
     return true;
   }
-  return !isSameDayWithOffset(new Date(schedule.lastTriggeredAt!), now, offset);
+  return !isSameDayWithOffset(new Date(lastTriggeredAt), now, offset);
 }
 
 export const shouldFireCheckers: Record<
@@ -105,23 +106,29 @@ export const shouldFireCheckers: Record<
   ShouldFireChecker
 > = {
   "every-second": (schedule, now, _offset) => {
-    if (isFirstTrigger(schedule.lastTriggeredAt)) return true;
+    const lastTriggeredAt = schedule.lastTriggeredAt;
+    if (isFirstTrigger(lastTriggeredAt) || lastTriggeredAt === null)
+      return true;
     const elapsedSeconds =
-      (now.getTime() - schedule.lastTriggeredAt!.getTime()) / MS_PER_SECOND;
+      (now.getTime() - lastTriggeredAt.getTime()) / MS_PER_SECOND;
     return elapsedSeconds >= schedule.second;
   },
 
   "every-x-minute": (schedule, now, _offset) => {
-    if (isFirstTrigger(schedule.lastTriggeredAt)) return true;
+    const lastTriggeredAt = schedule.lastTriggeredAt;
+    if (isFirstTrigger(lastTriggeredAt) || lastTriggeredAt === null)
+      return true;
     const elapsedMinutes =
-      (now.getTime() - schedule.lastTriggeredAt!.getTime()) / MS_PER_MINUTE;
+      (now.getTime() - lastTriggeredAt.getTime()) / MS_PER_MINUTE;
     return elapsedMinutes >= schedule.intervalMinute;
   },
 
   "every-x-hour": (schedule, now, _offset) => {
-    if (isFirstTrigger(schedule.lastTriggeredAt)) return true;
+    const lastTriggeredAt = schedule.lastTriggeredAt;
+    if (isFirstTrigger(lastTriggeredAt) || lastTriggeredAt === null)
+      return true;
     const elapsedHours =
-      (now.getTime() - schedule.lastTriggeredAt!.getTime()) / MS_PER_HOUR;
+      (now.getTime() - lastTriggeredAt.getTime()) / MS_PER_HOUR;
     return elapsedHours >= schedule.intervalHour;
   },
 

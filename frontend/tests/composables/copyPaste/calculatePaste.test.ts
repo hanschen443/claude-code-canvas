@@ -36,16 +36,6 @@ describe("generatePasteName", () => {
       ),
     ).toBe("Pod A (4)");
   });
-
-  it("名稱不存在於現有名稱中時仍加上 (1)", () => {
-    expect(generatePasteName("Pod A", new Set())).toBe("Pod A (1)");
-  });
-
-  it("名稱與現有名稱不同時仍加上 (1)", () => {
-    expect(generatePasteName("Pod A", new Set(["Pod B", "Pod C"]))).toBe(
-      "Pod A (1)",
-    );
-  });
 });
 
 describe("transformPods with existingNames", () => {

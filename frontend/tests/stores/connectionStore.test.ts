@@ -59,21 +59,11 @@ describe("connectionStore", () => {
   });
 
   describe("初始狀態", () => {
-    it("connections 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useConnectionStore();
 
       expect(store.connections).toEqual([]);
-    });
-
-    it("selectedConnectionId 應為 null", () => {
-      const store = useConnectionStore();
-
       expect(store.selectedConnectionId).toBeNull();
-    });
-
-    it("draggingConnection 應為 null", () => {
-      const store = useConnectionStore();
-
       expect(store.draggingConnection).toBeNull();
     });
   });

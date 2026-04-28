@@ -42,9 +42,9 @@ function formatBytes(bytes: number): string {
   return `${mb}MB`;
 }
 
-const downloadTasks = ref<Map<string, DownloadTask>>(new Map()) as Ref<
+const downloadTasks: Ref<Map<string, DownloadTask>> = ref<
   Map<string, DownloadTask>
->;
+>(new Map());
 const removeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const removeTask = (taskId: string): void => {

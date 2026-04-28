@@ -36,19 +36,6 @@ describe("configApi", () => {
       expect(result).toEqual(mockResult);
     });
 
-    it("getConfig 應回傳包含 timezoneOffset 的設定", async () => {
-      const mockResult = {
-        requestId: "req-1",
-        success: true,
-        timezoneOffset: 9,
-      };
-      mockCreateWebSocketRequest.mockResolvedValueOnce(mockResult);
-
-      const result = await getConfig();
-
-      expect(result).toEqual(expect.objectContaining({ timezoneOffset: 9 }));
-    });
-
     it("getConfig 請求失敗時應拋出錯誤", async () => {
       mockCreateWebSocketRequest.mockRejectedValueOnce(
         new Error("WebSocket 連線失敗"),
@@ -80,25 +67,6 @@ describe("configApi", () => {
         }),
       );
       expect(result).toEqual(mockResult);
-    });
-
-    it("updateConfig 應發送包含 timezoneOffset 的 payload", async () => {
-      const mockResult = {
-        requestId: "req-3",
-        success: true,
-        timezoneOffset: -5,
-      };
-      mockCreateWebSocketRequest.mockResolvedValueOnce(mockResult);
-
-      await updateConfig({
-        timezoneOffset: -5,
-      });
-
-      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          payload: expect.objectContaining({ timezoneOffset: -5 }),
-        }),
-      );
     });
 
     it("updateConfig 請求失敗時應拋出錯誤", async () => {

@@ -90,7 +90,7 @@ export const BASE_ALLOWED_TOOLS: readonly string[] = [
  * 若 pod.mcpServerNames 為空，或過濾後無符合項目，則回傳空物件，不寫入 mcpServers。
  */
 function applyMcpServers(pod: Pod): Pick<ClaudeOptions, "mcpServers"> {
-  if (!pod.mcpServerNames?.length) return {};
+  if (!pod.mcpServerNames.length) return {};
 
   // 讀取 user-scoped MCP servers（projects[homedir].mcpServers）
   const allowedSet = new Set(pod.mcpServerNames);
@@ -117,7 +117,7 @@ function applyMcpServers(pod: Pod): Pick<ClaudeOptions, "mcpServers"> {
  * 若 pod 無 pluginIds 設定，則回傳空物件。
  */
 function applyPlugins(pod: Pod): Pick<ClaudeOptions, "plugins"> {
-  if (!pod.pluginIds?.length) return {};
+  if (!pod.pluginIds.length) return {};
 
   const enabledSet = new Set(pod.pluginIds);
   const plugins = scanInstalledPlugins("claude")
@@ -315,10 +315,8 @@ export async function buildClaudeOptions(
   );
 
   // model：來自 pod.providerConfig.model（字串型別），否則 fallback 到 "opus"
-  const model =
-    typeof pod.providerConfig?.model === "string" && pod.providerConfig.model
-      ? pod.providerConfig.model
-      : "opus";
+  const rawModel = pod.providerConfig?.model;
+  const model = typeof rawModel === "string" && rawModel ? rawModel : "opus";
 
   const baseOptions: Omit<ClaudeOptions, "model"> = {
     settingSources: ["project"],

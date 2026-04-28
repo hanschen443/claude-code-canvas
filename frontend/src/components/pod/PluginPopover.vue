@@ -80,9 +80,6 @@ const handleToggle = async (
 ): Promise<void> => {
   // Codex pod 不支援 toggle，防呆直接 return
   if (isCodex.value) return;
-  // Pod busy 時直接 return（防呆，UI 應已 disabled）
-  if (props.busy) return;
-
   const previous = [...localPluginIds.value];
 
   // 樂觀更新 localPluginIds

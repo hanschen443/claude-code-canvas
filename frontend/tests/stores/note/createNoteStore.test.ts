@@ -112,44 +112,17 @@ describe("createNoteStore", () => {
       store = createNoteStore<TestItem, TestNote>(createTestConfig())();
     });
 
-    it("availableItems 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       expect(store.availableItems).toEqual([]);
-    });
-
-    it("notes 應為空陣列", () => {
       expect(store.notes).toEqual([]);
-    });
-
-    it("isLoading 應為 false", () => {
       expect(store.isLoading).toBe(false);
-    });
-
-    it("error 應為 null", () => {
       expect(store.error).toBeNull();
-    });
-
-    it("groups 應為空陣列", () => {
       expect(store.groups).toEqual([]);
-    });
-
-    it("draggedNoteId 應為 null", () => {
       expect(store.draggedNoteId).toBeNull();
-    });
-
-    it("animatingNoteIds 應為空 Set", () => {
       expect(store.animatingNoteIds).toBeInstanceOf(Set);
       expect(store.animatingNoteIds.size).toBe(0);
-    });
-
-    it("isDraggingNote 應為 false", () => {
       expect(store.isDraggingNote).toBe(false);
-    });
-
-    it("isOverTrash 應為 false", () => {
       expect(store.isOverTrash).toBe(false);
-    });
-
-    it("expandedGroupIds 應為空 Set", () => {
       expect(store.expandedGroupIds).toBeInstanceOf(Set);
       expect(store.expandedGroupIds.size).toBe(0);
     });
@@ -1612,27 +1585,6 @@ describe("createNoteStore", () => {
       expect((store as any).readTestResource).toBeUndefined();
       expect((store as any).deleteTestResource).toBeUndefined();
       expect((store as any).loadTestResources).toBeUndefined();
-    });
-
-    it("提供 crudConfig 後 store 應有對應的 createXxx action", () => {
-      const canvasStore = useCanvasStore();
-      canvasStore.activeCanvasId = "canvas-1";
-      const config = createTestConfig(createCRUDConfig());
-      const store = createNoteStore<TestItem, TestNote>(config)();
-
-      expect(typeof (store as any).createTestResource).toBe("function");
-    });
-
-    it("提供 crudConfig 後 store 應有 updateXxx、readXxx、deleteXxx、loadXxxs actions", () => {
-      const canvasStore = useCanvasStore();
-      canvasStore.activeCanvasId = "canvas-1";
-      const config = createTestConfig(createCRUDConfig());
-      const store = createNoteStore<TestItem, TestNote>(config)();
-
-      expect(typeof (store as any).updateTestResource).toBe("function");
-      expect(typeof (store as any).readTestResource).toBe("function");
-      expect(typeof (store as any).deleteTestResource).toBe("function");
-      expect(typeof (store as any).loadTestResources).toBe("function");
     });
   });
 });

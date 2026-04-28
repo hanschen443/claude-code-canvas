@@ -105,7 +105,7 @@ export interface Pod {
   mcpServerNames?: string[];
   pluginIds?: string[];
   repositoryId?: string | null;
-  multiInstance?: boolean;
+  multiInstance: boolean;
   commandId?: string | null;
   schedule?: Schedule | null;
   integrationBindings?: IntegrationBinding[];

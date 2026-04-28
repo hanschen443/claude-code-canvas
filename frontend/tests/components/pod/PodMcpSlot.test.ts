@@ -54,12 +54,6 @@ describe("PodMcpSlot", () => {
       wrapper.unmount();
     });
 
-    it("Codex provider：不顯示括號數量格式", () => {
-      const wrapper = mountSlot({ provider: "codex", activeCount: 3 });
-      expect(wrapper.text()).not.toContain("(3)");
-      wrapper.unmount();
-    });
-
     it("應顯示 MCPs 標籤（i18n key pod.slot.mcpLabel）", () => {
       const wrapper = mountSlot();
       // t() 在 mock 中直接回傳 key

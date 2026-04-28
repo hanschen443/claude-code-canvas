@@ -121,31 +121,15 @@ describe("ConnectionContextMenu", () => {
       expect(wrapper.text()).toContain("Summary Model");
     });
 
-    it("應顯示 Haiku 選項", async () => {
+    it("應顯示所有 model 選項（Haiku / Sonnet / Opus）", async () => {
       const wrapper = mountMenu();
       await openSummaryMenu(wrapper);
       const buttons = wrapper.findAll("button");
-      const haikuBtn = buttons.find((b) => b.text().includes("Haiku"));
-      expect(haikuBtn).toBeDefined();
-      expect(haikuBtn?.exists()).toBe(true);
-    });
-
-    it("應顯示 Sonnet 選項", async () => {
-      const wrapper = mountMenu();
-      await openSummaryMenu(wrapper);
-      const buttons = wrapper.findAll("button");
-      const sonnetBtn = buttons.find((b) => b.text().includes("Sonnet"));
-      expect(sonnetBtn).toBeDefined();
-      expect(sonnetBtn?.exists()).toBe(true);
-    });
-
-    it("應顯示 Opus 選項", async () => {
-      const wrapper = mountMenu();
-      await openSummaryMenu(wrapper);
-      const buttons = wrapper.findAll("button");
-      const opusBtn = buttons.find((b) => b.text().includes("Opus"));
-      expect(opusBtn).toBeDefined();
-      expect(opusBtn?.exists()).toBe(true);
+      for (const label of ["Haiku", "Sonnet", "Opus"]) {
+        const btn = buttons.find((b) => b.text().includes(label));
+        expect(btn, `找不到 ${label} 按鈕`).toBeDefined();
+        expect(btn?.exists()).toBe(true);
+      }
     });
   });
 
@@ -385,37 +369,20 @@ describe("ConnectionContextMenu", () => {
       expect(opusBtn?.exists()).toBe(true);
     });
 
-    it("triggerMode 為 auto 時，AI Model 區塊應有 opacity-50 disabled 樣式", () => {
-      const wrapper = mountMenu({ currentTriggerMode: "auto" });
-      const relativeWrappers = wrapper.findAll(".relative");
-      const aiModelWrapper = relativeWrappers[1]!;
-      expect(aiModelWrapper.classes()).toContain("opacity-50");
-    });
-
-    it("triggerMode 為 auto 時，hover 後不應出現子選單", async () => {
-      const wrapper = mountMenu({ currentTriggerMode: "auto" });
-      await openAiModelMenu(wrapper);
-      // isAiModelMenuOpen 不會被設為 true，因為條件判斷 currentTriggerMode === 'ai-decide'
-      const relativeWrappers = wrapper.findAll(".relative");
-      const aiModelWrapper = relativeWrappers[1]!;
-      // 子選單不應存在
-      expect(aiModelWrapper.find(".absolute").exists()).toBe(false);
-    });
-
-    it("triggerMode 為 direct 時，AI Model 區塊應有 opacity-50 disabled 樣式", () => {
-      const wrapper = mountMenu({ currentTriggerMode: "direct" });
-      const relativeWrappers = wrapper.findAll(".relative");
-      const aiModelWrapper = relativeWrappers[1]!;
-      expect(aiModelWrapper.classes()).toContain("opacity-50");
-    });
-
-    it("triggerMode 為 direct 時，hover 後不應出現子選單", async () => {
-      const wrapper = mountMenu({ currentTriggerMode: "direct" });
-      await openAiModelMenu(wrapper);
-      const relativeWrappers = wrapper.findAll(".relative");
-      const aiModelWrapper = relativeWrappers[1]!;
-      expect(aiModelWrapper.find(".absolute").exists()).toBe(false);
-    });
+    it.each([
+      { currentTriggerMode: "auto" as const },
+      { currentTriggerMode: "direct" as const },
+    ])(
+      "triggerMode 為 $currentTriggerMode 時，AI Model 區塊應有 opacity-50 disabled 樣式且子選單不出現",
+      async ({ currentTriggerMode }) => {
+        const wrapper = mountMenu({ currentTriggerMode });
+        const relativeWrappers = wrapper.findAll(".relative");
+        const aiModelWrapper = relativeWrappers[1]!;
+        expect(aiModelWrapper.classes()).toContain("opacity-50");
+        await openAiModelMenu(wrapper);
+        expect(aiModelWrapper.find(".absolute").exists()).toBe(false);
+      },
+    );
   });
 
   describe("AI Model 選中狀態標記", () => {

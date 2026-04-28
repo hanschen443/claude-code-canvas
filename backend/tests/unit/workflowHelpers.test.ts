@@ -97,14 +97,6 @@ describe("workflowHelpers", () => {
         triggerMode: "auto",
       });
     });
-
-    it("payload 不含 participatingConnectionIds", () => {
-      const context = makeQueueProcessedContext();
-
-      const payload = buildQueueProcessedPayload(context);
-
-      expect("participatingConnectionIds" in payload).toBe(false);
-    });
   });
 
   describe("emitQueueProcessed", () => {

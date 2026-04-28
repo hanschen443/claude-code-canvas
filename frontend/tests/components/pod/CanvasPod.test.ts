@@ -248,6 +248,7 @@ function createMockPod(overrides: Partial<Pod> = {}): Pod {
     y: 0,
     output: [],
     rotation: 0,
+    multiInstance: false,
     provider: "claude",
     providerConfig: { model: "claude-sonnet-4-5" },
     ...overrides,

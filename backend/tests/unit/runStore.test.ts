@@ -27,14 +27,17 @@ describe("RunStore", () => {
     });
 
     it("根據 canvas_id 查詢 run 列表（依 created_at 降序）", () => {
-      const run1 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第一次");
-      const run2 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第二次");
+      runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第一次");
+      runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第二次");
 
       const runs = runStore.getRunsByCanvasId(CANVAS_ID);
 
       expect(runs).toHaveLength(2);
-      // 降序：最新的在前
-      expect(runs[0].id === run1.id || runs[0].id === run2.id).toBe(true);
+      // 降序：前面的 createdAt 應不小於後面的
+      const timestamps = runs.map((r) => new Date(r.createdAt).getTime());
+      for (let i = 0; i < timestamps.length - 1; i++) {
+        expect(timestamps[i]).toBeGreaterThanOrEqual(timestamps[i + 1]!);
+      }
     });
 
     it("getRun 查詢單筆 run", () => {

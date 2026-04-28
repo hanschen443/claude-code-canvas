@@ -11,6 +11,7 @@ function makeClaudePod(overrides: Partial<Pod> = {}): Pod {
     y: 150,
     rotation: 0,
     output: [],
+    multiInstance: false,
     provider: "claude",
     providerConfig: { model: "claude-sonnet-4-5" },
     ...overrides,
@@ -26,6 +27,7 @@ function makeCodexPod(overrides: Partial<Pod> = {}): Pod {
     y: 250,
     rotation: 0,
     output: [],
+    multiInstance: false,
     provider: "codex",
     providerConfig: { model: "codex-mini-latest" },
     ...overrides,
@@ -39,7 +41,6 @@ describe("providerOptions", () => {
       const pod = makeClaudePod();
       const options = getClaudeOptions(pod);
       expect(options).toEqual({ model: "claude-sonnet-4-5" });
-      expect(options.model).toBe("claude-sonnet-4-5");
     });
 
     it("自訂 model 的 Claude Pod 應回傳對應 model", () => {
@@ -57,7 +58,6 @@ describe("providerOptions", () => {
       const pod = makeCodexPod();
       const options = getCodexOptions(pod);
       expect(options).toEqual({ model: "codex-mini-latest" });
-      expect(options.model).toBe("codex-mini-latest");
     });
 
     it("自訂 model 的 Codex Pod 應回傳對應 model", () => {

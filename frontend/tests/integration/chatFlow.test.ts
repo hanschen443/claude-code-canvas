@@ -397,7 +397,6 @@ describe("Chat 對話完整流程", () => {
       } as PodChatToolUsePayload);
 
       const messages = chatStore.getMessages("pod-1");
-      expect(messages[0]?.subMessages).toBeDefined();
       expect(messages[0]?.subMessages).toHaveLength(1);
       expect(messages[0]?.subMessages![0]?.toolUse).toHaveLength(1);
       expect(messages[0]?.subMessages![0]?.toolUse![0]).toMatchObject({
@@ -594,9 +593,6 @@ describe("Chat 對話完整流程", () => {
           call[0] === "pod:chat:send" &&
           (call[1] as { podId: string }).podId === "pod-codex",
       );
-
-      expect(claudeCall).toBeDefined();
-      expect(codexCall).toBeDefined();
 
       // 兩者的 message 欄位完全相等
       expect((claudeCall![1] as { message: string }).message).toBe(testMessage);

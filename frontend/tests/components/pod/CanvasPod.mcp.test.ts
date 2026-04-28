@@ -280,6 +280,7 @@ function createMockPod(overrides: Partial<Pod> = {}): Pod {
     y: 0,
     output: [],
     rotation: 0,
+    multiInstance: false,
     provider: "claude",
     providerConfig: { model: "claude-sonnet-4-5" },
     mcpServerNames: [],
@@ -498,17 +499,6 @@ describe("CanvasPod MCP popover 整合測試", () => {
   // ── mcp-trigger 連按兩次 toggle 行為 ─────────────────────────────────────
 
   describe("mcp-trigger 連按兩次 toggle 行為", () => {
-    it("第一次點擊 mcp-trigger 開啟 popover", async () => {
-      const pod = createMockPod();
-      const wrapper = mountCanvasPod(pod);
-
-      await wrapper.find(".mcp-trigger").trigger("click");
-
-      expect(wrapper.find(".mcp-popover-stub").exists()).toBe(true);
-
-      wrapper.unmount();
-    });
-
     it("第二次點擊 mcp-trigger 不會關閉 popover（必須點外部才關）", async () => {
       const pod = createMockPod();
       const wrapper = mountCanvasPod(pod);
@@ -546,25 +536,21 @@ describe("CanvasPod MCP popover 整合測試", () => {
       wrapper.unmount();
     });
 
-    it("pod.mcpServerNames 為空時，PodSlots 應收到 mcpActiveCount=0", () => {
-      const pod = createMockPod({ mcpServerNames: [] });
-      const wrapper = mountCanvasPod(pod);
+    it.each([
+      { mcpServerNames: [] as string[] | undefined },
+      { mcpServerNames: undefined },
+    ])(
+      "pod.mcpServerNames 為空或 undefined 時，PodSlots 應收到 mcpActiveCount=0",
+      ({ mcpServerNames }) => {
+        const pod = createMockPod({ mcpServerNames });
+        const wrapper = mountCanvasPod(pod);
 
-      const slotsWrapper = wrapper.findComponent({ name: "PodSlots" });
-      expect(slotsWrapper.exists()).toBe(true);
-      expect(slotsWrapper.props("mcpActiveCount")).toBe(0);
+        const slotsWrapper = wrapper.findComponent({ name: "PodSlots" });
+        expect(slotsWrapper.exists()).toBe(true);
+        expect(slotsWrapper.props("mcpActiveCount")).toBe(0);
 
-      wrapper.unmount();
-    });
-
-    it("pod.mcpServerNames 為 undefined 時，PodSlots 應收到 mcpActiveCount=0", () => {
-      const pod = createMockPod({ mcpServerNames: undefined });
-      const wrapper = mountCanvasPod(pod);
-
-      const slotsWrapper = wrapper.findComponent({ name: "PodSlots" });
-      expect(slotsWrapper.props("mcpActiveCount")).toBe(0);
-
-      wrapper.unmount();
-    });
+        wrapper.unmount();
+      },
+    );
   });
 });

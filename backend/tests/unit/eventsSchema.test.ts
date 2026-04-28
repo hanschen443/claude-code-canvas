@@ -46,18 +46,4 @@ describe("WebSocket events schema-level 配對驗證", () => {
     );
     expect(overlapping).toEqual([]);
   });
-
-  it("REQUEST enum 中所有 value 應為字串且不為空", () => {
-    for (const [key, value] of Object.entries(WebSocketRequestEvents)) {
-      expect(typeof value, `${key} 應為字串`).toBe("string");
-      expect(value.length, `${key} 不應為空`).toBeGreaterThan(0);
-    }
-  });
-
-  it("RESPONSE enum 中所有 value 應為字串且不為空", () => {
-    for (const [key, value] of Object.entries(WebSocketResponseEvents)) {
-      expect(typeof value, `${key} 應為字串`).toBe("string");
-      expect(value.length, `${key} 不應為空`).toBeGreaterThan(0);
-    }
-  });
 });

@@ -126,7 +126,7 @@ const emit = defineEmits<{
 const isEditing = ref(false);
 const showDeleteDialog = ref(false);
 
-const isMultiInstanceEnabled = computed(() => props.pod.multiInstance ?? false);
+const isMultiInstanceEnabled = computed(() => props.pod.multiInstance);
 const isDownstreamMultiInstance = computed(
   () =>
     isMultiInstanceChainPod(props.pod.id) &&

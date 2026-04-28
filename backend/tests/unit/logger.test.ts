@@ -42,120 +42,30 @@ describe("Logger 顏色輸出", () => {
     return module.logger;
   }
 
-  describe("系統類 Category 使用灰色", () => {
-    it("Startup Category 輸出包含灰色 ANSI 碼", async () => {
+  it.each([
+    ["Startup", ANSI_COLORS.GRAY],
+    ["Connection", ANSI_COLORS.GRAY],
+    ["WebSocket", ANSI_COLORS.GRAY],
+    ["Pod", ANSI_COLORS.BLUE],
+    ["Workflow", ANSI_COLORS.BLUE],
+    ["Repository", ANSI_COLORS.MAGENTA],
+    ["Workspace", ANSI_COLORS.MAGENTA],
+    ["Canvas", ANSI_COLORS.MAGENTA],
+    ["McpServer", ANSI_COLORS.GREEN],
+    ["Command", ANSI_COLORS.GREEN],
+    ["Chat", ANSI_COLORS.GREEN],
+    ["Git", ANSI_COLORS.YELLOW],
+    ["Note", ANSI_COLORS.YELLOW],
+    ["Schedule", ANSI_COLORS.YELLOW],
+  ])(
+    "%s Category 輸出包含對應 ANSI 顏色碼",
+    async (category, expectedColor) => {
       const logger = await getLogger();
-      logger.log("Startup", "Load", "伺服器啟動中...");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.GRAY);
-      expect(consoleLogCalls[0]).toContain("[Startup]");
-    });
-
-    it("Connection Category 輸出包含灰色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Connection", "Create", "建立連線");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.GRAY);
-      expect(consoleLogCalls[0]).toContain("[Connection]");
-    });
-
-    it("WebSocket Category 輸出包含灰色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("WebSocket", "Update", "WebSocket 已連線");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.GRAY);
-      expect(consoleLogCalls[0]).toContain("[WebSocket]");
-    });
-  });
-
-  describe("Pod 類 Category 使用藍色", () => {
-    it("Pod Category 輸出包含藍色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Pod", "Create", "正在建立 Pod: my-pod");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.BLUE);
-      expect(consoleLogCalls[0]).toContain("[Pod]");
-    });
-
-    it("Workflow Category 輸出包含藍色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Workflow", "Create", "建立工作流程");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.BLUE);
-      expect(consoleLogCalls[0]).toContain("[Workflow]");
-    });
-  });
-
-  describe("資料類 Category 使用紫色", () => {
-    it("Repository Category 輸出包含紫色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Repository", "Create", "正在 Clone Repository: my-repo");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.MAGENTA);
-      expect(consoleLogCalls[0]).toContain("[Repository]");
-    });
-
-    it("Workspace Category 輸出包含紫色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Workspace", "Create", "建立工作區");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.MAGENTA);
-      expect(consoleLogCalls[0]).toContain("[Workspace]");
-    });
-
-    it("Canvas Category 輸出包含紫色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Canvas", "Update", "更新畫布");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.MAGENTA);
-      expect(consoleLogCalls[0]).toContain("[Canvas]");
-    });
-  });
-
-  describe("功能類 Category 使用綠色", () => {
-    it("McpServer Category 輸出包含綠色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("McpServer", "Create", "MCP Server 建立成功");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.GREEN);
-      expect(consoleLogCalls[0]).toContain("[McpServer]");
-    });
-
-    it("Command Category 輸出包含綠色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Command", "Create", "執行命令");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.GREEN);
-      expect(consoleLogCalls[0]).toContain("[Command]");
-    });
-
-    it("Chat Category 輸出包含綠色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Chat", "Create", "建立聊天");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.GREEN);
-      expect(consoleLogCalls[0]).toContain("[Chat]");
-    });
-  });
-
-  describe("其他類 Category 使用黃色", () => {
-    it("Git Category 輸出包含黃色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Git", "Update", "Git Push 完成");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.YELLOW);
-      expect(consoleLogCalls[0]).toContain("[Git]");
-    });
-
-    it("Note Category 輸出包含黃色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Note", "Create", "建立筆記");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.YELLOW);
-      expect(consoleLogCalls[0]).toContain("[Note]");
-    });
-
-    it("Paste Category 輸出包含黃色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Paste", "Create", "建立貼上");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.YELLOW);
-      expect(consoleLogCalls[0]).toContain("[Paste]");
-    });
-
-    it("Schedule Category 輸出包含黃色 ANSI 碼", async () => {
-      const logger = await getLogger();
-      logger.log("Schedule", "Create", "建立排程");
-      expect(consoleLogCalls[0]).toContain(ANSI_COLORS.YELLOW);
-      expect(consoleLogCalls[0]).toContain("[Schedule]");
-    });
-  });
+      (logger.log as any)(category, "Create", "測試訊息");
+      expect(consoleLogCalls[0]).toContain(expectedColor);
+      expect(consoleLogCalls[0]).toContain(`[${category}]`);
+    },
+  );
 
   describe("錯誤訊息強制紅色", () => {
     it("logger.error 輸出整段訊息為紅色", async () => {

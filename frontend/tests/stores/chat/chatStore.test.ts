@@ -28,35 +28,15 @@ describe("chatStore", () => {
   });
 
   describe("初始狀態", () => {
-    it("messagesByPodId 應為空 Map", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useChatStore();
 
       expect(store.messagesByPodId).toBeInstanceOf(Map);
       expect(store.messagesByPodId.size).toBe(0);
-    });
-
-    it("isTypingByPodId 應為空 Map", () => {
-      const store = useChatStore();
-
       expect(store.isTypingByPodId).toBeInstanceOf(Map);
       expect(store.isTypingByPodId.size).toBe(0);
-    });
-
-    it("currentStreamingMessageId 應為 null", () => {
-      const store = useChatStore();
-
       expect(store.currentStreamingMessageId).toBeNull();
-    });
-
-    it("connectionStatus 應為 disconnected", () => {
-      const store = useChatStore();
-
       expect(store.connectionStatus).toBe("disconnected");
-    });
-
-    it("allHistoryLoaded 應為 false", () => {
-      const store = useChatStore();
-
       expect(store.allHistoryLoaded).toBe(false);
     });
   });

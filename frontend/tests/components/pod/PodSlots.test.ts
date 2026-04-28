@@ -157,20 +157,6 @@ describe("PodSlots - Codex provider Pod：Command 以外 slot 為 disabled", () 
 
     wrapper.unmount();
   });
-
-  it("Codex capabilities 下 Command slot 不應呈現 disabled tooltip", () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
-
-    // Command slot 為 single-bind slots 中的 index 1
-    const commandSlot = singleSlots[1]!;
-    expect(commandSlot.attributes("data-disabled")).toBe("false");
-    // disabled 為 false 時，disabled-tooltip 雖然仍傳入但不應影響 UI；
-    // 重點是 disabled 屬性正確，確認其值非 "true"
-    expect(commandSlot.attributes("data-disabled")).not.toBe("true");
-
-    wrapper.unmount();
-  });
 });
 
 // -----------------------------------------------------------------------

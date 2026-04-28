@@ -1,38 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  CODEX_CAPABILITIES,
   CODEX_AVAILABLE_MODELS,
   CODEX_AVAILABLE_MODEL_VALUES,
-  CLAUDE_CAPABILITIES,
   CLAUDE_AVAILABLE_MODELS,
   CLAUDE_AVAILABLE_MODEL_VALUES,
 } from "../../src/services/provider/capabilities.js";
-
-describe("CODEX_CAPABILITIES 能力旗標", () => {
-  it("chat 應為 true", () => {
-    expect(CODEX_CAPABILITIES.chat).toBe(true);
-  });
-
-  it("plugin 應為 true（Codex 支援 Plugin）", () => {
-    expect(CODEX_CAPABILITIES.plugin).toBe(true);
-  });
-
-  it("mcp 應為 true（Codex 透過唯讀展示支援 MCP）", () => {
-    expect(CODEX_CAPABILITIES.mcp).toBe(true);
-  });
-
-  it("integration 應為 false（Codex 不支援 Integration）", () => {
-    expect(CODEX_CAPABILITIES.integration).toBe(false);
-  });
-
-  it("repository 應為 true（Codex 支援 Repository）", () => {
-    expect(CODEX_CAPABILITIES.repository).toBe(true);
-  });
-
-  it("command 應為 true（Codex 支援 Command）", () => {
-    expect(CODEX_CAPABILITIES.command).toBe(true);
-  });
-});
 
 describe("CODEX_AVAILABLE_MODELS model value 在 CODEX_AVAILABLE_MODEL_VALUES 中", () => {
   it("CODEX_AVAILABLE_MODELS 的每個 value 都在 CODEX_AVAILABLE_MODEL_VALUES Set 中", () => {
@@ -54,17 +26,6 @@ describe("CODEX_AVAILABLE_MODELS model value 在 CODEX_AVAILABLE_MODEL_VALUES �
       expect(typeof model.value).toBe("string");
       expect(model.value.length).toBeGreaterThan(0);
     }
-  });
-});
-
-describe("CLAUDE_CAPABILITIES 能力旗標", () => {
-  it("所有能力應為 true（Claude 支援所有功能，runMode 已移除）", () => {
-    expect(CLAUDE_CAPABILITIES.chat).toBe(true);
-    expect(CLAUDE_CAPABILITIES.plugin).toBe(true);
-    expect(CLAUDE_CAPABILITIES.repository).toBe(true);
-    expect(CLAUDE_CAPABILITIES.command).toBe(true);
-    expect(CLAUDE_CAPABILITIES.mcp).toBe(true);
-    expect(CLAUDE_CAPABILITIES.integration).toBe(true);
   });
 });
 

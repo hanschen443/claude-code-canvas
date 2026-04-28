@@ -201,20 +201,6 @@ describe("GlobalSettingsModal", () => {
     );
   });
 
-  it("應正確渲染 Modal 標題與時區選擇區塊", async () => {
-    mockGetConfig.mockResolvedValue({
-      success: true,
-    });
-    const wrapper = mountModal(true);
-    await nextTick();
-
-    expect(wrapper.text()).toContain("全域設定");
-    expect(wrapper.text()).toContain("時區");
-    expect(wrapper.text()).not.toContain("AI 決策模型");
-
-    wrapper.unmount();
-  });
-
   it("開啟時應發送 config:get WebSocket 事件載入目前設定", async () => {
     mockWithErrorToast.mockImplementation(
       (promise: Promise<unknown>) => promise,

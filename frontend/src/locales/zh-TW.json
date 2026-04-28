@@ -465,7 +465,8 @@
       "deleted": "{name} 已被刪除",
       "orderSaveFailed": "排序儲存失敗",
       "renameFailed": "重新命名失敗",
-      "renamed": "重新命名成功"
+      "renamed": "重新命名成功",
+      "switchFailed": "切換 Canvas 失敗"
     },
     "connection": {
       "alreadyExists": "連線已存在",
@@ -496,6 +497,9 @@
     },
     "backup": {
       "completed": "備份完成"
+    },
+    "run": {
+      "loadFailed": "載入 Run 記錄失敗"
     },
     "repository": {
       "createFailed": "建立資料夾失敗",

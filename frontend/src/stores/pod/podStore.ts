@@ -122,10 +122,10 @@ export const usePodStore = defineStore("pod", () => {
     );
     if (index === -1) return;
 
-    const existing = pods.value[index];
+    const existing = pods.value[index]!;
     const mergedPod = {
       ...pod,
-      output: pod.output !== undefined ? pod.output : (existing?.output ?? []),
+      output: pod.output !== undefined ? pod.output : existing.output,
     };
 
     if (!isValidPod(mergedPod)) {
@@ -173,7 +173,7 @@ export const usePodStore = defineStore("pod", () => {
       x: pod.x,
       y: pod.y,
       rotation: pod.rotation,
-      output: pod.output ?? [],
+      output: pod.output,
     };
   }
 
