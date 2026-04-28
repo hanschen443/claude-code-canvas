@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.3] - 2026-04-28
+
+### 修正
+- 修復綁定 integration 到 codex pod 時 canvasId 與 i18n key 缺失的問題
+- 修復排程觸發時訊息顯示不一致、webhook API 觸發對話歷史不完整的問題
+- 修復 workflow 路徑驗證，遇到不存在的 Command 時現在能正確回報錯誤
+- 修復前端記憶體洩漏（workflow listeners 因 reference 不符無法解綁）
+- 強化 Connection Line Summary Model 的安全性（防 prompt injection、補 update 驗證、防錯誤訊息洩漏）
+
+### 改進
+- 簡化部分 handler 抽象層級，抽出多個重用 helper（PullProgressResult、resolveErrorCode、withTimeout 等）
+- 改善 Workflow 執行效能（Codex 子程序並行限制、SQLite RETURNING 減少查詢、BFS adjacencyMap 預建）
+- 補三語翻譯（中、英、日）與 i18n key
+- 改名 findGroupType → checkIsCommandGroup 反映實際行為
+- slackProvider 加 60 秒頻道快取，避免每次 refreshResources 進行 full pull
+- telegramProvider 重試前補 abort/has 檢查避免 destroy 競態殘留
+- 大幅補強單元測試（integration binding、schema 失敗路徑、E2E 測試等）
+- 精簡冗餘防衛性編程，改善產品體感與程式碼可維護性
+
 ## [1.1.2] - 2026-04-27
 
 ### 新增
