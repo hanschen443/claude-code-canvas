@@ -1,556 +1,246 @@
-import {
-  createConnectionStoreMock,
-  createPodStoreMock,
-  createMessageStoreMock,
-  createSummaryServiceMock,
-  createPendingTargetStoreMock,
-  createWorkflowStateServiceMock,
-  createWorkflowEventEmitterMock,
-  createAiDecideServiceMock,
-  createLoggerMock,
-  createSocketServiceMock,
-  createClaudeQueryServiceMock,
-  createCommandServiceMock,
-  createWorkflowMultiInputServiceMock,
-  createDirectTriggerStoreMock,
-} from "../mocks/workflowModuleMocks.js";
-
-vi.mock("../../src/services/connectionStore.js", () =>
-  createConnectionStoreMock(),
-);
-vi.mock("../../src/services/podStore.js", () => createPodStoreMock());
-vi.mock("../../src/services/messageStore.js", () => createMessageStoreMock());
-vi.mock("../../src/services/summaryService.js", () =>
-  createSummaryServiceMock(),
-);
-vi.mock("../../src/services/pendingTargetStore.js", () =>
-  createPendingTargetStoreMock(),
-);
-vi.mock("../../src/services/workflow/workflowStateService.js", () =>
-  createWorkflowStateServiceMock(),
-);
-vi.mock("../../src/services/workflow/workflowEventEmitter.js", () =>
-  createWorkflowEventEmitterMock(),
-);
-vi.mock("../../src/services/workflow/aiDecideService.js", () =>
-  createAiDecideServiceMock(),
-);
-vi.mock("../../src/utils/logger.js", () => createLoggerMock());
-vi.mock("../../src/services/socketService.js", () => createSocketServiceMock());
-vi.mock("../../src/services/claude/queryService.js", () =>
-  createClaudeQueryServiceMock(),
-);
-vi.mock("../../src/services/commandService.js", () =>
-  createCommandServiceMock(),
-);
-vi.mock("../../src/services/workflow/workflowMultiInputService.js", () =>
-  createWorkflowMultiInputServiceMock(),
-);
-vi.mock("../../src/services/directTriggerStore.js", () =>
-  createDirectTriggerStoreMock(),
-);
-vi.mock("../../src/services/workflow/runExecutionService.js", () => ({
-  runExecutionService: {
-    summarizingPodInstance: vi.fn(),
-    settlePodTrigger: vi.fn(),
-    errorPodInstance: vi.fn(),
-  },
-}));
-
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { workflowExecutionService } from "../../src/services/workflow";
 import { connectionStore } from "../../src/services/connectionStore.js";
 import { podStore } from "../../src/services/podStore.js";
-import { messageStore } from "../../src/services/messageStore.js";
 import { summaryService } from "../../src/services/summaryService.js";
-import { workflowStateService } from "../../src/services/workflow";
 import { workflowEventEmitter } from "../../src/services/workflow";
-import { aiDecideService } from "../../src/services/workflow";
-import { pendingTargetStore } from "../../src/services/pendingTargetStore.js";
 import { workflowQueueService } from "../../src/services/workflow";
-import { workflowMultiInputService } from "../../src/services/workflow";
+import { aiDecideService } from "../../src/services/workflow";
+import { workflowAutoTriggerService } from "../../src/services/workflow";
+import { workflowAiDecideTriggerService } from "../../src/services/workflow";
+import { runExecutionService } from "../../src/services/workflow/runExecutionService.js";
+import { logger } from "../../src/utils/logger.js";
 import type { Connection } from "../../src/types";
 import type { TriggerStrategy } from "../../src/services/workflow/types.js";
-import {
-  createMockPod,
-  createMockConnection,
-  createMockMessages,
-  createMockStrategy,
-  TEST_IDS,
-} from "../mocks/workflowTestFactories.js";
-import {
-  createPipelineExecuteImpl,
-  createAutoTriggerProcessImpl,
-  createAiDecideProcessImpl,
-} from "../mocks/workflowImplMocks.js";
+import type { RunContext } from "../../src/types/run.js";
+import path from "path";
+import { config } from "../../src/config/index.js";
+
+// ─── 常數 ────────────────────────────────────────────────────────────────────
+
+const CANVAS_ID = "canvas-1";
+const SOURCE_POD_ID = "source-pod";
+const TARGET_POD_ID = "target-pod";
+
+// ─── 工廠函式 ─────────────────────────────────────────────────────────────────
+
+function makeConnection(overrides?: Partial<Connection>): Connection {
+  return {
+    id: "conn-1",
+    sourcePodId: SOURCE_POD_ID,
+    sourceAnchor: "right",
+    targetPodId: TARGET_POD_ID,
+    targetAnchor: "left",
+    triggerMode: "auto",
+    decideStatus: "none",
+    decideReason: null,
+    connectionStatus: "idle",
+    summaryModel: "sonnet",
+    aiDecideModel: "sonnet",
+    ...overrides,
+  } as Connection;
+}
+
+function makePod(id: string, status: "idle" | "chatting" = "idle") {
+  return {
+    id,
+    name: `Pod ${id}`,
+    provider: "claude" as const,
+    providerConfig: { model: "sonnet" },
+    sessionId: null,
+    repositoryId: null,
+    workspacePath: path.join(config.canvasRoot, CANVAS_ID, `pod-${id}`),
+    commandId: null,
+    status,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    multiInstance: false,
+    skillIds: [],
+  };
+}
+
+function makeStrategy(
+  mode: "auto" | "direct" | "ai-decide",
+  overrides?: Partial<TriggerStrategy>,
+): TriggerStrategy {
+  const base: Partial<TriggerStrategy> = {
+    mode,
+    decide: vi.fn().mockResolvedValue([]),
+    onTrigger: vi.fn(),
+    onComplete: vi.fn(),
+    onError: vi.fn(),
+    onQueued: vi.fn(),
+    onQueueProcessed: vi.fn(),
+    ...overrides,
+  };
+  if (mode === "direct" && !overrides?.collectSources) {
+    base.collectSources = vi.fn();
+  }
+  return base as TriggerStrategy;
+}
+
+function makeRunContext(overrides?: Partial<RunContext>): RunContext {
+  return {
+    runId: "run-1",
+    canvasId: CANVAS_ID,
+    sourcePodId: SOURCE_POD_ID,
+    ...overrides,
+  };
+}
+
+// ─── 共用 spy setup ───────────────────────────────────────────────────────────
+
+function setupBasicSpies() {
+  vi.spyOn(logger, "log").mockImplementation(() => {});
+  vi.spyOn(logger, "warn").mockImplementation(() => {});
+  vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(summaryService, "generateSummaryForTarget").mockResolvedValue({
+    success: true,
+    summary: "Test summary",
+    targetPodId: TARGET_POD_ID,
+  });
+  vi.spyOn(podStore, "getById").mockImplementation(((
+    _cId: string,
+    podId: string,
+  ) => {
+    if (podId === SOURCE_POD_ID) return makePod(SOURCE_POD_ID);
+    return makePod(podId);
+  }) as any);
+  vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
+  vi.spyOn(connectionStore, "getById").mockReturnValue(undefined);
+  vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([]);
+  vi.spyOn(connectionStore, "updateConnectionStatus").mockReturnValue(
+    undefined,
+  );
+  vi.spyOn(connectionStore, "updateDecideStatus").mockReturnValue(undefined);
+  vi.spyOn(workflowEventEmitter, "emitAiDecidePending").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitAiDecideResult").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitAiDecideError").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitWorkflowQueued").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitWorkflowComplete").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(
+    workflowEventEmitter,
+    "emitWorkflowAutoTriggered",
+  ).mockImplementation(() => {});
+  vi.spyOn(
+    workflowEventEmitter,
+    "emitWorkflowAiDecideTriggered",
+  ).mockImplementation(() => {});
+}
+
+// ─── 測試 ─────────────────────────────────────────────────────────────────────
 
 describe("WorkflowExecutionService", () => {
-  const { canvasId, sourcePodId, targetPodId } = TEST_IDS;
-
-  const mockAutoStrategy = createMockStrategy("auto");
-  const mockDirectStrategy = createMockStrategy("direct");
-  const mockAiDecideStrategy = createMockStrategy("ai-decide");
-
-  const mockPipeline = {
-    execute: vi.fn(),
-    init: vi.fn(),
-  };
-
-  const mockAutoTriggerService = {
-    processAutoTriggerConnection: vi.fn(),
-    init: vi.fn(),
-  };
-
-  const mockAiDecideTriggerService = {
-    processAiDecideConnections: vi.fn(),
-    init: vi.fn(),
-  };
-
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    // vi.clearAllMocks 會清除 implementation，需重新設定
-    (mockPipeline.execute as any).mockImplementation(
-      createPipelineExecuteImpl(mockAutoStrategy, mockAiDecideStrategy),
-    );
-    (
-      mockAutoTriggerService.processAutoTriggerConnection as any
-    ).mockImplementation(
-      createAutoTriggerProcessImpl(mockPipeline, mockAutoStrategy),
-    );
-    (
-      mockAiDecideTriggerService.processAiDecideConnections as any
-    ).mockImplementation(
-      createAiDecideProcessImpl(mockPipeline, mockAiDecideStrategy),
-    );
-
-    workflowExecutionService.init({
-      pipeline: mockPipeline as any,
-      aiDecideTriggerService: mockAiDecideTriggerService as any,
-      autoTriggerService: mockAutoTriggerService as any,
-      directTriggerService: mockDirectStrategy,
-    });
-
-    const mockSourcePod = createMockPod({
-      id: sourcePodId,
-      name: "Source Pod",
-      status: "idle",
-    });
-    const mockTargetPod = createMockPod({
-      id: targetPodId,
-      name: "Target Pod",
-      status: "idle",
-    });
-    const mockMessages = createMockMessages();
-
-    (podStore.getById as any).mockImplementation(
-      (cId: string, podId: string) => {
-        if (podId === sourcePodId) return mockSourcePod;
-        if (podId.startsWith("target-pod") || podId.startsWith("target-multi"))
-          return { ...mockTargetPod, id: podId, name: `Target ${podId}` };
-        return null;
-      },
-    );
-    (messageStore.getMessages as any).mockReturnValue(mockMessages);
-    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
-      success: true,
-      summary: "Test summary",
-    });
-    (workflowStateService.checkMultiInputScenario as any).mockReturnValue({
-      isMultiInput: false,
-      requiredSourcePodIds: [],
-    });
-    (pendingTargetStore.hasPendingTarget as any).mockReturnValue(false);
+    setupBasicSpies();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  describe("checkAndTriggerWorkflows 同時處理 auto 和 ai-decide connections", () => {
-    it("正確分組並平行處理兩種 connections", async () => {
-      const mockAutoConnection = createMockConnection({
+  // ============================================================
+  // checkAndTriggerWorkflows - 路由分發
+  // ============================================================
+  describe("checkAndTriggerWorkflows - 路由分發", () => {
+    it("混合 auto + ai-decide connection 時，分別呼叫對應的服務", async () => {
+      const autoConn = makeConnection({
         id: "conn-auto-1",
-        sourcePodId,
-        targetPodId,
         triggerMode: "auto",
       });
-      const mockAiDecideConnection = createMockConnection({
+      const aiConn = makeConnection({
         id: "conn-ai-1",
-        sourcePodId,
         targetPodId: "target-pod-2",
         triggerMode: "ai-decide",
       });
 
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAutoConnection,
-        mockAiDecideConnection,
+      vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([
+        autoConn,
+        aiConn,
       ]);
-      (connectionStore.getById as any).mockImplementation(
-        (cId: string, connId: string) => {
-          if (connId === "conn-auto-1") return mockAutoConnection;
-          if (connId === "conn-ai-1") return mockAiDecideConnection;
-          return null;
-        },
-      );
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
+      vi.spyOn(connectionStore, "getById").mockImplementation(((
+        _cId: string,
+        id: string,
+      ) => {
+        if (id === "conn-auto-1") return autoConn;
+        if (id === "conn-ai-1") return aiConn;
+        return null;
+      }) as any);
+      vi.spyOn(aiDecideService, "decideConnections").mockResolvedValue({
         results: [
-          {
-            connectionId: "conn-ai-1",
-            shouldTrigger: true,
-            reason: "相關任務",
-          },
+          { connectionId: "conn-ai-1", shouldTrigger: true, reason: "相關" },
         ],
         errors: [],
       });
 
+      // 用 spy 驗證兩個路徑都被啟動
+      const autoSpy = vi
+        .spyOn(workflowAutoTriggerService, "processAutoTriggerConnection")
+        .mockResolvedValue(undefined);
+      const aiSpy = vi
+        .spyOn(workflowAiDecideTriggerService, "processAiDecideConnections")
+        .mockResolvedValue(undefined);
+
       await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
+        CANVAS_ID,
+        SOURCE_POD_ID,
       );
 
-      expect(workflowEventEmitter.emitAiDecidePending).toHaveBeenCalledWith(
-        canvasId,
-        ["conn-ai-1"],
-        sourcePodId,
+      expect(autoSpy).toHaveBeenCalledWith(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        autoConn,
+        undefined,
       );
-      expect(aiDecideService.decideConnections).toHaveBeenCalledWith(
-        canvasId,
-        sourcePodId,
-        [mockAiDecideConnection],
+      expect(aiSpy).toHaveBeenCalledWith(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        [aiConn],
+        undefined,
+      );
+    });
+
+    it("沒有 connection 時直接 return，不呼叫任何服務", async () => {
+      vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
+      const autoSpy = vi.spyOn(
+        workflowAutoTriggerService,
+        "processAutoTriggerConnection",
       );
 
-      expect(summaryService.generateSummaryForTarget).toHaveBeenCalled();
+      await workflowExecutionService.checkAndTriggerWorkflows(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+      );
+
+      expect(autoSpy).not.toHaveBeenCalled();
     });
   });
 
-  describe("auto connections 走現有流程不受影響", () => {
-    it("只有 auto connection 時，正常觸發 workflow", async () => {
-      const mockAutoConnection = createMockConnection({
+  // ============================================================
+  // triggerWorkflowWithSummary - connection 狀態設定
+  // ============================================================
+  describe("triggerWorkflowWithSummary - connection 狀態設定", () => {
+    it("觸發前應先將 connection 設為 active，才呼叫 strategy.onTrigger", async () => {
+      const autoConn = makeConnection({
         id: "conn-auto-1",
-        sourcePodId,
-        targetPodId,
         triggerMode: "auto",
       });
+      const mockStrategy = makeStrategy("auto");
 
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAutoConnection,
-      ]);
-      (connectionStore.getById as any).mockReturnValue(mockAutoConnection);
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
-      );
-
-      expect(summaryService.generateSummaryForTarget).toHaveBeenCalledWith(
-        canvasId,
-        sourcePodId,
-        targetPodId,
-        "claude",
-        "sonnet",
-      );
-      expect(aiDecideService.decideConnections).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("ai-decide connections 呼叫 aiDecideService 進行判斷", () => {
-    it("正確呼叫 aiDecideService 並處理批次判斷", async () => {
-      const mockAiDecideConnection = createMockConnection({
-        id: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        triggerMode: "ai-decide",
-      });
-      const aiConn2 = createMockConnection({
-        id: "conn-ai-2",
-        sourcePodId,
-        targetPodId: "target-pod-3",
-        triggerMode: "ai-decide",
-      });
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAiDecideConnection,
-        aiConn2,
-      ]);
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
-        results: [
-          {
-            connectionId: "conn-ai-1",
-            shouldTrigger: true,
-            reason: "相關任務 1",
-          },
-          {
-            connectionId: "conn-ai-2",
-            shouldTrigger: false,
-            reason: "不相關任務 2",
-          },
-        ],
-        errors: [],
-      });
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
-      );
-
-      expect(workflowEventEmitter.emitAiDecidePending).toHaveBeenCalledWith(
-        canvasId,
-        ["conn-ai-1", "conn-ai-2"],
-        sourcePodId,
-      );
-      expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-1",
-        "pending",
-        null,
-      );
-      expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-2",
-        "pending",
-        null,
-      );
-      expect(aiDecideService.decideConnections).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("ai-decide 判斷為觸發時，正確觸發 summary 生成和 target pod chat", () => {
-    it("shouldTrigger: true 時，更新狀態為 approved 並觸發 workflow", async () => {
-      const mockAiDecideConnection = createMockConnection({
-        id: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        triggerMode: "ai-decide",
-      });
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAiDecideConnection,
-      ]);
-      (connectionStore.getById as any).mockReturnValue(mockAiDecideConnection);
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
-        results: [
-          {
-            connectionId: "conn-ai-1",
-            shouldTrigger: true,
-            reason: "上游結果與下游需求相關",
-          },
-        ],
-        errors: [],
-      });
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
-      );
-
-      expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-1",
-        "approved",
-        "上游結果與下游需求相關",
-      );
-      expect(workflowEventEmitter.emitAiDecideResult).toHaveBeenCalledWith({
-        canvasId,
-        connectionId: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        shouldTrigger: true,
-        reason: "上游結果與下游需求相關",
-      });
-      expect(summaryService.generateSummaryForTarget).toHaveBeenCalled();
-    });
-  });
-
-  describe("ai-decide 判斷為不觸發時，不觸發 target pod，發送 rejected 事件", () => {
-    it("shouldTrigger: false 時，更新狀態為 rejected 且不觸發", async () => {
-      const mockAiDecideConnection = createMockConnection({
-        id: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        triggerMode: "ai-decide",
-      });
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAiDecideConnection,
-      ]);
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
-        results: [
-          {
-            connectionId: "conn-ai-1",
-            shouldTrigger: false,
-            reason: "上游產出與下游任務無關",
-          },
-        ],
-        errors: [],
-      });
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
-      );
-
-      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-1",
-        "rejected",
-        "上游產出與下游任務無關",
-      );
-      expect(workflowEventEmitter.emitAiDecideResult).toHaveBeenCalledWith({
-        canvasId,
-        connectionId: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        shouldTrigger: false,
-        reason: "上游產出與下游任務無關",
-      });
-      expect(summaryService.generateSummaryForTarget).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("triggerWorkflowWithSummary forEachMultiInputGroupConnection 群組 active 設定", () => {
-    it("auto 模式：應設定同群所有 auto/ai-decide 連線為 active", async () => {
-      const autoConn1 = createMockConnection({
-        id: "conn-auto-1",
-        sourcePodId,
-        targetPodId,
-        triggerMode: "auto",
-      });
-      const autoConn2 = createMockConnection({
-        id: "conn-auto-2",
-        sourcePodId: "other-source",
-        targetPodId,
-        triggerMode: "auto",
-      });
-
-      (connectionStore.getById as any).mockReturnValue(autoConn1);
-      (connectionStore.findByTargetPodId as any).mockReturnValue([
-        autoConn1,
-        autoConn2,
-      ]);
-
-      await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
-        connectionId: autoConn1.id,
-        summary: "Test summary",
-        isSummarized: true,
-        participatingConnectionIds: undefined,
-        strategy: mockAutoStrategy,
-      });
-
-      expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-auto-1",
-        "active",
-      );
-      expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-auto-2",
-        "active",
-      );
-      const activeCalls = (
-        connectionStore.updateConnectionStatus as any
-      ).mock.calls.filter((call: any[]) => call[2] === "active");
-      expect(activeCalls).toHaveLength(2);
-    });
-
-    it("ai-decide 模式：應設定同群所有 auto/ai-decide 連線為 active", async () => {
-      const aiConn1 = createMockConnection({
-        id: "conn-ai-1",
-        sourcePodId,
-        targetPodId,
-        triggerMode: "ai-decide",
-      });
-      const aiConn2 = createMockConnection({
-        id: "conn-ai-2",
-        sourcePodId: "other-source",
-        targetPodId,
-        triggerMode: "ai-decide",
-      });
-
-      (connectionStore.getById as any).mockReturnValue(aiConn1);
-      (connectionStore.findByTargetPodId as any).mockReturnValue([
-        aiConn1,
-        aiConn2,
-      ]);
-
-      await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
-        connectionId: aiConn1.id,
-        summary: "Test summary",
-        isSummarized: true,
-        participatingConnectionIds: undefined,
-        strategy: mockAiDecideStrategy,
-      });
-
-      expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-1",
-        "active",
-      );
-      expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-2",
-        "active",
-      );
-      const activeCalls = (
-        connectionStore.updateConnectionStatus as any
-      ).mock.calls.filter((call: any[]) => call[2] === "active");
-      expect(activeCalls).toHaveLength(2);
-    });
-
-    it("direct 模式：只設定當前連線為 active", async () => {
-      const directConn = createMockConnection({
-        id: "conn-direct-1",
-        sourcePodId,
-        targetPodId,
-        triggerMode: "direct",
-      });
-
-      (connectionStore.getById as any).mockReturnValue(directConn);
-      (connectionStore.findByTargetPodId as any).mockReturnValue([directConn]);
-
-      await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
-        connectionId: directConn.id,
-        summary: "Test summary",
-        isSummarized: true,
-        participatingConnectionIds: [directConn.id],
-        strategy: mockDirectStrategy,
-      });
-
-      const activeCalls = (
-        connectionStore.updateConnectionStatus as any
-      ).mock.calls.filter((call: any[]) => call[2] === "active");
-      expect(activeCalls).toHaveLength(1);
-      expect(connectionStore.updateConnectionStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-direct-1",
-        "active",
-      );
-    });
-  });
-
-  describe("triggerWorkflowWithSummary 在觸發前將 connection 設為 active", () => {
-    it("呼叫 triggerWorkflowWithSummary 時，strategy.onTrigger 前應呼叫 updateConnectionStatus active", async () => {
-      const mockAutoConnection = createMockConnection({
-        id: "conn-auto-1",
-        sourcePodId,
-        targetPodId,
-        triggerMode: "auto",
-      });
-
-      (connectionStore.getById as any).mockReturnValue(mockAutoConnection);
-      (connectionStore.findBySourcePodId as any).mockReturnValue([]);
-      (connectionStore.findByTargetPodId as any).mockReturnValue([
-        mockAutoConnection,
+      vi.spyOn(connectionStore, "getById").mockReturnValue(autoConn);
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        autoConn,
       ]);
 
       const callOrder: string[] = [];
@@ -560,400 +250,159 @@ describe("WorkflowExecutionService", () => {
           callOrder.push(`updateConnectionStatus:${status}`);
         },
       );
-
-      (mockAutoStrategy.onTrigger as any).mockImplementation(() => {
+      (mockStrategy.onTrigger as any).mockImplementation(() => {
         callOrder.push("onTrigger");
       });
 
       await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
-        connectionId: mockAutoConnection.id,
+        canvasId: CANVAS_ID,
+        connectionId: autoConn.id,
         summary: "Test summary",
         isSummarized: true,
         participatingConnectionIds: undefined,
-        strategy: mockAutoStrategy,
+        strategy: mockStrategy,
       });
 
       const activeIndex = callOrder.indexOf("updateConnectionStatus:active");
       const onTriggerIndex = callOrder.indexOf("onTrigger");
-
       expect(activeIndex).toBeGreaterThanOrEqual(0);
       expect(onTriggerIndex).toBeGreaterThanOrEqual(0);
-      // active 狀態必須在 onTrigger 之前設定
       expect(activeIndex).toBeLessThan(onTriggerIndex);
+    });
+
+    it.each([
+      {
+        label: "auto 模式：設定同群所有 auto/ai-decide 連線為 active",
+        triggerMode: "auto" as const,
+        connections: [
+          { id: "conn-auto-1", triggerMode: "auto" as const },
+          {
+            id: "conn-auto-2",
+            triggerMode: "auto" as const,
+            sourcePodId: "other-source",
+          },
+        ],
+        expectedActiveCount: 2,
+      },
+      {
+        label: "ai-decide 模式：設定同群所有 auto/ai-decide 連線為 active",
+        triggerMode: "ai-decide" as const,
+        connections: [
+          { id: "conn-ai-1", triggerMode: "ai-decide" as const },
+          {
+            id: "conn-ai-2",
+            triggerMode: "ai-decide" as const,
+            sourcePodId: "other-source",
+          },
+        ],
+        expectedActiveCount: 2,
+      },
+      {
+        label: "direct 模式：只設定當前連線為 active",
+        triggerMode: "direct" as const,
+        connections: [{ id: "conn-direct-1", triggerMode: "direct" as const }],
+        expectedActiveCount: 1,
+      },
+    ])("$label", async ({ triggerMode, connections, expectedActiveCount }) => {
+      const mainConn = makeConnection({ id: connections[0].id, triggerMode });
+      const mockStrategy = makeStrategy(triggerMode);
+
+      vi.spyOn(connectionStore, "getById").mockReturnValue(mainConn);
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue(
+        connections.map((c) =>
+          makeConnection({
+            id: c.id,
+            triggerMode: c.triggerMode,
+            sourcePodId: (c as any).sourcePodId ?? SOURCE_POD_ID,
+          }),
+        ),
+      );
+
+      const params =
+        triggerMode === "direct"
+          ? {
+              canvasId: CANVAS_ID,
+              connectionId: mainConn.id,
+              summary: "Test summary",
+              isSummarized: true,
+              participatingConnectionIds: [mainConn.id],
+              strategy: mockStrategy,
+            }
+          : {
+              canvasId: CANVAS_ID,
+              connectionId: mainConn.id,
+              summary: "Test summary",
+              isSummarized: true,
+              participatingConnectionIds: undefined,
+              strategy: mockStrategy,
+            };
+
+      await workflowExecutionService.triggerWorkflowWithSummary(params);
+
+      const activeCalls = (
+        connectionStore.updateConnectionStatus as any
+      ).mock.calls.filter((call: any[]) => call[2] === "active");
+      expect(activeCalls).toHaveLength(expectedActiveCount);
+    });
+
+    it("connection 不存在時直接 return，不觸發 strategy", async () => {
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(connectionStore, "getById").mockReturnValue(undefined);
+
+      await workflowExecutionService.triggerWorkflowWithSummary({
+        canvasId: CANVAS_ID,
+        connectionId: "non-existent",
+        summary: "Test summary",
+        isSummarized: true,
+        participatingConnectionIds: undefined,
+        strategy: mockStrategy,
+      });
+
+      expect(mockStrategy.onTrigger).not.toHaveBeenCalled();
     });
   });
 
-  describe("混合情境中 auto 和 ai-decide 平行處理、互不等待", () => {
-    it("auto 和 ai-decide 同時執行，互不阻塞", async () => {
-      const mockAutoConnection = createMockConnection({
-        id: "conn-auto-1",
-        sourcePodId,
-        targetPodId,
-        triggerMode: "auto",
-      });
-      const autoConn2 = createMockConnection({
-        id: "conn-auto-2",
-        sourcePodId,
-        targetPodId: "target-pod-3",
-        triggerMode: "auto",
-      });
-      const mockAiDecideConnection = createMockConnection({
+  // ============================================================
+  // ai-decide 判斷流程（通過 workflowAiDecideTriggerService）
+  // ============================================================
+  describe("ai-decide 判斷流程", () => {
+    it("ai-decide approved → 觸發 workflow（通過 aiDecideTriggerService）", async () => {
+      const aiConn = makeConnection({
         id: "conn-ai-1",
-        sourcePodId,
         targetPodId: "target-pod-2",
         triggerMode: "ai-decide",
       });
 
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAutoConnection,
-        autoConn2,
-        mockAiDecideConnection,
-      ]);
-      (connectionStore.getById as any).mockImplementation(
-        (cId: string, connId: string) => {
-          if (connId === "conn-auto-1") return mockAutoConnection;
-          if (connId === "conn-auto-2") return autoConn2;
-          if (connId === "conn-ai-1") return mockAiDecideConnection;
-          return null;
-        },
-      );
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
+      vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([aiConn]);
+      vi.spyOn(aiDecideService, "decideConnections").mockResolvedValue({
         results: [
           { connectionId: "conn-ai-1", shouldTrigger: true, reason: "相關" },
         ],
         errors: [],
       });
+      const processSpy = vi
+        .spyOn(workflowAiDecideTriggerService, "processAiDecideConnections")
+        .mockResolvedValue(undefined);
 
       await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
+        CANVAS_ID,
+        SOURCE_POD_ID,
       );
 
-      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(summaryService.generateSummaryForTarget).toHaveBeenCalledTimes(3);
-
-      expect(aiDecideService.decideConnections).toHaveBeenCalledTimes(1);
-      expect(workflowEventEmitter.emitAiDecideResult).toHaveBeenCalled();
-    });
-  });
-
-  describe("多輸入場景中 ai-decide rejected 導致 target 永不觸發", () => {
-    it("多輸入場景中，rejected source 導致 target 永不觸發", async () => {
-      const targetPodWithMultiInput = "target-multi-input";
-      const aiConn = createMockConnection({
-        id: "conn-ai-1",
-        sourcePodId,
-        targetPodId: targetPodWithMultiInput,
-        triggerMode: "ai-decide",
-      });
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([aiConn]);
-
-      (workflowStateService.checkMultiInputScenario as any).mockReturnValue({
-        isMultiInput: true,
-        requiredSourcePodIds: [sourcePodId, "another-source"],
-      });
-
-      (pendingTargetStore.hasPendingTarget as any).mockReturnValue(true);
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
-        results: [
-          { connectionId: "conn-ai-1", shouldTrigger: false, reason: "不相關" },
-        ],
-        errors: [],
-      });
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
-      );
-
-      expect(pendingTargetStore.recordSourceRejection).toHaveBeenCalledWith(
-        targetPodWithMultiInput,
-        sourcePodId,
-        "不相關",
-      );
-
-      expect(summaryService.generateSummaryForTarget).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("AI Decide 錯誤處理", () => {
-    it("aiDecideService 回傳 errors 時，正確更新狀態並發送 error 事件", async () => {
-      const mockAiDecideConnection = createMockConnection({
-        id: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        triggerMode: "ai-decide",
-      });
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([
-        mockAiDecideConnection,
-      ]);
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
-        results: [],
-        errors: [{ connectionId: "conn-ai-1", error: "AI decision failed" }],
-      });
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        sourcePodId,
-      );
-
-      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(connectionStore.updateDecideStatus).toHaveBeenCalledWith(
-        canvasId,
-        "conn-ai-1",
-        "error",
-        "錯誤：AI decision failed",
-      );
-      expect(workflowEventEmitter.emitAiDecideError).toHaveBeenCalledWith({
-        canvasId,
-        connectionId: "conn-ai-1",
-        sourcePodId,
-        targetPodId: "target-pod-2",
-        error: "錯誤：AI decision failed",
-      });
-    });
-  });
-
-  describe("多輸入 auto 場景在 target Pod busy 時進入 queue", () => {
-    it("所有來源都回應完畢且 target Pod 為 chatting 時，應 enqueue 而非直接觸發", async () => {
-      const source1PodId = "source-pod-1";
-      const source2PodId = "source-pod-2";
-      const multiInputTargetPodId = "target-multi-input";
-
-      const conn1: Connection = {
-        id: "conn-auto-1",
-        sourcePodId: source1PodId,
-        sourceAnchor: "right",
-        targetPodId: multiInputTargetPodId,
-        targetAnchor: "left",
-        triggerMode: "auto",
-        decideStatus: "none",
-        decideReason: null,
-        connectionStatus: "idle",
-      };
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([conn1]);
-      (connectionStore.getById as any).mockReturnValue(conn1);
-
-      (podStore.getById as any).mockImplementation(
-        (cId: string, podId: string) => {
-          if (podId === multiInputTargetPodId) {
-            return createMockPod({ id: podId, status: "chatting" });
-          }
-          return createMockPod({ id: podId, status: "idle" });
-        },
-      );
-
-      (workflowStateService.checkMultiInputScenario as any).mockReturnValue({
-        isMultiInput: true,
-        requiredSourcePodIds: [source1PodId, source2PodId],
-      });
-
-      (pendingTargetStore.hasPendingTarget as any).mockReturnValue(false);
-
-      (pendingTargetStore.recordSourceCompletion as any).mockReturnValue({
-        allSourcesResponded: true,
-        hasRejection: false,
-      });
-
-      (pendingTargetStore.getCompletedSummaries as any).mockReturnValue(
-        new Map([
-          [source1PodId, "Summary from source 1"],
-          [source2PodId, "Summary from source 2"],
-        ]),
-      );
-
-      (
-        workflowMultiInputService.handleMultiInputForConnection as any
-      ).mockImplementation(
-        async (params: {
-          canvasId: string;
-          sourcePodId: string;
-          connection: Connection;
-          requiredSourcePodIds: string[];
-          summary: string;
-          triggerMode: "auto" | "ai-decide";
-        }) => {
-          const targetPod = podStore.getById(
-            params.canvasId,
-            params.connection.targetPodId,
-          );
-          if (targetPod && targetPod.status === "chatting") {
-            workflowQueueService.enqueue({
-              canvasId: params.canvasId,
-              connectionId: params.connection.id,
-              sourcePodId: params.sourcePodId,
-              targetPodId: params.connection.targetPodId,
-              summary: "merged summary",
-              isSummarized: true,
-              triggerMode: params.triggerMode,
-            });
-            pendingTargetStore.clearPendingTarget(
-              params.connection.targetPodId,
-            );
-          }
-        },
-      );
-
-      const enqueueSpy = vi.spyOn(workflowQueueService, "enqueue");
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        source1PodId,
-      );
-
-      expect(enqueueSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          canvasId,
-          connectionId: conn1.id,
-          targetPodId: multiInputTargetPodId,
-          isSummarized: true,
-          triggerMode: "auto",
-        }),
-      );
-
-      expect(pendingTargetStore.clearPendingTarget).toHaveBeenCalledWith(
-        multiInputTargetPodId,
-      );
-    });
-  });
-
-  describe("多輸入 AI Decide 場景在 target Pod busy 時進入 queue", () => {
-    it("所有來源都回應完畢且 target Pod 為 chatting 時，應 enqueue 而非直接觸發", async () => {
-      const source1PodId = "source-pod-1";
-      const source2PodId = "source-pod-2";
-      const multiInputTargetPodId = "target-multi-input";
-
-      const aiConn: Connection = {
-        id: "conn-ai-1",
-        sourcePodId: source1PodId,
-        sourceAnchor: "right",
-        targetPodId: multiInputTargetPodId,
-        targetAnchor: "left",
-        triggerMode: "ai-decide",
-        decideStatus: "none",
-        decideReason: null,
-        connectionStatus: "idle",
-      };
-
-      (connectionStore.findBySourcePodId as any).mockReturnValue([aiConn]);
-      (connectionStore.getById as any).mockReturnValue(aiConn);
-
-      (podStore.getById as any).mockImplementation(
-        (cId: string, podId: string) => {
-          if (podId === multiInputTargetPodId) {
-            return createMockPod({ id: podId, status: "chatting" });
-          }
-          return createMockPod({ id: podId, status: "idle" });
-        },
-      );
-
-      (workflowStateService.checkMultiInputScenario as any).mockReturnValue({
-        isMultiInput: true,
-        requiredSourcePodIds: [source1PodId, source2PodId],
-      });
-
-      (pendingTargetStore.hasPendingTarget as any).mockReturnValue(false);
-
-      (aiDecideService.decideConnections as any).mockResolvedValue({
-        results: [
-          { connectionId: aiConn.id, shouldTrigger: true, reason: "相關任務" },
-        ],
-        errors: [],
-      });
-
-      (pendingTargetStore.recordSourceCompletion as any).mockReturnValue({
-        allSourcesResponded: true,
-        hasRejection: false,
-      });
-
-      (pendingTargetStore.getCompletedSummaries as any).mockReturnValue(
-        new Map([
-          [source1PodId, "Summary from source 1"],
-          [source2PodId, "Summary from source 2"],
-        ]),
-      );
-
-      (
-        workflowMultiInputService.handleMultiInputForConnection as any
-      ).mockImplementation(
-        async (params: {
-          canvasId: string;
-          sourcePodId: string;
-          connection: Connection;
-          requiredSourcePodIds: string[];
-          summary: string;
-          triggerMode: "auto" | "ai-decide";
-        }) => {
-          const targetPod = podStore.getById(
-            params.canvasId,
-            params.connection.targetPodId,
-          );
-          if (targetPod && targetPod.status === "chatting") {
-            workflowQueueService.enqueue({
-              canvasId: params.canvasId,
-              connectionId: params.connection.id,
-              sourcePodId: params.sourcePodId,
-              targetPodId: params.connection.targetPodId,
-              summary: "merged summary",
-              isSummarized: true,
-              triggerMode: params.triggerMode,
-            });
-            pendingTargetStore.clearPendingTarget(
-              params.connection.targetPodId,
-            );
-          }
-        },
-      );
-
-      const enqueueSpy = vi.spyOn(workflowQueueService, "enqueue");
-
-      await workflowExecutionService.checkAndTriggerWorkflows(
-        canvasId,
-        source1PodId,
-      );
-
-      // mock impl 為 async，以多次 microtask flush 代替 setTimeout 避免時間依賴
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(enqueueSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          canvasId,
-          connectionId: aiConn.id,
-          targetPodId: multiInputTargetPodId,
-          isSummarized: true,
-          triggerMode: "ai-decide",
-        }),
-      );
-
-      expect(pendingTargetStore.clearPendingTarget).toHaveBeenCalledWith(
-        multiInputTargetPodId,
+      expect(processSpy).toHaveBeenCalledWith(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        [aiConn],
+        undefined,
       );
     });
   });
 });
 
-// generateSummaryWithFallback 中的 runContext pod instance 狀態管理
-// 從 workflowExecutionService 單獨抽出，因為需要 mock runExecutionService
-import { runExecutionService } from "../../src/services/workflow/runExecutionService.js";
-import { createMockRunContext } from "../mocks/workflowTestFactories.js";
+// ─── generateSummaryWithFallback runContext 狀態管理 ─────────────────────────
 
 describe("WorkflowExecutionService.generateSummaryWithFallback runContext 狀態管理", () => {
-  const { canvasId, sourcePodId, targetPodId } = TEST_IDS;
-  const mockRunContext = createMockRunContext();
+  const mockRunContext = makeRunContext();
 
   const mockAutoTriggerServiceForFallback = {
     processAutoTriggerConnection: vi.fn(),
@@ -961,100 +410,105 @@ describe("WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
     init: vi.fn(),
   };
 
-  const mockPipelineForFallback = {
-    execute: vi.fn(),
-    init: vi.fn(),
-  };
-
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.spyOn(logger, "log").mockImplementation(() => {});
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
+    vi.spyOn(podStore, "getById").mockReturnValue(makePod(SOURCE_POD_ID));
+    vi.spyOn(runExecutionService, "summarizingPodInstance").mockImplementation(
+      () => {},
+    );
+    vi.spyOn(runExecutionService, "settlePodTrigger").mockImplementation(
+      () => {},
+    );
+    vi.spyOn(runExecutionService, "errorPodInstance").mockImplementation(
+      () => {},
+    );
 
     workflowExecutionService.init({
-      pipeline: mockPipelineForFallback as any,
+      pipeline: { execute: vi.fn().mockResolvedValue(undefined) } as any,
       aiDecideTriggerService: { processAiDecideConnections: vi.fn() } as any,
       autoTriggerService: mockAutoTriggerServiceForFallback as any,
-      directTriggerService: createMockStrategy("direct"),
+      directTriggerService: makeStrategy("direct"),
     });
-
-    (podStore.getById as any).mockReturnValue(
-      createMockPod({ id: sourcePodId, name: "Source Pod", status: "idle" }),
-    );
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("摘要成功時呼叫 settlePodTrigger（帶 pathway）", async () => {
-    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
-      success: true,
-      summary: "摘要內容",
-    });
+  it.each([
+    {
+      label: "摘要成功 → 呼叫 settlePodTrigger（帶 pathway）",
+      summaryResult: { success: true, summary: "摘要內容" },
+      fallback: null,
+      pathway: "auto" as const,
+      expectSettle: true,
+      expectError: false,
+      expectNull: false,
+    },
+    {
+      label: "摘要失敗但 fallback 有值 → 呼叫 settlePodTrigger",
+      summaryResult: { success: false, summary: "", error: "摘要失敗" },
+      fallback: "fallback 內容",
+      pathway: "direct" as const,
+      expectSettle: true,
+      expectError: false,
+      expectNull: false,
+    },
+  ])(
+    "$label",
+    async ({ summaryResult, fallback, pathway, expectSettle, expectError }) => {
+      vi.spyOn(summaryService, "generateSummaryForTarget").mockResolvedValue(
+        summaryResult as any,
+      );
+      (
+        mockAutoTriggerServiceForFallback.getLastAssistantMessage as any
+      ).mockReturnValue(fallback);
 
-    await workflowExecutionService.generateSummaryWithFallback(
-      canvasId,
-      sourcePodId,
-      targetPodId,
-      "claude",
-      "sonnet",
-      mockRunContext,
-      "auto",
-    );
+      await workflowExecutionService.generateSummaryWithFallback(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        TARGET_POD_ID,
+        "claude",
+        "sonnet",
+        mockRunContext,
+        pathway,
+      );
 
-    expect(runExecutionService.summarizingPodInstance).toHaveBeenCalledWith(
-      mockRunContext,
-      sourcePodId,
-    );
-    expect(runExecutionService.settlePodTrigger).toHaveBeenCalledWith(
-      mockRunContext,
-      sourcePodId,
-      "auto",
-    );
-    expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
-  });
+      expect(runExecutionService.summarizingPodInstance).toHaveBeenCalledWith(
+        mockRunContext,
+        SOURCE_POD_ID,
+      );
+      if (expectSettle) {
+        expect(runExecutionService.settlePodTrigger).toHaveBeenCalledWith(
+          mockRunContext,
+          SOURCE_POD_ID,
+          pathway,
+        );
+      }
+      if (expectError) {
+        expect(runExecutionService.errorPodInstance).toHaveBeenCalled();
+      } else {
+        expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
+      }
+    },
+  );
 
-  it("摘要失敗但 fallback 有值時呼叫 settlePodTrigger（帶 pathway）", async () => {
-    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
+  it("摘要失敗且 fallback 為 null → 呼叫 errorPodInstance，返回 null", async () => {
+    vi.spyOn(summaryService, "generateSummaryForTarget").mockResolvedValue({
       success: false,
       summary: "",
       error: "摘要失敗",
-    });
-    (
-      mockAutoTriggerServiceForFallback.getLastAssistantMessage as any
-    ).mockReturnValue("fallback 內容");
-
-    await workflowExecutionService.generateSummaryWithFallback(
-      canvasId,
-      sourcePodId,
-      targetPodId,
-      "claude",
-      "sonnet",
-      mockRunContext,
-      "direct",
-    );
-
-    expect(runExecutionService.settlePodTrigger).toHaveBeenCalledWith(
-      mockRunContext,
-      sourcePodId,
-      "direct",
-    );
-    expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
-  });
-
-  it("摘要失敗且 fallback 為 null 時呼叫 errorPodInstance", async () => {
-    (summaryService.generateSummaryForTarget as any).mockResolvedValue({
-      success: false,
-      summary: "",
-      error: "摘要失敗",
-    });
+    } as any);
     (
       mockAutoTriggerServiceForFallback.getLastAssistantMessage as any
     ).mockReturnValue(null);
 
     const result = await workflowExecutionService.generateSummaryWithFallback(
-      canvasId,
-      sourcePodId,
-      targetPodId,
+      CANVAS_ID,
+      SOURCE_POD_ID,
+      TARGET_POD_ID,
       "claude",
       "sonnet",
       mockRunContext,
@@ -1063,7 +517,7 @@ describe("WorkflowExecutionService.generateSummaryWithFallback runContext 狀態
     expect(result).toBeNull();
     expect(runExecutionService.errorPodInstance).toHaveBeenCalledWith(
       mockRunContext,
-      sourcePodId,
+      SOURCE_POD_ID,
       "無法生成摘要",
     );
     expect(runExecutionService.settlePodTrigger).not.toHaveBeenCalled();

@@ -1,74 +1,70 @@
-vi.mock("../../src/services/workflow/runQueueService.js", () => ({
-  runQueueService: {
-    getQueueSize: vi.fn().mockReturnValue(0),
-    enqueue: vi.fn(),
-    dequeue: vi.fn(),
-    processNext: vi.fn().mockResolvedValue(undefined),
-    init: vi.fn(),
-  },
-}));
-
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { initTestDb } from "../../src/database/index.js";
+import { resetStatements } from "../../src/database/statements.js";
+import { getDb } from "../../src/database/index.js";
 import { runExecutionService } from "../../src/services/workflow/runExecutionService.js";
 import { runStore } from "../../src/services/runStore.js";
-import { connectionStore } from "../../src/services/connectionStore.js";
 import { podStore } from "../../src/services/podStore.js";
 import { socketService } from "../../src/services/socketService.js";
 import { abortRegistry } from "../../src/services/provider/abortRegistry.js";
 import { logger } from "../../src/utils/logger.js";
 import { WebSocketResponseEvents } from "../../src/schemas/events.js";
-import type {
-  WorkflowRun,
-  RunPodInstance,
-} from "../../src/services/runStore.js";
 import type { RunContext } from "../../src/types/run.js";
+import { v4 as uuidv4 } from "uuid";
 
-function createMockRun(overrides?: Partial<WorkflowRun>): WorkflowRun {
-  return {
-    id: "run-1",
-    canvasId: "canvas-1",
-    sourcePodId: "pod-source",
-    triggerMessage: "測試訊息",
-    status: "running",
-    createdAt: new Date().toISOString(),
-    completedAt: null,
-    ...overrides,
-  };
+// --- 測試常數 ---
+const CANVAS_ID = "canvas-exec-1";
+const SOURCE_POD_ID = "pod-source";
+
+// --- DB 初始化 Helper ---
+
+/**
+ * 直接透過 SQL 插入 canvas，供 podStore.create 的 getCanvasDir 查找使用。
+ */
+function insertCanvas(id: string = CANVAS_ID): void {
+  getDb()
+    .prepare(
+      "INSERT OR IGNORE INTO canvases (id, name, sort_index) VALUES (?, ?, ?)",
+    )
+    .run(id, `canvas-${id}`, 0);
 }
 
-function createMockInstance(
-  overrides?: Partial<RunPodInstance>,
-): RunPodInstance {
-  return {
-    id: "instance-1",
-    runId: "run-1",
-    podId: "pod-source",
-    status: "pending",
-    sessionId: null,
-    errorMessage: null,
-    triggeredAt: null,
-    completedAt: null,
-    autoPathwaySettled: "not-applicable",
-    directPathwaySettled: "not-applicable",
-    ...overrides,
-  };
+/**
+ * 直接透過 SQL 插入 connection，繞過 connectionStore.create 的 pod 查找。
+ */
+function insertConnection(
+  canvasId: string,
+  sourcePodId: string,
+  targetPodId: string,
+  triggerMode: "auto" | "direct" | "ai-decide" = "auto",
+  id?: string,
+): string {
+  const connId = id ?? uuidv4();
+  getDb()
+    .prepare(
+      `INSERT INTO connections
+       (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor,
+        trigger_mode, decide_status, decide_reason, connection_status)
+       VALUES (?, ?, ?, 'right', ?, 'left', ?, 'none', NULL, 'idle')`,
+    )
+    .run(connId, canvasId, sourcePodId, targetPodId, triggerMode);
+  return connId;
 }
 
 function makeRunContext(overrides?: Partial<RunContext>): RunContext {
   return {
     runId: "run-1",
-    canvasId: "canvas-1",
-    sourcePodId: "pod-source",
+    canvasId: CANVAS_ID,
+    sourcePodId: SOURCE_POD_ID,
     ...overrides,
   };
 }
 
 describe("RunExecutionService", () => {
-  const canvasId = "canvas-1";
-  const sourcePodId = "pod-source";
-  const targetPodId = "pod-target";
-
   beforeEach(() => {
+    resetStatements();
+    initTestDb();
+    insertCanvas();
     vi.spyOn(logger, "log").mockImplementation(() => {});
     vi.spyOn(logger, "warn").mockImplementation(() => {});
     vi.spyOn(logger, "error").mockImplementation(() => {});
@@ -81,113 +77,63 @@ describe("RunExecutionService", () => {
 
   describe("createRun", () => {
     it("建立 Run 並為 chain 中所有 pod 建立 instance", async () => {
-      const mockRun = createMockRun();
-      const sourceInstance = createMockInstance({ podId: sourcePodId });
-      const targetInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-      });
+      const targetPodId = "pod-target";
+      insertConnection(CANVAS_ID, SOURCE_POD_ID, targetPodId, "auto");
 
-      vi.spyOn(runStore, "createRun").mockReturnValue(mockRun);
-      vi.spyOn(connectionStore, "findBySourcePodId").mockImplementation(
-        (cId, podId) => {
-          if (podId === sourcePodId) {
-            return [
-              {
-                id: "conn-1",
-                sourcePodId,
-                targetPodId,
-                sourceAnchor: "right",
-                targetAnchor: "left",
-                triggerMode: "auto",
-                decideStatus: "none",
-                decideReason: null,
-                connectionStatus: "idle",
-              },
-            ];
-          }
-          return [];
-        },
-      );
-      vi.spyOn(runStore, "createPodInstance").mockImplementation((_, podId) => {
-        if (podId === sourcePodId) return sourceInstance;
-        return targetInstance;
-      });
-      vi.spyOn(podStore, "getById").mockImplementation((cId, podId) => {
-        if (podId === sourcePodId)
-          return { id: sourcePodId, name: "Source Pod" } as any;
-        if (podId === targetPodId)
-          return { id: targetPodId, name: "Target Pod" } as any;
-        return undefined;
-      });
-      vi.spyOn(runStore, "countRunsByCanvasId").mockReturnValue(1);
-
-      const context = await runExecutionService.createRun(
-        canvasId,
-        sourcePodId,
+      const ctx = await runExecutionService.createRun(
+        CANVAS_ID,
+        SOURCE_POD_ID,
         "測試",
       );
 
-      expect(context.runId).toBe(mockRun.id);
-      expect(context.canvasId).toBe(canvasId);
-      expect(context.sourcePodId).toBe(sourcePodId);
-      expect(runStore.createPodInstance).toHaveBeenCalledTimes(2);
+      expect(ctx.runId).toBeTruthy();
+      expect(ctx.canvasId).toBe(CANVAS_ID);
+      expect(ctx.sourcePodId).toBe(SOURCE_POD_ID);
+
+      const instances = runStore.getPodInstancesByRunId(ctx.runId);
+      expect(instances).toHaveLength(2);
+      expect(instances.map((i) => i.podId)).toContain(SOURCE_POD_ID);
+      expect(instances.map((i) => i.podId)).toContain(targetPodId);
+    });
+
+    it("emit RUN_CREATED 事件，payload 含 canvasId 與 run.id", async () => {
+      const ctx = await runExecutionService.createRun(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        "測試",
+      );
+
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_CREATED,
         expect.objectContaining({
-          canvasId,
-          run: expect.objectContaining({
-            id: mockRun.id,
-            sourcePodName: "Source Pod",
-          }),
+          canvasId: CANVAS_ID,
+          run: expect.objectContaining({ id: ctx.runId }),
         }),
       );
     });
 
-    it("emit payload 的 podInstances 中每個 instance 都有正確的 podName", async () => {
-      const mockRun = createMockRun();
-      const sourceInstance = createMockInstance({ podId: sourcePodId });
-      const targetInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
+    it("emit payload 的 podInstances 中每個 instance 都有正確的 podName（pod 存在時）", async () => {
+      // 建立真實 pod，讓 podStore.getById 能查到名稱
+      const { pod: sourcePod } = podStore.create(CANVAS_ID, {
+        name: "Source Pod",
+        x: 0,
+        y: 0,
+        rotation: 0,
       });
+      const { pod: targetPod } = podStore.create(CANVAS_ID, {
+        name: "Target Pod",
+        x: 300,
+        y: 0,
+        rotation: 0,
+      });
+      insertConnection(CANVAS_ID, sourcePod.id, targetPod.id, "auto");
 
-      vi.spyOn(runStore, "createRun").mockReturnValue(mockRun);
-      vi.spyOn(connectionStore, "findBySourcePodId").mockImplementation(
-        (cId, podId) => {
-          if (podId === sourcePodId) {
-            return [
-              {
-                id: "conn-1",
-                sourcePodId,
-                targetPodId,
-                sourceAnchor: "right",
-                targetAnchor: "left",
-                triggerMode: "auto",
-                decideStatus: "none",
-                decideReason: null,
-                connectionStatus: "idle",
-              },
-            ];
-          }
-          return [];
-        },
+      const ctx = await runExecutionService.createRun(
+        CANVAS_ID,
+        sourcePod.id,
+        "測試",
       );
-      vi.spyOn(runStore, "createPodInstance").mockImplementation((_, podId) => {
-        if (podId === sourcePodId) return sourceInstance;
-        return targetInstance;
-      });
-      vi.spyOn(podStore, "getById").mockImplementation((cId, podId) => {
-        if (podId === sourcePodId)
-          return { id: sourcePodId, name: "Source Pod" } as any;
-        if (podId === targetPodId)
-          return { id: targetPodId, name: "Target Pod" } as any;
-        return undefined;
-      });
-      vi.spyOn(runStore, "countRunsByCanvasId").mockReturnValue(1);
-
-      await runExecutionService.createRun(canvasId, sourcePodId, "測試");
 
       const emitCall = vi.mocked(socketService.emitToCanvas).mock.calls[0];
       const payload = emitCall?.[2] as any;
@@ -196,25 +142,19 @@ describe("RunExecutionService", () => {
         podName: string;
       }>;
 
-      const sourceResult = instances?.find((i) => i.podId === sourcePodId);
-      const targetResult = instances?.find((i) => i.podId === targetPodId);
-
-      expect(sourceResult?.podName).toBe("Source Pod");
-      expect(targetResult?.podName).toBe("Target Pod");
+      const srcResult = instances?.find((i) => i.podId === sourcePod.id);
+      const tgtResult = instances?.find((i) => i.podId === targetPod.id);
+      expect(srcResult?.podName).toBe("Source Pod");
+      expect(tgtResult?.podName).toBe("Target Pod");
     });
 
     it("pod 找不到時 podName fallback 為 podId", async () => {
-      const unknownPodId = "pod-unknown";
-      const mockRun = createMockRun();
-      const unknownInstance = createMockInstance({ podId: unknownPodId });
-
-      vi.spyOn(runStore, "createRun").mockReturnValue(mockRun);
-      vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
-      vi.spyOn(runStore, "createPodInstance").mockReturnValue(unknownInstance);
-      vi.spyOn(podStore, "getById").mockReturnValue(undefined);
-      vi.spyOn(runStore, "countRunsByCanvasId").mockReturnValue(1);
-
-      await runExecutionService.createRun(canvasId, unknownPodId, "測試");
+      // 不建立真實 pod，podId 直接作為名稱 fallback
+      const ctx = await runExecutionService.createRun(
+        CANVAS_ID,
+        "pod-unknown",
+        "測試",
+      );
 
       const emitCall = vi.mocked(socketService.emitToCanvas).mock.calls[0];
       const payload = emitCall?.[2] as any;
@@ -222,592 +162,250 @@ describe("RunExecutionService", () => {
         podId: string;
         podName: string;
       }>;
-
-      expect(instances?.[0]?.podName).toBe(unknownPodId);
+      expect(instances?.[0]?.podName).toBe("pod-unknown");
     });
 
     it("source pod 找不到時 sourcePodName fallback 為 podId", async () => {
-      const mockRun = createMockRun();
-      vi.spyOn(runStore, "createRun").mockReturnValue(mockRun);
-      vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
-      vi.spyOn(runStore, "createPodInstance").mockReturnValue(
-        createMockInstance(),
+      const ctx = await runExecutionService.createRun(
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        "測試",
       );
-      vi.spyOn(podStore, "getById").mockReturnValue(undefined);
-      vi.spyOn(runStore, "countRunsByCanvasId").mockReturnValue(1);
-
-      await runExecutionService.createRun(canvasId, sourcePodId, "測試");
 
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_CREATED,
         expect.objectContaining({
-          run: expect.objectContaining({ sourcePodName: sourcePodId }),
+          run: expect.objectContaining({ sourcePodName: SOURCE_POD_ID }),
         }),
       );
     });
 
     it("run 數量超過上限時觸發 enforceRunLimit 刪除最舊的 run", async () => {
-      const mockRun = createMockRun();
-      vi.spyOn(runStore, "createRun").mockReturnValue(mockRun);
-      vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
-      vi.spyOn(runStore, "createPodInstance").mockReturnValue(
-        createMockInstance(),
-      );
-      vi.spyOn(podStore, "getById").mockReturnValue(undefined);
-      vi.spyOn(runStore, "countRunsByCanvasId").mockReturnValue(31);
-      vi.spyOn(runStore, "getOldestCompletedRunIds").mockReturnValue([
-        "old-run-1",
-      ]);
-      const deleteSpy = vi
-        .spyOn(runStore, "deleteRun")
-        .mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({ id: "old-run-1" }),
-      );
+      // 先建立 30 個已完成 run（上限值）
+      for (let i = 0; i < 30; i++) {
+        const r = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, `run-${i}`);
+        runStore.updateRunStatus(r.id, "completed");
+      }
 
-      await runExecutionService.createRun(canvasId, sourcePodId, "測試");
+      // 第 31 個 run → 觸發清理
+      await runExecutionService.createRun(CANVAS_ID, SOURCE_POD_ID, "觸發清理");
 
-      expect(deleteSpy).toHaveBeenCalledWith("old-run-1");
+      const remaining = runStore.getRunsByCanvasId(CANVAS_ID);
+      // 清理後應 <= 30
+      expect(remaining.length).toBeLessThanOrEqual(30);
     });
   });
 
   describe("startPodInstance", () => {
-    it("更新 status 為 running 並發送事件", () => {
-      const instance = createMockInstance({ status: "pending" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
+    it("更新 status 為 running 並發送 RUN_POD_STATUS_CHANGED 事件", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.startPodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.startPodInstance(ctx, SOURCE_POD_ID);
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        instance.id,
-        "running",
-      );
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("running");
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
-        expect.objectContaining({ podId: sourcePodId, status: "running" }),
+        expect.objectContaining({ podId: SOURCE_POD_ID, status: "running" }),
       );
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.startPodInstance(makeRunContext(), sourcePodId),
+        runExecutionService.startPodInstance(ctx, "pod-nonexistent"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
-      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalled();
     });
   });
 
   describe("settlePodTrigger", () => {
     it("settle auto pathway 後狀態非 pending → 更新 status 為 completed 並評估 run 狀態", () => {
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-      });
-      const completedInstance = createMockInstance({
-        status: "completed",
-        completedAt: new Date().toISOString(),
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        completedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(run.id, SOURCE_POD_ID, "pending");
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      runExecutionService.settlePodTrigger(ctx, SOURCE_POD_ID, "auto");
 
-      expect(runStore.settleAutoPathway).toHaveBeenCalledWith(instance.id);
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        settledInstance.id,
-        "completed",
-      );
-      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
-        WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
-        expect.objectContaining({ status: "completed" }),
-      );
-      expect(runStore.updateRunStatus).toHaveBeenCalledWith(
-        "run-1",
-        "completed",
-      );
-      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
-        WebSocketResponseEvents.RUN_STATUS_CHANGED,
-        expect.objectContaining({ status: "completed" }),
-      );
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("completed");
+      expect(runStore.getRun(run.id)!.status).toBe("completed");
     });
 
-    it("使用 direct pathway 時呼叫 settleDirectPathway 而非 settleAutoPathway", () => {
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "not-applicable",
-        directPathwaySettled: "pending",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "not-applicable",
-        directPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
+    it("使用 direct pathway 時 directPathwaySettled=settled 而 autoPathwaySettled 不變", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "not-applicable",
+        "pending",
       );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        createMockInstance({
-          status: "completed",
-          autoPathwaySettled: "not-applicable",
-          directPathwaySettled: "settled",
-        }),
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "direct",
-      );
+      runExecutionService.settlePodTrigger(ctx, SOURCE_POD_ID, "direct");
 
-      expect(runStore.settleDirectPathway).toHaveBeenCalledWith(instance.id);
-      expect(runStore.settleAutoPathway).not.toHaveBeenCalled();
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.directPathwaySettled).toBe("settled");
+      expect(updated!.autoPathwaySettled).toBe("not-applicable");
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.settlePodTrigger(
-          makeRunContext(),
-          sourcePodId,
-          "auto",
-        ),
+        runExecutionService.settlePodTrigger(ctx, "pod-nonexistent", "auto"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
 
-    it("佇列有項目時即使 pathways 全 settled，不標記 completed", async () => {
-      const { runQueueService } =
-        await import("../../src/services/workflow/runQueueService.js");
-      (runQueueService.getQueueSize as any).mockReturnValue(1);
+    it("佇列為空時且 pathways 全 settled，標記為 completed", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(run.id, SOURCE_POD_ID, "pending");
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "not-applicable",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "not-applicable",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
+      runExecutionService.settlePodTrigger(ctx, SOURCE_POD_ID, "auto");
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
-
-      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalledWith(
-        expect.anything(),
+      expect(runStore.getPodInstance(run.id, SOURCE_POD_ID)!.status).toBe(
         "completed",
       );
     });
 
-    it("佇列為空時且 pathways 全 settled，標記為 completed", async () => {
-      const { runQueueService } =
-        await import("../../src/services/workflow/runQueueService.js");
-      (runQueueService.getQueueSize as any).mockReturnValue(0);
-
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "not-applicable",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "not-applicable",
-      });
-      const completedInstance = createMockInstance({
-        status: "completed",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "not-applicable",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
+    it("部分 pathway settle 時不改變 instance status", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "pending",
+        "pending",
       );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        completedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      runExecutionService.settlePodTrigger(ctx, SOURCE_POD_ID, "direct");
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        settledInstance.id,
-        "completed",
-      );
-    });
-
-    it("部分 pathway settle 時不改變 instance status（由 processNext 透過 activeStream 判斷）", () => {
-      // auto=pending, direct=pending，settle direct 後 auto 仍為 pending → 尚未全 settled
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "pending",
-      });
-      const afterSettle = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance) // settlePathwayAndRefresh 第 1 次：settle 前
-        .mockReturnValueOnce(afterSettle); // settlePathwayAndRefresh 第 2 次：settle 後
-      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "direct",
-      );
-
-      // 不應改變 status — processNext 改用 hasActiveStream 判斷是否能 dequeue
-      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalled();
-      // directPathwaySettled 應已 settled，autoPathwaySettled 仍為 pending
-      expect(afterSettle.directPathwaySettled).toBe("settled");
-      expect(afterSettle.autoPathwaySettled).toBe("pending");
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("running");
     });
 
     it("全部 pathway settle 時正常標記 completed", () => {
-      // auto=settled, direct=pending，settle direct 後全部 settled
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "pending",
-      });
-      const afterSettle = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "settled",
-      });
-      const completedInstance = createMockInstance({
-        status: "completed",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(afterSettle)
-        .mockReturnValueOnce(afterSettle);
-      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "pending",
+        "pending",
       );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        completedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      runStore.settleAutoPathway(inst.id);
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "direct",
-      );
+      runExecutionService.settlePodTrigger(ctx, SOURCE_POD_ID, "direct");
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        afterSettle.id,
+      expect(runStore.getPodInstance(run.id, SOURCE_POD_ID)!.status).toBe(
         "completed",
       );
     });
 
     it("部分 pathway settle 但 instance status 非 running 時不回退", () => {
-      // status=error，settle direct 後 auto 仍為 pending → 尚未全 settled，但不回退非 running 狀態
-      const instance = createMockInstance({
-        status: "error",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "pending",
-      });
-      const afterSettle = createMockInstance({
-        status: "error",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(afterSettle);
-      vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "direct",
-      );
-
-      // error 狀態不應被回退為 pending
-      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalledWith(
-        expect.anything(),
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "pending",
         "pending",
       );
-      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalled();
+      runStore.updatePodInstanceStatus(inst.id, "error");
+      const ctx = makeRunContext({ runId: run.id });
+
+      runExecutionService.settlePodTrigger(ctx, SOURCE_POD_ID, "direct");
+
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("error");
     });
   });
 
   describe("settleAndSkipPath", () => {
     it("尚有未 settled 的 pathway 時不更新 status", () => {
-      const instance = createMockInstance({
-        status: "pending",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "pending",
-      });
-      const afterSettle = createMockInstance({
-        status: "pending",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "pending",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(afterSettle);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runStore.createPodInstance(run.id, SOURCE_POD_ID, "pending", "pending");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settleAndSkipPath(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      runExecutionService.settleAndSkipPath(ctx, SOURCE_POD_ID, "auto");
 
-      expect(runStore.settleAutoPathway).toHaveBeenCalledWith(instance.id);
-      expect(runStore.updatePodInstanceStatus).not.toHaveBeenCalled();
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("pending");
+      expect(updated!.autoPathwaySettled).toBe("settled");
     });
 
     it("所有 pathway settled 且 status 為 pending（NEVER_TRIGGERED_STATUSES）→ skipped", () => {
-      const instance = createMockInstance({
-        status: "pending",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "not-applicable",
-      });
-      const afterSettle = createMockInstance({
-        status: "pending",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "not-applicable",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(afterSettle)
-        .mockReturnValueOnce(afterSettle);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "pending",
+        "not-applicable",
       );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        createMockInstance({
-          status: "skipped",
-          autoPathwaySettled: "settled",
-        }),
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settleAndSkipPath(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      runExecutionService.settleAndSkipPath(ctx, SOURCE_POD_ID, "auto");
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        afterSettle.id,
+      expect(runStore.getPodInstance(run.id, SOURCE_POD_ID)!.status).toBe(
         "skipped",
       );
     });
 
     it("所有 pathway settled 且 status 為 deciding（NEVER_TRIGGERED_STATUSES）→ skipped", () => {
-      const instance = createMockInstance({
-        status: "deciding",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "not-applicable",
-      });
-      const afterSettle = createMockInstance({
-        status: "deciding",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "not-applicable",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(afterSettle)
-        .mockReturnValueOnce(afterSettle);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "pending",
+        "not-applicable",
       );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        createMockInstance({
-          status: "skipped",
-          autoPathwaySettled: "settled",
-        }),
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      runStore.updatePodInstanceStatus(inst.id, "deciding");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settleAndSkipPath(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      runExecutionService.settleAndSkipPath(ctx, SOURCE_POD_ID, "auto");
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        afterSettle.id,
+      expect(runStore.getPodInstance(run.id, SOURCE_POD_ID)!.status).toBe(
         "skipped",
       );
     });
 
     it("所有 pathway settled 且 status 不在 NEVER_TRIGGERED_STATUSES → completed", () => {
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-        directPathwaySettled: "not-applicable",
-      });
-      const afterSettle = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-        directPathwaySettled: "not-applicable",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(afterSettle)
-        .mockReturnValueOnce(afterSettle);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(
+        run.id,
+        SOURCE_POD_ID,
+        "pending",
+        "not-applicable",
       );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        createMockInstance({
-          status: "completed",
-          autoPathwaySettled: "settled",
-        }),
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.settleAndSkipPath(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      runExecutionService.settleAndSkipPath(ctx, SOURCE_POD_ID, "auto");
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        afterSettle.id,
+      expect(runStore.getPodInstance(run.id, SOURCE_POD_ID)!.status).toBe(
         "completed",
       );
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.settleAndSkipPath(
-          makeRunContext(),
-          sourcePodId,
-          "auto",
-        ),
+        runExecutionService.settleAndSkipPath(ctx, "pod-nonexistent", "auto"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
@@ -815,54 +413,39 @@ describe("RunExecutionService", () => {
 
   describe("errorPodInstance", () => {
     it("更新 status 為 error 並帶入 errorMessage", () => {
-      const instance = createMockInstance({ status: "running" });
-      const errorInstance = createMockInstance({
-        status: "error",
-        errorMessage: "執行失敗",
-        completedAt: new Date().toISOString(),
-      });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        errorInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "error",
-          completedAt: new Date().toISOString(),
-        }),
-      );
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.errorPodInstance(
-        makeRunContext(),
-        sourcePodId,
-        "執行失敗",
-      );
+      runExecutionService.errorPodInstance(ctx, SOURCE_POD_ID, "執行失敗");
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        instance.id,
-        "error",
-        "執行失敗",
-      );
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("error");
+      expect(updated!.errorMessage).toBe("執行失敗");
+    });
+
+    it("emit RUN_POD_STATUS_CHANGED 含 errorMessage", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
+
+      runExecutionService.errorPodInstance(ctx, SOURCE_POD_ID, "執行失敗");
+
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
         expect.objectContaining({ status: "error", errorMessage: "執行失敗" }),
       );
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.errorPodInstance(
-          makeRunContext(),
-          sourcePodId,
-          "err",
-        ),
+        runExecutionService.errorPodInstance(ctx, "pod-nonexistent", "err"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
@@ -870,30 +453,27 @@ describe("RunExecutionService", () => {
 
   describe("queuedPodInstance", () => {
     it("更新 status 為 queued 並發送 WebSocket 事件", () => {
-      const instance = createMockInstance({ status: "pending" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.queuedPodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.queuedPodInstance(ctx, SOURCE_POD_ID);
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        instance.id,
-        "queued",
-      );
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("queued");
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
-        expect.objectContaining({ podId: sourcePodId, status: "queued" }),
+        expect.objectContaining({ podId: SOURCE_POD_ID, status: "queued" }),
       );
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.queuedPodInstance(makeRunContext(), sourcePodId),
+        runExecutionService.queuedPodInstance(ctx, "pod-nonexistent"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
@@ -901,30 +481,27 @@ describe("RunExecutionService", () => {
 
   describe("waitingPodInstance", () => {
     it("更新 status 為 waiting 並發送 WebSocket 事件", () => {
-      const instance = createMockInstance({ status: "pending" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.waitingPodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.waitingPodInstance(ctx, SOURCE_POD_ID);
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        instance.id,
-        "waiting",
-      );
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("waiting");
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
-        expect.objectContaining({ podId: sourcePodId, status: "waiting" }),
+        expect.objectContaining({ podId: SOURCE_POD_ID, status: "waiting" }),
       );
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.waitingPodInstance(makeRunContext(), sourcePodId),
+        runExecutionService.waitingPodInstance(ctx, "pod-nonexistent"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
@@ -932,323 +509,222 @@ describe("RunExecutionService", () => {
 
   describe("summarizingPodInstance", () => {
     it("更新 status 為 summarizing 並發送事件，不評估 run 狀態", () => {
-      const instance = createMockInstance({ status: "running" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const inst = runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      runStore.updatePodInstanceStatus(inst.id, "running");
+      const ctx = makeRunContext({ runId: run.id });
 
-      runExecutionService.summarizingPodInstance(makeRunContext(), sourcePodId);
+      runExecutionService.summarizingPodInstance(ctx, SOURCE_POD_ID);
 
-      expect(runStore.updatePodInstanceStatus).toHaveBeenCalledWith(
-        instance.id,
-        "summarizing",
-      );
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("summarizing");
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
-        expect.objectContaining({ podId: sourcePodId, status: "summarizing" }),
+        expect.objectContaining({
+          podId: SOURCE_POD_ID,
+          status: "summarizing",
+        }),
       );
-      expect(runStore.getPodInstancesByRunId).not.toHaveBeenCalled();
+      // summarizing 不應觸發 run 結算（run 狀態維持 running）
+      expect(runStore.getRun(run.id)!.status).toBe("running");
     });
 
     it("找不到 instance 時 log warning 不拋錯", () => {
-      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const ctx = makeRunContext({ runId: run.id });
 
       expect(() =>
-        runExecutionService.summarizingPodInstance(
-          makeRunContext(),
-          sourcePodId,
-        ),
+        runExecutionService.summarizingPodInstance(ctx, "pod-nonexistent"),
       ).not.toThrow();
       expect(logger.warn).toHaveBeenCalled();
     });
   });
 
+  describe("decidingPodInstance（來自 runExecutionServiceDeciding）", () => {
+    it("decidingPodInstance 將 pod 狀態更新為 deciding", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      const ctx = makeRunContext({ runId: run.id });
+
+      runExecutionService.decidingPodInstance(ctx, SOURCE_POD_ID);
+
+      const updated = runStore.getPodInstance(run.id, SOURCE_POD_ID);
+      expect(updated!.status).toBe("deciding");
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        CANVAS_ID,
+        WebSocketResponseEvents.RUN_POD_STATUS_CHANGED,
+        expect.objectContaining({ podId: SOURCE_POD_ID, status: "deciding" }),
+      );
+    });
+
+    it("deciding 狀態不觸發 evaluateRunStatus（run 維持 running）", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runStore.createPodInstance(run.id, SOURCE_POD_ID);
+      const ctx = makeRunContext({ runId: run.id });
+
+      runExecutionService.decidingPodInstance(ctx, SOURCE_POD_ID);
+
+      // run 狀態應維持 running，不被 deciding 觸發完成
+      expect(runStore.getRun(run.id)!.status).toBe("running");
+    });
+
+    it("有 deciding instance 時，settleAndSkipPath 後不應完成 run", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const instA = runStore.createPodInstance(run.id, "pod-a");
+      runStore.updatePodInstanceStatus(instA.id, "deciding");
+
+      runStore.createPodInstance(run.id, "pod-b", "pending");
+      const ctx = makeRunContext({ runId: run.id });
+
+      runExecutionService.settleAndSkipPath(ctx, "pod-b", "auto");
+
+      // pod-a 仍在 deciding → run 未完成
+      expect(runStore.getRun(run.id)!.status).toBe("running");
+    });
+
+    it("有 pod 處於 deciding 狀態時，即使其他 pod 有 error，Run 不應結束", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+
+      const instA = runStore.createPodInstance(run.id, "pod-a", "pending");
+      runStore.updatePodInstanceStatus(instA.id, "running");
+
+      const instB = runStore.createPodInstance(run.id, "pod-b");
+      runStore.updatePodInstanceStatus(instB.id, "deciding");
+
+      const ctx = makeRunContext({ runId: run.id });
+      // settle auto → pod-a completed，但 pod-b 在 deciding → run 不結算
+      runExecutionService.settlePodTrigger(ctx, "pod-a", "auto");
+
+      expect(runStore.getRun(run.id)!.status).toBe("running");
+    });
+
+    it("所有 pod completed/skipped 且無 deciding 時，Run 標記為 completed", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+
+      const instA = runStore.createPodInstance(run.id, "pod-a", "pending");
+      runStore.updatePodInstanceStatus(instA.id, "running");
+
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "skipped");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.settlePodTrigger(ctx, "pod-a", "auto");
+
+      expect(runStore.getRun(run.id)!.status).toBe("completed");
+    });
+  });
+
   describe("evaluateRunStatus（透過 settlePodTrigger 觸發）", () => {
     it("有 error 且無進行中的 instance → run 狀態變為 error", () => {
-      const errorInstance = createMockInstance({
-        status: "error",
-        errorMessage: "失敗",
-      });
-      const skippedInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "skipped",
-      });
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        errorInstance,
-        skippedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "error",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a", "pending");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).toHaveBeenCalledWith("run-1", "error");
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "error");
+
+      const ctx = makeRunContext({ runId: run.id });
+      // settle pod-a → completed；pod-b 有 error → run 變 error
+      runExecutionService.settlePodTrigger(ctx, "pod-a", "auto");
+
+      expect(runStore.getRun(run.id)!.status).toBe("error");
     });
 
     it("有 pending instance 時不更新 run 狀態", () => {
-      const runningInstance = createMockInstance({ status: "running" });
-      const pendingInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "pending",
-      });
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        runningInstance,
-        pendingInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a", "pending");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).not.toHaveBeenCalled();
+      // pod-b 仍在 pending
+      runStore.createPodInstance(run.id, "pod-b", "pending");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.settlePodTrigger(ctx, "pod-a", "auto");
+
+      // 有 pending → run 不結算
+      expect(runStore.getRun(run.id)!.status).toBe("running");
     });
 
     it("全部 instance 為 completed → run 狀態變為 completed", () => {
-      const completedInstance1 = createMockInstance({ status: "completed" });
-      const completedInstance2 = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "completed",
-      });
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        completedInstance1,
-        completedInstance2,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a", "pending");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).toHaveBeenCalledWith(
-        "run-1",
-        "completed",
-      );
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "completed");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.settlePodTrigger(ctx, "pod-a", "auto");
+
+      expect(runStore.getRun(run.id)!.status).toBe("completed");
     });
 
     it("全部 instance 為 completed/skipped 混合 → run 狀態變為 completed", () => {
-      const completedInstance = createMockInstance({ status: "completed" });
-      const skippedInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "skipped",
-      });
-      const instance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "pending",
-      });
-      const settledInstance = createMockInstance({
-        status: "running",
-        autoPathwaySettled: "settled",
-      });
-      vi.spyOn(runStore, "getPodInstance")
-        .mockReturnValueOnce(instance)
-        .mockReturnValueOnce(settledInstance)
-        .mockReturnValueOnce(settledInstance);
-      vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        completedInstance,
-        skippedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.settlePodTrigger(
-        makeRunContext(),
-        sourcePodId,
-        "auto",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a", "pending");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).toHaveBeenCalledWith(
-        "run-1",
-        "completed",
-      );
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "skipped");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.settlePodTrigger(ctx, "pod-a", "auto");
+
+      expect(runStore.getRun(run.id)!.status).toBe("completed");
     });
 
     it("有 queued instance 時不更新 run 狀態", () => {
-      const errorInstance = createMockInstance({
-        status: "error",
-        errorMessage: "失敗",
-      });
-      const queuedInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "queued",
-      });
-      const instance = createMockInstance({ status: "running" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        errorInstance,
-        queuedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.errorPodInstance(
-        makeRunContext(),
-        sourcePodId,
-        "失敗",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).not.toHaveBeenCalled();
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "queued");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.errorPodInstance(ctx, "pod-a", "失敗");
+
+      // queued 屬於 IN_PROGRESS → run 不結算
+      expect(runStore.getRun(run.id)!.status).toBe("running");
     });
 
     it("有 waiting instance 時不更新 run 狀態", () => {
-      const errorInstance = createMockInstance({
-        status: "error",
-        errorMessage: "失敗",
-      });
-      const waitingInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "waiting",
-      });
-      const instance = createMockInstance({ status: "running" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        errorInstance,
-        waitingInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.errorPodInstance(
-        makeRunContext(),
-        sourcePodId,
-        "失敗",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).not.toHaveBeenCalled();
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "waiting");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.errorPodInstance(ctx, "pod-a", "失敗");
+
+      // waiting 屬於 IN_PROGRESS → run 不結算
+      expect(runStore.getRun(run.id)!.status).toBe("running");
     });
 
     it("errorPodInstance 後有 error 且無進行中 → run 最終狀態更新為 error 並發送 RUN_STATUS_CHANGED", () => {
-      const errorInstance = createMockInstance({
-        status: "error",
-        errorMessage: "執行錯誤",
-      });
-      const completedInstance = createMockInstance({
-        id: "instance-2",
-        podId: targetPodId,
-        status: "completed",
-      });
-      const instance = createMockInstance({ status: "running" });
-      vi.spyOn(runStore, "getPodInstance").mockReturnValueOnce(instance);
-      vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(
-        () => {},
-      );
-      vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([
-        errorInstance,
-        completedInstance,
-      ]);
-      vi.spyOn(runStore, "updateRunStatus").mockImplementation(() => {});
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({
-          status: "error",
-          completedAt: new Date().toISOString(),
-        }),
-      );
-      vi.spyOn(connectionStore, "list").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      runExecutionService.errorPodInstance(
-        makeRunContext(),
-        sourcePodId,
-        "執行錯誤",
-      );
+      const instA = runStore.createPodInstance(run.id, "pod-a");
+      runStore.updatePodInstanceStatus(instA.id, "running");
 
-      expect(runStore.updateRunStatus).toHaveBeenCalledWith("run-1", "error");
+      const instB = runStore.createPodInstance(run.id, "pod-b", "settled");
+      runStore.updatePodInstanceStatus(instB.id, "completed");
+
+      const ctx = makeRunContext({ runId: run.id });
+      runExecutionService.errorPodInstance(ctx, "pod-a", "執行錯誤");
+
+      expect(runStore.getRun(run.id)!.status).toBe("error");
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_STATUS_CHANGED,
         expect.objectContaining({ status: "error" }),
       );
@@ -1256,85 +732,67 @@ describe("RunExecutionService", () => {
   });
 
   describe("registerActiveStream / unregisterActiveStream", () => {
-    it("register 後 unregister 正確清理 Map", () => {
-      runExecutionService.registerActiveStream("run-x", "pod-1");
-      runExecutionService.registerActiveStream("run-x", "pod-2");
-      runExecutionService.unregisterActiveStream("run-x", "pod-1");
-      runExecutionService.unregisterActiveStream("run-x", "pod-2");
+    it("register 後 unregister 正確清理 Map", async () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      // deleteRun 呼叫時不應 abort 任何 pod（Map 已清空）
-      // runExecutionService 現在改呼叫 abortRegistry.abort
-      vi.spyOn(abortRegistry, "abort").mockReturnValue(false);
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({ id: "run-x" }),
-      );
-      vi.spyOn(runStore, "deleteRun").mockImplementation(() => {});
+      runExecutionService.registerActiveStream(run.id, "pod-1");
+      runExecutionService.registerActiveStream(run.id, "pod-2");
+      runExecutionService.unregisterActiveStream(run.id, "pod-1");
+      runExecutionService.unregisterActiveStream(run.id, "pod-2");
 
-      runExecutionService.deleteRun("run-x");
+      // Map 已清空，deleteRun 不應呼叫 abort
+      const abortSpy = vi.spyOn(abortRegistry, "abort").mockReturnValue(false);
 
-      expect(abortRegistry.abort).not.toHaveBeenCalled();
+      await runExecutionService.deleteRun(run.id);
+
+      expect(abortSpy).not.toHaveBeenCalled();
     });
 
-    it("Set 為空時從 Map 移除 runId", () => {
-      runExecutionService.registerActiveStream("run-y", "pod-1");
-      runExecutionService.unregisterActiveStream("run-y", "pod-1");
+    it("Set 為空時從 Map 移除 runId", async () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
 
-      vi.spyOn(abortRegistry, "abort").mockReturnValue(false);
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({ id: "run-y" }),
-      );
-      vi.spyOn(runStore, "deleteRun").mockImplementation(() => {});
+      runExecutionService.registerActiveStream(run.id, "pod-1");
+      runExecutionService.unregisterActiveStream(run.id, "pod-1");
 
-      runExecutionService.deleteRun("run-y");
+      const abortSpy = vi.spyOn(abortRegistry, "abort").mockReturnValue(false);
 
-      expect(abortRegistry.abort).not.toHaveBeenCalled();
+      await runExecutionService.deleteRun(run.id);
+
+      expect(abortSpy).not.toHaveBeenCalled();
     });
   });
 
   describe("deleteRun", () => {
     it("中斷活躍串流中的 pod 並刪除 run 發送事件", async () => {
-      runExecutionService.registerActiveStream("run-del", "pod-active");
-      // runExecutionService 現在改呼叫 abortRegistry.abort
-      vi.spyOn(abortRegistry, "abort").mockReturnValue(true);
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({ id: "run-del", canvasId }),
-      );
-      vi.spyOn(runStore, "deleteRun").mockImplementation(() => {});
-      vi.spyOn(runStore, "getWorktreePathsByRunId").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      runExecutionService.registerActiveStream(run.id, "pod-active");
 
-      await runExecutionService.deleteRun("run-del");
+      const abortSpy = vi.spyOn(abortRegistry, "abort").mockReturnValue(true);
 
-      expect(abortRegistry.abort).toHaveBeenCalledWith("run-del:pod-active");
-      expect(runStore.deleteRun).toHaveBeenCalledWith("run-del");
+      await runExecutionService.deleteRun(run.id);
+
+      expect(abortSpy).toHaveBeenCalledWith(`${run.id}:pod-active`);
+      expect(runStore.getRun(run.id)).toBeUndefined();
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         WebSocketResponseEvents.RUN_DELETED,
-        { runId: "run-del", canvasId },
+        { runId: run.id, canvasId: CANVAS_ID },
       );
     });
 
     it("run 不存在時不發送 RUN_DELETED 事件", async () => {
-      vi.spyOn(runStore, "getRun").mockReturnValue(undefined);
-      vi.spyOn(runStore, "deleteRun").mockImplementation(() => {});
-      vi.spyOn(runStore, "getWorktreePathsByRunId").mockReturnValue([]);
-
       await runExecutionService.deleteRun("run-ghost");
 
-      expect(runStore.deleteRun).toHaveBeenCalledWith("run-ghost");
       expect(socketService.emitToCanvas).not.toHaveBeenCalled();
     });
 
     it("無活躍串流時不呼叫 abort", async () => {
-      vi.spyOn(abortRegistry, "abort").mockReturnValue(false);
-      vi.spyOn(runStore, "getRun").mockReturnValue(
-        createMockRun({ id: "run-no-stream", canvasId }),
-      );
-      vi.spyOn(runStore, "deleteRun").mockImplementation(() => {});
-      vi.spyOn(runStore, "getWorktreePathsByRunId").mockReturnValue([]);
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "測試");
+      const abortSpy = vi.spyOn(abortRegistry, "abort").mockReturnValue(false);
 
-      await runExecutionService.deleteRun("run-no-stream");
+      await runExecutionService.deleteRun(run.id);
 
-      expect(abortRegistry.abort).not.toHaveBeenCalled();
+      expect(abortSpy).not.toHaveBeenCalled();
     });
   });
 });

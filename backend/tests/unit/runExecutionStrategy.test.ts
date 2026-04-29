@@ -1,112 +1,129 @@
-import type { Mock } from "vitest";
+/**
+ * RunModeExecutionStrategy 單元測試
+ *
+ * 移除自家 store / service mock，改用 initTestDb + 真實 store + vi.spyOn 觀察呼叫。
+ * 僅保留必要的 spyOn：
+ *   - runExecutionService.*（服務層方法需複雜 run 狀態設定，spyOn 保留真實簽名）
+ *   - runStore.getPodInstance / upsertRunMessage / updatePodInstanceSessionId（run instance 需額外 run 骨架）
+ *   - injectRunUserMessage（觸發外部 SDK 執行鏈，超出本測試範圍）
+ *   - socketService.emitToCanvas（防止廣播副作用）
+ */
 
-vi.mock("../../src/services/runStore.js", () => ({
-  runStore: {
-    getPodInstance: vi.fn(() => undefined),
-    upsertRunMessage: vi.fn(() => {}),
-    updatePodInstanceSessionId: vi.fn(() => {}),
-  },
-}));
-
-vi.mock("../../src/services/workflow/runExecutionService.js", () => ({
-  runExecutionService: {
-    startPodInstance: vi.fn(() => {}),
-    summarizingPodInstance: vi.fn(() => {}),
-    errorPodInstance: vi.fn(() => {}),
-    registerActiveStream: vi.fn(() => {}),
-    unregisterActiveStream: vi.fn(() => {}),
-  },
-}));
-
-vi.mock("../../src/utils/runChatHelpers.js", () => ({
-  injectRunUserMessage: vi.fn(() => Promise.resolve()),
-}));
-
-vi.mock("../../src/services/chatEmitStrategy.js", () => ({
-  createRunEmitStrategy: vi.fn(() => ({
-    emitText: vi.fn(() => {}),
-    emitToolUse: vi.fn(() => {}),
-    emitToolResult: vi.fn(() => {}),
-    emitComplete: vi.fn(() => {}),
-  })),
-}));
-
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { initTestDb, closeDb, getDb } from "../../src/database/index.js";
+import { resetStatements } from "../../src/database/statements.js";
 import { RunModeExecutionStrategy } from "../../src/services/executionStrategy.js";
 import { runStore } from "../../src/services/runStore.js";
 import { runExecutionService } from "../../src/services/workflow/runExecutionService.js";
-import { injectRunUserMessage } from "../../src/utils/runChatHelpers.js";
-import { createRunEmitStrategy } from "../../src/services/chatEmitStrategy.js";
+import { socketService } from "../../src/services/socketService.js";
+import { podStore } from "../../src/services/podStore.js";
+import * as runChatHelpers from "../../src/utils/runChatHelpers.js";
 import type { RunContext } from "../../src/types/run.js";
 
-/** 取得 mock 函式的型別化引用 */
-function asMock(fn: unknown): Mock<any> {
-  return fn as Mock<any>;
+/** 清除 podStore 內部動態 PreparedStatement LRU 快取，防止跨測試 DB 污染 */
+function clearPodStoreCache(): void {
+  type PodStoreTestHooks = { stmtCache: Map<string, unknown> };
+  (podStore as unknown as PodStoreTestHooks).stmtCache.clear();
+}
+
+const CANVAS_ID = "test-canvas";
+const RUN_ID = "test-run";
+const SOURCE_POD_ID = "source-pod";
+
+const runContext: RunContext = {
+  runId: RUN_ID,
+  canvasId: CANVAS_ID,
+  sourcePodId: SOURCE_POD_ID,
+};
+
+function insertCanvas(): void {
+  getDb()
+    .prepare(
+      "INSERT OR IGNORE INTO canvases (id, name, sort_index) VALUES (?, ?, ?)",
+    )
+    .run(CANVAS_ID, `canvas-${CANVAS_ID}`, 0);
 }
 
 describe("RunModeExecutionStrategy", () => {
-  const canvasId = "test-canvas";
-  const runId = "test-run";
-  const podId = "test-pod";
-  const sourcePodId = "source-pod";
-
-  const runContext: RunContext = {
-    runId,
-    canvasId,
-    sourcePodId,
-  };
-
-  function makeStrategy() {
-    return new RunModeExecutionStrategy(canvasId, runContext);
-  }
-
   beforeEach(() => {
-    asMock(runExecutionService.startPodInstance).mockClear();
-    asMock(runExecutionService.summarizingPodInstance).mockClear();
-    asMock(runExecutionService.errorPodInstance).mockClear();
-    asMock(runExecutionService.registerActiveStream).mockClear();
-    asMock(runExecutionService.unregisterActiveStream).mockClear();
-    asMock(runStore.getPodInstance).mockClear();
-    asMock(runStore.upsertRunMessage).mockClear();
-    asMock(runStore.updatePodInstanceSessionId).mockClear();
-    asMock(injectRunUserMessage).mockClear();
-    asMock(createRunEmitStrategy).mockClear();
+    closeDb();
+    clearPodStoreCache();
+    resetStatements();
+    initTestDb();
+    insertCanvas();
+
+    vi.spyOn(socketService, "emitToCanvas").mockImplementation(() => {});
+
+    // spyOn runExecutionService（需要複雜 run 骨架，直接觀察呼叫行為即可）
+    vi.spyOn(runExecutionService, "startPodInstance").mockImplementation(
+      () => {},
+    );
+    vi.spyOn(runExecutionService, "summarizingPodInstance").mockImplementation(
+      () => {},
+    );
+    vi.spyOn(runExecutionService, "errorPodInstance").mockImplementation(
+      () => {},
+    );
+    vi.spyOn(runExecutionService, "registerActiveStream").mockImplementation(
+      () => {},
+    );
+    vi.spyOn(runExecutionService, "unregisterActiveStream").mockImplementation(
+      () => {},
+    );
+
+    // spyOn runStore 需要預先存在的 run instance
+    vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+    vi.spyOn(runStore, "upsertRunMessage").mockImplementation(() => {});
+    vi.spyOn(runStore, "updatePodInstanceSessionId").mockImplementation(
+      () => {},
+    );
   });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    closeDb();
+    clearPodStoreCache();
+  });
+
+  function makeStrategy(): RunModeExecutionStrategy {
+    return new RunModeExecutionStrategy(CANVAS_ID, runContext);
+  }
 
   describe("setStatus", () => {
     it("狀態為 chatting 時應呼叫 runExecutionService.startPodInstance", () => {
       const strategy = makeStrategy();
-      strategy.setStatus(podId, "chatting");
+      strategy.setStatus("pod-1", "chatting");
 
       expect(runExecutionService.startPodInstance).toHaveBeenCalledWith(
         runContext,
-        podId,
+        "pod-1",
       );
     });
 
     it("狀態為 summarizing 時應呼叫 runExecutionService.summarizingPodInstance", () => {
       const strategy = makeStrategy();
-      strategy.setStatus(podId, "summarizing");
+      strategy.setStatus("pod-1", "summarizing");
 
       expect(runExecutionService.summarizingPodInstance).toHaveBeenCalledWith(
         runContext,
-        podId,
+        "pod-1",
       );
     });
 
     it("狀態為 error 時應呼叫 runExecutionService.errorPodInstance", () => {
       const strategy = makeStrategy();
-      strategy.setStatus(podId, "error");
+      strategy.setStatus("pod-1", "error");
 
       expect(runExecutionService.errorPodInstance).toHaveBeenCalledWith(
         runContext,
-        podId,
+        "pod-1",
         "執行發生錯誤",
       );
     });
 
-    it("狀態為 idle 時應為 no-op", () => {
+    it("狀態為 idle 時應為 no-op（不呼叫任何 service 方法）", () => {
       const strategy = makeStrategy();
-      strategy.setStatus(podId, "idle");
+      strategy.setStatus("pod-1", "idle");
 
       expect(runExecutionService.startPodInstance).not.toHaveBeenCalled();
       expect(runExecutionService.summarizingPodInstance).not.toHaveBeenCalled();
@@ -116,60 +133,69 @@ describe("RunModeExecutionStrategy", () => {
 
   describe("getSessionId", () => {
     it("Pod instance 不存在時應回傳 undefined", () => {
-      asMock(runStore.getPodInstance).mockReturnValue(undefined);
-
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
       const strategy = makeStrategy();
-      const result = strategy.getSessionId(podId);
 
-      expect(runStore.getPodInstance).toHaveBeenCalledWith(runId, podId);
-      expect(result).toBeUndefined();
+      expect(strategy.getSessionId("pod-1")).toBeUndefined();
+      expect(runStore.getPodInstance).toHaveBeenCalledWith(RUN_ID, "pod-1");
     });
 
     it("Pod instance 存在且有 sessionId 時應回傳該值", () => {
       const sessionId = "run-session-789";
-      asMock(runStore.getPodInstance).mockReturnValue({
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue({
         id: "instance-1",
-        sessionId: sessionId,
-      });
+        sessionId,
+      } as ReturnType<typeof runStore.getPodInstance>);
 
       const strategy = makeStrategy();
-      const result = strategy.getSessionId(podId);
-
-      expect(result).toBe(sessionId);
+      expect(strategy.getSessionId("pod-1")).toBe(sessionId);
     });
 
     it("Pod instance 的 sessionId 為 null 時應回傳 undefined", () => {
-      asMock(runStore.getPodInstance).mockReturnValue({
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue({
         id: "instance-1",
         sessionId: null,
-      });
+      } as ReturnType<typeof runStore.getPodInstance>);
 
       const strategy = makeStrategy();
-      const result = strategy.getSessionId(podId);
-
-      expect(result).toBeUndefined();
+      expect(strategy.getSessionId("pod-1")).toBeUndefined();
     });
   });
 
   describe("getQueryKey", () => {
     it("應回傳 `runId:podId` 格式", () => {
       const strategy = makeStrategy();
-      const result = strategy.getQueryKey(podId);
-
-      expect(result).toBe(`${runId}:${podId}`);
+      expect(strategy.getQueryKey("pod-abc")).toBe(`${RUN_ID}:pod-abc`);
     });
   });
 
   describe("createEmitStrategy", () => {
-    it("應呼叫 createRunEmitStrategy 並回傳有四個 emit 方法的物件", () => {
+    it("應回傳有 emitText/emitToolUse/emitToolResult/emitComplete 方法的物件", () => {
       const strategy = makeStrategy();
       const emitStrategy = strategy.createEmitStrategy();
 
-      expect(createRunEmitStrategy).toHaveBeenCalledWith(runId);
       expect(emitStrategy).toHaveProperty("emitText");
       expect(emitStrategy).toHaveProperty("emitToolUse");
       expect(emitStrategy).toHaveProperty("emitToolResult");
       expect(emitStrategy).toHaveProperty("emitComplete");
+    });
+
+    it("回傳的 emitStrategy.emitText 應廣播含 runId 的 payload", () => {
+      const strategy = makeStrategy();
+      const emitStrategy = strategy.createEmitStrategy();
+
+      emitStrategy.emitText({
+        canvasId: CANVAS_ID,
+        podId: "pod-1",
+        messageId: "msg-1",
+        content: "Run 訊息",
+      });
+
+      expect(socketService.emitToCanvas).toHaveBeenCalledWith(
+        CANVAS_ID,
+        expect.any(String),
+        expect.objectContaining({ runId: RUN_ID }),
+      );
     });
   });
 
@@ -180,64 +206,60 @@ describe("RunModeExecutionStrategy", () => {
         id: "msg-run-1",
         role: "assistant" as const,
         content: "Run 模式訊息",
-        timestamp: "2024-01-01T00:00:00.000Z",
+        timestamp: new Date().toISOString(),
       };
 
-      strategy.persistMessage(podId, message);
+      strategy.persistMessage("pod-1", message);
 
       expect(runStore.upsertRunMessage).toHaveBeenCalledWith(
-        runId,
-        podId,
+        RUN_ID,
+        "pod-1",
         message,
       );
     });
   });
 
   describe("addUserMessage", () => {
-    it("應呼叫 injectRunUserMessage 並帶入正確參數（字串內容）", async () => {
+    it("應呼叫 injectRunUserMessage 帶入正確參數（字串內容）", async () => {
+      const injectSpy = vi
+        .spyOn(runChatHelpers, "injectRunUserMessage")
+        .mockResolvedValue(undefined);
       const strategy = makeStrategy();
       const content = "使用者的 run 訊息";
 
-      await strategy.addUserMessage(podId, content);
+      await strategy.addUserMessage("pod-1", content);
 
-      expect(injectRunUserMessage).toHaveBeenCalledWith(
-        runContext,
-        podId,
-        content,
-      );
+      expect(injectSpy).toHaveBeenCalledWith(runContext, "pod-1", content);
     });
 
-    it("應呼叫 injectRunUserMessage 並帶入正確參數（ContentBlock 陣列）", async () => {
+    it("應呼叫 injectRunUserMessage 帶入正確參數（ContentBlock 陣列）", async () => {
+      const injectSpy = vi
+        .spyOn(runChatHelpers, "injectRunUserMessage")
+        .mockResolvedValue(undefined);
       const strategy = makeStrategy();
       const content = [{ type: "text" as const, text: "Run 測試" }];
 
-      await strategy.addUserMessage(podId, content);
+      await strategy.addUserMessage("pod-1", content);
 
-      expect(injectRunUserMessage).toHaveBeenCalledWith(
-        runContext,
-        podId,
-        content,
-      );
+      expect(injectSpy).toHaveBeenCalledWith(runContext, "pod-1", content);
     });
   });
 
   describe("isBusy", () => {
-    it("應固定回傳 false", () => {
+    it("應固定回傳 false（Run mode 不排隊）", () => {
       const strategy = makeStrategy();
-      const result = strategy.isBusy(podId);
-
-      expect(result).toBe(false);
+      expect(strategy.isBusy("any-pod")).toBe(false);
     });
   });
 
   describe("onStreamStart", () => {
     it("應呼叫 runExecutionService.registerActiveStream", () => {
       const strategy = makeStrategy();
-      strategy.onStreamStart(podId);
+      strategy.onStreamStart("pod-1");
 
       expect(runExecutionService.registerActiveStream).toHaveBeenCalledWith(
-        runId,
-        podId,
+        RUN_ID,
+        "pod-1",
       );
     });
   });
@@ -245,45 +267,47 @@ describe("RunModeExecutionStrategy", () => {
   describe("onStreamComplete", () => {
     it("應呼叫 runExecutionService.unregisterActiveStream", () => {
       const strategy = makeStrategy();
-      strategy.onStreamComplete(podId, undefined);
+      strategy.onStreamComplete("pod-1", undefined);
 
       expect(runExecutionService.unregisterActiveStream).toHaveBeenCalledWith(
-        runId,
-        podId,
+        RUN_ID,
+        "pod-1",
       );
     });
 
-    it("有 sessionId 且 instance 存在時應更新 sessionId", () => {
+    it("sessionId 為 undefined 時不應呼叫 updatePodInstanceSessionId", () => {
+      const strategy = makeStrategy();
+      strategy.onStreamComplete("pod-1", undefined);
+
+      expect(runStore.updatePodInstanceSessionId).not.toHaveBeenCalled();
+    });
+
+    it("有 sessionId 且 instance 存在時應呼叫 updatePodInstanceSessionId", () => {
       const sessionId = "run-new-session";
       const instance = { id: "instance-abc", sessionId: null };
-      asMock(runStore.getPodInstance).mockReturnValue(instance);
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
+        instance as ReturnType<typeof runStore.getPodInstance>,
+      );
 
       const strategy = makeStrategy();
-      strategy.onStreamComplete(podId, sessionId);
+      strategy.onStreamComplete("pod-1", sessionId);
 
       expect(runExecutionService.unregisterActiveStream).toHaveBeenCalledWith(
-        runId,
-        podId,
+        RUN_ID,
+        "pod-1",
       );
-      expect(runStore.getPodInstance).toHaveBeenCalledWith(runId, podId);
+      expect(runStore.getPodInstance).toHaveBeenCalledWith(RUN_ID, "pod-1");
       expect(runStore.updatePodInstanceSessionId).toHaveBeenCalledWith(
         instance.id,
         sessionId,
       );
     });
 
-    it("sessionId 為 undefined 時不應呼叫 updatePodInstanceSessionId", () => {
-      const strategy = makeStrategy();
-      strategy.onStreamComplete(podId, undefined);
-
-      expect(runStore.updatePodInstanceSessionId).not.toHaveBeenCalled();
-    });
-
     it("有 sessionId 但 instance 不存在時不應呼叫 updatePodInstanceSessionId", () => {
-      asMock(runStore.getPodInstance).mockReturnValue(undefined);
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
 
       const strategy = makeStrategy();
-      strategy.onStreamComplete(podId, "some-session");
+      strategy.onStreamComplete("pod-1", "some-session");
 
       expect(runStore.updatePodInstanceSessionId).not.toHaveBeenCalled();
     });
@@ -293,15 +317,15 @@ describe("RunModeExecutionStrategy", () => {
     it("應呼叫 unregisterActiveStream 和 errorPodInstance", () => {
       const reason = "使用者手動中斷";
       const strategy = makeStrategy();
-      strategy.onStreamAbort(podId, reason);
+      strategy.onStreamAbort("pod-1", reason);
 
       expect(runExecutionService.unregisterActiveStream).toHaveBeenCalledWith(
-        runId,
-        podId,
+        RUN_ID,
+        "pod-1",
       );
       expect(runExecutionService.errorPodInstance).toHaveBeenCalledWith(
         runContext,
-        podId,
+        "pod-1",
         reason,
       );
     });
@@ -310,17 +334,17 @@ describe("RunModeExecutionStrategy", () => {
   describe("onStreamError", () => {
     it("應呼叫 runExecutionService.unregisterActiveStream", () => {
       const strategy = makeStrategy();
-      strategy.onStreamError(podId);
+      strategy.onStreamError("pod-1");
 
       expect(runExecutionService.unregisterActiveStream).toHaveBeenCalledWith(
-        runId,
-        podId,
+        RUN_ID,
+        "pod-1",
       );
     });
 
     it("不應呼叫 errorPodInstance（錯誤由上層處理）", () => {
       const strategy = makeStrategy();
-      strategy.onStreamError(podId);
+      strategy.onStreamError("pod-1");
 
       expect(runExecutionService.errorPodInstance).not.toHaveBeenCalled();
     });
@@ -338,8 +362,8 @@ describe("RunModeExecutionStrategy", () => {
       const strategy = makeStrategy();
       const result = strategy.getRunContext();
 
-      expect(result?.runId).toBe(runId);
-      expect(result?.canvasId).toBe(canvasId);
+      expect(result?.runId).toBe(RUN_ID);
+      expect(result?.canvasId).toBe(CANVAS_ID);
     });
   });
 });

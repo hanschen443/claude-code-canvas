@@ -24,80 +24,311 @@ vi.mock("../../src/services/provider/abortRegistry.js", () => ({
   },
 }));
 
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { workflowExecutionService } from "../../src/services/workflow";
 import { workflowQueueService } from "../../src/services/workflow";
 import { connectionStore } from "../../src/services/connectionStore.js";
 import { podStore } from "../../src/services/podStore.js";
+import { messageStore } from "../../src/services/messageStore.js";
+import { workflowEventEmitter } from "../../src/services/workflow/workflowEventEmitter.js";
+import { pendingTargetStore } from "../../src/services/pendingTargetStore.js";
+import { logger } from "../../src/utils/logger.js";
+import { socketService } from "../../src/services/socketService.js";
+import { workflowStateService } from "../../src/services/workflow/workflowStateService.js";
+import { runStore } from "../../src/services/runStore.js";
+import { runExecutionService } from "../../src/services/workflow/runExecutionService.js";
+import { runQueueService } from "../../src/services/workflow/runQueueService.js";
 import { getProvider } from "../../src/services/provider/index.js";
-import { setupAllSpies } from "../mocks/workflowSpySetup.js";
-import {
-  createMockPod,
-  createMockConnection,
-  createMockMessages,
-  createMockStrategy,
-  initializeQueueService,
-  clearAllQueues,
-} from "../mocks/workflowTestFactories.js";
 import type { Connection } from "../../src/types";
 import type { TriggerStrategy } from "../../src/services/workflow/types.js";
+import type { PersistedMessage, Pod } from "../../src/types/index.js";
+import path from "path";
+import { config } from "../../src/config/index.js";
+
+// ─── 常數 ────────────────��─────────────────────────���─────────────────────────
+
+const CANVAS_ID = "canvas-1";
+const SOURCE_POD_ID = "source-pod";
+const TARGET_POD_ID = "target-pod";
+
+// ─── 工廠函式 ────────────────────────────���────────────────────────────────────
+
+function makePod(overrides?: Partial<Pod>): Pod {
+  return {
+    id: "test-pod",
+    name: "Test Pod",
+    provider: "claude" as const,
+    providerConfig: { model: "sonnet" },
+    sessionId: null,
+    repositoryId: null,
+    workspacePath: path.join(config.canvasRoot, "test-canvas", "pod-test"),
+    commandId: null,
+    status: "idle" as const,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    multiInstance: false,
+    skillIds: [],
+    ...overrides,
+  } as Pod;
+}
+
+function makeConnection(overrides?: Partial<Connection>): Connection {
+  return {
+    id: "conn-1",
+    sourcePodId: SOURCE_POD_ID,
+    sourceAnchor: "right",
+    targetPodId: TARGET_POD_ID,
+    targetAnchor: "left",
+    triggerMode: "auto",
+    decideStatus: "none",
+    decideReason: null,
+    connectionStatus: "idle",
+    summaryModel: "sonnet",
+    aiDecideModel: "sonnet",
+    ...overrides,
+  } as Connection;
+}
+
+function makeMessages(): PersistedMessage[] {
+  return [
+    {
+      id: "msg-1",
+      role: "user" as const,
+      content: "Test user message",
+      timestamp: new Date().toISOString(),
+    },
+    {
+      id: "msg-2",
+      role: "assistant" as const,
+      content: "Test assistant response",
+      timestamp: new Date().toISOString(),
+    },
+  ] as PersistedMessage[];
+}
+
+function makeStrategy(
+  mode: "auto" | "direct" | "ai-decide",
+  overrides?: Partial<TriggerStrategy>,
+): TriggerStrategy {
+  return {
+    mode,
+    decide: vi.fn().mockResolvedValue([]),
+    onTrigger: vi.fn(),
+    onComplete: vi.fn(),
+    onError: vi.fn(),
+    onQueued: vi.fn(),
+    onQueueProcessed: vi.fn(),
+    ...overrides,
+  } as unknown as TriggerStrategy;
+}
+
+function clearAllQueues(targetPodIds: string[]): void {
+  targetPodIds.forEach((podId) => {
+    while (workflowQueueService.getQueueSize(podId) > 0)
+      workflowQueueService.dequeue(podId);
+  });
+}
+
+// ─── 共用 spy 設置 ─────────────────────────────────────��─────────────────��────
+
+function setupCommonSpies(
+  messages: PersistedMessage[],
+  customPodGetter: (cId: string, podId: string) => Pod | undefined,
+) {
+  vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
+  vi.spyOn(connectionStore, "getById").mockReturnValue(undefined);
+  vi.spyOn(connectionStore, "updateDecideStatus").mockReturnValue(undefined);
+  vi.spyOn(connectionStore, "updateConnectionStatus").mockReturnValue(
+    undefined,
+  );
+  vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([]);
+  vi.spyOn(connectionStore, "list").mockReturnValue([]);
+
+  vi.spyOn(podStore, "getById").mockImplementation(
+    (cId: string, podId: string) => customPodGetter(cId, podId),
+  );
+  vi.spyOn(podStore, "getByIdGlobal").mockImplementation((podId: string) => {
+    const pod = customPodGetter(CANVAS_ID, podId);
+    if (!pod) return undefined;
+    return { canvasId: CANVAS_ID, pod };
+  });
+  vi.spyOn(podStore, "setStatus").mockImplementation(() => {});
+  vi.spyOn(podStore, "update").mockReturnValue(undefined);
+  vi.spyOn(podStore, "setSessionId").mockImplementation(() => {});
+
+  vi.spyOn(messageStore, "getMessages").mockReturnValue(messages);
+  vi.spyOn(messageStore, "upsertMessage").mockImplementation(() => {});
+  vi.spyOn(messageStore, "clearMessages").mockImplementation(() => {});
+
+  vi.spyOn(workflowEventEmitter, "emitWorkflowComplete").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(
+    workflowEventEmitter,
+    "emitWorkflowAutoTriggered",
+  ).mockImplementation(() => {});
+  vi.spyOn(workflowEventEmitter, "emitWorkflowPending").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(
+    workflowEventEmitter,
+    "emitWorkflowSourcesMerged",
+  ).mockImplementation(() => {});
+  vi.spyOn(workflowEventEmitter, "emitAiDecidePending").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitAiDecideResult").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitAiDecideError").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitAiDecideClear").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitDirectTriggered").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitDirectWaiting").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitWorkflowQueued").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(
+    workflowEventEmitter,
+    "emitWorkflowQueueProcessed",
+  ).mockImplementation(() => {});
+  vi.spyOn(workflowEventEmitter, "emitDirectCountdown").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(workflowEventEmitter, "emitDirectMerged").mockImplementation(
+    () => {},
+  );
+
+  vi.spyOn(pendingTargetStore, "hasPendingTarget").mockReturnValue(false);
+  vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(undefined);
+  vi.spyOn(pendingTargetStore, "clearPendingTarget").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(pendingTargetStore, "initializePendingTarget").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(pendingTargetStore, "recordSourceCompletion").mockReturnValue({
+    allSourcesResponded: false,
+    hasRejection: false,
+  });
+  vi.spyOn(pendingTargetStore, "recordSourceRejection").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(pendingTargetStore, "getCompletedSummaries").mockReturnValue(
+    undefined,
+  );
+
+  vi.spyOn(logger, "log").mockImplementation(() => {});
+  vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+  vi.spyOn(socketService, "emitToCanvas").mockImplementation(() => {});
+
+  vi.spyOn(workflowStateService, "checkMultiInputScenario").mockReturnValue({
+    isMultiInput: false,
+    requiredSourcePodIds: [],
+  });
+  vi.spyOn(workflowStateService, "getDirectConnectionCount").mockReturnValue(0);
+
+  vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
+  vi.spyOn(runStore, "getPodInstancesByRunId").mockReturnValue([]);
+  vi.spyOn(runStore, "updatePodInstanceStatus").mockImplementation(() => {});
+  vi.spyOn(runStore, "settleAutoPathway").mockImplementation(() => {});
+  vi.spyOn(runStore, "settleDirectPathway").mockImplementation(() => {});
+
+  vi.spyOn(runExecutionService, "startPodInstance").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(runExecutionService, "settlePodTrigger").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(runExecutionService, "settleAndSkipPath").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(runExecutionService, "errorPodInstance").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(runExecutionService, "summarizingPodInstance").mockImplementation(
+    () => {},
+  );
+  vi.spyOn(runExecutionService, "decidingPodInstance").mockImplementation(
+    () => {},
+  );
+
+  vi.spyOn(runQueueService, "enqueue").mockImplementation(
+    () => ({ position: 1, queueSize: 1 }) as any,
+  );
+  vi.spyOn(runQueueService, "dequeue").mockReturnValue(undefined);
+  vi.spyOn(runQueueService, "getQueueSize").mockReturnValue(0);
+  vi.spyOn(runQueueService, "processNext").mockResolvedValue(undefined);
+}
+
+// ─── テスト ───────────────────────���──────────────────────────────────���───────
 
 describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () => {
-  const canvasId = "canvas-1";
-  const sourcePodId = "source-pod";
-  const targetPodId = "target-pod";
-
-  let mockSourcePod: ReturnType<typeof createMockPod>;
-  let mockTargetPod: ReturnType<typeof createMockPod>;
+  let mockSourcePod: Pod;
+  let mockTargetPod: Pod;
   let mockAutoConnection: Connection;
   let mockDirectConnection: Connection;
-  let mockMessages: ReturnType<typeof createMockMessages>;
+  let mockMessages: PersistedMessage[];
   let mockAutoStrategy: TriggerStrategy;
   let mockDirectStrategy: TriggerStrategy;
   let mockAiDecideStrategy: TriggerStrategy;
 
   beforeEach(() => {
-    mockSourcePod = createMockPod({
-      id: sourcePodId,
+    mockSourcePod = makePod({
+      id: SOURCE_POD_ID,
       name: "Source Pod",
       status: "idle",
     });
-    mockTargetPod = createMockPod({
-      id: targetPodId,
+    mockTargetPod = makePod({
+      id: TARGET_POD_ID,
       name: "Target Pod",
       status: "idle",
     });
-    mockAutoConnection = createMockConnection({
+    mockAutoConnection = makeConnection({
       id: "conn-auto-1",
-      sourcePodId,
-      targetPodId,
+      sourcePodId: SOURCE_POD_ID,
+      targetPodId: TARGET_POD_ID,
       triggerMode: "auto",
     });
-    mockDirectConnection = createMockConnection({
+    mockDirectConnection = makeConnection({
       id: "conn-direct-1",
-      sourcePodId,
+      sourcePodId: SOURCE_POD_ID,
       targetPodId: "target-pod-3",
       triggerMode: "direct",
     });
-    mockMessages = createMockMessages();
-    mockAutoStrategy = createMockStrategy("auto");
-    mockDirectStrategy = createMockStrategy("direct");
-    mockAiDecideStrategy = createMockStrategy("ai-decide");
+    mockMessages = makeMessages();
+    mockAutoStrategy = makeStrategy("auto");
+    mockDirectStrategy = makeStrategy("direct");
+    mockAiDecideStrategy = makeStrategy("ai-decide");
 
-    const customPodGetter = (cId: string, podId: string) => {
-      if (podId === sourcePodId) return { ...mockSourcePod };
+    const customPodGetter = (_cId: string, podId: string): Pod | undefined => {
+      if (podId === SOURCE_POD_ID) return { ...mockSourcePod };
       if (podId.startsWith("target-pod"))
         return { ...mockTargetPod, id: podId, name: `Target ${podId}` };
       return undefined;
     };
 
-    setupAllSpies({ messages: mockMessages, customPodGetter });
+    setupCommonSpies(mockMessages, customPodGetter);
 
-    initializeQueueService({
-      auto: mockAutoStrategy,
-      direct: mockDirectStrategy,
-      "ai-decide": mockAiDecideStrategy,
+    workflowQueueService.init({
+      executionService: workflowExecutionService,
+      strategies: {
+        auto: mockAutoStrategy,
+        direct: mockDirectStrategy,
+        "ai-decide": mockAiDecideStrategy,
+      },
     });
-    clearAllQueues([targetPodId, "target-pod-2", "target-pod-3"]);
+    clearAllQueues([TARGET_POD_ID, "target-pod-2", "target-pod-3"]);
   });
 
   afterEach(() => {
@@ -110,7 +341,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         id: "conn-queued",
         sourcePodId: "source-pod-2",
         sourceAnchor: "right",
-        targetPodId,
+        targetPodId: TARGET_POD_ID,
         targetAnchor: "left",
         triggerMode: "auto",
         decideStatus: "none",
@@ -118,19 +349,19 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         connectionStatus: "idle",
       };
 
-      expect(workflowQueueService.getQueueSize(targetPodId)).toBe(0);
+      expect(workflowQueueService.getQueueSize(TARGET_POD_ID)).toBe(0);
 
       workflowQueueService.enqueue({
-        canvasId,
+        canvasId: CANVAS_ID,
         connectionId: queuedConnection.id,
         sourcePodId: queuedConnection.sourcePodId,
-        targetPodId,
+        targetPodId: TARGET_POD_ID,
         summary: "Queued summary",
         isSummarized: true,
         triggerMode: "auto",
       });
 
-      expect(workflowQueueService.getQueueSize(targetPodId)).toBe(1);
+      expect(workflowQueueService.getQueueSize(TARGET_POD_ID)).toBe(1);
 
       vi.spyOn(connectionStore, "getById").mockReturnValue(queuedConnection);
       vi.spyOn(connectionStore, "findBySourcePodId").mockReturnValue([]);
@@ -138,18 +369,19 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         cId: string,
         podId: string,
       ) => {
-        if (podId === targetPodId) return { ...mockTargetPod, status: "idle" };
+        if (podId === TARGET_POD_ID)
+          return { ...mockTargetPod, status: "idle" };
         return { ...mockSourcePod, id: podId };
       }) as any);
 
-      await workflowQueueService.processNextInQueue(canvasId, targetPodId);
+      await workflowQueueService.processNextInQueue(CANVAS_ID, TARGET_POD_ID);
 
-      expect(workflowQueueService.getQueueSize(targetPodId)).toBe(0);
+      expect(workflowQueueService.getQueueSize(TARGET_POD_ID)).toBe(0);
 
       expect(mockAutoStrategy.onQueueProcessed).toHaveBeenCalledWith(
         expect.objectContaining({
-          canvasId,
-          targetPodId,
+          canvasId: CANVAS_ID,
+          targetPodId: TARGET_POD_ID,
           connectionId: queuedConnection.id,
           sourcePodId: queuedConnection.sourcePodId,
           remainingQueueSize: 0,
@@ -171,8 +403,9 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         cId: string,
         podId: string,
       ) => {
-        if (podId === targetPodId) return { ...mockTargetPod, status: "idle" };
-        if (podId === sourcePodId) return mockSourcePod;
+        if (podId === TARGET_POD_ID)
+          return { ...mockTargetPod, status: "idle" };
+        if (podId === SOURCE_POD_ID) return mockSourcePod;
         return undefined;
       }) as any);
 
@@ -186,7 +419,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
 
       const triggerPromise =
         workflowExecutionService.triggerWorkflowWithSummary({
-          canvasId,
+          canvasId: CANVAS_ID,
           connectionId: mockAutoConnection.id,
           summary: "Test summary",
           isSummarized: true,
@@ -201,7 +434,10 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(processNextInQueueCalled).toBe(true);
-      expect(processNextInQueueSpy).toHaveBeenCalledWith(canvasId, targetPodId);
+      expect(processNextInQueueSpy).toHaveBeenCalledWith(
+        CANVAS_ID,
+        TARGET_POD_ID,
+      );
     });
   });
 
@@ -228,7 +464,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       }) as any);
 
       await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
+        canvasId: CANVAS_ID,
         connectionId: directConn.id,
         summary: "Direct summary",
         isSummarized: true,
@@ -238,7 +474,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
 
       expect(mockDirectStrategy.onTrigger).toHaveBeenCalledWith(
         expect.objectContaining({
-          canvasId,
+          canvasId: CANVAS_ID,
           connectionId: directConn.id,
           summary: "Direct summary",
           isSummarized: true,
@@ -268,7 +504,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       }) as any);
 
       await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
+        canvasId: CANVAS_ID,
         connectionId: autoConn.id,
         summary: "Auto summary",
         isSummarized: true,
@@ -278,7 +514,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
 
       expect(mockAutoStrategy.onTrigger).toHaveBeenCalledWith(
         expect.objectContaining({
-          canvasId,
+          canvasId: CANVAS_ID,
           connectionId: autoConn.id,
           summary: "Auto summary",
           isSummarized: true,
@@ -293,7 +529,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         id: "conn-queued-active-check",
         sourcePodId: "source-pod-2",
         sourceAnchor: "right",
-        targetPodId,
+        targetPodId: TARGET_POD_ID,
         targetAnchor: "left",
         triggerMode: "auto",
         decideStatus: "none",
@@ -302,10 +538,10 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       };
 
       workflowQueueService.enqueue({
-        canvasId,
+        canvasId: CANVAS_ID,
         connectionId: queuedConnection.id,
         sourcePodId: queuedConnection.sourcePodId,
-        targetPodId,
+        targetPodId: TARGET_POD_ID,
         summary: "Active check summary",
         isSummarized: true,
         triggerMode: "auto",
@@ -320,7 +556,8 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         cId: string,
         podId: string,
       ) => {
-        if (podId === targetPodId) return { ...mockTargetPod, status: "idle" };
+        if (podId === TARGET_POD_ID)
+          return { ...mockTargetPod, status: "idle" };
         return { ...mockSourcePod, id: podId };
       }) as any);
 
@@ -329,17 +566,12 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         "updateConnectionStatus",
       );
 
-      await workflowQueueService.processNextInQueue(canvasId, targetPodId);
+      await workflowQueueService.processNextInQueue(CANVAS_ID, TARGET_POD_ID);
 
       expect(mockAutoStrategy.onQueueProcessed).toHaveBeenCalled();
 
       // onQueueProcessed 被呼叫後，updateConnectionStatus 不應以 active 被呼叫（active 在 triggerWorkflowWithSummary 設定）
-      const activeCallsFromQueueProcessed =
-        updateConnectionStatusSpy.mock.calls.filter(
-          ([, , status]) => status === "active",
-        );
       // 此時 triggerWorkflowWithSummary 尚未完成（fire-and-forget），所以 active 還沒被設定
-      // 我們只驗證 onQueueProcessed 本身不再呼叫 updateConnectionStatus('active')
       expect(mockAutoStrategy.onQueueProcessed).toHaveBeenCalledWith(
         expect.objectContaining({ connectionId: queuedConnection.id }),
       );
@@ -352,7 +584,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         );
       expect(activeCallsAfterTrigger.length).toBeGreaterThanOrEqual(1);
       expect(activeCallsAfterTrigger[0]).toEqual([
-        canvasId,
+        CANVAS_ID,
         queuedConnection.id,
         "active",
       ]);
@@ -375,7 +607,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       ) => {
         if (podId === "target-fail")
           return { ...mockTargetPod, id: "target-fail", status: "idle" };
-        if (podId === sourcePodId) return mockSourcePod;
+        if (podId === SOURCE_POD_ID) return mockSourcePod;
         return undefined;
       }) as any);
       // Phase 4：executor 的 Claude 路徑需要 getByIdGlobal 回傳 pod
@@ -387,14 +619,14 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
               id: "target-fail",
               status: "idle" as const,
             };
-            return { canvasId, pod };
+            return { canvasId: CANVAS_ID, pod };
           }
           return undefined;
         },
       );
 
       workflowQueueService.enqueue({
-        canvasId,
+        canvasId: CANVAS_ID,
         connectionId: "conn-queued-after-fail",
         sourcePodId: "source-pod-2",
         targetPodId: "target-fail",
@@ -422,7 +654,7 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
         });
 
       await workflowExecutionService.triggerWorkflowWithSummary({
-        canvasId,
+        canvasId: CANVAS_ID,
         connectionId: conn.id,
         summary: "Test summary",
         isSummarized: true,
@@ -437,9 +669,9 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
       // "Claude query failed" 不在白名單中，故期望收到泛化後的錯誤訊息
       expect(mockAutoStrategy.onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          canvasId,
+          canvasId: CANVAS_ID,
           connectionId: conn.id,
-          sourcePodId,
+          sourcePodId: SOURCE_POD_ID,
           targetPodId: "target-fail",
           triggerMode: "auto",
         }),
@@ -448,12 +680,12 @@ describe("WorkflowQueueFlow - Queue 處理、混合場景、錯誤恢復", () =>
 
       expect(processNextInQueueCalled).toBe(true);
       expect(processNextInQueueSpy).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         "target-fail",
       );
 
       expect(podStore.setStatus).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         "target-fail",
         "idle",
       );

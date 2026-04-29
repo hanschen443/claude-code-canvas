@@ -1,80 +1,57 @@
-// 模組 mock 必須在 import 之前宣告
-vi.mock("../../src/services/connectionStore.js", () => ({
-  connectionStore: {
-    findByTargetPodId: vi.fn(),
-    getById: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/pendingTargetStore.js", () => ({
-  pendingTargetStore: {
-    getPendingTarget: vi.fn(),
-    clearPendingTarget: vi.fn(),
-    hasPendingTarget: vi.fn(),
-    removeSourceFromAllPending: vi.fn(),
-    removeSourceFromPending: vi.fn(),
-    getCompletedSummaries: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/podStore.js", () => ({
-  podStore: {
-    getById: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/directTriggerStore.js", () => ({
-  directTriggerStore: {
-    hasDirectPending: vi.fn(),
-    clearDirectPending: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/workflow/workflowEventEmitter.js", () => ({
-  workflowEventEmitter: {
-    emitWorkflowPending: vi.fn(),
-    emitWorkflowSourcesMerged: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/workflow/workflowDirectTriggerService.js", () => ({
-  workflowDirectTriggerService: {
-    cancelPendingResolver: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/utils/logger.js", () => ({
-  logger: {
-    log: vi.fn(),
-  },
-}));
-
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { workflowStateService } from "../../src/services/workflow/workflowStateService.js";
 import { connectionStore } from "../../src/services/connectionStore.js";
 import { pendingTargetStore } from "../../src/services/pendingTargetStore.js";
 import { directTriggerStore } from "../../src/services/directTriggerStore.js";
 import { workflowEventEmitter } from "../../src/services/workflow/workflowEventEmitter.js";
 import { workflowDirectTriggerService } from "../../src/services/workflow/workflowDirectTriggerService.js";
-import {
-  createMockConnection,
-  TEST_IDS,
-} from "../mocks/workflowTestFactories.js";
+import { logger } from "../../src/utils/logger.js";
+import type { Connection } from "../../src/types/index.js";
 import type { RunContext } from "../../src/types/run.js";
 
-const { canvasId, targetPodId, sourcePodId, connectionId } = TEST_IDS;
+// ─── 常數（取代 TEST_IDS 工廠引用）─────────────────────────────────────────
 
-function createMockRunContext(): RunContext {
+const CANVAS_ID = "canvas-1";
+const SOURCE_POD_ID = "source-pod";
+const TARGET_POD_ID = "target-pod";
+const CONNECTION_ID = "conn-1";
+
+// ─── 工廠函式（取代 createMockConnection 工廠引用）───────────────────────────
+
+function makeConnection(overrides?: Partial<Connection>): Connection {
+  return {
+    id: CONNECTION_ID,
+    sourcePodId: SOURCE_POD_ID,
+    sourceAnchor: "right",
+    targetPodId: TARGET_POD_ID,
+    targetAnchor: "left",
+    triggerMode: "auto",
+    decideStatus: "none",
+    decideReason: null,
+    connectionStatus: "idle",
+    summaryModel: "sonnet",
+    aiDecideModel: "sonnet",
+    ...overrides,
+  } as Connection;
+}
+
+function makeRunContext(): RunContext {
   return {
     runId: "run-1",
-    canvasId,
+    canvasId: CANVAS_ID,
     triggeredBy: "user",
   } as RunContext;
 }
 
 describe("WorkflowStateService", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.spyOn(logger, "log").mockImplementation(() => {});
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   // ============================================================
@@ -82,17 +59,13 @@ describe("WorkflowStateService", () => {
   // ============================================================
   describe("checkMultiInputScenario", () => {
     it("只有一條 auto-triggerable 連線時 isMultiInput 為 false", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
-          id: "c1",
-          triggerMode: "auto",
-          sourcePodId: "src-1",
-        }),
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({ id: "c1", triggerMode: "auto", sourcePodId: "src-1" }),
       ]);
 
       const result = workflowStateService.checkMultiInputScenario(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(result.isMultiInput).toBe(false);
@@ -100,13 +73,9 @@ describe("WorkflowStateService", () => {
     });
 
     it("有多條 auto-triggerable 連線時 isMultiInput 為 true", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
-          id: "c1",
-          triggerMode: "auto",
-          sourcePodId: "src-1",
-        }),
-        createMockConnection({
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({ id: "c1", triggerMode: "auto", sourcePodId: "src-1" }),
+        makeConnection({
           id: "c2",
           triggerMode: "ai-decide",
           sourcePodId: "src-2",
@@ -114,8 +83,8 @@ describe("WorkflowStateService", () => {
       ]);
 
       const result = workflowStateService.checkMultiInputScenario(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(result.isMultiInput).toBe(true);
@@ -123,13 +92,13 @@ describe("WorkflowStateService", () => {
     });
 
     it("只有 direct 連線時 isMultiInput 為 false，requiredSourcePodIds 為空", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({
           id: "c1",
           triggerMode: "direct",
           sourcePodId: "src-1",
         }),
-        createMockConnection({
+        makeConnection({
           id: "c2",
           triggerMode: "direct",
           sourcePodId: "src-2",
@@ -137,8 +106,8 @@ describe("WorkflowStateService", () => {
       ]);
 
       const result = workflowStateService.checkMultiInputScenario(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(result.isMultiInput).toBe(false);
@@ -146,18 +115,14 @@ describe("WorkflowStateService", () => {
     });
 
     it("混合 triggerMode 時只計算 auto-triggerable 的連線", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
-          id: "c1",
-          triggerMode: "auto",
-          sourcePodId: "src-1",
-        }),
-        createMockConnection({
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({ id: "c1", triggerMode: "auto", sourcePodId: "src-1" }),
+        makeConnection({
           id: "c2",
           triggerMode: "direct",
           sourcePodId: "src-2",
         }),
-        createMockConnection({
+        makeConnection({
           id: "c3",
           triggerMode: "ai-decide",
           sourcePodId: "src-3",
@@ -165,8 +130,8 @@ describe("WorkflowStateService", () => {
       ]);
 
       const result = workflowStateService.checkMultiInputScenario(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(result.isMultiInput).toBe(true);
@@ -174,11 +139,11 @@ describe("WorkflowStateService", () => {
     });
 
     it("沒有任何連線時 isMultiInput 為 false，requiredSourcePodIds 為空", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([]);
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([]);
 
       const result = workflowStateService.checkMultiInputScenario(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(result.isMultiInput).toBe(false);
@@ -191,68 +156,60 @@ describe("WorkflowStateService", () => {
   // ============================================================
   describe("getDirectConnectionCount", () => {
     it("正確計算 direct 連線數量", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({
           id: "c1",
           triggerMode: "direct",
           sourcePodId: "src-1",
         }),
-        createMockConnection({
+        makeConnection({
           id: "c2",
           triggerMode: "direct",
           sourcePodId: "src-2",
         }),
-        createMockConnection({
-          id: "c3",
-          triggerMode: "auto",
-          sourcePodId: "src-3",
-        }),
+        makeConnection({ id: "c3", triggerMode: "auto", sourcePodId: "src-3" }),
       ]);
 
       const count = workflowStateService.getDirectConnectionCount(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(count).toBe(2);
     });
 
     it("沒有 direct 連線時回傳 0", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
-          id: "c1",
-          triggerMode: "auto",
-          sourcePodId: "src-1",
-        }),
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({ id: "c1", triggerMode: "auto", sourcePodId: "src-1" }),
       ]);
 
       const count = workflowStateService.getDirectConnectionCount(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(count).toBe(0);
     });
 
     it("沒有任何連線時回傳 0", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([]);
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([]);
 
       const count = workflowStateService.getDirectConnectionCount(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(count).toBe(0);
     });
 
     it("不計算 ai-decide 連線", () => {
-      vi.mocked(connectionStore.findByTargetPodId).mockReturnValue([
-        createMockConnection({
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+        makeConnection({
           id: "c1",
           triggerMode: "ai-decide",
           sourcePodId: "src-1",
         }),
-        createMockConnection({
+        makeConnection({
           id: "c2",
           triggerMode: "direct",
           sourcePodId: "src-2",
@@ -260,8 +217,8 @@ describe("WorkflowStateService", () => {
       ]);
 
       const count = workflowStateService.getDirectConnectionCount(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(count).toBe(1);
@@ -273,23 +230,32 @@ describe("WorkflowStateService", () => {
   // ============================================================
   describe("emitPendingStatus", () => {
     it("有 runContext 時直接 return，不呼叫任何 store/emitter", () => {
-      const runContext = createMockRunContext();
+      const runContext = makeRunContext();
+      const getPendingSpy = vi.spyOn(pendingTargetStore, "getPendingTarget");
+      const emitSpy = vi.spyOn(workflowEventEmitter, "emitWorkflowPending");
 
-      workflowStateService.emitPendingStatus(canvasId, targetPodId, runContext);
+      workflowStateService.emitPendingStatus(
+        CANVAS_ID,
+        TARGET_POD_ID,
+        runContext,
+      );
 
-      expect(pendingTargetStore.getPendingTarget).not.toHaveBeenCalled();
-      expect(workflowEventEmitter.emitWorkflowPending).not.toHaveBeenCalled();
+      expect(getPendingSpy).not.toHaveBeenCalled();
+      expect(emitSpy).not.toHaveBeenCalled();
     });
 
     it("pending 不存在時直接 return，不觸發 emitWorkflowPending", () => {
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(undefined);
+      vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
+        undefined,
+      );
+      const emitSpy = vi.spyOn(workflowEventEmitter, "emitWorkflowPending");
 
-      workflowStateService.emitPendingStatus(canvasId, targetPodId);
+      workflowStateService.emitPendingStatus(CANVAS_ID, TARGET_POD_ID);
 
       expect(pendingTargetStore.getPendingTarget).toHaveBeenCalledWith(
-        targetPodId,
+        TARGET_POD_ID,
       );
-      expect(workflowEventEmitter.emitWorkflowPending).not.toHaveBeenCalled();
+      expect(emitSpy).not.toHaveBeenCalled();
     });
 
     it("pending 存在時正確組裝 payload 並觸發 emitWorkflowPending", () => {
@@ -298,25 +264,25 @@ describe("WorkflowStateService", () => {
         completedSources: new Map([["src-1", "Summary 1"]]),
         rejectedSources: new Map([["src-3", "無關"]]),
       };
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(
+      vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
         mockPending as any,
       );
+      const emitSpy = vi
+        .spyOn(workflowEventEmitter, "emitWorkflowPending")
+        .mockImplementation(() => {});
 
-      workflowStateService.emitPendingStatus(canvasId, targetPodId);
+      workflowStateService.emitPendingStatus(CANVAS_ID, TARGET_POD_ID);
 
-      expect(workflowEventEmitter.emitWorkflowPending).toHaveBeenCalledWith(
-        canvasId,
-        {
-          canvasId,
-          targetPodId,
-          completedSourcePodIds: ["src-1"],
-          pendingSourcePodIds: ["src-2"],
-          totalSources: 3,
-          completedCount: 1,
-          rejectedSourcePodIds: ["src-3"],
-          hasRejectedSources: true,
-        },
-      );
+      expect(emitSpy).toHaveBeenCalledWith(CANVAS_ID, {
+        canvasId: CANVAS_ID,
+        targetPodId: TARGET_POD_ID,
+        completedSourcePodIds: ["src-1"],
+        pendingSourcePodIds: ["src-2"],
+        totalSources: 3,
+        completedCount: 1,
+        rejectedSourcePodIds: ["src-3"],
+        hasRejectedSources: true,
+      });
     });
 
     it("所有來源都已完成或拒絕時 pendingSourcePodIds 為空", () => {
@@ -325,14 +291,16 @@ describe("WorkflowStateService", () => {
         completedSources: new Map([["src-1", "Summary 1"]]),
         rejectedSources: new Map([["src-2", "Rejected"]]),
       };
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(
+      vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
         mockPending as any,
       );
+      const emitSpy = vi
+        .spyOn(workflowEventEmitter, "emitWorkflowPending")
+        .mockImplementation(() => {});
 
-      workflowStateService.emitPendingStatus(canvasId, targetPodId);
+      workflowStateService.emitPendingStatus(CANVAS_ID, TARGET_POD_ID);
 
-      const payload = vi.mocked(workflowEventEmitter.emitWorkflowPending).mock
-        .calls[0][1];
+      const payload = emitSpy.mock.calls[0][1];
       expect(payload.pendingSourcePodIds).toEqual([]);
       expect(payload.hasRejectedSources).toBe(true);
     });
@@ -343,14 +311,16 @@ describe("WorkflowStateService", () => {
         completedSources: new Map([["src-1", "Summary 1"]]),
         rejectedSources: new Map(),
       };
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(
+      vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
         mockPending as any,
       );
+      const emitSpy = vi
+        .spyOn(workflowEventEmitter, "emitWorkflowPending")
+        .mockImplementation(() => {});
 
-      workflowStateService.emitPendingStatus(canvasId, targetPodId);
+      workflowStateService.emitPendingStatus(CANVAS_ID, TARGET_POD_ID);
 
-      const payload = vi.mocked(workflowEventEmitter.emitWorkflowPending).mock
-        .calls[0][1];
+      const payload = emitSpy.mock.calls[0][1];
       expect(payload.hasRejectedSources).toBe(false);
       expect(payload.rejectedSourcePodIds).toEqual([]);
     });
@@ -361,68 +331,76 @@ describe("WorkflowStateService", () => {
   // ============================================================
   describe("handleSourceDeletion", () => {
     it("呼叫 removeSourceFromAllPending 並回傳受影響的 targetIds", () => {
-      vi.mocked(pendingTargetStore.removeSourceFromAllPending).mockReturnValue([
-        "t1",
-        "t2",
-      ]);
+      vi.spyOn(
+        pendingTargetStore,
+        "removeSourceFromAllPending",
+      ).mockReturnValue(["t1", "t2"]);
       // processAffectedTarget 內部會呼叫 tryCompletePendingOrClear
       // 讓 getPendingTarget 回傳 undefined 來使 tryCompletePendingOrClear 快速 return
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(undefined);
+      vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
+        undefined,
+      );
 
       const result = workflowStateService.handleSourceDeletion(
-        canvasId,
-        sourcePodId,
+        CANVAS_ID,
+        SOURCE_POD_ID,
       );
 
       expect(
         pendingTargetStore.removeSourceFromAllPending,
-      ).toHaveBeenCalledWith(sourcePodId);
+      ).toHaveBeenCalledWith(SOURCE_POD_ID);
       expect(result).toEqual(["t1", "t2"]);
     });
 
     it("沒有受影響的 target 時回傳空陣列", () => {
-      vi.mocked(pendingTargetStore.removeSourceFromAllPending).mockReturnValue(
-        [],
-      );
+      vi.spyOn(
+        pendingTargetStore,
+        "removeSourceFromAllPending",
+      ).mockReturnValue([]);
 
       const result = workflowStateService.handleSourceDeletion(
-        canvasId,
-        sourcePodId,
+        CANVAS_ID,
+        SOURCE_POD_ID,
       );
 
       expect(result).toEqual([]);
     });
 
     it("受影響 target 的 pending 無剩餘來源時清除 pending", () => {
-      vi.mocked(pendingTargetStore.removeSourceFromAllPending).mockReturnValue([
-        "t1",
-      ]);
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue({
+      vi.spyOn(
+        pendingTargetStore,
+        "removeSourceFromAllPending",
+      ).mockReturnValue(["t1"]);
+      vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue({
         requiredSourcePodIds: [],
         completedSources: new Map(),
         rejectedSources: new Map(),
       } as any);
+      const clearSpy = vi
+        .spyOn(pendingTargetStore, "clearPendingTarget")
+        .mockImplementation(() => {});
 
-      workflowStateService.handleSourceDeletion(canvasId, sourcePodId);
+      workflowStateService.handleSourceDeletion(CANVAS_ID, SOURCE_POD_ID);
 
-      expect(pendingTargetStore.clearPendingTarget).toHaveBeenCalledWith("t1");
+      expect(clearSpy).toHaveBeenCalledWith("t1");
     });
 
     it("多個受影響 target 時逐一處理", () => {
-      vi.mocked(pendingTargetStore.removeSourceFromAllPending).mockReturnValue([
-        "t1",
-        "t2",
-        "t3",
-      ]);
-      vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(undefined);
+      vi.spyOn(
+        pendingTargetStore,
+        "removeSourceFromAllPending",
+      ).mockReturnValue(["t1", "t2", "t3"]);
+      const getPendingSpy = vi
+        .spyOn(pendingTargetStore, "getPendingTarget")
+        .mockReturnValue(undefined);
 
-      workflowStateService.handleSourceDeletion(canvasId, sourcePodId);
+      workflowStateService.handleSourceDeletion(CANVAS_ID, SOURCE_POD_ID);
 
       // getPendingTarget 被呼叫了 3 次（每個 target 各一次）
-      expect(pendingTargetStore.getPendingTarget).toHaveBeenCalledTimes(3);
-      expect(pendingTargetStore.getPendingTarget).toHaveBeenCalledWith("t1");
-      expect(pendingTargetStore.getPendingTarget).toHaveBeenCalledWith("t2");
-      expect(pendingTargetStore.getPendingTarget).toHaveBeenCalledWith("t3");
+      expect(getPendingSpy).toHaveBeenCalledTimes(3);
+      expect(getPendingSpy).toHaveBeenCalledWith("t1");
+      expect(getPendingSpy).toHaveBeenCalledWith("t2");
+      expect(getPendingSpy).toHaveBeenCalledWith("t3");
     });
   });
 
@@ -431,151 +409,185 @@ describe("WorkflowStateService", () => {
   // ============================================================
   describe("handleConnectionDeletion", () => {
     it("connectionStore 找不到連線時直接 return", () => {
-      vi.mocked(connectionStore.getById).mockReturnValue(undefined);
+      vi.spyOn(connectionStore, "getById").mockReturnValue(undefined);
+      const hasDirectSpy = vi.spyOn(directTriggerStore, "hasDirectPending");
+      const hasPendingSpy = vi.spyOn(pendingTargetStore, "hasPendingTarget");
 
-      workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+      workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-      expect(directTriggerStore.hasDirectPending).not.toHaveBeenCalled();
-      expect(pendingTargetStore.hasPendingTarget).not.toHaveBeenCalled();
+      expect(hasDirectSpy).not.toHaveBeenCalled();
+      expect(hasPendingSpy).not.toHaveBeenCalled();
     });
 
     describe("triggerMode 為 direct 時", () => {
-      const directConnection = createMockConnection({
-        id: connectionId,
+      const directConnection = makeConnection({
+        id: CONNECTION_ID,
         triggerMode: "direct",
-        sourcePodId,
-        targetPodId,
+        sourcePodId: SOURCE_POD_ID,
+        targetPodId: TARGET_POD_ID,
       });
 
       it("有 directPending 時清除並取消 resolver", () => {
-        vi.mocked(connectionStore.getById).mockReturnValue(directConnection);
-        vi.mocked(directTriggerStore.hasDirectPending).mockReturnValue(true);
+        vi.spyOn(connectionStore, "getById").mockReturnValue(directConnection);
+        vi.spyOn(directTriggerStore, "hasDirectPending").mockReturnValue(true);
+        const clearSpy = vi
+          .spyOn(directTriggerStore, "clearDirectPending")
+          .mockImplementation(() => {});
+        const cancelSpy = vi
+          .spyOn(workflowDirectTriggerService, "cancelPendingResolver")
+          .mockImplementation(() => {});
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(directTriggerStore.clearDirectPending).toHaveBeenCalledWith(
-          targetPodId,
-        );
-        expect(
-          workflowDirectTriggerService.cancelPendingResolver,
-        ).toHaveBeenCalledWith(targetPodId);
+        expect(clearSpy).toHaveBeenCalledWith(TARGET_POD_ID);
+        expect(cancelSpy).toHaveBeenCalledWith(TARGET_POD_ID);
       });
 
       it("沒有 directPending 時不清除但仍取消 resolver", () => {
-        vi.mocked(connectionStore.getById).mockReturnValue(directConnection);
-        vi.mocked(directTriggerStore.hasDirectPending).mockReturnValue(false);
+        vi.spyOn(connectionStore, "getById").mockReturnValue(directConnection);
+        vi.spyOn(directTriggerStore, "hasDirectPending").mockReturnValue(false);
+        const clearSpy = vi
+          .spyOn(directTriggerStore, "clearDirectPending")
+          .mockImplementation(() => {});
+        const cancelSpy = vi
+          .spyOn(workflowDirectTriggerService, "cancelPendingResolver")
+          .mockImplementation(() => {});
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(directTriggerStore.clearDirectPending).not.toHaveBeenCalled();
-        expect(
-          workflowDirectTriggerService.cancelPendingResolver,
-        ).toHaveBeenCalledWith(targetPodId);
+        expect(clearSpy).not.toHaveBeenCalled();
+        expect(cancelSpy).toHaveBeenCalledWith(TARGET_POD_ID);
       });
 
       it("不觸發 multi-input 相關邏輯", () => {
-        vi.mocked(connectionStore.getById).mockReturnValue(directConnection);
-        vi.mocked(directTriggerStore.hasDirectPending).mockReturnValue(false);
+        vi.spyOn(connectionStore, "getById").mockReturnValue(directConnection);
+        vi.spyOn(directTriggerStore, "hasDirectPending").mockReturnValue(false);
+        vi.spyOn(
+          workflowDirectTriggerService,
+          "cancelPendingResolver",
+        ).mockImplementation(() => {});
+        const hasPendingSpy = vi.spyOn(pendingTargetStore, "hasPendingTarget");
+        const removeFromPendingSpy = vi.spyOn(
+          pendingTargetStore,
+          "removeSourceFromPending",
+        );
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(pendingTargetStore.hasPendingTarget).not.toHaveBeenCalled();
-        expect(
-          pendingTargetStore.removeSourceFromPending,
-        ).not.toHaveBeenCalled();
+        expect(hasPendingSpy).not.toHaveBeenCalled();
+        expect(removeFromPendingSpy).not.toHaveBeenCalled();
       });
     });
 
     describe("triggerMode 為 auto-triggerable 時", () => {
-      const autoConnection = createMockConnection({
-        id: connectionId,
+      const autoConnection = makeConnection({
+        id: CONNECTION_ID,
         triggerMode: "auto",
-        sourcePodId,
-        targetPodId,
+        sourcePodId: SOURCE_POD_ID,
+        targetPodId: TARGET_POD_ID,
       });
 
       it("有 pendingTarget 時移除來源", () => {
-        vi.mocked(connectionStore.getById).mockReturnValue(autoConnection);
-        vi.mocked(pendingTargetStore.hasPendingTarget).mockReturnValue(true);
+        vi.spyOn(connectionStore, "getById").mockReturnValue(autoConnection);
+        vi.spyOn(pendingTargetStore, "hasPendingTarget").mockReturnValue(true);
         // tryCompletePendingOrClear 內部呼叫
-        vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(
+        vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
           undefined,
         );
+        const removeFromPendingSpy = vi
+          .spyOn(pendingTargetStore, "removeSourceFromPending")
+          .mockImplementation(() => {});
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(pendingTargetStore.removeSourceFromPending).toHaveBeenCalledWith(
-          targetPodId,
-          sourcePodId,
+        expect(removeFromPendingSpy).toHaveBeenCalledWith(
+          TARGET_POD_ID,
+          SOURCE_POD_ID,
         );
       });
 
       it("沒有 pendingTarget 時不做任何操作", () => {
-        vi.mocked(connectionStore.getById).mockReturnValue(autoConnection);
-        vi.mocked(pendingTargetStore.hasPendingTarget).mockReturnValue(false);
+        vi.spyOn(connectionStore, "getById").mockReturnValue(autoConnection);
+        vi.spyOn(pendingTargetStore, "hasPendingTarget").mockReturnValue(false);
+        const removeFromPendingSpy = vi.spyOn(
+          pendingTargetStore,
+          "removeSourceFromPending",
+        );
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(
-          pendingTargetStore.removeSourceFromPending,
-        ).not.toHaveBeenCalled();
+        expect(removeFromPendingSpy).not.toHaveBeenCalled();
       });
 
       it("ai-decide 連線也走 auto-triggerable 分支", () => {
-        const aiDecideConnection = createMockConnection({
-          id: connectionId,
+        const aiDecideConnection = makeConnection({
+          id: CONNECTION_ID,
           triggerMode: "ai-decide",
-          sourcePodId,
-          targetPodId,
+          sourcePodId: SOURCE_POD_ID,
+          targetPodId: TARGET_POD_ID,
         });
-        vi.mocked(connectionStore.getById).mockReturnValue(aiDecideConnection);
-        vi.mocked(pendingTargetStore.hasPendingTarget).mockReturnValue(true);
-        vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue(
+        vi.spyOn(connectionStore, "getById").mockReturnValue(
+          aiDecideConnection,
+        );
+        vi.spyOn(pendingTargetStore, "hasPendingTarget").mockReturnValue(true);
+        vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue(
           undefined,
         );
+        const removeFromPendingSpy = vi
+          .spyOn(pendingTargetStore, "removeSourceFromPending")
+          .mockImplementation(() => {});
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(pendingTargetStore.removeSourceFromPending).toHaveBeenCalledWith(
-          targetPodId,
-          sourcePodId,
+        expect(removeFromPendingSpy).toHaveBeenCalledWith(
+          TARGET_POD_ID,
+          SOURCE_POD_ID,
         );
       });
 
       it("移除來源後若無剩餘來源則清除 pending", () => {
-        vi.mocked(connectionStore.getById).mockReturnValue(autoConnection);
-        vi.mocked(pendingTargetStore.hasPendingTarget).mockReturnValue(true);
-        vi.mocked(pendingTargetStore.getPendingTarget).mockReturnValue({
+        vi.spyOn(connectionStore, "getById").mockReturnValue(autoConnection);
+        vi.spyOn(pendingTargetStore, "hasPendingTarget").mockReturnValue(true);
+        vi.spyOn(pendingTargetStore, "getPendingTarget").mockReturnValue({
           requiredSourcePodIds: [],
           completedSources: new Map(),
           rejectedSources: new Map(),
         } as any);
+        vi.spyOn(
+          pendingTargetStore,
+          "removeSourceFromPending",
+        ).mockImplementation(() => {});
+        const clearSpy = vi
+          .spyOn(pendingTargetStore, "clearPendingTarget")
+          .mockImplementation(() => {});
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(pendingTargetStore.clearPendingTarget).toHaveBeenCalledWith(
-          targetPodId,
-        );
+        expect(clearSpy).toHaveBeenCalledWith(TARGET_POD_ID);
       });
     });
 
     describe("其他非 auto-triggerable triggerMode 時", () => {
       it("不觸發 direct 也不觸發 multi-input 邏輯，直接 return", () => {
-        const manualConnection = createMockConnection({
-          id: connectionId,
+        const manualConnection = makeConnection({
+          id: CONNECTION_ID,
           triggerMode: "manual" as any,
-          sourcePodId,
-          targetPodId,
+          sourcePodId: SOURCE_POD_ID,
+          targetPodId: TARGET_POD_ID,
         });
-        vi.mocked(connectionStore.getById).mockReturnValue(manualConnection);
+        vi.spyOn(connectionStore, "getById").mockReturnValue(manualConnection);
+        const hasDirectSpy = vi.spyOn(directTriggerStore, "hasDirectPending");
+        const hasPendingSpy = vi.spyOn(pendingTargetStore, "hasPendingTarget");
+        const removeFromPendingSpy = vi.spyOn(
+          pendingTargetStore,
+          "removeSourceFromPending",
+        );
 
-        workflowStateService.handleConnectionDeletion(canvasId, connectionId);
+        workflowStateService.handleConnectionDeletion(CANVAS_ID, CONNECTION_ID);
 
-        expect(directTriggerStore.hasDirectPending).not.toHaveBeenCalled();
-        expect(pendingTargetStore.hasPendingTarget).not.toHaveBeenCalled();
-        expect(
-          pendingTargetStore.removeSourceFromPending,
-        ).not.toHaveBeenCalled();
+        expect(hasDirectSpy).not.toHaveBeenCalled();
+        expect(hasPendingSpy).not.toHaveBeenCalled();
+        expect(removeFromPendingSpy).not.toHaveBeenCalled();
       });
     });
   });

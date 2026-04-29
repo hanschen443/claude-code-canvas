@@ -1,80 +1,105 @@
-vi.mock("../../src/services/podStore.js", () => ({
-  podStore: {
-    getById: vi.fn(),
-    setStatus: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/connectionStore.js", () => ({
-  connectionStore: {
-    findByTargetPodId: vi.fn().mockReturnValue([]),
-    update: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/socketService.js", () => ({
-  socketService: {
-    emitToCanvas: vi.fn(),
-  },
-}));
-
-vi.mock("../../src/services/runStore.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../src/services/runStore.js")>();
-  return {
-    ...actual,
-    runStore: {
-      getPodInstance: vi.fn(),
-    },
-  };
-});
-
-vi.mock("../../src/utils/logger.js", () => ({
-  logger: {
-    log: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { workflowPipeline } from "../../src/services/workflow/workflowPipeline.js";
 import { podStore } from "../../src/services/podStore.js";
 import { connectionStore } from "../../src/services/connectionStore.js";
 import { socketService } from "../../src/services/socketService.js";
 import { runStore } from "../../src/services/runStore.js";
+import { logger } from "../../src/utils/logger.js";
 import type {
   PipelineContext,
   TriggerStrategy,
-  CollectSourcesContext,
-  TriggerDecideContext,
 } from "../../src/services/workflow/types.js";
 import type { Connection } from "../../src/types/index.js";
 import type { RunContext } from "../../src/types/run.js";
 import type { RunPodInstance } from "../../src/services/runStore.js";
-import {
-  createMockPod,
-  createMockConnection,
-  createMockStrategy,
-  TEST_IDS,
-} from "../mocks/workflowTestFactories.js";
+import type { Pod } from "../../src/types/index.js";
+import path from "path";
+import { config } from "../../src/config/index.js";
+
+// ─── 常數（取代 TEST_IDS 工廠引用）─────────────────────────────────────────
+
+const CANVAS_ID = "canvas-1";
+const SOURCE_POD_ID = "source-pod";
+const TARGET_POD_ID = "target-pod";
+const CONNECTION_ID = "conn-1";
+
+// ─── 工廠函式 ────────────────────────────────────────────────────────────────
+
+function makePod(overrides?: Partial<Pod>): Pod {
+  return {
+    id: "test-pod",
+    name: "Test Pod",
+    provider: "claude" as const,
+    providerConfig: { model: "sonnet" },
+    sessionId: null,
+    repositoryId: null,
+    workspacePath: path.join(config.canvasRoot, CANVAS_ID, "pod-test"),
+    commandId: null,
+    status: "idle" as const,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    multiInstance: false,
+    skillIds: [],
+    ...overrides,
+  } as Pod;
+}
+
+function makeConnection(overrides?: Partial<Connection>): Connection {
+  return {
+    id: CONNECTION_ID,
+    sourcePodId: SOURCE_POD_ID,
+    sourceAnchor: "right",
+    targetPodId: TARGET_POD_ID,
+    targetAnchor: "left",
+    triggerMode: "auto",
+    decideStatus: "none",
+    decideReason: null,
+    connectionStatus: "idle",
+    summaryModel: "sonnet",
+    aiDecideModel: "sonnet",
+    ...overrides,
+  } as Connection;
+}
+
+function makeStrategy(
+  mode: "auto" | "direct" | "ai-decide",
+  overrides?: Partial<TriggerStrategy>,
+): TriggerStrategy {
+  const base: Partial<TriggerStrategy> = {
+    mode,
+    decide: vi.fn().mockResolvedValue([]),
+    onTrigger: vi.fn(),
+    onComplete: vi.fn(),
+    onError: vi.fn(),
+    onQueued: vi.fn(),
+    onQueueProcessed: vi.fn(),
+    ...overrides,
+  };
+
+  if (mode === "direct" && !overrides?.collectSources) {
+    base.collectSources = vi.fn();
+  }
+
+  return base as TriggerStrategy;
+}
+
+// ─── テスト ──────────────────────────────────────────────────────────────────
 
 describe("WorkflowPipeline", () => {
-  const { canvasId, sourcePodId, targetPodId, connectionId } = TEST_IDS;
-
-  const mockConnection: Connection = createMockConnection({
-    id: connectionId,
-    sourcePodId,
-    targetPodId,
+  const mockConnection: Connection = makeConnection({
+    id: CONNECTION_ID,
+    sourcePodId: SOURCE_POD_ID,
+    targetPodId: TARGET_POD_ID,
     triggerMode: "auto",
   });
 
   const baseContext: PipelineContext = {
-    canvasId,
-    sourcePodId,
+    canvasId: CANVAS_ID,
+    sourcePodId: SOURCE_POD_ID,
     connection: mockConnection,
     triggerMode: "auto",
-    decideResult: { connectionId, approved: true, reason: null },
+    decideResult: { connectionId: CONNECTION_ID, approved: true, reason: null },
   };
 
   const mockExecutionService = {
@@ -91,15 +116,25 @@ describe("WorkflowPipeline", () => {
     processNextInQueue: vi.fn().mockResolvedValue(undefined),
   };
 
-  const mockTargetPod = createMockPod({
-    id: targetPodId,
+  const mockTargetPod = makePod({
+    id: TARGET_POD_ID,
     name: "Target Pod",
-    model: "claude-sonnet-4-5-20250929" as const,
+    providerConfig: { model: "claude-sonnet-4-5-20250929" } as any,
     status: "idle" as const,
   });
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.spyOn(logger, "log").mockImplementation(() => {});
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
+
+    vi.spyOn(podStore, "getById").mockReturnValue(mockTargetPod);
+    vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
+      mockConnection,
+    ]);
+    vi.spyOn(connectionStore, "update").mockReturnValue(undefined);
+    vi.spyOn(socketService, "emitToCanvas").mockImplementation(() => {});
+    vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
 
     workflowPipeline.init({
       executionService: mockExecutionService,
@@ -113,16 +148,34 @@ describe("WorkflowPipeline", () => {
         isSummarized: true,
       },
     );
-    // 預設：只有一條連線 → 非 multi-input
-    (connectionStore.findByTargetPodId as any).mockReturnValue([
-      mockConnection,
-    ]);
-    (podStore.getById as any).mockReturnValue(mockTargetPod);
+    (mockExecutionService.triggerWorkflowWithSummary as any).mockResolvedValue(
+      undefined,
+    );
+    (
+      mockMultiInputService.handleMultiInputForConnection as any
+    ).mockResolvedValue(undefined);
+    (mockQueueService.processNextInQueue as any).mockResolvedValue(undefined);
+    mockExecutionService.generateSummaryWithFallback.mockClear();
+    mockExecutionService.triggerWorkflowWithSummary.mockClear();
+    mockMultiInputService.handleMultiInputForConnection.mockClear();
+    mockQueueService.enqueue.mockClear();
+    mockQueueService.processNextInQueue.mockClear();
+
+    (mockExecutionService.generateSummaryWithFallback as any).mockResolvedValue(
+      {
+        content: "摘要",
+        isSummarized: true,
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe("Pipeline 完整流程", () => {
     it("有 collectSources 的 strategy 時，完整執行 pipeline", async () => {
-      const mockStrategy = createMockStrategy("auto", {
+      const mockStrategy = makeStrategy("auto", {
         collectSources: vi.fn().mockResolvedValue({
           ready: true,
         }),
@@ -133,9 +186,9 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.generateSummaryWithFallback,
       ).toHaveBeenCalledWith(
-        canvasId,
-        sourcePodId,
-        targetPodId,
+        CANVAS_ID,
+        SOURCE_POD_ID,
+        TARGET_POD_ID,
         "claude",
         "sonnet",
         undefined,
@@ -144,8 +197,8 @@ describe("WorkflowPipeline", () => {
       );
 
       expect(mockStrategy.collectSources).toHaveBeenCalledWith({
-        canvasId,
-        sourcePodId,
+        canvasId: CANVAS_ID,
+        sourcePodId: SOURCE_POD_ID,
         connection: mockConnection,
         summary: "摘要",
       });
@@ -153,8 +206,8 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
         summary: "摘要",
         isSummarized: true,
         participatingConnectionIds: undefined,
@@ -167,7 +220,7 @@ describe("WorkflowPipeline", () => {
 
   describe("collectSources 階段", () => {
     it("collectSources 回傳 ready=false 時暫停", async () => {
-      const mockStrategy = createMockStrategy("auto", {
+      const mockStrategy = makeStrategy("auto", {
         collectSources: vi.fn().mockResolvedValue({
           ready: false,
         }),
@@ -178,25 +231,24 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).not.toHaveBeenCalled();
-
       expect(mockQueueService.enqueue).not.toHaveBeenCalled();
     });
 
     it("使用預設 collectSources 邏輯（strategy 沒有 collectSources）", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
       expect(connectionStore.findByTargetPodId).toHaveBeenCalledWith(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
 
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
         summary: "摘要",
         isSummarized: true,
         participatingConnectionIds: undefined,
@@ -205,22 +257,22 @@ describe("WorkflowPipeline", () => {
     });
 
     it("多輸入情境正確委派", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
       // 兩條 auto 連線 → isMultiInput = true
-      const connA = createMockConnection({
+      const connA = makeConnection({
         id: "conn-a",
         sourcePodId: "pod-a",
-        targetPodId,
+        targetPodId: TARGET_POD_ID,
         triggerMode: "auto",
       });
-      const connB = createMockConnection({
+      const connB = makeConnection({
         id: "conn-b",
         sourcePodId: "pod-b",
-        targetPodId,
+        targetPodId: TARGET_POD_ID,
         triggerMode: "auto",
       });
-      (connectionStore.findByTargetPodId as any).mockReturnValue([
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
         connA,
         connB,
       ]);
@@ -230,8 +282,8 @@ describe("WorkflowPipeline", () => {
       expect(
         mockMultiInputService.handleMultiInputForConnection,
       ).toHaveBeenCalledWith({
-        canvasId,
-        sourcePodId,
+        canvasId: CANVAS_ID,
+        sourcePodId: SOURCE_POD_ID,
         connection: mockConnection,
         summary: "摘要",
         triggerMode: "auto",
@@ -244,7 +296,7 @@ describe("WorkflowPipeline", () => {
     });
 
     it("collectSources 提供 mergedContent 時使用該內容", async () => {
-      const mockStrategy = createMockStrategy("auto", {
+      const mockStrategy = makeStrategy("auto", {
         collectSources: vi.fn().mockResolvedValue({
           ready: true,
           mergedContent: "合併內容",
@@ -257,8 +309,8 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
         summary: "合併內容",
         isSummarized: true,
         participatingConnectionIds: undefined,
@@ -274,24 +326,25 @@ describe("WorkflowPipeline", () => {
 
   describe("checkQueue 階段", () => {
     it("目標 Pod 忙碌時加入佇列", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
-      (podStore.getById as any).mockReturnValue({
+      vi.spyOn(podStore, "getById").mockReturnValue({
         ...mockTargetPod,
         status: "chatting",
-      });
+      } as any);
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
       expect(mockQueueService.enqueue).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
-        sourcePodId,
-        targetPodId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
+        sourcePodId: SOURCE_POD_ID,
+        targetPodId: TARGET_POD_ID,
         summary: "摘要",
         isSummarized: true,
         triggerMode: "auto",
         participatingConnectionIds: undefined,
+        runContext: undefined,
       });
 
       expect(
@@ -300,27 +353,27 @@ describe("WorkflowPipeline", () => {
     });
 
     it("目標 Pod 忙碌時 enqueue 後立即呼叫一次 processNextInQueue", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
-      (podStore.getById as any).mockReturnValue({
+      vi.spyOn(podStore, "getById").mockReturnValue({
         ...mockTargetPod,
         status: "chatting",
-      });
+      } as any);
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
       expect(mockQueueService.enqueue).toHaveBeenCalled();
       expect(mockQueueService.processNextInQueue).toHaveBeenCalledTimes(1);
       expect(mockQueueService.processNextInQueue).toHaveBeenCalledWith(
-        canvasId,
-        targetPodId,
+        CANVAS_ID,
+        TARGET_POD_ID,
       );
     });
   });
 
   describe("generateSummary 階段", () => {
     it("generateSummary 失敗時不繼續流程", async () => {
-      const mockStrategy = createMockStrategy("auto", {
+      const mockStrategy = makeStrategy("auto", {
         collectSources: vi.fn().mockResolvedValue({
           ready: true,
         }),
@@ -335,14 +388,13 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).not.toHaveBeenCalled();
-
       expect(mockStrategy.collectSources).not.toHaveBeenCalled();
     });
   });
 
   describe("collectSources 與 mergedContent 的完整流程", () => {
     it("collectSources 回傳 mergedContent 且 isSummarized 未設定時預設為 true", async () => {
-      const mockStrategy = createMockStrategy("auto", {
+      const mockStrategy = makeStrategy("auto", {
         collectSources: vi.fn().mockResolvedValue({
           ready: true,
           mergedContent: "合併內容但未指定 isSummarized",
@@ -354,8 +406,8 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
         summary: "合併內容但未指定 isSummarized",
         isSummarized: true,
         participatingConnectionIds: undefined,
@@ -369,13 +421,13 @@ describe("WorkflowPipeline", () => {
       const aiDecideContext: PipelineContext = {
         ...baseContext,
         triggerMode: "ai-decide",
-        connection: createMockConnection({
+        connection: makeConnection({
           ...mockConnection,
           triggerMode: "ai-decide",
         }),
       };
 
-      const mockStrategy = createMockStrategy("ai-decide", {
+      const mockStrategy = makeStrategy("ai-decide", {
         collectSources: vi.fn().mockResolvedValue({
           ready: true,
           mergedContent: "合併內容",
@@ -388,8 +440,8 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
         summary: "合併內容",
         isSummarized: true,
         participatingConnectionIds: undefined,
@@ -401,13 +453,13 @@ describe("WorkflowPipeline", () => {
       const directContext: PipelineContext = {
         ...baseContext,
         triggerMode: "direct",
-        connection: createMockConnection({
+        connection: makeConnection({
           ...mockConnection,
           triggerMode: "direct",
         }),
       };
 
-      const mockStrategy = createMockStrategy("direct", {
+      const mockStrategy = makeStrategy("direct", {
         collectSources: vi.fn().mockResolvedValue({
           ready: true,
           mergedContent: "合併內容",
@@ -420,8 +472,8 @@ describe("WorkflowPipeline", () => {
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).toHaveBeenCalledWith({
-        canvasId,
-        connectionId,
+        canvasId: CANVAS_ID,
+        connectionId: CONNECTION_ID,
         summary: "合併內容",
         isSummarized: true,
         participatingConnectionIds: undefined,
@@ -432,22 +484,25 @@ describe("WorkflowPipeline", () => {
 
   describe("目標 Pod 不存在時的處理", () => {
     it("找不到目標 Pod 時不觸發 workflow", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
-      (podStore.getById as any).mockReturnValue(null);
+      vi.spyOn(podStore, "getById").mockReturnValue(null as any);
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
       expect(
         mockExecutionService.triggerWorkflowWithSummary,
       ).not.toHaveBeenCalled();
-
       expect(mockQueueService.enqueue).not.toHaveBeenCalled();
     });
   });
 
   describe("Run 模式 skipped guard", () => {
-    const runContext: RunContext = { runId: "run-1", canvasId, sourcePodId };
+    const runContext: RunContext = {
+      runId: "run-1",
+      canvasId: CANVAS_ID,
+      sourcePodId: SOURCE_POD_ID,
+    };
     const runContextPipelineBase: PipelineContext = {
       ...baseContext,
       runContext,
@@ -457,7 +512,7 @@ describe("WorkflowPipeline", () => {
       return {
         id: "inst-1",
         runId: "run-1",
-        podId: targetPodId,
+        podId: TARGET_POD_ID,
         status,
         sessionId: null,
         errorMessage: null,
@@ -469,8 +524,8 @@ describe("WorkflowPipeline", () => {
     }
 
     it("target instance 為 completed 時應 early return，不繼續觸發", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("completed"),
       );
 
@@ -485,8 +540,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("target instance 為 skipped 時應 early return，不繼續觸發", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("skipped"),
       );
 
@@ -501,8 +556,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("target instance 為 error 時應 early return，不繼續觸發", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("error"),
       );
 
@@ -517,8 +572,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("target instance 為 pending 時應繼續執行", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("pending"),
       );
 
@@ -530,8 +585,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("target instance 為 deciding 時應繼續執行", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("deciding"),
       );
 
@@ -543,8 +598,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("target instance 為 queued 時應繼續執行（不 early return）", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("queued"),
       );
 
@@ -556,8 +611,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("target instance 為 waiting 時應繼續執行（不 early return）", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(
         makeRunInstance("waiting"),
       );
 
@@ -569,8 +624,8 @@ describe("WorkflowPipeline", () => {
     });
 
     it("非 run 模式（無 runContext）時不觸發 guard，照常執行", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      (runStore.getPodInstance as any).mockReturnValue(undefined);
+      const mockStrategy = makeStrategy("auto");
+      vi.spyOn(runStore, "getPodInstance").mockReturnValue(undefined);
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
@@ -582,11 +637,11 @@ describe("WorkflowPipeline", () => {
 
   describe("lazy 修正 summaryModel", () => {
     it("resolvedModel 與 connection.summaryModel 不同時，應寫回並廣播", async () => {
-      const mockStrategy = createMockStrategy("auto");
-      const updatedConnection = createMockConnection({
-        id: connectionId,
-        sourcePodId,
-        targetPodId,
+      const mockStrategy = makeStrategy("auto");
+      const updatedConnection = makeConnection({
+        id: CONNECTION_ID,
+        sourcePodId: SOURCE_POD_ID,
+        targetPodId: TARGET_POD_ID,
         triggerMode: "auto",
         summaryModel: "gpt-5.4",
       });
@@ -600,23 +655,23 @@ describe("WorkflowPipeline", () => {
         resolvedModel: "gpt-5.4",
       });
 
-      (connectionStore.update as any).mockReturnValue(updatedConnection);
+      vi.spyOn(connectionStore, "update").mockReturnValue(updatedConnection);
 
       await workflowPipeline.execute(baseContext, mockStrategy);
 
       // 應呼叫 connectionStore.update 寫回合法 model
       expect(connectionStore.update).toHaveBeenCalledWith(
-        canvasId,
-        connectionId,
+        CANVAS_ID,
+        CONNECTION_ID,
         { summaryModel: "gpt-5.4" },
       );
 
       // 應廣播 CONNECTION_UPDATED 事件
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         expect.stringContaining("connection:updated"),
         expect.objectContaining({
-          canvasId,
+          canvasId: CANVAS_ID,
           success: true,
           connection: updatedConnection,
         }),
@@ -624,7 +679,7 @@ describe("WorkflowPipeline", () => {
     });
 
     it("resolvedModel 與 connection.summaryModel 相同時，不應觸發寫回", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
       // connection.summaryModel 預設為 "sonnet"，resolvedModel 也回傳 "sonnet"
       (
@@ -642,42 +697,46 @@ describe("WorkflowPipeline", () => {
     });
 
     it("上游 Pod 為 Codex、summaryModel=sonnet（不合法）→ lazy 修正為 gpt-5.4 並廣播", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
       // 建立 Codex 上游 Pod
-      const mockCodexSourcePod = createMockPod({
-        id: sourcePodId,
+      const mockCodexSourcePod = makePod({
+        id: SOURCE_POD_ID,
         name: "Codex Source Pod",
         provider: "codex",
-        providerConfig: { model: "gpt-5.4" },
+        providerConfig: { model: "gpt-5.4" } as any,
         status: "idle" as const,
       });
 
       // connection.summaryModel 使用 "sonnet"（不合法 for codex）
-      const codexConnection = createMockConnection({
-        id: connectionId,
-        sourcePodId,
-        targetPodId,
+      const codexConnection = makeConnection({
+        id: CONNECTION_ID,
+        sourcePodId: SOURCE_POD_ID,
+        targetPodId: TARGET_POD_ID,
         triggerMode: "auto",
         summaryModel: "sonnet",
       });
       const codexBaseContext: PipelineContext = {
-        canvasId,
-        sourcePodId,
+        canvasId: CANVAS_ID,
+        sourcePodId: SOURCE_POD_ID,
         connection: codexConnection,
         triggerMode: "auto",
-        decideResult: { connectionId, approved: true, reason: null },
+        decideResult: {
+          connectionId: CONNECTION_ID,
+          approved: true,
+          reason: null,
+        },
       };
 
       // podStore.getById：source pod 回 Codex pod，target pod 回原本的 mockTargetPod
-      (podStore.getById as any).mockImplementation(
+      vi.spyOn(podStore, "getById").mockImplementation(
         (_cId: string, podId: string) => {
-          if (podId === sourcePodId) return mockCodexSourcePod;
-          return mockTargetPod;
+          if (podId === SOURCE_POD_ID) return mockCodexSourcePod as any;
+          return mockTargetPod as any;
         },
       );
       // connectionStore.findByTargetPodId 回一條 connection（非 multi-input）
-      (connectionStore.findByTargetPodId as any).mockReturnValue([
+      vi.spyOn(connectionStore, "findByTargetPodId").mockReturnValue([
         codexConnection,
       ]);
 
@@ -690,30 +749,30 @@ describe("WorkflowPipeline", () => {
         resolvedModel: "gpt-5.4",
       });
 
-      const updatedConnection = createMockConnection({
-        id: connectionId,
-        sourcePodId,
-        targetPodId,
+      const updatedConnection = makeConnection({
+        id: CONNECTION_ID,
+        sourcePodId: SOURCE_POD_ID,
+        targetPodId: TARGET_POD_ID,
         triggerMode: "auto",
         summaryModel: "gpt-5.4",
       });
-      (connectionStore.update as any).mockReturnValue(updatedConnection);
+      vi.spyOn(connectionStore, "update").mockReturnValue(updatedConnection);
 
       await workflowPipeline.execute(codexBaseContext, mockStrategy);
 
       // 應呼叫 connectionStore.update 寫回 gpt-5.4
       expect(connectionStore.update).toHaveBeenCalledWith(
-        canvasId,
-        connectionId,
+        CANVAS_ID,
+        CONNECTION_ID,
         { summaryModel: "gpt-5.4" },
       );
 
       // 應廣播 CONNECTION_UPDATED 事件
       expect(socketService.emitToCanvas).toHaveBeenCalledWith(
-        canvasId,
+        CANVAS_ID,
         expect.stringContaining("connection:updated"),
         expect.objectContaining({
-          canvasId,
+          canvasId: CANVAS_ID,
           success: true,
           connection: updatedConnection,
         }),
@@ -721,7 +780,7 @@ describe("WorkflowPipeline", () => {
     });
 
     it("resolvedModel 為 undefined（fallback 路徑）時，不應觸發寫回", async () => {
-      const mockStrategy = createMockStrategy("auto");
+      const mockStrategy = makeStrategy("auto");
 
       // fallback 路徑：resolvedModel 未定義
       (

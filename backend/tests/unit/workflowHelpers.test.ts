@@ -1,17 +1,45 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  createWorkflowEventEmitterMock,
-  createConnectionStoreMock,
-  createLoggerMock,
-} from "../mocks/workflowModuleMocks.js";
 
-vi.mock("../../src/services/workflow/workflowEventEmitter.js", () =>
-  createWorkflowEventEmitterMock(),
-);
-vi.mock("../../src/services/connectionStore.js", () =>
-  createConnectionStoreMock(),
-);
-vi.mock("../../src/utils/logger.js", () => createLoggerMock());
+// ─── 模組 mock（本地定義，不依賴工廠檔）─────────────────────────────────────
+
+vi.mock("../../src/services/workflow/workflowEventEmitter.js", () => ({
+  workflowEventEmitter: {
+    emitWorkflowAutoTriggered: vi.fn(),
+    emitAiDecidePending: vi.fn(),
+    emitAiDecideResult: vi.fn(),
+    emitAiDecideError: vi.fn(),
+    emitWorkflowQueued: vi.fn(),
+    emitWorkflowComplete: vi.fn(),
+    emitWorkflowPending: vi.fn(),
+    emitWorkflowSourcesMerged: vi.fn(),
+    emitAiDecideClear: vi.fn(),
+    emitDirectTriggered: vi.fn(),
+    emitDirectWaiting: vi.fn(),
+    emitWorkflowQueueProcessed: vi.fn(),
+    emitDirectCountdown: vi.fn(),
+    emitDirectMerged: vi.fn(),
+    emitWorkflowAiDecideTriggered: vi.fn(),
+  },
+}));
+
+vi.mock("../../src/services/connectionStore.js", () => ({
+  connectionStore: {
+    findBySourcePodId: vi.fn(),
+    getById: vi.fn(),
+    updateDecideStatus: vi.fn(),
+    updateConnectionStatus: vi.fn(),
+    findByTargetPodId: vi.fn().mockReturnValue([]),
+    list: vi.fn().mockReturnValue([]),
+  },
+}));
+
+vi.mock("../../src/utils/logger.js", () => ({
+  logger: {
+    log: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 import {
   buildTransferMessage,
@@ -32,6 +60,8 @@ import type {
 import type { RunContext } from "../../src/types/run.js";
 import type { Pod } from "../../src/types/pod.js";
 
+// ─── 工廠函式（本地定義）────────────────────────────────────────────────────
+
 const makePod = (overrides?: Partial<Pod>): Pod => ({
   id: "pod-1",
   name: "Pod 1",
@@ -42,7 +72,6 @@ const makePod = (overrides?: Partial<Pod>): Pod => ({
   rotation: 0,
   sessionId: null,
   skillIds: [],
-
   mcpServerNames: [],
   provider: "claude",
   providerConfig: { model: "sonnet" },
