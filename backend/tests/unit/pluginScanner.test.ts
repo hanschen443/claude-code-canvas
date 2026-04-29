@@ -84,10 +84,16 @@ describe("pluginScanner", () => {
   let tmpHome: string; // /tmp/ccc-test-xxx
   let codexCacheDir: string; // /tmp/ccc-test-xxx/.codex/plugins/cache
 
-  let restoreEnv: () => void;
+  // 預設 no-op，確保 afterEach 在 beforeEach 提早失敗時也能安全呼叫
+  let restoreEnv: () => void = () => {};
 
   beforeEach(async () => {
+    // 確保 ~/.claude/plugins/ 存在（CI 環境可能未建立該目錄）
+    await mkdir(REAL_CLAUDE_PLUGINS, { recursive: true });
+
     // 建立 Claude 測試隔離子目錄（在真實的 ~/.claude/plugins/ 下）
+    // 必須在此目錄下，因為產品碼 scanClaudeInstalledPlugins 以 os.homedir()
+    // 為基礎做 isPathWithinDirectory 安全驗證，無法透過 env var 覆寫
     claudeTestDir = await mkdtemp(join(REAL_CLAUDE_PLUGINS, "test-"));
     installedPluginsPath = join(claudeTestDir, "installed_plugins.json");
 
