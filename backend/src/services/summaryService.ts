@@ -101,7 +101,7 @@ class SummaryService {
       logger.error(
         "Workflow",
         "Error",
-        `[SummaryService] 無法為目標 ${targetPodId} 生成摘要：${result.error ?? ""}`,
+        `[SummaryService] 無法為目標 ${targetPodId} 生成摘要（provider: ${provider}，model: ${summaryModel}）：${result.error ?? ""}`,
       );
 
       // fallback 到上游最後一則 Assistant 訊息

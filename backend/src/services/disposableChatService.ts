@@ -4,8 +4,12 @@
  * 統一的一次性無狀態查詢抽象層，依 provider 分發到對應的 AI 服務。
  * 適用於 summary、AI decide 等非 Pod 場景。
  *
- * - provider === "claude" → claudeService.executeDisposableChat
- * - provider === "codex"  → codexService.executeDisposableChat
+ * provider 白名單（未在清單內的 provider 會 throw，不會 silent fallthrough）：
+ * - provider === "claude"  → claudeService.executeDisposableChat
+ * - provider === "codex"   → codexService.executeDisposableChat
+ * - provider === "gemini"  → geminiService.executeDisposableChat
+ * - 其他 provider          → 直接 throw「不支援的 provider」錯誤
+ *
  * - 不合法的 model 會 fallback 到 provider 預設模型，並透過 resolvedModel 回傳實際使用值
  */
 
@@ -13,6 +17,7 @@ import { resolveModelWithFallback } from "./provider/index.js";
 import type { ProviderName } from "./provider/index.js";
 import { claudeService } from "./claude/claudeService.js";
 import { codexService } from "./codex/codexService.js";
+import { geminiService } from "./gemini/geminiService.js";
 import { logger } from "../utils/logger.js";
 
 // ─── 公開介面 ────────────────────────────────────────────────────────────────
@@ -82,13 +87,23 @@ export async function executeDisposableChat(
       model: resolvedModel,
     });
     return { ...result, resolvedModel };
+  } else if (provider === "codex") {
+    const result = await codexService.executeDisposableChat({
+      systemPrompt,
+      userMessage,
+      workspacePath,
+      model: resolvedModel,
+    });
+    return { ...result, resolvedModel };
+  } else if (provider === "gemini") {
+    const result = await geminiService.executeDisposableChat({
+      systemPrompt,
+      userMessage,
+      workspacePath,
+      model: resolvedModel,
+    });
+    return { ...result, resolvedModel };
+  } else {
+    throw new Error(`不支援的 provider：${provider}`);
   }
-
-  const result = await codexService.executeDisposableChat({
-    systemPrompt,
-    userMessage,
-    workspacePath,
-    model: resolvedModel,
-  });
-  return { ...result, resolvedModel };
 }
