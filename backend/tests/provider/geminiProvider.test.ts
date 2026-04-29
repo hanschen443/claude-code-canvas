@@ -152,6 +152,7 @@ describe("GeminiProvider", () => {
       "--approval-mode",
       "yolo",
       "--skip-trust",
+      "-s",
       "--prompt",
       testMessage,
     ]);
@@ -159,6 +160,24 @@ describe("GeminiProvider", () => {
     // 不應含已移除的非法旗標
     expect(spawnArgs).not.toContain("--session-id");
     expect(spawnArgs).not.toContain("--extensions");
+  });
+
+  // ── C1b：new session 的 spawn args 必含 `-s`（macOS Seatbelt sandbox 旗標）────
+  it("C1b: new session（無 resumeSessionId）的 spawn args 必含 `-s`", async () => {
+    const mockProc = makeMockProc([
+      JSON.stringify({ type: "result", status: "success" }),
+    ]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    // resumeSessionId 為 null → 走新對話路徑
+    const ctx = makeCtx({ resumeSessionId: null });
+    await collectEvents(geminiProvider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+    // -s 必須存在（macOS Seatbelt sandbox 所需，buildNewSessionArgs 負責加入）
+    expect(spawnArgs).toContain("-s");
   });
 
   // ── C2：resume 時 spawn 指令含 --resume <uuid>，不含 --session-id，含 --prompt ─
@@ -221,6 +240,25 @@ describe("GeminiProvider", () => {
       ),
     );
     expect(hasInvalidWarn).toBe(true);
+  });
+
+  // ── C2c：resume session 的 spawn args 必含 `-s`（macOS Seatbelt sandbox 旗標）──
+  it("C2c: resume session（含有效 resumeSessionId）的 spawn args 必含 `-s`", async () => {
+    const resumeUuid = "4abf7b33-6c20-4693-9e43-9715b97fb144";
+    const mockProc = makeMockProc([
+      JSON.stringify({ type: "result", status: "success" }),
+    ]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    // resumeSessionId 為有效 UUID → 走 resume 路徑
+    const ctx = makeCtx({ resumeSessionId: resumeUuid });
+    await collectEvents(geminiProvider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+    // -s 必須存在（macOS Seatbelt sandbox 所需，buildResumeArgs 負責加入）
+    expect(spawnArgs).toContain("-s");
   });
 
   // ── C3：spawn cwd 等於 ctx.workspacePath ─────────────────────────────

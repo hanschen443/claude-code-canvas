@@ -106,6 +106,7 @@ function buildNewSessionArgs(model: string, promptText: string): string[] {
     "--approval-mode",
     "yolo",
     "--skip-trust",
+    "-s",
     "--prompt",
     promptText,
   ];
@@ -133,6 +134,7 @@ function buildResumeArgs(
     "--approval-mode",
     "yolo",
     "--skip-trust",
+    "-s",
     "--resume",
     sessionId,
     "--prompt",
