@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick, onUnmounted } from "vue";
+import { useEscapeClose } from "@/composables/useEscapeClose";
 import { X } from "lucide-vue-next";
 import { useRunStore } from "@/stores/run/runStore";
 import RunCard from "./RunCard.vue";
@@ -54,20 +55,8 @@ const handleClickOutside = (event: MouseEvent): void => {
   handleClose();
 };
 
-const handleKeyDown = (event: KeyboardEvent): void => {
-  if (runStore.activeRunChatModal) {
-    return;
-  }
-
-  if (event.key === "Escape") {
-    event.preventDefault();
-    handleClose();
-  }
-};
-
 const removeDocumentListeners = (): void => {
   document.removeEventListener("mousedown", handleClickOutside);
-  document.removeEventListener("keydown", handleKeyDown);
 };
 
 watch(
@@ -76,7 +65,6 @@ watch(
     if (isOpen) {
       nextTick(() => {
         document.addEventListener("mousedown", handleClickOutside);
-        document.addEventListener("keydown", handleKeyDown);
       });
     } else {
       removeDocumentListeners();
@@ -87,6 +75,10 @@ watch(
 onUnmounted(() => {
   removeDocumentListeners();
 });
+
+// ESC 關閉：面板開啟且 RunChatModal 未開啟時才作用
+const escEnabled = computed(() => props.open && !runStore.activeRunChatModal);
+useEscapeClose(handleClose, escEnabled);
 </script>
 
 <template>
@@ -111,10 +103,7 @@ onUnmounted(() => {
             {{ runStore.runningRunsCount }}
           </span>
         </div>
-        <button
-          class="rounded-md p-1 hover:bg-accent"
-          @click="handleClose"
-        >
+        <button class="rounded-md p-1 hover:bg-accent" @click="handleClose">
           <X class="h-5 w-5" />
         </button>
       </div>

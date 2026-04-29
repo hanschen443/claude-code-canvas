@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
+import { useEscapeClose } from "@/composables/useEscapeClose";
 import { useI18n } from "vue-i18n";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -57,13 +58,6 @@ const isCodex = computed(() => props.provider === "codex");
 
 const rootRef = ref<HTMLElement | null>(null);
 
-/** ESC 鍵關閉 */
-const handleKeydown = (event: KeyboardEvent): void => {
-  if (event.key === "Escape") {
-    emit("close");
-  }
-};
-
 /** 點擊外部關閉（capture 階段攔截，避免內部 click 誤觸）
  *  排除 MCP 觸發按鈕（.pod-mcp-notch-area）：
  *  點觸發按鈕時讓 click 事件走到 handleMcpClick 的 toggle 邏輯，
@@ -99,14 +93,15 @@ onMounted(async () => {
   await nextTick();
   searchInputRef.value?.focus();
 
-  document.addEventListener("keydown", handleKeydown);
   document.addEventListener("mousedown", handleMousedown, true);
 });
 
 onUnmounted(() => {
-  document.removeEventListener("keydown", handleKeydown);
   document.removeEventListener("mousedown", handleMousedown, true);
 });
+
+// ESC 鍵關閉
+useEscapeClose(() => emit("close"));
 
 /** 純函式：依 enabled 組裝下一個 MCP server 名稱清單 */
 const buildNextNames = (
@@ -167,7 +162,7 @@ const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
         type="text"
         :placeholder="t('pod.slot.searchPlaceholder')"
         @click.stop
-      >
+      />
 
       <!-- 載入中 -->
       <div
@@ -248,10 +243,7 @@ const handleToggle = async (name: string, enabled: boolean): Promise<void> => {
         </div>
 
         <!-- Claude 模式：ScrollArea 包列表，所有 server 均可 toggle -->
-        <ScrollArea
-          v-else
-          class="pod-popover-scrollable"
-        >
+        <ScrollArea v-else class="pod-popover-scrollable">
           <div class="space-y-1">
             <div
               v-for="server in filteredMcpServers"

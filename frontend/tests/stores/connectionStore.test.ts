@@ -169,22 +169,18 @@ describe("connectionStore", () => {
         expect(result).toEqual(conn2);
       });
 
-      it("無 selectedConnectionId 時應回傳 null", () => {
-        const store = useConnectionStore();
-        const conn = createMockConnection();
-        store.connections = [conn];
-        store.selectedConnectionId = null;
-
-        const result = store.selectedConnection;
-
-        expect(result).toBeNull();
-      });
-
-      it("selectedConnectionId 不存在於 connections 中時應回傳 null", () => {
+      // 參數化：getter 找不到時應回傳 null
+      it.each([
+        { desc: "無 selectedConnectionId（null）", selectedId: null as null },
+        {
+          desc: "selectedConnectionId 不存在於 connections 中",
+          selectedId: "non-existent",
+        },
+      ])("$desc 時應回傳 null", ({ selectedId }) => {
         const store = useConnectionStore();
         const conn = createMockConnection({ id: "conn-1" });
         store.connections = [conn];
-        store.selectedConnectionId = "non-existent";
+        store.selectedConnectionId = selectedId;
 
         const result = store.selectedConnection;
 

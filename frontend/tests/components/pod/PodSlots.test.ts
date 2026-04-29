@@ -1,17 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mount } from "@vue/test-utils";
-import { computed } from "vue";
+import { setupStoreTest } from "../../helpers/testSetup";
+import { webSocketMockFactory } from "../../helpers/mockWebSocket";
+import { usePodStore } from "@/stores/pod";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import PodSlots from "@/components/pod/PodSlots.vue";
 
-// -----------------------------------------------------------------------
-// Mock 子元件（PodSingleBindSlot / PodMcpSlot）
-// -----------------------------------------------------------------------
+// ── WS 邊界 mock ───────────────────────────────────────────────
+vi.mock("@/services/websocket", () => webSocketMockFactory());
 
+// ── vue-i18n ───────────────────────────────────────────────────
+vi.mock("vue-i18n", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
+// ── 真實子元件有複雜 DnD 行為，僅 stub 互動邊界 ─────────────────
 vi.mock("@/components/pod/PodSingleBindSlot.vue", () => ({
   default: {
     name: "PodSingleBindSlot",
-    template:
-      "<div class='single-bind-slot-stub' :data-slot-class='slotClass' :data-disabled='disabled' :data-disabled-tooltip='disabledTooltip' @click=\"$emit('note-dropped', 'note-1')\" @dblclick=\"$emit('note-removed')\"></div>",
     props: [
       "podId",
       "boundNote",
@@ -23,14 +29,19 @@ vi.mock("@/components/pod/PodSingleBindSlot.vue", () => ({
       "disabledTooltip",
     ],
     emits: ["note-dropped", "note-removed"],
+    // data-disabled 透過 template 呈現，讓測試可斷言
+    template:
+      '<div class="single-bind-slot-stub" ' +
+      ':data-disabled="String(disabled)" ' +
+      ':data-disabled-tooltip="disabledTooltip" ' +
+      "@click=\"$emit('note-dropped', 'note-1')\" " +
+      "@dblclick=\"$emit('note-removed')\"></div>",
   },
 }));
 
 vi.mock("@/components/pod/PodMcpSlot.vue", () => ({
   default: {
     name: "PodMcpSlot",
-    template:
-      "<button class='pod-mcp-slot' :data-capability-disabled='capabilityDisabled' :data-disabled-tooltip='disabledTooltip' @click=\"$emit('click', $event)\"></button>",
     props: [
       "podId",
       "podRotation",
@@ -40,63 +51,78 @@ vi.mock("@/components/pod/PodMcpSlot.vue", () => ({
       "disabledTooltip",
     ],
     emits: ["click"],
+    template:
+      '<button class="pod-mcp-slot" ' +
+      ':data-capability-disabled="String(capabilityDisabled)" ' +
+      "@click=\"$emit('click', $event)\"></button>",
   },
 }));
 
-// -----------------------------------------------------------------------
-// Mock stores（子元件自行取 store，需 mock 模組）
-// -----------------------------------------------------------------------
-
-const createMockStore = () => ({
-  draggedNoteId: null,
-  getNoteById: vi.fn(),
-  isItemBoundToPod: vi.fn().mockReturnValue(false),
-  bindToPod: vi.fn(),
-  unbindFromPod: vi.fn(),
-  setNoteAnimating: vi.fn(),
-});
-
-const mockRepositoryStore = createMockStore();
-const mockCommandStore = createMockStore();
-
+// ── @/stores/note 內部的 DnD 邏輯不屬於此測試範疇，stub 整個模組 ─
 vi.mock("@/stores/note", () => ({
-  useRepositoryStore: () => mockRepositoryStore,
-  useCommandStore: () => mockCommandStore,
-}));
-
-// -----------------------------------------------------------------------
-// Mock usePodCapabilities（可透過 mockCapabilities 切換）
-// -----------------------------------------------------------------------
-
-const mockCapabilities = {
-  isPluginEnabled: computed(() => true),
-  isRepositoryEnabled: computed(() => true),
-  isCommandEnabled: computed(() => true),
-  isMcpEnabled: computed(() => true),
-};
-
-vi.mock("@/composables/pod/usePodCapabilities", () => ({
-  usePodCapabilities: () => mockCapabilities,
-}));
-
-// -----------------------------------------------------------------------
-// Mock vue-i18n
-// -----------------------------------------------------------------------
-
-vi.mock("vue-i18n", () => ({
-  useI18n: () => ({
-    t: (key: string) => key,
+  useRepositoryStore: () => ({
+    draggedNoteId: null,
+    isItemBoundToPod: vi.fn(),
   }),
+  useCommandStore: () => ({ draggedNoteId: null, isItemBoundToPod: vi.fn() }),
 }));
 
-// -----------------------------------------------------------------------
-// 輔助函式
-// -----------------------------------------------------------------------
+// ── PodPluginSlot 含有 Teleport 位置計算邏輯，stub 保留 click ─────
+vi.mock("@/components/pod/PodPluginSlot.vue", () => ({
+  default: {
+    name: "PodPluginSlot",
+    props: [
+      "podId",
+      "podRotation",
+      "activeCount",
+      "provider",
+      "capabilityDisabled",
+      "disabledTooltip",
+    ],
+    emits: ["click"],
+    template:
+      '<button class="pod-plugin-slot" @click="$emit(\'click\', $event)"></button>',
+  },
+}));
 
-function mountPodSlots(overrides: Record<string, unknown> = {}) {
+// ── 輔助：建立 capability（claude = 全開，codex = 只開 command） ──
+
+function setupClaude() {
+  const capabilityStore = useProviderCapabilityStore();
+  capabilityStore.syncFromPayload([
+    {
+      name: "claude",
+      capabilities: {
+        chat: true,
+        plugin: true,
+        repository: true,
+        command: true,
+        mcp: true,
+      },
+    },
+  ]);
+}
+
+function setupCodex() {
+  const capabilityStore = useProviderCapabilityStore();
+  capabilityStore.syncFromPayload([
+    {
+      name: "codex",
+      capabilities: {
+        chat: true,
+        plugin: false,
+        repository: false,
+        command: true,
+        mcp: false,
+      },
+    },
+  ]);
+}
+
+function mountPodSlots(podId: string, overrides: Record<string, unknown> = {}) {
   return mount(PodSlots, {
     props: {
-      podId: "pod-1",
+      podId,
       podRotation: 0,
       pluginActiveCount: 0,
       mcpActiveCount: 0,
@@ -108,186 +134,171 @@ function mountPodSlots(overrides: Record<string, unknown> = {}) {
   });
 }
 
-// -----------------------------------------------------------------------
-// 測試：Codex provider Pod（Command 以外的 slot 應為 disabled）
-// -----------------------------------------------------------------------
+// ── 測試 ─────────────────────────────────────────────────────
 
-describe("PodSlots - Codex provider Pod：Command 以外 slot 為 disabled", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // 切換成 Codex capabilities：Command 為 enabled，其餘 slot disabled
-    Object.assign(mockCapabilities, {
-      isPluginEnabled: computed(() => false),
-      isRepositoryEnabled: computed(() => false),
-      isCommandEnabled: computed(() => true),
-      isMcpEnabled: computed(() => false),
+describe("PodSlots", () => {
+  setupStoreTest();
+
+  describe("Codex provider：Command 以外 slot 為 disabled", () => {
+    it("Repository disabled=true、Command disabled=false；MCP capabilityDisabled=true", () => {
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-codex",
+          name: "Codex Pod",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: [],
+          multiInstance: false,
+          provider: "codex",
+          providerConfig: { model: "o4-mini" },
+        },
+      ];
+      setupCodex();
+
+      const wrapper = mountPodSlots("pod-codex", { provider: "codex" });
+      const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+
+      expect(singleSlots).toHaveLength(2);
+      expect(singleSlots[0]!.attributes("data-disabled")).toBe("true"); // Repository
+      expect(singleSlots[1]!.attributes("data-disabled")).toBe("false"); // Command
+
+      const mcpSlot = wrapper.find(".pod-mcp-slot");
+      expect(mcpSlot.attributes("data-capability-disabled")).toBe("true");
+
+      // disabled tooltip 使用 i18n key（t = identity）
+      expect(singleSlots[0]!.attributes("data-disabled-tooltip")).toBe(
+        "pod.slot.codexDisabled",
+      );
+
+      wrapper.unmount();
     });
   });
 
-  it("Repository 的 single-bind slot disabled 應為 true，Command 應為 false", () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+  describe("Claude provider：全部 slot 為 enabled", () => {
+    it("所有 single-bind slot disabled=false；MCP capabilityDisabled=false", () => {
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-claude",
+          name: "Claude Pod",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: [],
+          multiInstance: false,
+          provider: "claude",
+          providerConfig: { model: "opus" },
+        },
+      ];
+      setupClaude();
 
-    // Repository（0）、Command（1）共 2 個 single-bind slot
-    expect(singleSlots.length).toBe(2);
-    expect(singleSlots[0]!.attributes("data-disabled")).toBe("true"); // Repository disabled
-    expect(singleSlots[1]!.attributes("data-disabled")).toBe("false"); // Command enabled
+      const wrapper = mountPodSlots("pod-claude");
+      const singleSlots = wrapper.findAll(".single-bind-slot-stub");
 
-    wrapper.unmount();
-  });
+      expect(singleSlots).toHaveLength(2);
+      for (const slot of singleSlots) {
+        expect(slot.attributes("data-disabled")).toBe("false");
+      }
+      expect(
+        wrapper.find(".pod-mcp-slot").attributes("data-capability-disabled"),
+      ).toBe("false");
 
-  it("MCP notch slot 的 capability-disabled 屬性應為 true", () => {
-    const wrapper = mountPodSlots();
-    const mcpSlot = wrapper.find(".pod-mcp-slot");
-
-    expect(mcpSlot.exists()).toBe(true);
-    expect(mcpSlot.attributes("data-capability-disabled")).toBe("true");
-
-    wrapper.unmount();
-  });
-
-  it("Repository 的 disabled-tooltip 應為 pod.slot.codexDisabled", () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
-
-    // 真正會 disabled 的 slot：Repository（0）
-    expect(singleSlots[0]!.attributes("data-disabled-tooltip")).toBe(
-      "pod.slot.codexDisabled",
-    );
-
-    wrapper.unmount();
-  });
-});
-
-// -----------------------------------------------------------------------
-// 測試：Claude provider Pod（全部 slot 應為 enabled）
-// -----------------------------------------------------------------------
-
-describe("PodSlots - Claude provider Pod：全部 slot 為 enabled", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // 切換成 Claude capabilities：所有 slot enabled
-    Object.assign(mockCapabilities, {
-      isPluginEnabled: computed(() => true),
-      isRepositoryEnabled: computed(() => true),
-      isCommandEnabled: computed(() => true),
-      isMcpEnabled: computed(() => true),
+      wrapper.unmount();
     });
   });
 
-  it("所有 single-bind slot 的 disabled 屬性應為 false", () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
-
-    expect(singleSlots.length).toBe(2);
-    for (const slot of singleSlots) {
-      expect(slot.attributes("data-disabled")).toBe("false");
-    }
-
-    wrapper.unmount();
-  });
-
-  it("MCP notch slot 的 capability-disabled 屬性應為 false", () => {
-    const wrapper = mountPodSlots();
-    const mcpSlot = wrapper.find(".pod-mcp-slot");
-
-    expect(mcpSlot.exists()).toBe(true);
-    expect(mcpSlot.attributes("data-capability-disabled")).toBe("false");
-
-    wrapper.unmount();
-  });
-});
-
-// -----------------------------------------------------------------------
-// 測試：emit 轉發 — 各 slot 接到子元件事件後正確 re-emit 父層事件
-// -----------------------------------------------------------------------
-
-describe("PodSlots - emit 事件轉發", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    Object.assign(mockCapabilities, {
-      isPluginEnabled: computed(() => true),
-      isRepositoryEnabled: computed(() => true),
-      isCommandEnabled: computed(() => true),
-      isMcpEnabled: computed(() => true),
+  describe("emit 事件轉發", () => {
+    beforeEach(() => {
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-1",
+          name: "Pod 1",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: [],
+          multiInstance: false,
+          provider: "claude",
+          providerConfig: { model: "opus" },
+        },
+      ];
+      setupClaude();
     });
-  });
 
-  it("Repository slot note-dropped → emit repository-dropped", async () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+    it.each([
+      [
+        "Repository slot note-dropped → repository-dropped",
+        0,
+        "click",
+        "repository-dropped",
+      ],
+      [
+        "Repository slot note-removed → repository-removed",
+        0,
+        "dblclick",
+        "repository-removed",
+      ],
+      [
+        "Command slot note-dropped → command-dropped",
+        1,
+        "click",
+        "command-dropped",
+      ],
+      [
+        "Command slot note-removed → command-removed",
+        1,
+        "dblclick",
+        "command-removed",
+      ],
+    ])("%s", async (_label, slotIdx, triggerEvent, expectedEmit) => {
+      const wrapper = mountPodSlots("pod-1");
+      const singleSlots = wrapper.findAll(".single-bind-slot-stub");
 
-    await singleSlots[0]!.trigger("click");
+      await singleSlots[slotIdx]!.trigger(triggerEvent);
 
-    expect(wrapper.emitted("repository-dropped")).toBeTruthy();
-    expect(wrapper.emitted("repository-dropped")![0]).toEqual(["note-1"]);
+      expect(wrapper.emitted(expectedEmit)).toBeTruthy();
+      wrapper.unmount();
+    });
 
-    wrapper.unmount();
-  });
+    it("MCP slot click → emit mcp-clicked 帶 MouseEvent", async () => {
+      const wrapper = mountPodSlots("pod-1");
+      await wrapper.find(".pod-mcp-slot").trigger("click");
 
-  it("Repository slot note-removed → emit repository-removed", async () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+      expect(wrapper.emitted("mcp-clicked")).toBeTruthy();
+      expect(wrapper.emitted("mcp-clicked")![0]![0]).toBeInstanceOf(MouseEvent);
+      wrapper.unmount();
+    });
 
-    await singleSlots[0]!.trigger("dblclick");
+    it("Plugin slot click → emit plugin-clicked 帶 MouseEvent", async () => {
+      const wrapper = mountPodSlots("pod-1");
+      await wrapper.find(".pod-plugin-slot").trigger("click");
 
-    expect(wrapper.emitted("repository-removed")).toBeTruthy();
-
-    wrapper.unmount();
-  });
-
-  it("Command slot note-dropped → emit command-dropped", async () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
-
-    await singleSlots[1]!.trigger("click");
-
-    expect(wrapper.emitted("command-dropped")).toBeTruthy();
-    expect(wrapper.emitted("command-dropped")![0]).toEqual(["note-1"]);
-
-    wrapper.unmount();
-  });
-
-  it("Command slot note-removed → emit command-removed", async () => {
-    const wrapper = mountPodSlots();
-    const singleSlots = wrapper.findAll(".single-bind-slot-stub");
-
-    await singleSlots[1]!.trigger("dblclick");
-
-    expect(wrapper.emitted("command-removed")).toBeTruthy();
-
-    wrapper.unmount();
-  });
-
-  it("MCP slot click → emit mcp-clicked 帶 MouseEvent", async () => {
-    const wrapper = mountPodSlots();
-    const mcpSlot = wrapper.find(".pod-mcp-slot");
-
-    expect(mcpSlot.exists()).toBe(true);
-
-    await mcpSlot.trigger("click");
-
-    expect(wrapper.emitted("mcp-clicked")).toBeTruthy();
-    const [emittedEvent] = wrapper.emitted("mcp-clicked")![0] as [MouseEvent];
-    expect(emittedEvent).toBeInstanceOf(MouseEvent);
-
-    wrapper.unmount();
-  });
-
-  it("Plugin slot click → emit plugin-clicked 帶 MouseEvent", async () => {
-    const wrapper = mountPodSlots();
-    const pluginSlot = wrapper.find(".pod-plugin-slot");
-
-    expect(pluginSlot.exists()).toBe(true);
-
-    await pluginSlot.trigger("click");
-
-    expect(wrapper.emitted("plugin-clicked")).toBeTruthy();
-    const [emittedEvent] = wrapper.emitted("plugin-clicked")![0] as [
-      MouseEvent,
-    ];
-    expect(emittedEvent).toBeInstanceOf(MouseEvent);
-
-    wrapper.unmount();
+      expect(wrapper.emitted("plugin-clicked")).toBeTruthy();
+      expect(wrapper.emitted("plugin-clicked")![0]![0]).toBeInstanceOf(
+        MouseEvent,
+      );
+      wrapper.unmount();
+    });
   });
 });

@@ -1,34 +1,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
+import { setupStoreTest } from "../../helpers/testSetup";
+import { webSocketMockFactory } from "../../helpers/mockWebSocket";
+import { usePodStore } from "@/stores/pod";
 
-// ── mock vue-i18n ────────────────────────────────────────────────────────────
+// ── WS 邊界 mock ───────────────────────────────────────────────
+vi.mock("@/services/websocket", () => webSocketMockFactory());
+
+// ── vue-i18n ───────────────────────────────────────────────────
 vi.mock("vue-i18n", () => ({
-  useI18n: () => ({
-    t: (key: string) => key,
-  }),
+  useI18n: () => ({ t: (key: string) => key }),
 }));
 
-// ── mock listPlugins ─────────────────────────────────────────────────────────
+// ── listPlugins：外部 service 邊界，保留 mock ─────────────────
 const mockListPlugins = vi.fn();
 vi.mock("@/services/pluginApi", () => ({
   listPlugins: (...args: unknown[]) => mockListPlugins(...args),
 }));
 
-// ── mock updatePodPluginsApi ─────────────────────────────────────────────────
+// ── updatePodPlugins API：外部 service 邊界，保留 mock ─────────
 const mockUpdatePodPluginsApi = vi.fn();
 vi.mock("@/services/podPluginApi", () => ({
   updatePodPlugins: (...args: unknown[]) => mockUpdatePodPluginsApi(...args),
 }));
 
-// ── mock getActiveCanvasIdOrWarn ──────────────────────────────────────────────
+// ── getActiveCanvasIdOrWarn ─────────────────────────────────────
 const mockGetActiveCanvasIdOrWarn = vi.fn().mockReturnValue("canvas-1");
 vi.mock("@/utils/canvasGuard", () => ({
   getActiveCanvasIdOrWarn: (...args: unknown[]) =>
     mockGetActiveCanvasIdOrWarn(...args),
 }));
 
-// ── mock useToast ────────────────────────────────────────────────────────────
+// ── useToast ───────────────────────────────────────────────────
 const mockToast = vi.fn();
 vi.mock("@/composables/useToast", () => ({
   useToast: () => ({
@@ -38,22 +42,13 @@ vi.mock("@/composables/useToast", () => ({
   }),
 }));
 
-// ── mock usePodStore ──────────────────────────────────────────────────────────
-const mockUpdatePodPlugins = vi.fn();
-const mockGetPodById = vi.fn();
-vi.mock("@/stores/pod", () => ({
-  usePodStore: () => ({
-    getPodById: mockGetPodById,
-    updatePodPlugins: mockUpdatePodPlugins,
-  }),
-}));
-
-// ── mock Switch component ─────────────────────────────────────────────────────
+// ── Switch：Teleport 位置計算無法在 jsdom 中重現，保留 stub。
+//    disabled 時不 emit update:modelValue，與真實 Switch 行為一致。
 vi.mock("@/components/ui/switch", () => ({
   Switch: {
     name: "Switch",
     template:
-      '<button class="switch-stub" :disabled="disabled || undefined" :data-checked="modelValue" @click.stop="$emit(\'update:modelValue\', !modelValue)"></button>',
+      '<button class="switch-stub" :disabled="disabled || undefined" :data-checked="modelValue" @click.stop="!disabled && $emit(\'update:modelValue\', !modelValue)"></button>',
     props: ["modelValue", "disabled"],
     emits: ["update:modelValue"],
   },
@@ -101,88 +96,66 @@ function mountPopover(overrides: Partial<typeof DEFAULT_PROPS> = {}) {
   return wrapper;
 }
 
-/** Teleport 將內容渲染至 body，需透過 document.body.querySelector 搜尋 */
 function bodyQuery(selector: string): Element | null {
   return document.body.querySelector(selector);
 }
 
-function bodyQueryAll(selector: string): NodeListOf<Element> {
-  return document.body.querySelectorAll(selector);
-}
-
-function bodyText(): string {
-  return document.body.innerText ?? document.body.textContent ?? "";
-}
-
 describe("PluginPopover", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    wrappers = [];
-    // 預設：getPodById 回傳有 pluginIds 的 pod
-    mockGetPodById.mockReturnValue({ id: "pod-1", pluginIds: [] });
-    // 預設：listPlugins 成功回傳空陣列（各 case 再覆蓋）
+  setupStoreTest(() => {
     mockListPlugins.mockResolvedValue([]);
     mockUpdatePodPluginsApi.mockResolvedValue({ pluginIds: [] });
+    mockGetActiveCanvasIdOrWarn.mockReturnValue("canvas-1");
+
+    // 真實 store：預設 pod-1 無 plugins
+    const podStore = usePodStore();
+    podStore.pods = [
+      {
+        id: "pod-1",
+        name: "Pod 1",
+        x: 0,
+        y: 0,
+        rotation: 0,
+        status: "idle",
+        output: [],
+        repositoryId: null,
+        commandId: null,
+        schedule: null,
+        mcpServerNames: [],
+        pluginIds: [],
+        multiInstance: false,
+        provider: "claude",
+        providerConfig: { model: "opus" },
+      },
+    ];
   });
 
   afterEach(() => {
-    for (const w of wrappers) {
-      w.unmount();
-    }
+    for (const w of wrappers) w.unmount();
     wrappers = [];
   });
 
-  // ── onMounted 呼叫 listPlugins ────────────────────────────────────────────
+  // ── onMounted 呼叫 listPlugins ────────────────────────────────
 
   describe("onMounted", () => {
-    it("應呼叫 listPlugins 並帶 provider 參數", async () => {
-      mountPopover({ provider: "claude" });
-      await flushPromises();
-
-      expect(mockListPlugins).toHaveBeenCalledOnce();
-      expect(mockListPlugins).toHaveBeenCalledWith("claude");
-    });
-
-    it("codex provider 時應呼叫 listPlugins('codex')", async () => {
-      mountPopover({ provider: "codex" });
-      await flushPromises();
-
-      expect(mockListPlugins).toHaveBeenCalledWith("codex");
-    });
+    it.each([["claude"], ["codex"]])(
+      "應呼叫 listPlugins 帶 %s provider",
+      async (provider) => {
+        mountPopover({ provider });
+        await flushPromises();
+        expect(mockListPlugins).toHaveBeenCalledWith(provider);
+      },
+    );
   });
 
-  // ── ESC 鍵 emit close ────────────────────────────────────────────────────
+  // ESC 通用行為由 useEscapeClose.test.ts 統一覆蓋
 
-  describe("ESC 鍵", () => {
-    it("按下 ESC 應 emit 'close'", async () => {
-      const wrapper = mountPopover();
-      await flushPromises();
-
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      await nextTick();
-
-      expect(wrapper.emitted("close")).toBeTruthy();
-    });
-
-    it("按下其他鍵不應 emit 'close'", async () => {
-      const wrapper = mountPopover();
-      await flushPromises();
-
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
-      await nextTick();
-
-      expect(wrapper.emitted("close")).toBeFalsy();
-    });
-  });
-
-  // ── 點擊外部 emit close ──────────────────────────────────────────────────
+  // ── 點擊外部 emit close ────────────────────────────────────────
 
   describe("點擊外部", () => {
     it("點擊 popover 外部應 emit 'close'", async () => {
       const wrapper = mountPopover();
       await flushPromises();
 
-      // 建立外部元素，觸發 capture mousedown
       const outsideEl = document.createElement("div");
       document.body.appendChild(outsideEl);
       outsideEl.dispatchEvent(
@@ -195,55 +168,52 @@ describe("PluginPopover", () => {
     });
   });
 
-  // ── 樂觀更新 ────────────────────────────────────────────────────────────
+  // ── 樂觀更新 ──────────────────────────────────────────────────
 
   describe("樂觀更新", () => {
-    it("點 Toggle 立即更新 localPluginIds 與 podStore", async () => {
+    it("點 Toggle 立即更新 podStore.updatePodPlugins", async () => {
       mockListPlugins.mockResolvedValue([MOCK_PLUGIN]);
-      mockGetPodById.mockReturnValue({ id: "pod-1", pluginIds: [] });
+      const podStore = usePodStore();
+      const spy = vi.spyOn(podStore, "updatePodPlugins");
 
       mountPopover();
       await flushPromises();
 
-      // Teleport 將內容渲染到 document.body — 需用 body.querySelector
       const switchBtn = bodyQuery(".switch-stub");
       expect(switchBtn).not.toBeNull();
 
       switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await nextTick();
 
-      // updatePodPlugins store 應已被呼叫（樂觀更新）
-      expect(mockUpdatePodPlugins).toHaveBeenCalledWith("pod-1", ["plugin-1"]);
+      expect(spy).toHaveBeenCalledWith("pod-1", ["plugin-1"]);
     });
   });
 
-  // ── 失敗回滾 ────────────────────────────────────────────────────────────
+  // ── 失敗回滾 ──────────────────────────────────────────────────
 
   describe("失敗回滾", () => {
-    it("API 失敗時 localPluginIds 與 podStore 還原，並顯示 toast", async () => {
+    it("API 失敗時 podStore 回滾到原始陣列，並顯示 toast", async () => {
       mockListPlugins.mockResolvedValue([MOCK_PLUGIN]);
-      mockGetPodById.mockReturnValue({ id: "pod-1", pluginIds: [] });
       mockUpdatePodPluginsApi.mockRejectedValue(new Error("Network error"));
+      const podStore = usePodStore();
+      const spy = vi.spyOn(podStore, "updatePodPlugins");
 
       mountPopover();
       await flushPromises();
 
       const switchBtn = bodyQuery(".switch-stub");
-      expect(switchBtn).not.toBeNull();
-
       switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushPromises();
 
-      // 應回滾到空陣列
-      expect(mockUpdatePodPlugins).toHaveBeenLastCalledWith("pod-1", []);
-      // 應顯示 toast
+      // 最後一次呼叫應回滾到空陣列
+      expect(spy).toHaveBeenLastCalledWith("pod-1", []);
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ variant: "destructive" }),
       );
     });
   });
 
-  // ── busy = true 時 Toggle disabled ───────────────────────────────────────
+  // ── busy = true 時 Toggle disabled ────────────────────────────
 
   describe("busy = true", () => {
     it("Switch 應為 disabled 狀態", async () => {
@@ -258,32 +228,24 @@ describe("PluginPopover", () => {
     });
   });
 
-  // ── 空狀態 ───────────────────────────────────────────────────────────────
+  // ── 空狀態 ────────────────────────────────────────────────────
 
   describe("空狀態（installedPlugins 為空）", () => {
-    it("claude provider 顯示 pluginsEmpty 的 i18n key", async () => {
-      mockListPlugins.mockResolvedValue([]);
-      mountPopover({ provider: "claude" });
-      await flushPromises();
+    it.each([["claude"], ["codex"]])(
+      "%s provider 顯示 pluginsEmpty 的 i18n key",
+      async (provider) => {
+        mockListPlugins.mockResolvedValue([]);
+        mountPopover({ provider });
+        await flushPromises();
 
-      // Teleport 內容在 body，用 textContent 確認
-      const popover = bodyQuery(".fixed.z-50");
-      expect(popover).not.toBeNull();
-      expect(popover!.textContent).toContain("pod.slot.pluginsEmpty");
-    });
-
-    it("codex provider 顯示 pluginsEmpty 的 i18n key", async () => {
-      mockListPlugins.mockResolvedValue([]);
-      mountPopover({ provider: "codex" });
-      await flushPromises();
-
-      const popover = bodyQuery(".fixed.z-50");
-      expect(popover).not.toBeNull();
-      expect(popover!.textContent).toContain("pod.slot.pluginsEmpty");
-    });
+        const popover = bodyQuery(".fixed.z-50");
+        expect(popover).not.toBeNull();
+        expect(popover!.textContent).toContain("pod.slot.pluginsEmpty");
+      },
+    );
   });
 
-  // ── 搜尋功能 ─────────────────────────────────────────────────────────────
+  // ── 搜尋功能 ──────────────────────────────────────────────────
 
   describe("搜尋功能", () => {
     const PLUGINS: InstalledPlugin[] = [
@@ -313,11 +275,7 @@ describe("PluginPopover", () => {
       },
     ];
 
-    /** 設定 input.value 並觸發 Vue v-model 監聽的 input 事件 */
-    async function setInputValue(
-      input: HTMLInputElement,
-      value: string,
-    ): Promise<void> {
+    async function setInputValue(input: HTMLInputElement, value: string) {
       input.value = value;
       input.dispatchEvent(new Event("input", { bubbles: true }));
       await nextTick();
@@ -325,13 +283,11 @@ describe("PluginPopover", () => {
 
     it("輸入搜尋字串後列表只顯示符合的 plugin", async () => {
       mockListPlugins.mockResolvedValue(PLUGINS);
-
       mountPopover({ provider: "claude" });
       await flushPromises();
 
       const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
       expect(input).not.toBeNull();
-
       await setInputValue(input, "git");
 
       const popover = bodyQuery(".fixed.z-50");
@@ -340,9 +296,8 @@ describe("PluginPopover", () => {
       expect(popover!.textContent).not.toContain("slack");
     });
 
-    it("搜尋不分大小寫（輸入 'GIT' 仍能匹配 github/gitlab）", async () => {
+    it("搜尋不分大小寫", async () => {
       mockListPlugins.mockResolvedValue(PLUGINS);
-
       mountPopover({ provider: "claude" });
       await flushPromises();
 
@@ -357,16 +312,11 @@ describe("PluginPopover", () => {
 
     it("清空搜尋框後恢復顯示全量 plugin", async () => {
       mockListPlugins.mockResolvedValue(PLUGINS);
-
       mountPopover({ provider: "claude" });
       await flushPromises();
 
       const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
-
-      // 先過濾
       await setInputValue(input, "git");
-
-      // 再清空
       await setInputValue(input, "");
 
       const popover = bodyQuery(".fixed.z-50");
@@ -377,67 +327,47 @@ describe("PluginPopover", () => {
 
     it("搜尋無結果時顯示 pod.slot.pluginsSearchEmpty", async () => {
       mockListPlugins.mockResolvedValue(PLUGINS);
-
       mountPopover({ provider: "claude" });
       await flushPromises();
 
       const input = bodyQuery(".pod-popover-search") as HTMLInputElement;
       await setInputValue(input, "xxx");
 
-      const popover = bodyQuery(".fixed.z-50");
-      expect(popover!.textContent).toContain("pod.slot.pluginsSearchEmpty");
+      expect(bodyQuery(".fixed.z-50")!.textContent).toContain(
+        "pod.slot.pluginsSearchEmpty",
+      );
     });
 
-    it("掛載後 searchInputRef 不為 null（搜尋框已渲染）", async () => {
+    it("掛載後搜尋框已渲染", async () => {
       mockListPlugins.mockResolvedValue(PLUGINS);
-
       mountPopover({ provider: "claude" });
       await flushPromises();
 
-      // jsdom + Teleport 環境下 focus 驗證不可靠，改驗 searchInputRef 存在
-      const input = bodyQuery(".pod-popover-search");
-      expect(input).not.toBeNull();
+      expect(bodyQuery(".pod-popover-search")).not.toBeNull();
     });
   });
 
-  // ── Codex 唯讀模式 ────────────────────────────────────────────────────────
+  // ── Codex 唯讀模式 ────────────────────────────────────────────
 
   describe("Codex 唯讀模式", () => {
-    it("不應渲染 Switch（Toggle）", async () => {
+    it("不渲染 Switch、顯示 name vX.Y.Z 格式與 pluginsCodexHint", async () => {
       mockListPlugins.mockResolvedValue([MOCK_PLUGIN]);
       mountPopover({ provider: "codex" });
       await flushPromises();
 
-      const switchBtn = bodyQuery(".switch-stub");
-      expect(switchBtn).toBeNull();
-    });
-
-    it("應顯示 name vX.Y.Z 格式", async () => {
-      mockListPlugins.mockResolvedValue([MOCK_PLUGIN]);
-      mountPopover({ provider: "codex" });
-      await flushPromises();
+      expect(bodyQuery(".switch-stub")).toBeNull();
 
       const popover = bodyQuery(".fixed.z-50");
       expect(popover).not.toBeNull();
       expect(popover!.textContent).toContain("Test Plugin v1.0.0");
-    });
-
-    it("應顯示 pluginsCodexHint 的 i18n key", async () => {
-      mockListPlugins.mockResolvedValue([MOCK_PLUGIN]);
-      mountPopover({ provider: "codex" });
-      await flushPromises();
-
-      const popover = bodyQuery(".fixed.z-50");
-      expect(popover).not.toBeNull();
       expect(popover!.textContent).toContain("pod.slot.pluginsCodexHint");
     });
 
-    it("不應呼叫 updatePodPluginsApi（即便觸發 handleToggle）", async () => {
+    it("不應呼叫 updatePodPluginsApi（Codex 無 Switch）", async () => {
       mockListPlugins.mockResolvedValue([MOCK_PLUGIN]);
       mountPopover({ provider: "codex" });
       await flushPromises();
 
-      // Codex 模式下沒有 Switch，故不可能觸發 — 確認 api 不曾被呼叫
       expect(mockUpdatePodPluginsApi).not.toHaveBeenCalled();
     });
   });

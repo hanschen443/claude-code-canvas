@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed } from "vue";
 import type { Pod } from "@/types";
 import type { ContentBlock } from "@/types/websocket/requests";
 import ChatHeader from "./ChatHeader.vue";
@@ -13,6 +13,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useRunStore } from "@/stores/run/runStore";
 import { isMultiInstanceSourcePod } from "@/utils/multiInstanceGuard";
 import { useToast } from "@/composables/useToast";
+import { useEscapeClose } from "@/composables/useEscapeClose";
 
 const props = defineProps<{
   pod: Pod;
@@ -79,24 +80,13 @@ const handleMultiInstanceSend = async (message: string): Promise<void> => {
   emit("close");
 };
 
-const handleKeydown = (event: KeyboardEvent): void => {
-  if (event.key === "Escape") {
-    const openDialog = document.querySelector(
-      '[data-state="open"][role="dialog"]',
-    );
-    if (openDialog) {
-      return;
-    }
-    handleClose();
-  }
-};
-
-onMounted(() => {
-  document.addEventListener("keydown", handleKeydown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener("keydown", handleKeydown);
+// ESC 關閉：若有 reka-ui Dialog 開啟中則略過，避免干擾 Dialog 自身的 ESC 處理
+useEscapeClose(() => {
+  const openDialog = document.querySelector(
+    '[data-state="open"][role="dialog"]',
+  );
+  if (openDialog) return;
+  handleClose();
 });
 </script>
 
@@ -106,10 +96,7 @@ onUnmounted(() => {
 
     <div class="relative max-w-3xl w-full h-[85vh]">
       <div class="chat-window flex flex-col h-full overflow-hidden">
-        <ChatHeader
-          :pod="pod"
-          @close="handleClose"
-        />
+        <ChatHeader :pod="pod" @close="handleClose" />
         <!-- Multi-instance mode：只顯示簡化版輸入（但若有 integration binding 則優先顯示提示） -->
         <ChatMultiInstanceInput
           v-if="isMultiInstanceMode && !firstIntegrationProvider"

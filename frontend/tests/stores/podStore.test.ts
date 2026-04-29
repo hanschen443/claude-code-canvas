@@ -67,22 +67,18 @@ describe("podStore", () => {
         expect(result).toEqual(pod2);
       });
 
-      it("無 selectedPodId 時應回傳 null", () => {
-        const store = usePodStore();
-        const pod = createMockPod();
-        store.pods = [pod];
-        store.selectedPodId = null;
-
-        const result = store.selectedPod;
-
-        expect(result).toBeNull();
-      });
-
-      it("selectedPodId 不存在於 pods 中時應回傳 null", () => {
+      // 參數化：getter 找不到時應回傳 null
+      it.each([
+        { desc: "無 selectedPodId（null）", selectedId: null as null },
+        {
+          desc: "selectedPodId 不存在於 pods 中",
+          selectedId: "non-existent-id",
+        },
+      ])("$desc 時應回傳 null", ({ selectedId }) => {
         const store = usePodStore();
         const pod = createMockPod({ id: "pod-1" });
         store.pods = [pod];
-        store.selectedPodId = "non-existent-id";
+        store.selectedPodId = selectedId;
 
         const result = store.selectedPod;
 
