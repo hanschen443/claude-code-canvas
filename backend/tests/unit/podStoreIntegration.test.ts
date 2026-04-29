@@ -772,6 +772,52 @@ describe("PodStore - Provider / Model 驗證", () => {
     expect(JSON.parse(row.provider_config_json)).toEqual({ model: "gpt-5.5" });
   });
 
+  it("create 傳入 provider='gemini' 與合法 model 時應成功，pod.provider === 'gemini'", () => {
+    const { pod } = podStore.create(canvasId, {
+      name: "pod-create-valid-gemini",
+      x: 0,
+      y: 0,
+      rotation: 0,
+      provider: "gemini",
+      providerConfig: { model: "gemini-2.5-pro" },
+    });
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found).toBeDefined();
+    expect(found!.provider).toBe("gemini");
+    expect(found!.providerConfig).toEqual({ model: "gemini-2.5-pro" });
+
+    // DB 原始欄位亦應同步寫入
+    const row = getDb()
+      .prepare("SELECT provider, provider_config_json FROM pods WHERE id = ?")
+      .get(pod.id) as { provider: string; provider_config_json: string };
+    expect(row.provider).toBe("gemini");
+    expect(JSON.parse(row.provider_config_json)).toEqual({
+      model: "gemini-2.5-pro",
+    });
+  });
+
+  it("create 傳入 provider='gemini' 與非法 model 時應 throw，且 DB 不應寫入新紀錄", () => {
+    const podName = "pod-gemini-invalid-model";
+
+    expect(() =>
+      podStore.create(canvasId, {
+        name: podName,
+        x: 0,
+        y: 0,
+        rotation: 0,
+        provider: "gemini",
+        providerConfig: { model: "not-a-gemini-model" },
+      }),
+    ).toThrow(/gemini/);
+
+    // create 失敗時不應有殘留資料
+    const row = getDb()
+      .prepare("SELECT id FROM pods WHERE canvas_id = ? AND name = ?")
+      .get(canvasId, podName);
+    expect(row).toBeFalsy();
+  });
+
   it("update 傳入另一個合法 model 時應成功更新 DB", () => {
     const { pod } = podStore.create(canvasId, {
       name: "pod-update-valid-model",

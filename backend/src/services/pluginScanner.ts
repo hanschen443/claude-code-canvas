@@ -95,10 +95,15 @@ function readManifest(manifestPath: string): PluginManifest | null {
     const isNotFound =
       error instanceof Error && "code" in error && error.code === "ENOENT";
     if (!isNotFound) {
+      // 以 ~ 取代 homedir，避免 log 洩漏使用者帳號路徑
+      const home = os.homedir();
+      const displayPath = manifestPath.startsWith(home)
+        ? `~${manifestPath.substring(home.length)}`
+        : manifestPath;
       logger.warn(
         "Run",
         "Warn",
-        `讀取 manifest 失敗，路徑：${manifestPath}，錯誤：${error instanceof Error ? error.message : String(error)}`,
+        `讀取 manifest 失敗，路徑：${displayPath}，錯誤：${error instanceof Error ? error.message : String(error)}`,
       );
     }
     return null;
@@ -109,12 +114,21 @@ function readPluginManifest(installPath: string): PluginManifest | null {
   return readManifest(path.join(installPath, ".claude-plugin", "plugin.json"));
 }
 
-/** 偵測 installPath 下有哪些 provider 的 plugin.json 存在 */
+/**
+ * 偵測 installPath 下有哪些 provider 的 plugin.json 存在。
+ * 若 caller 已讀過 claude manifest，可透過 existingClaudeManifest 傳入避免重複 I/O。
+ */
 function detectCompatibleProviders(
   installPath: string,
+  existingClaudeManifest?: PluginManifest | null,
 ): ("claude" | "codex")[] {
   const providers: ("claude" | "codex")[] = [];
-  if (readManifest(path.join(installPath, ".claude-plugin", "plugin.json"))) {
+  // 若 caller 已有 claude manifest 快照，直接用，否則才讀取
+  const claudeManifest =
+    existingClaudeManifest !== undefined
+      ? existingClaudeManifest
+      : readManifest(path.join(installPath, ".claude-plugin", "plugin.json"));
+  if (claudeManifest) {
     providers.push("claude");
   }
   if (readManifest(path.join(installPath, ".codex-plugin", "plugin.json"))) {
@@ -148,6 +162,9 @@ function scanClaudeInstalledPlugins(): InstalledPlugin[] {
   const seenPaths = new Set<string>();
   const result: InstalledPlugin[] = [];
 
+  // resolveClaudePluginsRoot 提到迴圈外，整次掃描共用一份，避免重複呼叫
+  const claudePluginsRoot = resolveClaudePluginsRoot();
+
   for (const [pluginId, entries] of Object.entries(data.plugins)) {
     if (!Array.isArray(entries)) continue;
 
@@ -160,7 +177,6 @@ function scanClaudeInstalledPlugins(): InstalledPlugin[] {
       if (!entry.installPath || seenPaths.has(entry.installPath)) continue;
 
       // 驗證 installPath 必須在允許的 Claude plugins 目錄內，防止惡意路徑注入
-      const claudePluginsRoot = resolveClaudePluginsRoot();
       if (!isPathWithinDirectory(entry.installPath, claudePluginsRoot)) {
         logger.warn(
           "Run",
@@ -172,10 +188,15 @@ function scanClaudeInstalledPlugins(): InstalledPlugin[] {
 
       seenPaths.add(entry.installPath);
 
+      // readPluginManifest 讀取 .claude-plugin/plugin.json 一次；
+      // 傳入 detectCompatibleProviders 避免重複讀同一檔案
       const manifest = readPluginManifest(entry.installPath);
       const atIndex = pluginId.indexOf("@");
       const repo = atIndex !== -1 ? pluginId.substring(atIndex + 1) : "";
-      const compatibleProviders = detectCompatibleProviders(entry.installPath);
+      const compatibleProviders = detectCompatibleProviders(
+        entry.installPath,
+        manifest,
+      );
 
       // Claude 來源至少包含 claude（installed_plugins.json 有記錄即代表已安裝 Claude plugin）
       if (!compatibleProviders.includes("claude")) {
@@ -197,10 +218,87 @@ function scanClaudeInstalledPlugins(): InstalledPlugin[] {
   return result;
 }
 
+/**
+ * 從 pluginDir 內所有 version 子目錄中，選出字典序最大（最新）的合法 version 目錄路徑。
+ * 回傳 { latestVersion, installPath }；若無合法版本目錄則回傳 null。
+ *
+ * 使用 readdirSync withFileTypes 直接透過 dirent.isDirectory() 過濾，
+ * 避免對每個 entry 額外呼叫 statSync。
+ */
+function resolveLatestVersion(
+  pluginDir: string,
+): { latestVersion: string; installPath: string } | null {
+  let dirents: fs.Dirent[];
+  try {
+    dirents = fs.readdirSync(pluginDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const validVersions = dirents
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+
+  if (validVersions.length === 0) return null;
+
+  const latestVersion = validVersions.sort().at(-1)!;
+  return { latestVersion, installPath: path.join(pluginDir, latestVersion) };
+}
+
+/**
+ * 解析單一 Codex plugin 目錄，回傳 InstalledPlugin 或 null（不合法時）。
+ * 負責：plugin id 驗證、版本選擇、manifest 讀取、compatibleProviders 組合。
+ */
+function scanCodexPlugin(
+  marketplaceName: string,
+  pluginName: string,
+  pluginDir: string,
+): InstalledPlugin | null {
+  const pluginId = `${pluginName}@${marketplaceName}`;
+
+  if (!PLUGIN_ID_PATTERN.test(pluginId)) {
+    logger.warn("Run", "Check", `略過不合法的 codex plugin id（已遮罩）`);
+    return null;
+  }
+
+  const resolved = resolveLatestVersion(pluginDir);
+  if (!resolved) return null;
+
+  const { latestVersion, installPath } = resolved;
+
+  // Codex 來源必須有 .codex-plugin/plugin.json 才視為合法
+  const codexManifest = readManifest(
+    path.join(installPath, ".codex-plugin", "plugin.json"),
+  );
+  if (!codexManifest) return null;
+
+  const compatibleProviders: ("claude" | "codex")[] = ["codex"];
+  const claudeManifest = readManifest(
+    path.join(installPath, ".claude-plugin", "plugin.json"),
+  );
+  if (claudeManifest) {
+    compatibleProviders.push("claude");
+  }
+
+  // 優先使用 claude manifest 的 name/description（若有），否則 codex manifest
+  const manifest = claudeManifest ?? codexManifest;
+
+  return {
+    id: pluginId,
+    name: manifest.name ?? pluginId,
+    version: codexManifest.version ?? latestVersion,
+    description: manifest.description ?? "",
+    installPath,
+    repo: marketplaceName,
+    compatibleProviders,
+  };
+}
+
 /** 掃描 Codex 來源（~/.codex/plugins/cache/<marketplaceName>/<pluginName>/<version>/） */
 function scanCodexInstalledPlugins(): InstalledPlugin[] {
   const result: InstalledPlugin[] = [];
 
+  // 掃 marketplaces
   let marketplaceDirs: string[];
   try {
     marketplaceDirs = fs.readdirSync(CODEX_PLUGINS_CACHE_DIR);
@@ -212,6 +310,7 @@ function scanCodexInstalledPlugins(): InstalledPlugin[] {
   for (const marketplaceName of marketplaceDirs) {
     const marketplaceDir = path.join(CODEX_PLUGINS_CACHE_DIR, marketplaceName);
 
+    // 掃該 marketplace 底下的 plugins
     let pluginDirs: string[];
     try {
       const stat = fs.statSync(marketplaceDir);
@@ -221,65 +320,11 @@ function scanCodexInstalledPlugins(): InstalledPlugin[] {
       continue;
     }
 
+    // 對每個 plugin 解析資料
     for (const pluginName of pluginDirs) {
-      const pluginId = `${pluginName}@${marketplaceName}`;
-
-      if (!PLUGIN_ID_PATTERN.test(pluginId)) {
-        logger.warn("Run", "Check", `略過不合法的 codex plugin id（已遮罩）`);
-        continue;
-      }
-
       const pluginDir = path.join(marketplaceDir, pluginName);
-
-      let versionDirs: string[];
-      try {
-        const stat = fs.statSync(pluginDir);
-        if (!stat.isDirectory()) continue;
-        versionDirs = fs.readdirSync(pluginDir);
-      } catch {
-        continue;
-      }
-
-      // 取字典序最大的 version 目錄
-      const validVersions = versionDirs.filter((v) => {
-        try {
-          return fs.statSync(path.join(pluginDir, v)).isDirectory();
-        } catch {
-          return false;
-        }
-      });
-
-      if (validVersions.length === 0) continue;
-
-      const latestVersion = validVersions.sort().at(-1)!;
-      const installPath = path.join(pluginDir, latestVersion);
-
-      // Codex 來源必須有 .codex-plugin/plugin.json 才視為合法
-      const codexManifest = readManifest(
-        path.join(installPath, ".codex-plugin", "plugin.json"),
-      );
-      if (!codexManifest) continue;
-
-      const compatibleProviders: ("claude" | "codex")[] = ["codex"];
-      const claudeManifest = readManifest(
-        path.join(installPath, ".claude-plugin", "plugin.json"),
-      );
-      if (claudeManifest) {
-        compatibleProviders.push("claude");
-      }
-
-      // 優先使用 claude manifest 的 name/description（若有），否則 codex manifest
-      const manifest = claudeManifest ?? codexManifest;
-
-      result.push({
-        id: pluginId,
-        name: manifest.name ?? pluginId,
-        version: codexManifest.version ?? latestVersion,
-        description: manifest.description ?? "",
-        installPath,
-        repo: marketplaceName,
-        compatibleProviders,
-      });
+      const plugin = scanCodexPlugin(marketplaceName, pluginName, pluginDir);
+      if (plugin) result.push(plugin);
     }
   }
 

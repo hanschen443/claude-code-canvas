@@ -19,6 +19,8 @@ import { toPodPublicView } from "../types/pod.js";
 
 /** REST API 的 model 便捷欄位：Claude provider 僅允許短名，方便向後相容 */
 const VALID_CLAUDE_MODELS = ["opus", "sonnet", "haiku"] as const;
+/** 同一 Canvas 下 Pod 名稱重複時統一回傳的錯誤訊息（預檢與 UNIQUE 約束共用） */
+const POD_NAME_CONFLICT_MESSAGE = "同一 Canvas 下已存在相同名稱的 Pod";
 const VALID_PROVIDERS: ProviderName[] = ["claude", "codex", "gemini"];
 /** providerConfig 允許的 key 白名單 */
 const PROVIDER_CONFIG_ALLOWED_KEYS = ["model"] as const;
@@ -113,24 +115,27 @@ function validatePodProviderConfig(
   return null;
 }
 
-function validateCreatePodBody(
+/**
+ * 純驗證：依序檢查所有欄位，有錯誤則回傳錯誤訊息字串，全部通過回傳 null。
+ */
+function validateCreatePodBody(data: Record<string, unknown>): string | null {
+  return (
+    validatePodName(data) ??
+    validatePodCoordinates(data) ??
+    validatePodModel(data) ??
+    validatePodProvider(data) ??
+    validatePodProviderConfig(data)
+  );
+}
+
+/**
+ * 純組裝：將已通過驗證的 data 轉換為 ValidatedCreatePodBody。
+ * 包含 model → providerConfig 便捷欄位合併邏輯。
+ * 呼叫前必須先經過 validateCreatePodBody 確認無誤。
+ */
+function buildCreatePodPayload(
   data: Record<string, unknown>,
-): { error: string } | ValidatedCreatePodBody {
-  const nameError = validatePodName(data);
-  if (nameError) return { error: nameError };
-
-  const coordinatesError = validatePodCoordinates(data);
-  if (coordinatesError) return { error: coordinatesError };
-
-  const modelError = validatePodModel(data);
-  if (modelError) return { error: modelError };
-
-  const providerError = validatePodProvider(data);
-  if (providerError) return { error: providerError };
-
-  const providerConfigError = validatePodProviderConfig(data);
-  if (providerConfigError) return { error: providerConfigError };
-
+): ValidatedCreatePodBody {
   const name = (data.name as string).trim();
   const provider =
     data.provider !== undefined ? (data.provider as ProviderName) : undefined;
@@ -177,15 +182,18 @@ export async function handleCreatePod(
   const { canvas, error } = requireCanvas(params.id);
   if (error) return error;
 
-  const validated = validateCreatePodBody(body as Record<string, unknown>);
-  if ("error" in validated) {
-    return jsonResponse({ error: validated.error }, HTTP_STATUS.BAD_REQUEST);
+  const data = body as Record<string, unknown>;
+  const validationError = validateCreatePodBody(data);
+  if (validationError) {
+    return jsonResponse({ error: validationError }, HTTP_STATUS.BAD_REQUEST);
   }
+
+  const validated = buildCreatePodPayload(data);
 
   // 預檢：讓常見的重複名稱情境快速回錯，不需等到 DB 插入
   if (podStore.hasName(canvas.id, validated.name)) {
     return jsonResponse(
-      { error: "同一 Canvas 下已存在相同名稱的 Pod" },
+      { error: POD_NAME_CONFLICT_MESSAGE },
       HTTP_STATUS.CONFLICT,
     );
   }
@@ -211,7 +219,10 @@ export async function handleCreatePod(
       e instanceof Error &&
       (e as NodeJS.ErrnoException).code === "SQLITE_CONSTRAINT_UNIQUE"
     ) {
-      return jsonResponse({ error: "Pod 名稱已存在" }, HTTP_STATUS.CONFLICT);
+      return jsonResponse(
+        { error: POD_NAME_CONFLICT_MESSAGE },
+        HTTP_STATUS.CONFLICT,
+      );
     }
     throw e;
   }
@@ -258,7 +269,7 @@ export async function handleRenamePod(
 
   if (podStore.hasName(canvas.id, trimmedName)) {
     return jsonResponse(
-      { error: "同一 Canvas 下已存在相同名稱的 Pod" },
+      { error: POD_NAME_CONFLICT_MESSAGE },
       HTTP_STATUS.CONFLICT,
     );
   }

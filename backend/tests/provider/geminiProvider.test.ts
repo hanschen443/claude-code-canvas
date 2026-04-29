@@ -68,7 +68,13 @@ async function collectEvents(
 }
 
 // ── 工具：建立 mock subprocess ──────────────────────────────────────────
-// stdin 為 "ignore"，不需要 write/end，只保留 kill/stdout/stderr/exited
+/**
+ * 建立 geminiProvider 測試用的 mock subprocess 物件。
+ *
+ * 此 mock 不包含 stdin 欄位：
+ * spawnGeminiProcess 將 stdin 設為 'ignore'（prompt 透過 --prompt flag 傳入 argv），
+ * 故 subprocess 不需要 stdin 互動，mock 也無需模擬此欄位。
+ */
 function makeMockProc(
   stdoutLines: string[],
   stderrLines: string[] = [],

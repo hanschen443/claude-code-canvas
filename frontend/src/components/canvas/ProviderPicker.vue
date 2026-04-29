@@ -1,16 +1,17 @@
 <script setup lang="ts">
 // Provider 選擇器：讓使用者選擇 Claude 或 Codex 作為新 Pod 的 provider
 // providerConfig 改由 providerCapabilityStore.getDefaultOptions 提供，不再 hardcode 預設 model
-import { computed } from "vue";
 import AnthropicLogo from "@/components/icons/AnthropicLogo.vue";
 import OpenAILogo from "@/components/icons/OpenAILogo.vue";
 import GeminiLogo from "@/components/icons/GeminiLogo.vue";
 import type { PodProvider, ProviderConfig } from "@/types/pod";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useToast } from "@/composables/useToast";
+import { useI18n } from "vue-i18n";
 
 const providerStore = useProviderCapabilityStore();
 const { toast } = useToast();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   select: [payload: { provider: PodProvider; providerConfig: ProviderConfig }];
@@ -33,25 +34,12 @@ function resolveModel(provider: PodProvider): string | undefined {
 }
 
 /**
- * Claude 按鈕是否應 disabled：metadata 尚未載入時 disable。
+ * 指定 provider 的按鈕是否應 disabled：metadata 尚未載入時 disable。
+ * 以 provider 動態查詢，未來新增 provider 只需更新模板，不需複製 computed。
  */
-const isClaudeDisabled = computed((): boolean => {
-  return resolveModel("claude") === undefined;
-});
-
-/**
- * Codex 按鈕是否應 disabled：metadata 尚未載入時 disable。
- */
-const isCodexDisabled = computed((): boolean => {
-  return resolveModel("codex") === undefined;
-});
-
-/**
- * Gemini 按鈕是否應 disabled：metadata 尚未載入時 disable。
- */
-const isGeminiDisabled = computed((): boolean => {
-  return resolveModel("gemini") === undefined;
-});
+function isProviderDisabled(provider: PodProvider): boolean {
+  return resolveModel(provider) === undefined;
+}
 
 /**
  * 顯示「Provider 載入中」提示 toast（metadata 尚未就緒時使用）。
@@ -59,62 +47,36 @@ const isGeminiDisabled = computed((): boolean => {
 function showLoadingToast(): void {
   toast({
     title: "Provider",
-    description: "Provider 載入中，請稍候",
+    description: t("pod.provider.loadingHint"),
     variant: "default",
   });
 }
 
-/** 選 Claude → 從 store 取預設 model 後 emit select；若 metadata 未就緒則顯示提示 */
-const handleSelectClaude = (): void => {
-  const model = resolveModel("claude");
+/**
+ * 通用 provider 選擇 handler。
+ * 從 store 取得指定 provider 的預設 model 後 emit select；若 metadata 未就緒則顯示提示。
+ * 未來新增 provider 不需複製此函式，只在模板中以 inline 方式呼叫即可。
+ */
+function handleSelectProvider(provider: PodProvider): void {
+  const model = resolveModel(provider);
   if (model === undefined) {
     showLoadingToast();
     return;
   }
   emit("select", {
-    provider: "claude",
+    provider,
     providerConfig: { model },
   });
-};
-
-/** 選 Codex → 從 store 取預設 model 後 emit select；若 metadata 未就緒則顯示提示 */
-const handleSelectCodex = (): void => {
-  const model = resolveModel("codex");
-  if (model === undefined) {
-    showLoadingToast();
-    return;
-  }
-  emit("select", {
-    provider: "codex",
-    providerConfig: { model },
-  });
-};
-
-/** 選 Gemini → 從 store 取預設 model 後 emit select；若 metadata 未就緒則顯示提示 */
-const handleSelectGemini = (): void => {
-  const model = resolveModel("gemini");
-  if (model === undefined) {
-    showLoadingToast();
-    return;
-  }
-  emit("select", {
-    provider: "gemini",
-    providerConfig: { model },
-  });
-};
+}
 </script>
 
 <template>
   <div class="pod-menu-submenu" @contextmenu.prevent>
-    <!--
-      Claude 選項：metadata 未載入時 disabled。
-      點擊事件掛在外層 div，確保 disabled 狀態下仍可顯示 toast 提示；
-      原生 disabled button 不觸發 click 事件，所以需外層代理。
-    -->
-    <div @click="handleSelectClaude">
+    <!-- 外層 div 代理 click：disabled button 不觸發 click，需在 wrapper 上聽 -->
+    <div @click="() => handleSelectProvider('claude')">
       <button
         class="pod-menu-submenu-item flex items-center gap-3"
-        :disabled="isClaudeDisabled"
+        :disabled="isProviderDisabled('claude')"
       >
         <span
           class="w-8 h-8 rounded-full flex items-center justify-center border border-doodle-ink bg-white flex-shrink-0"
@@ -125,14 +87,10 @@ const handleSelectGemini = (): void => {
       </button>
     </div>
 
-    <!--
-      Codex 選項：metadata 未載入時 disabled。
-      同上，點擊事件掛在外層 div 代理。
-    -->
-    <div @click="handleSelectCodex">
+    <div @click="() => handleSelectProvider('codex')">
       <button
         class="pod-menu-submenu-item flex items-center gap-3"
-        :disabled="isCodexDisabled"
+        :disabled="isProviderDisabled('codex')"
       >
         <span
           class="w-8 h-8 rounded-full flex items-center justify-center border border-doodle-ink bg-white flex-shrink-0"
@@ -143,15 +101,10 @@ const handleSelectGemini = (): void => {
       </button>
     </div>
 
-    <!--
-      Gemini 選項：metadata 未載入時 disabled。
-      同上，點擊事件掛在外層 div 代理，確保 disabled 狀態下仍可顯示 toast 提示；
-      原生 disabled button 不觸發 click 事件，所以需外層代理。
-    -->
-    <div @click="handleSelectGemini">
+    <div @click="() => handleSelectProvider('gemini')">
       <button
         class="pod-menu-submenu-item flex items-center gap-3"
-        :disabled="isGeminiDisabled"
+        :disabled="isProviderDisabled('gemini')"
       >
         <span
           class="w-8 h-8 rounded-full flex items-center justify-center border border-doodle-ink bg-white flex-shrink-0"

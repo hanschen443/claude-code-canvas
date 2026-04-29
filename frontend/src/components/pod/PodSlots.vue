@@ -74,9 +74,27 @@ type SingleSlotConfig = {
 
 type SlotConfig = SingleSlotConfig;
 
+/**
+ * 通用 single-bind slot 設定產生器。
+ * 封裝 areaClass / slotClass / label / store / boundNote / disabled / disabledTooltip 等共用結構，
+ * 兩個既有 helper（createRepositorySlotConfig / createCommandSlotConfig）改為 thin wrapper。
+ */
+function createSlotConfig(opts: {
+  areaClass: string;
+  slotClass: string;
+  label: string;
+  store: typeof repositoryStore | typeof commandStore;
+  boundNote: () => RepositoryNote | CommandNote | undefined;
+  disabled: boolean;
+  disabledTooltip: string;
+  onDropped: (noteId: string) => void;
+  onRemoved: () => void;
+}): SingleSlotConfig {
+  return { kind: "single", ...opts };
+}
+
 function createRepositorySlotConfig(): SingleSlotConfig {
-  return {
-    kind: "single",
+  return createSlotConfig({
     areaClass: "pod-notch-area-base pod-repository-notch-area",
     slotClass: "pod-repository-slot",
     label: "Repo",
@@ -89,12 +107,11 @@ function createRepositorySlotConfig(): SingleSlotConfig {
       emit("repository-dropped", noteId);
     },
     onRemoved: () => emit("repository-removed"),
-  };
+  });
 }
 
 function createCommandSlotConfig(): SingleSlotConfig {
-  return {
-    kind: "single",
+  return createSlotConfig({
     areaClass: "pod-notch-area-base pod-command-notch-area",
     slotClass: "pod-command-slot",
     label: "Command",
@@ -107,7 +124,7 @@ function createCommandSlotConfig(): SingleSlotConfig {
       emit("command-dropped", noteId);
     },
     onRemoved: () => emit("command-removed"),
-  };
+  });
 }
 
 const slotConfigs = computed((): SlotConfig[] => [

@@ -624,6 +624,66 @@ describe("pluginScanner", () => {
     });
   });
 
+  describe("gemini provider 提前返回", () => {
+    it("scanInstalledPlugins('gemini') 應直接回傳空陣列，不執行任何掃描", async () => {
+      // 即使有 installed_plugins.json，傳入 gemini 仍應回傳空陣列
+      const installPath = join(claudeTestDir, "some-plugin", "1.0.0");
+      await mkdir(installPath, { recursive: true });
+      await writeClaudePluginManifest(installPath, "Some Plugin", "desc");
+
+      await writeFile(
+        installedPluginsPath,
+        makeInstalledPluginsJson({
+          "some-plugin@repo": [
+            {
+              scope: "user",
+              installPath,
+              version: "1.0.0",
+              installedAt: "",
+              lastUpdated: "",
+            },
+          ],
+        }),
+      );
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins("gemini");
+
+      expect(result).toEqual([]);
+    });
+
+    it("scanInstalledPlugins('gemini') 不觸發快取、且全集掃描後再傳 gemini 仍回傳空陣列", async () => {
+      const installPath = join(claudeTestDir, "another-plugin", "1.0.0");
+      await mkdir(installPath, { recursive: true });
+      await writeClaudePluginManifest(installPath, "Another Plugin", "desc");
+
+      await writeFile(
+        installedPluginsPath,
+        makeInstalledPluginsJson({
+          "another-plugin@repo": [
+            {
+              scope: "user",
+              installPath,
+              version: "1.0.0",
+              installedAt: "",
+              lastUpdated: "",
+            },
+          ],
+        }),
+      );
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+
+      // 先不帶 provider 觸發全集快取
+      const all = scanInstalledPlugins();
+      expect(all).toHaveLength(1);
+
+      // 再傳 gemini：不在支援清單內，應直接回傳空陣列（不依賴快取）
+      const geminiResult = scanInstalledPlugins("gemini");
+      expect(geminiResult).toEqual([]);
+    });
+  });
+
   describe("provider 過濾", () => {
     it("傳入 provider='claude' 時只回傳含 claude 的 plugin", async () => {
       // claude-only：同時有 .claude-plugin 和 .codex-plugin

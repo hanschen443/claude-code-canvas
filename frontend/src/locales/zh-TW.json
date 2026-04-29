@@ -214,7 +214,8 @@
     "provider": {
       "title": "Provider",
       "unknownDescription": "此 Provider 已下線或尚未支援，無法開啟對話",
-      "loadFailedDescription": "無法取得 provider capabilities，部分功能可能不正常"
+      "loadFailedDescription": "無法取得 provider capabilities，部分功能可能不正常",
+      "loadingHint": "Provider 載入中，請稍候"
     },
     "clearWorkflow": {
       "title": "清理 Workflow",

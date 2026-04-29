@@ -38,86 +38,103 @@ const CLAUDE_TEST_MODEL = "claude-opus-4-5";
 const CODEX_TEST_MODEL = "gpt-5.4";
 const GEMINI_TEST_MODEL = "gemini-2.5-pro";
 
-/** 掛載 ProviderPicker，並讓 store 寫入指定的 defaultOptions */
+// ─── Store 注入 helpers ──────────────────────────────────────────────────────
+
+/**
+ * 往 providerCapabilityStore 注入指定 provider 的 metadata。
+ * model 為 undefined 表示注入空 defaultOptions（模擬 metadata 未就緒）；
+ * 為字串時注入對應 model。
+ */
+function injectProviderMetadata(
+  provider: "claude" | "codex" | "gemini",
+  model: string | undefined,
+): void {
+  const store = useProviderCapabilityStore();
+
+  const capabilitiesMap: Record<
+    "claude" | "codex" | "gemini",
+    {
+      chat: boolean;
+      plugin: boolean;
+      repository: boolean;
+      command: boolean;
+      mcp: boolean;
+    }
+  > = {
+    claude: {
+      chat: true,
+      plugin: true,
+      repository: true,
+      command: true,
+      mcp: true,
+    },
+    codex: {
+      chat: true,
+      plugin: false,
+      repository: false,
+      command: false,
+      mcp: false,
+    },
+    gemini: {
+      chat: true,
+      plugin: false,
+      repository: false,
+      command: false,
+      mcp: false,
+    },
+  };
+
+  store.syncFromPayload([
+    {
+      name: provider,
+      capabilities: capabilitiesMap[provider],
+      defaultOptions: model !== undefined ? { model } : {},
+    },
+  ]);
+}
+
+// ─── Mount helper ────────────────────────────────────────────────────────────
+
+/** 掛載 ProviderPicker（不負責 store 注入，由各測試自行呼叫 injectProviderMetadata） */
+function mountPicker() {
+  return mount(ProviderPicker, { attachTo: document.body });
+}
+
+/**
+ * 便捷 helper：注入 claude + codex（預設 model）後掛載 ProviderPicker。
+ * 各 describe 如需特殊情境可改為直接呼叫 injectProviderMetadata + mountPicker。
+ */
 function mountPickerWithDefaults(options?: {
   claudeModel?: string | null;
   codexModel?: string | null;
   geminiModel?: string | null;
 }) {
-  const store = useProviderCapabilityStore();
-
-  // 注入 claude defaultOptions
+  // claudeModel 為 null → 不注入；undefined → 注入預設值；字串 → 注入該值
   if (options?.claudeModel !== null) {
-    store.syncFromPayload([
-      {
-        name: "claude",
-        capabilities: {
-          chat: true,
-          plugin: true,
-          repository: true,
-          command: true,
-          mcp: true,
-        },
-        defaultOptions: { model: options?.claudeModel ?? CLAUDE_TEST_MODEL },
-      },
-    ]);
+    injectProviderMetadata(
+      "claude",
+      options?.claudeModel !== undefined
+        ? options.claudeModel
+        : CLAUDE_TEST_MODEL,
+    );
   }
 
-  // 注入 codex defaultOptions
   if (options?.codexModel !== null) {
-    store.syncFromPayload([
-      {
-        name: "codex",
-        capabilities: {
-          chat: true,
-          plugin: false,
-          repository: false,
-          command: false,
-          mcp: false,
-        },
-        defaultOptions: { model: options?.codexModel ?? CODEX_TEST_MODEL },
-      },
-    ]);
+    injectProviderMetadata(
+      "codex",
+      options?.codexModel !== undefined ? options.codexModel : CODEX_TEST_MODEL,
+    );
   }
 
-  // 注入 gemini defaultOptions（capabilities 僅 chat: true）
-  // geminiModel 為 undefined 表示不注入；為 null 表示注入但不帶 model（disabled 情境）；為字串則注入該 model
+  // geminiModel 為 undefined 表示不注入；為 null 表示注入空 defaultOptions；為字串則注入該 model
   if (options?.geminiModel !== undefined) {
-    if (options.geminiModel !== null) {
-      store.syncFromPayload([
-        {
-          name: "gemini",
-          capabilities: {
-            chat: true,
-            plugin: false,
-            repository: false,
-            command: false,
-            mcp: false,
-          },
-          defaultOptions: { model: options.geminiModel },
-        },
-      ]);
-    } else {
-      // geminiModel === null：注入 gemini capabilities 但 defaultOptions 不帶 model，模擬 metadata 未就緒
-      store.syncFromPayload([
-        {
-          name: "gemini",
-          capabilities: {
-            chat: true,
-            plugin: false,
-            repository: false,
-            command: false,
-            mcp: false,
-          },
-          defaultOptions: {},
-        },
-      ]);
-    }
+    injectProviderMetadata(
+      "gemini",
+      options.geminiModel !== null ? options.geminiModel : undefined,
+    );
   }
 
-  return mount(ProviderPicker, {
-    attachTo: document.body,
-  });
+  return mountPicker();
 }
 
 describe("ProviderPicker", () => {
@@ -160,9 +177,9 @@ describe("ProviderPicker", () => {
     });
 
     it("providerConfig.model 應為 store 中的 claude defaultOptions model", async () => {
-      const wrapper = mountPickerWithDefaults({
-        claudeModel: CLAUDE_TEST_MODEL,
-      });
+      injectProviderMetadata("claude", CLAUDE_TEST_MODEL);
+      injectProviderMetadata("codex", CODEX_TEST_MODEL);
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       await buttons[0]!.trigger("click");
@@ -209,7 +226,9 @@ describe("ProviderPicker", () => {
     });
 
     it("providerConfig.model 應為 store 中的 codex defaultOptions model", async () => {
-      const wrapper = mountPickerWithDefaults({ codexModel: CODEX_TEST_MODEL });
+      injectProviderMetadata("claude", CLAUDE_TEST_MODEL);
+      injectProviderMetadata("codex", CODEX_TEST_MODEL);
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       await buttons[1]!.trigger("click");
@@ -226,9 +245,10 @@ describe("ProviderPicker", () => {
   describe("選擇 Gemini 時的 emit payload", () => {
     // A1：metadata 已載入（含 gemini）時，渲染 Gemini 按鈕且為可點狀態
     it("A1：metadata 已含 gemini 時，Gemini 按鈕應為啟用狀態（非 disabled）", async () => {
-      const wrapper = mountPickerWithDefaults({
-        geminiModel: GEMINI_TEST_MODEL,
-      });
+      injectProviderMetadata("claude", CLAUDE_TEST_MODEL);
+      injectProviderMetadata("codex", CODEX_TEST_MODEL);
+      injectProviderMetadata("gemini", GEMINI_TEST_MODEL);
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       // buttons[2] 為 Gemini（Claude=0, Codex=1, Gemini=2）
@@ -238,10 +258,11 @@ describe("ProviderPicker", () => {
 
     // A2：gemini defaultOptions 缺 model 時，Gemini 按鈕為 disabled，點擊外層觸發 toast
     it("A2：gemini defaultOptions 無 model 時，Gemini 按鈕應為 disabled，點擊外層應觸發 toast", async () => {
-      // geminiModel: null → 注入 gemini capabilities 但 defaultOptions 不帶 model
-      const wrapper = mountPickerWithDefaults({
-        geminiModel: null,
-      });
+      injectProviderMetadata("claude", CLAUDE_TEST_MODEL);
+      injectProviderMetadata("codex", CODEX_TEST_MODEL);
+      // gemini 注入空 defaultOptions，模擬 metadata 未就緒
+      injectProviderMetadata("gemini", undefined);
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       expect(buttons[2]!.attributes("disabled")).toBeDefined();
@@ -257,9 +278,10 @@ describe("ProviderPicker", () => {
 
     // A3：點擊 Gemini 按鈕 emit select，payload 含正確 provider 與 providerConfig
     it("A3：點擊 Gemini 按鈕應 emit select，payload 包含 provider='gemini' 與正確 model", async () => {
-      const wrapper = mountPickerWithDefaults({
-        geminiModel: GEMINI_TEST_MODEL,
-      });
+      injectProviderMetadata("claude", CLAUDE_TEST_MODEL);
+      injectProviderMetadata("codex", CODEX_TEST_MODEL);
+      injectProviderMetadata("gemini", GEMINI_TEST_MODEL);
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       await buttons[2]!.trigger("click");
@@ -279,32 +301,17 @@ describe("ProviderPicker", () => {
 
   describe("metadata 未載入時的防呆行為", () => {
     it("store 無 claude defaultOptions 時，Claude 按鈕應為 disabled", async () => {
-      // 不注入任何 defaultOptions，模擬 metadata 尚未到達
-      const store = useProviderCapabilityStore();
       // 只寫入空 defaultOptions（模擬後端 Phase 6 前的狀態）
-      store.syncFromPayload([
-        {
-          name: "claude",
-          capabilities: {
-            chat: true,
-            plugin: true,
-            repository: true,
-            command: true,
-            mcp: true,
-          },
-          // 刻意不帶 defaultOptions
-        },
-      ]);
-
-      const wrapper = mount(ProviderPicker, { attachTo: document.body });
+      injectProviderMetadata("claude", undefined);
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       expect(buttons[0]!.attributes("disabled")).toBeDefined();
     });
 
     it("store 完全空時，兩個按鈕皆應為 disabled", async () => {
-      // 不呼叫 syncFromPayload，store 維持初始空物件
-      const wrapper = mount(ProviderPicker, { attachTo: document.body });
+      // 不呼叫任何 injectProviderMetadata，store 維持初始空物件
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       expect(buttons[0]!.attributes("disabled")).toBeDefined();
@@ -313,7 +320,7 @@ describe("ProviderPicker", () => {
 
     it("store 完全空時，點擊 disabled Claude 按鈕不會 emit select", async () => {
       // store 完全空（metadata 尚未載入），按鈕 disabled
-      const wrapper = mount(ProviderPicker, { attachTo: document.body });
+      const wrapper = mountPicker();
 
       const buttons = wrapper.findAll("button");
       // HTML disabled 屬性阻止 click 事件觸發 handler

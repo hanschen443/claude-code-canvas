@@ -214,7 +214,8 @@
     "provider": {
       "title": "Provider",
       "unknownDescription": "This Provider is offline or not yet supported. Chat is unavailable.",
-      "loadFailedDescription": "Unable to load provider capabilities. Some features may not work."
+      "loadFailedDescription": "Unable to load provider capabilities. Some features may not work.",
+      "loadingHint": "Provider is loading, please wait"
     },
     "clearWorkflow": {
       "title": "Clear Workflow",

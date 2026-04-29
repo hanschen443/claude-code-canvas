@@ -24,7 +24,8 @@ export const GEMINI_ENV_WHITELIST = new Set([
 
 /**
  * 篩選環境變數白名單，建構傳入 gemini subprocess 的環境物件。
- * 每次呼叫時動態讀取 process.env，確保測試 mock 及 credential rotation 正確生效。
+ * 每次呼叫時讀取 process.env 快照；caller 可自行決定要否快取結果
+ * （目前 geminiProvider 在模組載入時快取一次，以避免重複建立物件）。
  */
 export function buildGeminiEnv(): Record<string, string> {
   const out: Record<string, string> = {};

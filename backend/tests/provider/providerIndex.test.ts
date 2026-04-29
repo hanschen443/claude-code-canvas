@@ -2,8 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   getProvider,
   providerRegistry,
+  resolveModelWithFallback,
 } from "../../src/services/provider/index.js";
-import { CODEX_AVAILABLE_MODELS } from "../../src/services/provider/capabilities.js";
+import {
+  CODEX_AVAILABLE_MODELS,
+  GEMINI_AVAILABLE_MODELS,
+} from "../../src/services/provider/capabilities.js";
 
 // ================================================================
 // providerRegistry
@@ -12,6 +16,11 @@ describe("providerRegistry", () => {
   it("應包含 claude 與 codex", () => {
     expect(Object.keys(providerRegistry)).toContain("claude");
     expect(Object.keys(providerRegistry)).toContain("codex");
+  });
+
+  it("應包含 gemini", () => {
+    expect(Object.keys(providerRegistry)).toContain("gemini");
+    expect(providerRegistry.gemini).toBeDefined();
   });
 });
 
@@ -97,6 +106,43 @@ describe("getProvider", () => {
 
     // 嚴格相等：同一個物件參考
     expect(first).toBe(second);
+  });
+
+  it("getProvider('gemini') 應回傳 metadata.name === 'gemini' 的 GeminiProvider 實例", () => {
+    const provider = getProvider("gemini");
+
+    expect(provider).toBeDefined();
+    expect(provider.metadata.name).toBe("gemini");
+  });
+});
+
+// ================================================================
+// resolveModelWithFallback — gemini
+// ================================================================
+describe("resolveModelWithFallback — gemini", () => {
+  it("gemini 傳入合法 model 時應原值回傳，didFallback=false", () => {
+    const validModel = GEMINI_AVAILABLE_MODELS[0].value;
+    const result = resolveModelWithFallback("gemini", validModel);
+
+    expect(result.resolved).toBe(validModel);
+    expect(result.didFallback).toBe(false);
+  });
+
+  it("gemini 傳入合法 model 'gemini-2.5-pro' 時 resolved === 'gemini-2.5-pro'", () => {
+    const result = resolveModelWithFallback("gemini", "gemini-2.5-pro");
+
+    expect(result.resolved).toBe("gemini-2.5-pro");
+    expect(result.didFallback).toBe(false);
+  });
+
+  it("gemini 傳入非法 model 時應 fallback 為 geminiProvider 預設 model", () => {
+    const defaultModel = getProvider("gemini").metadata.defaultOptions as {
+      model: string;
+    };
+    const result = resolveModelWithFallback("gemini", "invalid model");
+
+    expect(result.resolved).toBe(defaultModel.model);
+    expect(result.didFallback).toBe(true);
   });
 });
 

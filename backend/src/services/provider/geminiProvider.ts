@@ -34,6 +34,7 @@ import { logger } from "../../utils/logger.js";
 import type { Pod } from "../../types/pod.js";
 import type { RunContext } from "../../types/run.js";
 import { buildGeminiEnv, collectStderr } from "../gemini/geminiHelpers.js";
+import { isEnoentError } from "./utils.js";
 
 /**
  * Gemini provider 的執行時選項（執行時型別，由 buildOptions 輸出）。
@@ -66,7 +67,7 @@ const GEMINI_ENV = buildGeminiEnv();
  * 將 ContentBlock[] 轉換為 gemini 可接受的純文字 prompt。
  * Gemini stream-json 不接受 inline image base64，因此 image block 直接略過並 logger.warn。
  */
-function buildPromptText(
+function normalizeMessageToPromptText(
   message: string | import("../../types/message.js").ContentBlock[],
 ): string {
   if (typeof message === "string") return message;
@@ -163,27 +164,19 @@ function buildGeminiArgs(
     }
 
     // resumeSessionId 格式不合法：記錄警告並 fallback 走新對話，防止 CLI 旗標注入
+    // sessionId 只保留前 8 碼並加 [MASKED]，避免洩漏完整值
+    const maskedId =
+      resumeSessionId.length > 8
+        ? `${resumeSessionId.substring(0, 8)}[MASKED]`
+        : "[MASKED]";
     logger.warn(
       "Chat",
       "Warn",
-      `[GeminiProvider] resumeSessionId 格式不合法，fallback 走新對話（sessionId: ${resumeSessionId}）`,
+      `[GeminiProvider] resumeSessionId 格式不合法，fallback 走新對話（sessionId: ${maskedId}）`,
     );
   }
 
   return buildNewSessionArgs(model, promptText);
-}
-
-/**
- * 判斷 err 是否為 ENOENT（gemini CLI 尚未安裝或不在 PATH 中）。
- * 供 spawnGeminiProcess catch 與 chat() catch 共用，消除重複的 duck-typing 程式碼。
- */
-function isEnoentError(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    ("code" in err
-      ? (err as NodeJS.ErrnoException).code === "ENOENT"
-      : err.message.includes("ENOENT"))
-  );
 }
 
 /**
@@ -200,12 +193,45 @@ function spawnGeminiProcess(
 ): Bun.Subprocess<"ignore", "pipe", "pipe"> {
   return Bun.spawn(["gemini", ...args], {
     cwd,
-    // prompt 已透過 --prompt flag 傳入 argv，stdin 不需要
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
     env: GEMINI_ENV,
   });
+}
+
+/** exit code 分類結果 */
+type ExitCodeCategory = "ok" | "login_required" | "generic_error";
+
+// ─── Google OAuth 認證相關 exit code 常數 ─────────────────────────────────────
+
+/**
+ * gemini CLI 以這些 exit code 表示「尚未完成 Google oauth 登入」。
+ * - 41：oauth 認證未建立（未登入）
+ * - 52：oauth 設定失敗（config 損毀或憑證過期）
+ */
+const OAUTH_LOGIN_REQUIRED_EXIT_CODES = new Set([41, 52]);
+
+/**
+ * 提示使用者完成 Google oauth 登入的錯誤訊息。
+ * 抽成常數方便 grep oauth 直接定位，也確保 test 驗證的文字唯一來源。
+ */
+const OAUTH_LOGIN_REQUIRED_MESSAGE =
+  "Gemini 尚未登入，請在終端執行 `gemini` 完成 Google OAuth 登入";
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 將 exit code 分類為語意類別（純函式，無副作用）。
+ *
+ * - 0 → "ok"
+ * - OAUTH_LOGIN_REQUIRED_EXIT_CODES（41 或 52）→ "login_required"（需 Google OAuth 登入）
+ * - 其他非零 → "generic_error"
+ */
+function classifyExitCode(exitCode: number): ExitCodeCategory {
+  if (exitCode === 0) return "ok";
+  if (OAUTH_LOGIN_REQUIRED_EXIT_CODES.has(exitCode)) return "login_required";
+  return "generic_error";
 }
 
 /**
@@ -225,7 +251,8 @@ async function* handleExitCode(
   stderrText: string,
   podId: string,
 ): AsyncGenerator<NormalizedEvent> {
-  if (exitCode === 0 || abortSignal.aborted) return;
+  const category = classifyExitCode(exitCode);
+  if (category === "ok" || abortSignal.aborted) return;
 
   if (hasTurnComplete) {
     // 已完成一個 turn 但以非零 exit code 結束：記錄 warn 但不 yield error（保留正常輸出）
@@ -250,10 +277,10 @@ async function* handleExitCode(
     logger.error("Chat", "Error", `[GeminiProvider] stderr: ${stderrText}`);
   }
 
-  if (exitCode === 41 || exitCode === 52) {
+  if (category === "login_required") {
     yield {
       type: "error",
-      message: "Gemini 尚未登入，請在終端執行 `gemini` 完成 Google OAuth 登入",
+      message: OAUTH_LOGIN_REQUIRED_MESSAGE,
       fatal: false,
     };
   } else {
@@ -443,24 +470,11 @@ function setupSubprocess(
 }
 
 /**
- * 準備執行所需的 CLI 參數與 prompt 文字（純函式）。
- * 驗證 model 格式，若不合法回傳 null（由 chat() 負責 yield error）。
+ * 驗證 model 名稱格式（純函式）。
+ * 回傳 true 表示合法；回傳 false 表示不合法，由呼叫端負責 yield error。
  */
-function prepareExecution(
-  ctx: ChatRequestContext<GeminiOptions>,
-  defaultModel: string,
-): { geminiArgs: string[]; promptText: string } | null {
-  const { message, resumeSessionId, options } = ctx;
-  const model = options?.model ?? defaultModel;
-
-  if (!MODEL_RE.test(model)) {
-    return null;
-  }
-
-  const promptText = buildPromptText(message);
-  const geminiArgs = buildGeminiArgs(resumeSessionId, model, promptText);
-
-  return { geminiArgs, promptText };
+function validateModel(model: string): boolean {
+  return MODEL_RE.test(model);
 }
 
 // ─── Provider 預設選項常數 ────────────────────────────────────────────────────
@@ -515,19 +529,19 @@ export const geminiProvider: AgentProvider<GeminiOptions> = {
    * 發起聊天，回傳標準化事件的 AsyncIterable。
    *
    * 流程：
-   * 1. prepareExecution（model 驗證 + CLI 參數 + prompt 轉換）
-   * 2. setupSubprocess（spawn gemini + abort signal 設置）
-   * 3. streamGeminiOutput（逐行讀取 stdout + stderr 收集 + exit code 處理）
+   * 1. validateModel（model 名稱格式驗證）
+   * 2. normalizeMessageToPromptText + buildGeminiArgs（組合 prompt 與 CLI 參數）
+   * 3. setupSubprocess（spawn gemini + abort signal 設置）
+   * 4. streamGeminiOutput（逐行讀取 stdout + stderr 收集 + exit code 處理）
    */
   async *chat(
     ctx: ChatRequestContext<GeminiOptions>,
   ): AsyncGenerator<NormalizedEvent> {
-    const { podId, abortSignal, options } = ctx;
+    const { podId, abortSignal, options, message, resumeSessionId } = ctx;
 
-    // ── 準備執行（model 驗證 + CLI 參數 + prompt 轉換） ─────────────
-    const execution = prepareExecution(ctx, DEFAULT_OPTIONS.model);
-    if (execution === null) {
-      const model = options?.model ?? DEFAULT_OPTIONS.model;
+    // ── model 驗證 ────────────────────────────────────────────────
+    const model = options?.model ?? DEFAULT_OPTIONS.model;
+    if (!validateModel(model)) {
       yield {
         type: "error",
         message: `不合法的 model 名稱：${model}`,
@@ -536,7 +550,9 @@ export const geminiProvider: AgentProvider<GeminiOptions> = {
       return;
     }
 
-    const { geminiArgs } = execution;
+    // ── 組合 prompt 與 CLI 參數 ───────────────────────────────────
+    const promptText = normalizeMessageToPromptText(message);
+    const geminiArgs = buildGeminiArgs(resumeSessionId, model, promptText);
 
     // ── Spawn subprocess + abort signal 設置 ──────────────────────
     // workspacePath 由上層 executor 透過 resolvePodCwd 解析後傳入

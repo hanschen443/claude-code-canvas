@@ -33,6 +33,7 @@ import type { Pod } from "../../types/pod.js";
 import type { RunContext } from "../../types/run.js";
 import { readCodexMcpServers } from "../mcp/codexMcpReader.js";
 import { buildCodexEnv, collectStderr } from "../codex/codexHelpers.js";
+import { isEnoentError } from "./utils.js";
 
 /**
  * Codex provider 的執行時選項（執行時型別，由 buildOptions 輸出）。
@@ -215,19 +216,6 @@ function buildCodexArgs(
   }
 
   return buildNewSessionArgs(model, repoPath);
-}
-
-/**
- * 判斷 err 是否為 ENOENT（codex CLI 尚未安裝或不在 PATH 中）。
- * 供 spawnCodexProcess catch 與 chat() catch 共用，消除重複的 duck-typing 程式碼。
- */
-function isEnoentError(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    ("code" in err
-      ? (err as NodeJS.ErrnoException).code === "ENOENT"
-      : err.message.includes("ENOENT"))
-  );
 }
 
 /**

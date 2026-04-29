@@ -80,6 +80,11 @@ vi.mock("@/components/canvas/ScheduleModal.vue", () => ({
   },
 }));
 
+// ── vue-i18n mock：t(key) => key，讓斷言以 i18n key 為依據 ─────────────
+vi.mock("vue-i18n", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
 // ── 工具函式 ───────────────────────────────────────────────────────────────
 
 function mkPod(overrides: Partial<Pod> = {}): Pod {
@@ -315,9 +320,12 @@ describe("CanvasPod unknown provider", () => {
     injectCapabilities();
     await nextTick();
     await wrapper.find(".pod-doodle").trigger("dblclick");
-    // 未知 provider 雙擊應顯示 toast（title 含 "Provider"，description 說明不可用）
+    // 未知 provider 雙擊應顯示 toast，因 vue-i18n 已 mock 為 t(key)=>key，直接比對 i18n key
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: expect.stringContaining("Provider") }),
+      expect.objectContaining({
+        title: "pod.provider.title",
+        description: "pod.provider.unknownDescription",
+      }),
     );
     wrapper.unmount();
   });
@@ -576,8 +584,8 @@ describe("CanvasPod Gemini provider", () => {
     expect(singleBindSlots.length).toBeGreaterThanOrEqual(2);
     for (const slot of singleBindSlots) {
       expect(slot.props("disabled")).toBe(true);
-      // disabled-tooltip 為通用文案
-      expect(slot.props("disabledTooltip")).toBe("此 Provider 不支援此功能");
+      // disabled-tooltip 使用 i18n key（t = identity，故斷言 key 本身）
+      expect(slot.props("disabledTooltip")).toBe("pod.slot.providerDisabled");
     }
 
     wrapper.unmount();

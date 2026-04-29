@@ -71,6 +71,85 @@ type GeminiEvent =
   | GeminiResultEvent
   | { type: string; [key: string]: unknown };
 
+// ── 各 type 的獨立解析 helper ─────────────────────────────────────────
+
+/** 解析 init 事件 → session_started */
+function parseInitEvent(e: GeminiInitEvent): NormalizedEvent {
+  return {
+    type: "session_started",
+    sessionId: e.session_id,
+  };
+}
+
+/**
+ * 解析 message 事件。
+ * - role=user → null（略過，不轉發給前端）
+ * - role=assistant + delta=true + 有 content → text
+ * - 其他情況 → null
+ */
+function parseMessageEvent(e: GeminiMessageEvent): NormalizedEvent | null {
+  // role=user 的訊息不需要轉發給前端
+  if (e.role === "user") return null;
+  // 只處理 assistant delta 且有 content 的片段
+  if (e.role === "assistant" && e.delta === true && e.content) {
+    return {
+      type: "text",
+      content: e.content,
+    };
+  }
+  // assistant 非 delta、無 content 等其他情況一律略過
+  return null;
+}
+
+/** 解析 tool_use 事件 → tool_call_start */
+function parseToolUseEvent(e: GeminiToolUseEvent): NormalizedEvent {
+  return {
+    type: "tool_call_start",
+    toolUseId: e.tool_id,
+    toolName: e.tool_name,
+    // parameters 屬於 CLI 外部資料，未必傳入，缺值時補 {} 以符合型別契約
+    input: e.parameters ?? {},
+  };
+}
+
+/** 解析 tool_result 事件 → tool_call_result */
+function parseToolResultEvent(e: GeminiToolResultEvent): NormalizedEvent {
+  return {
+    type: "tool_call_result",
+    toolUseId: e.tool_id,
+    // tool_name 屬於 CLI 外部資料，可能缺失，fallback 為 "tool"
+    toolName: e.tool_name ?? "tool",
+    // output / error 互斥但都可能缺失，依序 fallback
+    output: e.output ?? e.error?.message ?? "",
+  };
+}
+
+/** 解析 error 事件 → error（fatal=false） */
+function parseErrorEvent(e: GeminiErrorEvent): NormalizedEvent {
+  return {
+    type: "error",
+    message: e.message ?? "Gemini 串流發生錯誤",
+    fatal: false,
+  };
+}
+
+/**
+ * 解析 result 事件。
+ * - status=success → turn_complete
+ * - status=error → error（fatal=true）
+ */
+function parseResultEvent(e: GeminiResultEvent): NormalizedEvent {
+  if (e.status === "success") {
+    return { type: "turn_complete" };
+  }
+  // status === "error"
+  return {
+    type: "error",
+    message: e.error?.message ?? "Gemini 執行失敗",
+    fatal: true,
+  };
+}
+
 // ── 主要解析函式 ──────────────────────────────────────────────────
 
 /**
@@ -104,74 +183,18 @@ export function normalize(line: string): NormalizedEvent | null {
   }
 
   switch (event.type) {
-    case "init": {
-      const e = event as GeminiInitEvent;
-      return {
-        type: "session_started",
-        sessionId: e.session_id,
-      };
-    }
-
-    case "message": {
-      const e = event as GeminiMessageEvent;
-      // role=user 的訊息不需要轉發給前端
-      if (e.role === "user") return null;
-      // 只處理 assistant delta 且有 content 的片段
-      if (e.role === "assistant" && e.delta === true && e.content) {
-        return {
-          type: "text",
-          content: e.content,
-        };
-      }
-      // assistant 非 delta、無 content 等其他情況一律略過
-      return null;
-    }
-
-    case "tool_use": {
-      const e = event as GeminiToolUseEvent;
-      return {
-        type: "tool_call_start",
-        toolUseId: e.tool_id,
-        toolName: e.tool_name,
-        // parameters 屬於 CLI 外部資料，未必傳入，缺值時補 {} 以符合型別契約
-        input: e.parameters ?? {},
-      };
-    }
-
-    case "tool_result": {
-      const e = event as GeminiToolResultEvent;
-      return {
-        type: "tool_call_result",
-        toolUseId: e.tool_id,
-        // tool_name 屬於 CLI 外部資料，可能缺失，fallback 為 "tool"
-        toolName: e.tool_name ?? "tool",
-        // output / error 互斥但都可能缺失，依序 fallback
-        output: e.output ?? e.error?.message ?? "",
-      };
-    }
-
-    case "error": {
-      const e = event as GeminiErrorEvent;
-      return {
-        type: "error",
-        message: e.message ?? "Gemini 串流發生錯誤",
-        fatal: false,
-      };
-    }
-
-    case "result": {
-      const e = event as GeminiResultEvent;
-      if (e.status === "success") {
-        return { type: "turn_complete" };
-      }
-      // status === "error"
-      return {
-        type: "error",
-        message: e.error?.message ?? "Gemini 執行失敗",
-        fatal: true,
-      };
-    }
-
+    case "init":
+      return parseInitEvent(event as GeminiInitEvent);
+    case "message":
+      return parseMessageEvent(event as GeminiMessageEvent);
+    case "tool_use":
+      return parseToolUseEvent(event as GeminiToolUseEvent);
+    case "tool_result":
+      return parseToolResultEvent(event as GeminiToolResultEvent);
+    case "error":
+      return parseErrorEvent(event as GeminiErrorEvent);
+    case "result":
+      return parseResultEvent(event as GeminiResultEvent);
     default:
       // 未知頂層事件 → 忽略
       return null;

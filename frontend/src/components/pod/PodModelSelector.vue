@@ -26,8 +26,14 @@ const isCollapsing = ref(false);
 const hoverTimeoutId = ref<ReturnType<typeof setTimeout> | null>(null);
 const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-/** 追蹤 timer 並回傳 Promise，元件 unmount 後若 await 回來可檢查 isUnmounted */
-function sleep(ms: number): Promise<void> {
+/**
+ * 建立一個受追蹤的計時器，並回傳 Promise。
+ * 內部封裝 setTimeout 的建立與 pendingTimers Set 的追蹤；
+ * 元件 unmount 時 onUnmounted 會清掉所有 pendingTimers，
+ * 確保所有 timer 都不會在 unmount 後意外觸發。
+ * unmount 後若 await 回來，呼叫端應檢查 isUnmounted 決定是否提前退出。
+ */
+function createTrackedTimer(ms: number): Promise<void> {
   return new Promise((resolve) => {
     const id = setTimeout(() => {
       pendingTimers.value.delete(id);
@@ -35,6 +41,11 @@ function sleep(ms: number): Promise<void> {
     }, ms);
     pendingTimers.value.add(id);
   });
+}
+
+/** createTrackedTimer 的語意別名，提升呼叫端可讀性 */
+function sleep(ms: number): Promise<void> {
+  return createTrackedTimer(ms);
 }
 
 /** 元件 unmount 後設為 true，供 async 函式提前退出 */
