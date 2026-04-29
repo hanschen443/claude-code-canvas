@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.1.5] - 2026-04-29
+
+### 新增
+- 拖曳檔案到 Pod 顯示真實上傳進度條與檔案數量
+- 上傳中對聊天區、右鍵選單、連線把手、刪除按鈕進行操作限制（Pod 仍可拖移）
+- 部分檔案上傳失敗時其他檔案繼續上傳，失敗檔依錯誤碼顯示具體原因並支援重試
+- Pod Plugins/MCPs popover 加入搜尋與 ScrollArea
+
+### 修正
+- pluginScanner 測試在 CI 跨平台失敗
+- McpPopover 載入失敗訊息改善（不再誤導為「尚未安裝」）
+- 錯誤訊息不再直接洩漏後端訊息
+
+### 優化
+- 測試架構重構 Phase 1-4：淘汰 mock-only handler、改用真實作、合併重複測試用例
+  - 後端：刪除 25 檔 mock-only handler/api、用真 SQLite + 真 store 全面重寫高 mock 密度測試
+  - 前端：刪除 3 檔無價值測試、podStore/connectionStore 改 mock 邊界、移除自家 store/composable/子元件 mock
+- Pod popover toggle 清單組裝改用純函式，流程更清晰
+- menus.css 抽出共用 action 按鈕與搜尋框基底樣式
+- pluginScanner 測試改用 tmp dir，產品碼加可注入 plugins root
+- 統一 i18n locale 結構與錯誤處理
+- Switch model-value 改用 Set.has 提升查找效能
+- tests/setup.ts 改為 top-level await 消除 i18n patch race condition
+
 ## [1.1.4] - 2026-04-28
 
 ### 新增
