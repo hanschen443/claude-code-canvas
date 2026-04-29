@@ -25,7 +25,11 @@ import { usePodStore } from "@/stores/pod/podStore";
 import { useSelectionStore } from "@/stores/pod/selectionStore";
 import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useUploadStore } from "@/stores/upload/uploadStore";
+import { useRepositoryStore } from "@/stores/note/repositoryStore";
+import { useCommandStore } from "@/stores/note/commandStore";
 import type { Pod } from "@/types";
+import type { RepositoryNote } from "@/types/repository";
+import type { CommandNote } from "@/types/command";
 
 // ── 邊界 mock：WS 與 Toast ─────────────────────────────────────────────────
 // 使用 vi.hoisted 確保 mock factory 能在模組初始化前取得 spy 實例
@@ -588,6 +592,66 @@ describe("CanvasPod Gemini provider", () => {
       expect(slot.props("disabledTooltip")).toBe("pod.slot.providerDisabled");
     }
 
+    wrapper.unmount();
+  });
+
+  // T12：Gemini Pod 同時綁定 Repository Note 與 Command Note 時，PodSlots 兩個 prop 皆非 undefined
+  it("T12：gemini Pod 同時綁定 repositoryNote 與 commandNote 時，PodSlots 兩個 boundNote prop 皆非 undefined", async () => {
+    const podId = "pod-gemini-bound";
+    const pod = mkPod({ id: podId, provider: "gemini" as Pod["provider"] });
+    usePodStore().pods = [pod];
+
+    const repositoryNote: RepositoryNote = {
+      id: "repo-note-1",
+      name: "Repo Note",
+      x: 0,
+      y: 0,
+      boundToPodId: podId,
+      originalPosition: null,
+      repositoryId: "repo-1",
+    };
+    const commandNote: CommandNote = {
+      id: "cmd-note-1",
+      name: "Cmd Note",
+      x: 0,
+      y: 0,
+      boundToPodId: podId,
+      originalPosition: null,
+      commandId: "cmd-1",
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useRepositoryStore().notes = [repositoryNote] as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useCommandStore().notes = [commandNote] as any;
+
+    const wrapper = mountPod(pod);
+    injectGeminiCapabilities();
+    await nextTick();
+
+    const podSlots = wrapper.findComponent({ name: "PodSlots" });
+    expect(podSlots.props("boundRepositoryNote")).not.toBeUndefined();
+    expect(podSlots.props("boundCommandNote")).not.toBeUndefined();
+    wrapper.unmount();
+  });
+
+  // T15/T16：兩個 store 都回傳 undefined 時，PodSlots 兩個 boundNote prop 皆為 undefined
+  it("T15/T16：gemini Pod 兩個 store 均無綁定 note 時，PodSlots 兩個 boundNote prop 皆為 undefined", async () => {
+    const podId = "pod-gemini-empty";
+    const pod = mkPod({ id: podId, provider: "gemini" as Pod["provider"] });
+    usePodStore().pods = [pod];
+
+    // store 中無任何 note（或 note 未綁定此 pod）
+    useRepositoryStore().notes = [];
+    useCommandStore().notes = [];
+
+    const wrapper = mountPod(pod);
+    injectGeminiCapabilities();
+    await nextTick();
+
+    const podSlots = wrapper.findComponent({ name: "PodSlots" });
+    expect(podSlots.props("boundRepositoryNote")).toBeUndefined();
+    expect(podSlots.props("boundCommandNote")).toBeUndefined();
     wrapper.unmount();
   });
 });

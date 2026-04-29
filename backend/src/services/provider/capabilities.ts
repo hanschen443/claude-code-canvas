@@ -51,13 +51,13 @@ export const CODEX_AVAILABLE_MODEL_VALUES: ReadonlySet<string> = new Set(
   CODEX_AVAILABLE_MODELS.map((m) => m.value),
 );
 
-/** Gemini Provider 僅支援 chat，不支援 plugin / repository / command / mcp */
+/** Gemini Provider 支援 chat、command、repository；尚未支援 plugin / mcp */
 export const GEMINI_CAPABILITIES: Readonly<ProviderCapabilities> =
   Object.freeze({
     chat: true,
     plugin: false,
-    repository: false,
-    command: false,
+    repository: true,
+    command: true,
     mcp: false,
   });
 

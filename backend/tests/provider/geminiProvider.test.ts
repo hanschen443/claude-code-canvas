@@ -647,4 +647,58 @@ describe("GeminiProvider", () => {
     // 應有 turn_complete
     expect(events.some((e) => e.type === "turn_complete")).toBe(true);
   });
+
+  // ── C21：傳入已展開的 Command Note 訊息，--prompt 內容應以 <command> 標籤開頭 ─
+  it("C21: 傳入已展開的 Command Note 訊息時，--prompt 後的元素應以 <command>\\n{markdown}\\n</command>\\n 開頭", async () => {
+    const markdown = "# 系統指令\n請用繁體中文回覆。";
+    const originalMessage = "請幫我解釋這段程式碼";
+    // 模擬 expandCommandMessage 展開後的字串（格式：<command>\n{markdown}\n</command>\n{原訊息}）
+    const expandedMessage = `<command>\n${markdown}\n</command>\n${originalMessage}`;
+
+    const mockProc = makeMockProc([
+      JSON.stringify({ type: "result", status: "success" }),
+    ]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    const ctx = makeCtx({ message: expandedMessage });
+    await collectEvents(geminiProvider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+    const promptIdx = spawnArgs.indexOf("--prompt");
+    expect(promptIdx).toBeGreaterThan(-1);
+
+    const promptValue = spawnArgs[promptIdx + 1];
+    // 驗證 --prompt 的值以 <command>\n{markdown}\n</command>\n 開頭
+    expect(promptValue).toMatch(/^<command>\n/);
+    expect(promptValue).toContain(`<command>\n${markdown}\n</command>\n`);
+    // 驗證原始訊息緊接在 </command>\n 之後，無額外空白行
+    expect(promptValue).toBe(expandedMessage);
+  });
+
+  // ── C22：傳入未展開的純文字訊息，--prompt 內容不應含 <command> 標籤 ─────
+  it("C22: 傳入未展開的純文字訊息時，--prompt 後的元素不應含 <command> 標籤", async () => {
+    const plainMessage = "請告訴我今天天氣如何";
+
+    const mockProc = makeMockProc([
+      JSON.stringify({ type: "result", status: "success" }),
+    ]);
+    spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+    const ctx = makeCtx({ message: plainMessage });
+    await collectEvents(geminiProvider.chat(ctx));
+
+    expect(spawnSpy).toHaveBeenCalledOnce();
+    const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+    const promptIdx = spawnArgs.indexOf("--prompt");
+    expect(promptIdx).toBeGreaterThan(-1);
+
+    const promptValue = spawnArgs[promptIdx + 1];
+    // 純文字訊息不應含 <command> 標籤
+    expect(promptValue).not.toContain("<command>");
+    expect(promptValue).not.toContain("</command>");
+    expect(promptValue).toBe(plainMessage);
+  });
 });

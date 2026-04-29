@@ -113,4 +113,102 @@ describe("usePodNoteBinding", () => {
       expect(mockPodStore.updatePodCommand).toHaveBeenCalledWith("pod-1", null);
     });
   });
+
+  describe("Gemini Pod 綁定 Note", () => {
+    const geminiPodId = ref("gemini-pod-1");
+
+    function buildGeminiStores(): Parameters<typeof usePodNoteBinding>[1] {
+      return {
+        repositoryStore: mockRepositoryStore as Parameters<
+          typeof usePodNoteBinding
+        >[1]["repositoryStore"],
+        commandStore: mockCommandStore as Parameters<
+          typeof usePodNoteBinding
+        >[1]["commandStore"],
+        podStore: mockPodStore as Parameters<
+          typeof usePodNoteBinding
+        >[1]["podStore"],
+      };
+    }
+
+    describe("handleNoteDrop", () => {
+      it("command 綁定時仍正確呼叫 bindToPod 和 updatePodCommand（T4）", async () => {
+        mockCommandStore.getNoteById.mockReturnValue({
+          commandId: "cmd-gemini",
+        });
+
+        const { handleNoteDrop } = usePodNoteBinding(
+          geminiPodId,
+          buildGeminiStores(),
+        );
+        await handleNoteDrop("command", "note-gemini-cmd");
+
+        expect(mockCommandStore.bindToPod).toHaveBeenCalledWith(
+          "note-gemini-cmd",
+          "gemini-pod-1",
+        );
+        expect(mockPodStore.updatePodCommand).toHaveBeenCalledWith(
+          "gemini-pod-1",
+          "cmd-gemini",
+        );
+      });
+
+      it("repository 綁定時仍正確呼叫 bindToPod 和 updatePodRepository（T9）", async () => {
+        mockRepositoryStore.getNoteById.mockReturnValue({
+          repositoryId: "repo-gemini",
+        });
+
+        const { handleNoteDrop } = usePodNoteBinding(
+          geminiPodId,
+          buildGeminiStores(),
+        );
+        await handleNoteDrop("repository", "note-gemini-repo");
+
+        expect(mockRepositoryStore.bindToPod).toHaveBeenCalledWith(
+          "note-gemini-repo",
+          "gemini-pod-1",
+        );
+        expect(mockPodStore.updatePodRepository).toHaveBeenCalledWith(
+          "gemini-pod-1",
+          "repo-gemini",
+        );
+      });
+    });
+
+    describe("handleNoteRemove", () => {
+      it("command 移除時呼叫 unbindFromPod 並清除 pod 欄位", async () => {
+        const { handleNoteRemove } = usePodNoteBinding(
+          geminiPodId,
+          buildGeminiStores(),
+        );
+        await handleNoteRemove("command");
+
+        expect(mockCommandStore.unbindFromPod).toHaveBeenCalledWith(
+          "gemini-pod-1",
+          { mode: "return-to-original" },
+        );
+        expect(mockPodStore.updatePodCommand).toHaveBeenCalledWith(
+          "gemini-pod-1",
+          null,
+        );
+      });
+
+      it("repository 移除時呼叫 unbindFromPod 並清除 pod 欄位", async () => {
+        const { handleNoteRemove } = usePodNoteBinding(
+          geminiPodId,
+          buildGeminiStores(),
+        );
+        await handleNoteRemove("repository");
+
+        expect(mockRepositoryStore.unbindFromPod).toHaveBeenCalledWith(
+          "gemini-pod-1",
+          { mode: "return-to-original" },
+        );
+        expect(mockPodStore.updatePodRepository).toHaveBeenCalledWith(
+          "gemini-pod-1",
+          null,
+        );
+      });
+    });
+  });
 });

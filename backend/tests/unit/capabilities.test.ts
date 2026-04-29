@@ -49,12 +49,12 @@ describe("GEMINI_CAPABILITIES smoke 測試", () => {
     expect(GEMINI_CAPABILITIES.plugin).toBe(false);
   });
 
-  it("repository 為 false", () => {
-    expect(GEMINI_CAPABILITIES.repository).toBe(false);
+  it("repository 為 true", () => {
+    expect(GEMINI_CAPABILITIES.repository).toBe(true);
   });
 
-  it("command 為 false", () => {
-    expect(GEMINI_CAPABILITIES.command).toBe(false);
+  it("command 為 true", () => {
+    expect(GEMINI_CAPABILITIES.command).toBe(true);
   });
 
   it("mcp 為 false", () => {

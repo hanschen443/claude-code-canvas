@@ -81,7 +81,9 @@ vi.mock("@/components/pod/PodPluginSlot.vue", () => ({
     ],
     emits: ["click"],
     template:
-      '<button class="pod-plugin-slot" @click="$emit(\'click\', $event)"></button>',
+      '<button class="pod-plugin-slot" ' +
+      ':data-capability-disabled="String(capabilityDisabled)" ' +
+      "@click=\"$emit('click', $event)\"></button>",
   },
 }));
 
@@ -112,6 +114,22 @@ function setupCodex() {
         chat: true,
         plugin: false,
         repository: false,
+        command: true,
+        mcp: false,
+      },
+    },
+  ]);
+}
+
+function setupGemini() {
+  const capabilityStore = useProviderCapabilityStore();
+  capabilityStore.syncFromPayload([
+    {
+      name: "gemini",
+      capabilities: {
+        chat: true,
+        plugin: false,
+        repository: true,
         command: true,
         mcp: false,
       },
@@ -298,6 +316,152 @@ describe("PodSlots", () => {
       expect(wrapper.emitted("plugin-clicked")![0]![0]).toBeInstanceOf(
         MouseEvent,
       );
+      wrapper.unmount();
+    });
+  });
+
+  describe("Gemini provider：Repository 與 Command 為 enabled，Plugin 與 MCP 為 capabilityDisabled", () => {
+    it("Repository disabled=false、Command disabled=false；MCP capabilityDisabled=true、Plugin capabilityDisabled=true", () => {
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-gemini",
+          name: "Gemini Pod",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: [],
+          multiInstance: false,
+          provider: "gemini",
+          providerConfig: { model: "gemini-2.0-flash" },
+        },
+      ];
+      setupGemini();
+
+      const wrapper = mountPodSlots("pod-gemini", { provider: "gemini" });
+      const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+
+      expect(singleSlots).toHaveLength(2);
+      expect(singleSlots[0]!.attributes("data-disabled")).toBe("false"); // Repository
+      expect(singleSlots[1]!.attributes("data-disabled")).toBe("false"); // Command
+
+      expect(
+        wrapper.find(".pod-mcp-slot").attributes("data-capability-disabled"),
+      ).toBe("true");
+      expect(
+        wrapper.find(".pod-plugin-slot").attributes("data-capability-disabled"),
+      ).toBe("true");
+
+      wrapper.unmount();
+    });
+  });
+
+  describe("Gemini provider：emit 事件轉發與 Claude/Codex 一致", () => {
+    beforeEach(() => {
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-gemini-emit",
+          name: "Gemini Pod Emit",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: [],
+          multiInstance: false,
+          provider: "gemini",
+          providerConfig: { model: "gemini-2.0-flash" },
+        },
+      ];
+      setupGemini();
+    });
+
+    it.each([
+      [
+        "Repository slot note-dropped → repository-dropped",
+        0,
+        "click",
+        "repository-dropped",
+      ],
+      [
+        "Repository slot note-removed → repository-removed",
+        0,
+        "dblclick",
+        "repository-removed",
+      ],
+      [
+        "Command slot note-dropped → command-dropped",
+        1,
+        "click",
+        "command-dropped",
+      ],
+      [
+        "Command slot note-removed → command-removed",
+        1,
+        "dblclick",
+        "command-removed",
+      ],
+    ])("%s", async (_label, slotIdx, triggerEvent, expectedEmit) => {
+      const wrapper = mountPodSlots("pod-gemini-emit", { provider: "gemini" });
+      const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+
+      await singleSlots[slotIdx]!.trigger(triggerEvent);
+
+      expect(wrapper.emitted(expectedEmit)).toBeTruthy();
+      wrapper.unmount();
+    });
+  });
+
+  describe("Gemini metadata 未載入：Repository / Command slot 為 disabled", () => {
+    it("未呼叫 setupGemini，兩個 single-bind slot data-disabled=true 且 disabledTooltip 為 pod.slot.providerDisabled", () => {
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-gemini-no-cap",
+          name: "Gemini Pod No Cap",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: [],
+          multiInstance: false,
+          provider: "gemini",
+          providerConfig: { model: "gemini-2.0-flash" },
+        },
+      ];
+      // 故意不呼叫 setupGemini()，capability store 無 gemini 資料 → 保守 fallback
+
+      const wrapper = mountPodSlots("pod-gemini-no-cap", {
+        provider: "gemini",
+      });
+      const singleSlots = wrapper.findAll(".single-bind-slot-stub");
+
+      expect(singleSlots).toHaveLength(2);
+      expect(singleSlots[0]!.attributes("data-disabled")).toBe("true");
+      expect(singleSlots[1]!.attributes("data-disabled")).toBe("true");
+      expect(singleSlots[0]!.attributes("data-disabled-tooltip")).toBe(
+        "pod.slot.providerDisabled",
+      );
+      expect(singleSlots[1]!.attributes("data-disabled-tooltip")).toBe(
+        "pod.slot.providerDisabled",
+      );
+
       wrapper.unmount();
     });
   });

@@ -36,6 +36,15 @@ const CLAUDE_FULL_CAPABILITIES = {
   mcp: true,
 };
 
+/** Phase 2 後，Gemini 的 capabilities（需由 syncFromPayload 注入）。與後端 GEMINI_CAPABILITIES 一致 */
+const GEMINI_CAPABILITIES = {
+  chat: true,
+  plugin: false,
+  repository: true,
+  command: true,
+  mcp: false,
+};
+
 /** Phase 2 後，Codex 的 capabilities（需由 syncFromPayload 注入）。與後端 CODEX_CAPABILITIES 一致，所有欄位皆為 true */
 const CODEX_CAPABILITIES = {
   chat: true,
@@ -71,7 +80,10 @@ describe("usePodCapabilities", () => {
    * Phase 2 後 capabilitiesByProvider 初值為空物件，
    * 若需要完整能力需另行呼叫 syncFromPayload。
    */
-  function setupPod(provider: "claude" | "codex", podId = "pod-test") {
+  function setupPod(
+    provider: "claude" | "codex" | "gemini",
+    podId = "pod-test",
+  ) {
     const podStore = usePodStore();
     const pod = createMockPod({ id: podId, provider });
     podStore.pods = [pod];
@@ -79,7 +91,7 @@ describe("usePodCapabilities", () => {
   }
 
   /**
-   * 注入完整的 claude + codex capabilities 到 store。
+   * 注入完整的 claude + codex + gemini capabilities 到 store。
    * 模擬後端 metadata 已成功載入的狀態。
    */
   function injectAllCapabilities() {
@@ -87,6 +99,7 @@ describe("usePodCapabilities", () => {
     capabilityStore.syncFromPayload([
       { name: "claude", capabilities: CLAUDE_FULL_CAPABILITIES },
       { name: "codex", capabilities: CODEX_CAPABILITIES },
+      { name: "gemini", capabilities: GEMINI_CAPABILITIES },
     ]);
   }
 
@@ -322,6 +335,60 @@ describe("usePodCapabilities", () => {
       await nextTick();
 
       expect(capabilities.value.mcp).toBe(false);
+    });
+  });
+
+  // ─── Case 7：Gemini Pod ────────────────────────────────────────────────────
+
+  describe("Gemini Pod", () => {
+    it("metadata 已載入時 isRepositoryEnabled 應為 true（T6）", () => {
+      injectAllCapabilities();
+      const podId = setupPod("gemini");
+      const { isRepositoryEnabled } = usePodCapabilities(podId);
+
+      expect(isRepositoryEnabled.value).toBe(true);
+    });
+
+    it("metadata 已載入時 isCommandEnabled 應為 true（T1）", () => {
+      injectAllCapabilities();
+      const podId = setupPod("gemini");
+      const { isCommandEnabled } = usePodCapabilities(podId);
+
+      expect(isCommandEnabled.value).toBe(true);
+    });
+
+    it("metadata 已載入時 isPluginEnabled 應為 false（鎖死後端 GEMINI_CAPABILITIES）", () => {
+      injectAllCapabilities();
+      const podId = setupPod("gemini");
+      const { isPluginEnabled } = usePodCapabilities(podId);
+
+      expect(isPluginEnabled.value).toBe(false);
+    });
+
+    it("metadata 已載入時 isMcpEnabled 應為 false（鎖死後端 GEMINI_CAPABILITIES）", () => {
+      injectAllCapabilities();
+      const podId = setupPod("gemini");
+      const { isMcpEnabled } = usePodCapabilities(podId);
+
+      expect(isMcpEnabled.value).toBe(false);
+    });
+
+    it("metadata 已載入時 capabilities 應完整等於 GEMINI_CAPABILITIES（從 store 讀取）", () => {
+      injectAllCapabilities();
+      const podId = setupPod("gemini");
+      const { capabilities } = usePodCapabilities(podId);
+
+      expect(capabilities.value).toEqual(GEMINI_CAPABILITIES);
+    });
+
+    it("metadata 未載入時 isRepositoryEnabled / isCommandEnabled 皆為 false（T13 保守 fallback）", () => {
+      // 不呼叫 injectAllCapabilities，模擬 metadata 尚未載入
+      const podId = setupPod("gemini");
+      const { isRepositoryEnabled, isCommandEnabled } =
+        usePodCapabilities(podId);
+
+      expect(isRepositoryEnabled.value).toBe(false);
+      expect(isCommandEnabled.value).toBe(false);
     });
   });
 

@@ -77,4 +77,16 @@ describe("resolvePodCwd", () => {
 
     expect(() => resolvePodCwd(pod)).toThrow("工作目錄不在允許範圍內");
   });
+
+  it("repositoryId 對應目錄不存在時，resolvePodCwd 不檢查目錄存在性，直接回傳組合後路徑（現行行為固化）", () => {
+    const pod = createBasePod({
+      repositoryId: "non-existent-repo-fixture",
+    });
+
+    // 現行行為：只做 path.resolve + isPathWithinDirectory 檢查，
+    // 不驗證目錄是否實際存在或可存取，應直接回傳路徑不拋錯
+    const result = resolvePodCwd(pod);
+
+    expect(result).toBe("/repos/non-existent-repo-fixture");
+  });
 });

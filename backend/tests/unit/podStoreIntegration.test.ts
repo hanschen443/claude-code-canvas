@@ -916,6 +916,124 @@ describe("PodStore - Provider / Model 驗證", () => {
 });
 
 // ================================================================
+// PodStore - Provider 切換保留 Note 綁定
+// ================================================================
+describe("Provider 切換保留 Note 綁定", () => {
+  let canvasId: string;
+
+  beforeEach(() => {
+    initTestDb();
+    resetStatements();
+    clearPodStoreCache();
+
+    const stmts = getStatements(getDb());
+    canvasId = "test-canvas-provider-switch";
+    stmts.canvas.insert.run({
+      $id: canvasId,
+      $name: "test-canvas-provider-switch",
+      $sortIndex: 0,
+    });
+  });
+
+  afterEach(() => {
+    closeDb();
+  });
+
+  function createPodWithNoteBindings(opts: {
+    name: string;
+    provider: string;
+    commandId?: string;
+    repositoryId?: string;
+  }) {
+    const { pod } = podStore.create(canvasId, {
+      name: opts.name,
+      x: 0,
+      y: 0,
+      rotation: 0,
+      provider: opts.provider as never,
+    });
+
+    // 直接設定 commandId / repositoryId
+    if (opts.commandId !== undefined) {
+      podStore.setCommandId(canvasId, pod.id, opts.commandId);
+    }
+    if (opts.repositoryId !== undefined) {
+      podStore.setRepositoryId(canvasId, pod.id, opts.repositoryId);
+    }
+    return pod;
+  }
+
+  it("claude → gemini：commandId 保留", () => {
+    const pod = createPodWithNoteBindings({
+      name: "pod-switch-cmd-claude-gemini",
+      provider: "claude",
+      commandId: "X",
+    });
+
+    // 切換 provider 時需同步帶入目標 provider 的合法 model
+    podStore.update(canvasId, pod.id, {
+      provider: "gemini" as never,
+      providerConfig: { model: "gemini-2.5-pro" },
+    });
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found?.provider).toBe("gemini");
+    expect(found?.commandId).toBe("X");
+  });
+
+  it("claude → gemini：repositoryId 保留", () => {
+    const pod = createPodWithNoteBindings({
+      name: "pod-switch-repo-claude-gemini",
+      provider: "claude",
+      repositoryId: "repo-abc",
+    });
+
+    podStore.update(canvasId, pod.id, {
+      provider: "gemini" as never,
+      providerConfig: { model: "gemini-2.5-pro" },
+    });
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found?.provider).toBe("gemini");
+    expect(found?.repositoryId).toBe("repo-abc");
+  });
+
+  it("gemini → claude：commandId 保留", () => {
+    const pod = createPodWithNoteBindings({
+      name: "pod-switch-cmd-gemini-claude",
+      provider: "gemini",
+      commandId: "Y",
+    });
+
+    podStore.update(canvasId, pod.id, {
+      provider: "claude" as never,
+      providerConfig: { model: "opus" },
+    });
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found?.provider).toBe("claude");
+    expect(found?.commandId).toBe("Y");
+  });
+
+  it("gemini → claude：repositoryId 保留", () => {
+    const pod = createPodWithNoteBindings({
+      name: "pod-switch-repo-gemini-claude",
+      provider: "gemini",
+      repositoryId: "repo-xyz",
+    });
+
+    podStore.update(canvasId, pod.id, {
+      provider: "claude" as never,
+      providerConfig: { model: "opus" },
+    });
+
+    const found = podStore.getById(canvasId, pod.id);
+    expect(found?.provider).toBe("claude");
+    expect(found?.repositoryId).toBe("repo-xyz");
+  });
+});
+
+// ================================================================
 // PodStore - mcpServerNames 欄位寫入與 setMcpServerNames setter
 // ================================================================
 describe("PodStore - mcpServerNames", () => {
