@@ -33,64 +33,19 @@ describe("commandStore", () => {
   setupStoreTest();
 
   describe("初始狀態", () => {
-    it("availableItems 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useCommandStore();
 
       expect(store.availableItems).toEqual([]);
-    });
-
-    it("notes 應為空陣列", () => {
-      const store = useCommandStore();
-
       expect(store.notes).toEqual([]);
-    });
-
-    it("groups 應為空陣列", () => {
-      const store = useCommandStore();
-
       expect(store.groups).toEqual([]);
-    });
-
-    it("isLoading 應為 false", () => {
-      const store = useCommandStore();
-
       expect(store.isLoading).toBe(false);
-    });
-
-    it("error 應為 null", () => {
-      const store = useCommandStore();
-
       expect(store.error).toBeNull();
-    });
-
-    it("draggedNoteId 應為 null", () => {
-      const store = useCommandStore();
-
       expect(store.draggedNoteId).toBeNull();
-    });
-
-    it("isDraggingNote 應為 false", () => {
-      const store = useCommandStore();
-
       expect(store.isDraggingNote).toBe(false);
-    });
-
-    it("isOverTrash 應為 false", () => {
-      const store = useCommandStore();
-
       expect(store.isOverTrash).toBe(false);
-    });
-
-    it("animatingNoteIds 應為空 Set", () => {
-      const store = useCommandStore();
-
       expect(store.animatingNoteIds).toBeInstanceOf(Set);
       expect(store.animatingNoteIds.size).toBe(0);
-    });
-
-    it("expandedGroupIds 應為空 Set", () => {
-      const store = useCommandStore();
-
       expect(store.expandedGroupIds).toBeInstanceOf(Set);
       expect(store.expandedGroupIds.size).toBe(0);
     });

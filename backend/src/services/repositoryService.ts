@@ -27,7 +27,7 @@ class RepositoryService {
   }
 
   async initialize(): Promise<void> {
-    return Promise.resolve();
+    // no-op：初始化邏輯由 startupService 統一管理
   }
 
   async list(): Promise<
@@ -52,12 +52,14 @@ class RepositoryService {
       currentBranch?: string;
     }> = [];
 
+    // 一次查詢取得所有 metadata，建 Map 後 O(1) 查找，避免 N+1 查詢
+    const allRows = this.stmts.selectAll.all() as RepositoryMetadataRow[];
+    const metadataMap = new Map(allRows.map((row) => [row.id, row]));
+
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
 
-      const row = this.stmts.selectById.get(
-        entry.name,
-      ) as RepositoryMetadataRow | null;
+      const row = metadataMap.get(entry.name) ?? null;
       repositories.push({
         id: entry.name,
         name: entry.name,

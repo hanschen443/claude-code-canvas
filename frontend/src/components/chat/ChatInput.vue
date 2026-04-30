@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { Send, Mic, Square } from "lucide-vue-next";
-import { MAX_MESSAGE_LENGTH, TEXTAREA_MAX_HEIGHT } from "@/lib/constants";
+import { TEXTAREA_MAX_HEIGHT } from "@/lib/constants";
 import ScrollArea from "@/components/ui/scroll-area/ScrollArea.vue";
 import type { ContentBlock } from "@/types/websocket/requests";
 import { useSpeechRecognition } from "@/composables/chat/useSpeechRecognition";
@@ -10,10 +17,15 @@ import { useImageAttachment } from "@/composables/chat/useImageAttachment";
 import { useContentBlocks } from "@/composables/chat/useContentBlocks";
 import { useSelectionManager } from "@/composables/chat/useSelectionManager";
 
-const props = defineProps<{
-  isTyping?: boolean;
-  disabled?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    isTyping?: boolean;
+    disabled?: boolean;
+  }>(),
+  {
+    disabled: false,
+  },
+);
 
 const emit = defineEmits<{
   send: [message: string, contentBlocks?: ContentBlock[]];
@@ -23,11 +35,20 @@ const emit = defineEmits<{
 const input = ref("");
 const editableRef = ref<HTMLDivElement | null>(null);
 const isAborting = ref(false);
+// abort 後若 isTyping 始終未從 true→false，最多 3 秒後強制重置 isAborting，防止按鈕永久 disabled
+let abortFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+// ChatModal 透過 v-if 掛載，nextTick 確保 DOM 完成渲染後才 focus
+onMounted(() => {
+  nextTick(() => {
+    editableRef.value?.focus();
+  });
+});
 
 const { t } = useI18n();
 const inputPlaceholder = computed(() => t("chat.inputPlaceholder"));
 
-const disabledRef = computed(() => props.disabled ?? false);
+const disabledRef = computed(() => props.disabled);
 
 const {
   moveCursorToEnd,
@@ -41,9 +62,8 @@ const updateText = (text: string): void => {
   const element = editableRef.value;
   if (!element) return;
 
-  const truncated = text.slice(0, MAX_MESSAGE_LENGTH);
-  input.value = truncated;
-  element.innerText = truncated;
+  input.value = text;
+  element.innerText = text;
   moveCursorToEnd();
 };
 
@@ -59,26 +79,14 @@ const { imageDataMap, findImageFile, handleImagePaste, handleDrop } =
     insertNodeAtCursor,
   });
 
-const { countTextLength, buildContentBlocks, extractTextFromBlocks } =
-  useContentBlocks({
-    editableRef,
-    imageDataMap,
-  });
+const { buildContentBlocks, extractTextFromBlocks } = useContentBlocks({
+  editableRef,
+  imageDataMap,
+});
 
 const handleInput = (event: Event): void => {
   const target = event.target as HTMLDivElement;
-  const innerText = target.innerText;
-
-  let textLength = 0;
-  for (const child of Array.from(target.childNodes)) {
-    textLength += countTextLength(child);
-  }
-
-  if (textLength > MAX_MESSAGE_LENGTH) {
-    updateText(innerText);
-  } else {
-    input.value = innerText;
-  }
+  input.value = target.innerText;
 };
 
 const handlePaste = async (event: ClipboardEvent): Promise<void> => {
@@ -90,7 +98,6 @@ const handlePaste = async (event: ClipboardEvent): Promise<void> => {
     return;
   }
 
-  // 避免貼上後送出時檢查失敗，透過 callback 同步 input.value
   handleTextPaste(event, (text) => {
     input.value = text;
   });
@@ -112,6 +119,14 @@ const handleAbort = (): void => {
   if (isAborting.value) return;
   isAborting.value = true;
   emit("abort");
+
+  // Fallback：若 isTyping 始終未改變，3 秒後強制重置 isAborting，避免按鈕永久 disabled
+  abortFallbackTimer = setTimeout(() => {
+    abortFallbackTimer = null;
+    if (isAborting.value) {
+      isAborting.value = false;
+    }
+  }, 3000);
 };
 
 const handleSend = (): void => {
@@ -120,13 +135,12 @@ const handleSend = (): void => {
   if (blocks.length === 0) return;
 
   const textContent = extractTextFromBlocks(blocks);
-  if (textContent.length > MAX_MESSAGE_LENGTH) return;
-
   const hasImages = blocks.some((block) => block.type === "image");
+
   if (hasImages) {
     emit("send", textContent, blocks);
   } else {
-    emit("send", input.value);
+    emit("send", textContent);
   }
 
   clearInput();
@@ -170,10 +184,22 @@ watch(
   () => props.isTyping,
   (newValue, oldValue) => {
     if (oldValue === true && newValue === false) {
+      // isTyping 正常從 true→false，清除 fallback timer 再重置
+      if (abortFallbackTimer !== null) {
+        clearTimeout(abortFallbackTimer);
+        abortFallbackTimer = null;
+      }
       isAborting.value = false;
     }
   },
 );
+
+onBeforeUnmount(() => {
+  if (abortFallbackTimer !== null) {
+    clearTimeout(abortFallbackTimer);
+    abortFallbackTimer = null;
+  }
+});
 </script>
 
 <template>
@@ -205,7 +231,10 @@ watch(
         class="doodle-action-btn bg-doodle-coral disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0"
         @click="handleAbort"
       >
-        <Square :size="16" class="text-card" />
+        <Square
+          :size="16"
+          class="text-card"
+        />
       </button>
       <button
         v-else
@@ -213,7 +242,10 @@ watch(
         class="doodle-action-btn bg-doodle-green disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0"
         @click="handleSend"
       >
-        <Send :size="20" class="text-card" />
+        <Send
+          :size="20"
+          class="text-card"
+        />
       </button>
       <button
         :disabled="disabled"

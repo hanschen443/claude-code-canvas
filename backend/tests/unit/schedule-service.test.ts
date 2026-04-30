@@ -1,979 +1,1018 @@
-import type { ScheduleConfig } from "../../src/types";
+/**
+ * scheduleService 單元測試（Phase 3 重寫）
+ *
+ * 保留合理 boundary mock：
+ *   - getProvider（SDK boundary：buildPodFromRow → resolveProviderConfig 需要 metadata）
+ *   - executeStreamingChat（Claude/Codex SDK 入口）
+ *   - launchMultiInstanceRun（multi-instance SDK 入口）
+ *   - workflowExecutionService.checkAndTriggerWorkflows（非同步 side-effect，非本測試範疇）
+ *   - commandService.read（filesystem 邊界）
+ *   - fireAndForget（讓 workflow callback 同步執行，避免非同步洩漏）
+ *   - onRunChatComplete（run 完成回呼，非本測試範疇）
+ *   - logger（side-effect only）
+ *
+ * 移除自家 store mock：podStore / messageStore 改用 initTestDb + 真 store。
+ * socketService.emit* 改用 vi.spyOn 觀察，不整體 mock。
+ * configStore.getTimezoneOffset 改用 vi.spyOn 返回固定 offset=0。
+ */
+
+// ---- SDK boundary mock（必須在 import 之前宣告） ----
+
+// getProvider：buildPodFromRow → resolveProviderConfig → getProvider(provider).metadata
+vi.mock("../../src/services/provider/index.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/provider/index.js")
+    >();
+  return {
+    ...actual,
+    getProvider: vi.fn(() => ({
+      chat: vi.fn(async function* () {}),
+      cancel: vi.fn(() => false),
+      buildOptions: vi.fn().mockResolvedValue({}),
+      metadata: {
+        availableModelValues: new Set(["opus", "sonnet", "haiku"]),
+        defaultOptions: { model: "opus" },
+        availableModels: [
+          { label: "Opus", value: "opus" },
+          { label: "Sonnet", value: "sonnet" },
+          { label: "Haiku", value: "haiku" },
+        ],
+      },
+    })),
+  };
+});
+
+// executeStreamingChat：Claude SDK 入口
+vi.mock("../../src/services/claude/streamingChatExecutor.js", () => ({
+  executeStreamingChat: vi.fn().mockResolvedValue(undefined),
+}));
+
+// launchMultiInstanceRun：multi-instance SDK 入口
+vi.mock("../../src/utils/runChatHelpers.js", () => ({
+  launchMultiInstanceRun: vi.fn().mockResolvedValue({
+    runId: "run-1",
+    canvasId: "canvas-1",
+    sourcePodId: "pod-1",
+  }),
+}));
+
+// workflowExecutionService：非同步 side-effect，非本測試範疇
+vi.mock("../../src/services/workflow/index.js", () => ({
+  workflowExecutionService: {
+    checkAndTriggerWorkflows: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+// commandService.read：filesystem 邊界（預設回傳 null，各 test 依需求覆寫）
+vi.mock("../../src/services/commandService.js", () => ({
+  commandService: {
+    read: vi.fn().mockResolvedValue(null),
+  },
+}));
+
+// fireAndForget：讓 workflow callback 在同一 tick 執行，避免非同步洩漏
+vi.mock("../../src/utils/operationHelpers.js", () => ({
+  fireAndForget: vi.fn((promise: Promise<unknown>) => promise),
+}));
+
+// onRunChatComplete：run 完成回呼，非本測試範疇
+vi.mock("../../src/utils/chatCallbacks.js", () => ({
+  onRunChatComplete: vi.fn().mockResolvedValue(undefined),
+}));
+
+// logger：side-effect only
+vi.mock("../../src/utils/logger.js", () => ({
+  logger: {
+    log: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+// ---- imports ----
+
+import path from "path";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { Mock } from "vitest";
+
+import { initTestDb, closeDb, getDb } from "../../src/database/index.js";
+import { resetStatements } from "../../src/database/statements.js";
+import { podStore } from "../../src/services/podStore.js";
+import { messageStore } from "../../src/services/messageStore.js";
+import { socketService } from "../../src/services/socketService.js";
+import { configStore } from "../../src/services/configStore.js";
+import {
+  scheduleService,
+  shouldFireCheckers,
+} from "../../src/services/scheduleService.js";
+import * as executeStreamingChatModule from "../../src/services/claude/streamingChatExecutor.js";
+import * as launchMultiInstanceRunModule from "../../src/utils/runChatHelpers.js";
+import * as commandServiceModule from "../../src/services/commandService.js";
+import { WebSocketResponseEvents } from "../../src/schemas/index.js";
 import {
   toOffsettedParts,
   isSameDayWithOffset,
 } from "../../src/utils/timezoneUtils.js";
+import type { ScheduleConfig } from "../../src/types/index.js";
+import { config } from "../../src/config/index.js";
 
-// ---- multi-instance 整合測試用的 mock ----
-const mockGetAllWithSchedule = vi.fn();
-const mockSetScheduleLastTriggeredAt = vi.fn();
-const mockSetStatus = vi.fn();
-const mockGetById = vi.fn();
-const mockAddMessage = vi.fn();
-const mockEmitToCanvas = vi.fn();
-const mockLaunchMultiInstanceRun = vi.fn();
-const mockExecuteStreamingChat = vi.fn();
-const mockCheckAndTriggerWorkflows = vi.fn();
-const mockGetTimezoneOffset = vi.fn();
-const mockCommandList = vi.fn();
+function asMock(fn: unknown): Mock<any> {
+  return fn as Mock<any>;
+}
 
-vi.mock("../../src/services/podStore.js", () => ({
-  podStore: {
-    getAllWithSchedule: mockGetAllWithSchedule,
-    setScheduleLastTriggeredAt: mockSetScheduleLastTriggeredAt,
-    setStatus: mockSetStatus,
-    getById: mockGetById,
-  },
-}));
+// ---- shouldFireCheckers 純函數測試用常數 ----
 
-vi.mock("../../src/services/messageStore.js", () => ({
-  messageStore: {
-    addMessage: mockAddMessage,
-  },
-}));
-
-vi.mock("../../src/services/socketService.js", () => ({
-  socketService: {
-    emitToCanvas: mockEmitToCanvas,
-  },
-}));
-
-vi.mock("../../src/utils/runChatHelpers.js", () => ({
-  launchMultiInstanceRun: mockLaunchMultiInstanceRun,
-}));
-
-vi.mock("../../src/services/claude/streamingChatExecutor.js", () => ({
-  executeStreamingChat: mockExecuteStreamingChat,
-}));
-
-vi.mock("../../src/services/workflow/index.js", () => ({
-  workflowExecutionService: {
-    checkAndTriggerWorkflows: mockCheckAndTriggerWorkflows,
-  },
-}));
-
-vi.mock("../../src/services/configStore.js", () => ({
-  configStore: {
-    getTimezoneOffset: mockGetTimezoneOffset,
-  },
-}));
-
-vi.mock("../../src/services/commandService.js", () => ({
-  commandService: {
-    list: mockCommandList,
-  },
-}));
-
-// 測試用的內部 shouldFire 檢查函數
-type ShouldFireChecker = (
-  schedule: ScheduleConfig,
-  now: Date,
-  offset: number,
-) => boolean;
+const OFFSET = 0; // UTC offset=0，確保測試結果與時區無關
 
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60 * 1000;
 const MS_PER_HOUR = 60 * 60 * 1000;
-const SCHEDULE_TRIGGER_SECOND = 0;
 
-// 複製 scheduleService 中的 shouldFireCheckers 邏輯用於測試
-const shouldFireCheckers: Record<
-  ScheduleConfig["frequency"],
-  ShouldFireChecker
-> = {
-  "every-second": (schedule, now, _offset) => {
-    if (!schedule.lastTriggeredAt) {
-      return true;
-    }
-    const elapsedSeconds =
-      (now.getTime() - schedule.lastTriggeredAt.getTime()) / MS_PER_SECOND;
-    return elapsedSeconds >= schedule.second;
-  },
-
-  "every-x-minute": (schedule, now, _offset) => {
-    if (!schedule.lastTriggeredAt) {
-      return true;
-    }
-    const elapsedMinutes =
-      (now.getTime() - schedule.lastTriggeredAt.getTime()) / MS_PER_MINUTE;
-    return elapsedMinutes >= schedule.intervalMinute;
-  },
-
-  "every-x-hour": (schedule, now, _offset) => {
-    if (!schedule.lastTriggeredAt) {
-      return true;
-    }
-    const elapsedHours =
-      (now.getTime() - schedule.lastTriggeredAt.getTime()) / MS_PER_HOUR;
-    return elapsedHours >= schedule.intervalHour;
-  },
-
-  "every-day": (schedule, now, offset) => {
-    const parts = toOffsettedParts(now, offset);
-    if (
-      parts.hours !== schedule.hour ||
-      parts.minutes !== schedule.minute ||
-      parts.seconds !== SCHEDULE_TRIGGER_SECOND
-    ) {
-      return false;
-    }
-
-    if (!schedule.lastTriggeredAt) {
-      return true;
-    }
-
-    return !isSameDayWithOffset(
-      new Date(schedule.lastTriggeredAt),
-      now,
-      offset,
-    );
-  },
-
-  "every-week": (schedule, now, offset) => {
-    const parts = toOffsettedParts(now, offset);
-
-    if (!schedule.weekdays.includes(parts.day)) {
-      return false;
-    }
-
-    if (
-      parts.hours !== schedule.hour ||
-      parts.minutes !== schedule.minute ||
-      parts.seconds !== SCHEDULE_TRIGGER_SECOND
-    ) {
-      return false;
-    }
-
-    if (!schedule.lastTriggeredAt) {
-      return true;
-    }
-
-    return !isSameDayWithOffset(
-      new Date(schedule.lastTriggeredAt),
-      now,
-      offset,
-    );
-  },
-};
-
-// 使用本機時區 offset，讓 toOffsettedParts 與本地時間建立的 Date 結果一致
-const LOCAL_OFFSET = -new Date().getTimezoneOffset() / 60;
-
-function shouldFire(schedule: ScheduleConfig, now: Date): boolean {
-  const checker = shouldFireCheckers[schedule.frequency];
-  return checker ? checker(schedule, now, LOCAL_OFFSET) : false;
-}
-
-describe("Schedule Service", () => {
-  beforeEach(() => {
-    // bun:test 不支援 fake timers，使用實際時間
-  });
-
-  afterEach(() => {
-    // bun:test 會自動清理 mock
-  });
-
-  describe("shouldFire - every-second", () => {
-    it("在沒有 lastTriggeredAt 時應立即觸發", () => {
-      const schedule: ScheduleConfig = {
-        frequency: "every-second",
-        second: 5,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      const now = new Date("2026-02-05T12:00:00Z");
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在經過指定秒數後應觸發", () => {
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-second",
-        second: 5,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(lastTriggered.getTime() + 5 * MS_PER_SECOND);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在未經過指定秒數時不應觸發", () => {
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-second",
-        second: 10,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(lastTriggered.getTime() + 5 * MS_PER_SECOND);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-  });
-
-  describe("shouldFire - every-x-minute", () => {
-    it("在沒有 lastTriggeredAt 時應立即觸發", () => {
-      const schedule: ScheduleConfig = {
-        frequency: "every-x-minute",
-        second: 0,
-        intervalMinute: 5,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      const now = new Date("2026-02-05T12:00:00Z");
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在經過指定分鐘後應觸發", () => {
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-x-minute",
-        second: 0,
-        intervalMinute: 15,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(lastTriggered.getTime() + 15 * MS_PER_MINUTE);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在未經過指定分鐘時不應觸發", () => {
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-x-minute",
-        second: 0,
-        intervalMinute: 30,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(lastTriggered.getTime() + 10 * MS_PER_MINUTE);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-  });
-
-  describe("shouldFire - every-x-hour", () => {
-    it("在沒有 lastTriggeredAt 時應立即觸發", () => {
-      const schedule: ScheduleConfig = {
-        frequency: "every-x-hour",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 2,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      const now = new Date("2026-02-05T12:00:00Z");
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在經過指定小時後應觸發", () => {
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-x-hour",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 3,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(lastTriggered.getTime() + 3 * MS_PER_HOUR);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在未經過指定小時時不應觸發", () => {
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-x-hour",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 6,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(lastTriggered.getTime() + 3 * MS_PER_HOUR);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-  });
-
-  describe("shouldFire - every-day", () => {
-    it("在沒有 lastTriggeredAt 且時間匹配時應觸發", () => {
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 9,
-        minute: 30,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      // 使用本地時間建立日期
-      const now = new Date(2026, 1, 5, 9, 30, 0);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在每日指定時間應觸發", () => {
-      // 使用本地時間建立日期
-      const lastTriggered = new Date(2026, 1, 4, 9, 30, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 9,
-        minute: 30,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(2026, 1, 5, 9, 30, 0);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在同一天不應重複觸發", () => {
-      const lastTriggered = new Date(2026, 1, 5, 9, 30, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 9,
-        minute: 30,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(2026, 1, 5, 9, 30, 0);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-
-    it("在時間不匹配時不應觸發", () => {
-      const lastTriggered = new Date(2026, 1, 4, 9, 30, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 9,
-        minute: 30,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(2026, 1, 5, 10, 0, 0);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-
-    it("秒數必須為 0 才會觸發", () => {
-      const lastTriggered = new Date(2026, 1, 4, 9, 30, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 9,
-        minute: 30,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(2026, 1, 5, 9, 30, 15);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-  });
-
-  describe("shouldFire - every-week", () => {
-    it("在沒有 lastTriggeredAt 且時間和日期匹配時應觸發", () => {
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 10,
-        minute: 0,
-        weekdays: [0, 2, 4], // 週一、週三、週五（ISO 慣例：0=週一, 6=週日）
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      // 2026-02-09 是週一 (本地時間)
-      const now = new Date(2026, 1, 9, 10, 0, 0);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在每週指定日期和時間應觸發", () => {
-      // 上週一 (本地時間)
-      const lastTriggered = new Date(2026, 1, 2, 10, 0, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 10,
-        minute: 0,
-        weekdays: [0], // 週一（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      // 本週一 (本地時間)
-      const now = new Date(2026, 1, 9, 10, 0, 0);
-      expect(shouldFire(schedule, now)).toBe(true);
-    });
-
-    it("在不是指定的週幾時不應觸發", () => {
-      const lastTriggered = new Date(2026, 1, 2, 10, 0, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 10,
-        minute: 0,
-        weekdays: [0], // 週一（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      // 2026-02-10 是週二 (本地時間)
-      const now = new Date(2026, 1, 10, 10, 0, 0);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-
-    it("在同一天不應重複觸發", () => {
-      const lastTriggered = new Date(2026, 1, 9, 10, 0, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 10,
-        minute: 0,
-        weekdays: [0], // 週一（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const now = new Date(2026, 1, 9, 10, 0, 0);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-
-    it("在時間不匹配時不應觸發", () => {
-      const lastTriggered = new Date(2026, 1, 2, 10, 0, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 10,
-        minute: 0,
-        weekdays: [0], // 週一（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      // 週一但時間不對 (本地時間)
-      const now = new Date(2026, 1, 9, 11, 0, 0);
-      expect(shouldFire(schedule, now)).toBe(false);
-    });
-
-    it("支援多個週幾", () => {
-      const lastTriggered = new Date(2026, 1, 2, 10, 0, 0);
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 10,
-        minute: 0,
-        weekdays: [0, 2, 4], // 週一、週三、週五（ISO 慣例：0=週一, 6=週日）
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      const monday = new Date(2026, 1, 9, 10, 0, 0);
-      const wednesday = new Date(2026, 1, 11, 10, 0, 0);
-      const friday = new Date(2026, 1, 13, 10, 0, 0);
-
-      expect(shouldFire(schedule, monday)).toBe(true);
-      expect(
-        shouldFire({ ...schedule, lastTriggeredAt: monday }, wednesday),
-      ).toBe(true);
-      expect(
-        shouldFire({ ...schedule, lastTriggeredAt: wednesday }, friday),
-      ).toBe(true);
-    });
-  });
-
-  describe("lastTriggeredAt 更新邏輯", () => {
-    it("觸發後應設定 lastTriggeredAt", () => {
-      // 這個測試驗證 schedule 配置中 lastTriggeredAt 會影響觸發邏輯
-      const lastTriggered = new Date("2026-02-05T12:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-second",
-        second: 5,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: lastTriggered,
-      };
-
-      // 未達到間隔時間，不應觸發
-      const now = new Date(lastTriggered.getTime() + 3 * MS_PER_SECOND);
-      expect(shouldFire(schedule, now)).toBe(false);
-
-      // 達到間隔時間，應該觸發
-      const later = new Date(lastTriggered.getTime() + 5 * MS_PER_SECOND);
-      expect(shouldFire(schedule, later)).toBe(true);
-    });
-  });
-
-  describe("isSameDayWithOffset 輔助函數", () => {
-    it("相同日期（UTC offset=0）應回傳 true", () => {
-      const date1 = new Date("2026-02-05T10:00:00Z");
-      const date2 = new Date("2026-02-05T15:30:00Z");
-
-      expect(isSameDayWithOffset(date1, date2, 0)).toBe(true);
-    });
-
-    it("不同日期（UTC offset=0）應回傳 false", () => {
-      const date1 = new Date("2026-02-05T10:00:00Z");
-      const date2 = new Date("2026-02-06T10:00:00Z");
-
-      expect(isSameDayWithOffset(date1, date2, 0)).toBe(false);
-    });
-
-    it("不同月份應回傳 false", () => {
-      const date1 = new Date("2026-02-05T10:00:00Z");
-      const date2 = new Date("2026-03-05T10:00:00Z");
-
-      expect(isSameDayWithOffset(date1, date2, 0)).toBe(false);
-    });
-
-    it("不同年份應回傳 false", () => {
-      const date1 = new Date("2025-02-05T10:00:00Z");
-      const date2 = new Date("2026-02-05T10:00:00Z");
-
-      expect(isSameDayWithOffset(date1, date2, 0)).toBe(false);
-    });
-  });
-});
-
-// 時區修正版的 checker 函數（用於驗證時區邏輯）
-function isScheduledTimeWithOffset(
-  schedule: ScheduleConfig,
-  now: Date,
-  offset: number,
-): boolean {
-  const parts = toOffsettedParts(now, offset);
-  return (
-    parts.hours === schedule.hour &&
-    parts.minutes === schedule.minute &&
-    parts.seconds === SCHEDULE_TRIGGER_SECOND
-  );
-}
-
-function isFirstTriggerOrNewDayWithOffset(
-  schedule: ScheduleConfig,
-  now: Date,
-  offset: number,
-): boolean {
-  if (!schedule.lastTriggeredAt) return true;
-  return !isSameDayWithOffset(new Date(schedule.lastTriggeredAt), now, offset);
-}
-
-function shouldFireWithOffset(
-  schedule: ScheduleConfig,
-  now: Date,
-  offset: number,
-): boolean {
-  if (schedule.frequency === "every-day") {
-    if (!isScheduledTimeWithOffset(schedule, now, offset)) return false;
-    return isFirstTriggerOrNewDayWithOffset(schedule, now, offset);
-  }
-  if (schedule.frequency === "every-week") {
-    const parts = toOffsettedParts(now, offset);
-    if (!schedule.weekdays.includes(parts.day)) return false;
-    if (!isScheduledTimeWithOffset(schedule, now, offset)) return false;
-    return isFirstTriggerOrNewDayWithOffset(schedule, now, offset);
-  }
-  return false;
-}
-
-describe("Schedule Service 時區修正", () => {
-  describe("shouldFire - every-day 時區修正", () => {
-    it("UTC 04:00 在 offset=8 時應於排程 hour=12 minute=0 觸發", () => {
-      const now = new Date("2026-03-20T04:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 12,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      expect(shouldFireWithOffset(schedule, now, 8)).toBe(true);
-    });
-
-    it("UTC 04:00 在 offset=0 時不應於排程 hour=12 minute=0 觸發", () => {
-      const now = new Date("2026-03-20T04:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 12,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      expect(shouldFireWithOffset(schedule, now, 0)).toBe(false);
-    });
-
-    it("UTC 16:00 在 offset=-8 時應於排程 hour=8 minute=0 觸發", () => {
-      const now = new Date("2026-03-20T16:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 8,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      expect(shouldFireWithOffset(schedule, now, -8)).toBe(true);
-    });
-
-    it("offset=8 時 isSameDay 以使用者時區判斷（UTC 跨日但使用者時區同一天不重複觸發）", () => {
-      // lastTriggered: 台北 3/20 22:00，now: 台北 3/21 00:00（UTC 16:00）
-      const lastTriggeredAt = new Date("2026-03-20T14:00:00Z"); // 台北 3/20 22:00
-      const now = new Date("2026-03-20T16:00:00Z"); // 台北 3/21 00:00
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 12,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt,
-      };
-
-      // 台北已是 3/21，但時間不符 (00:00 != 12:00) → false
-      expect(shouldFireWithOffset(schedule, now, 8)).toBe(false);
-    });
-
-    it("offset=8 時 isSameDay 以使用者時區判斷（UTC 同一天但使用者時區同一天應不重複觸發）", () => {
-      // lastTriggered: 台北 3/20 04:00，now: 台北 3/20 12:00（UTC 04:00）
-      const lastTriggeredAt = new Date("2026-03-19T20:00:00Z"); // 台北 3/20 04:00
-      const now = new Date("2026-03-20T04:00:00Z"); // 台北 3/20 12:00
-      const schedule: ScheduleConfig = {
-        frequency: "every-day",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 12,
-        minute: 0,
-        weekdays: [],
-        enabled: true,
-        lastTriggeredAt,
-      };
-
-      // 台北同一天（3/20），isSameDayWithOffset 回傳 true → 不重複觸發
-      expect(shouldFireWithOffset(schedule, now, 8)).toBe(false);
-    });
-  });
-
-  describe("shouldFire - every-week 時區修正", () => {
-    it("UTC 週日 16:00 在 offset=8 時 weekday 應為 0（週一，ISO 慣例）", () => {
-      // 2026-03-22T16:00:00Z 是 UTC 週日，台北時間 2026-03-23T00:00 週一
-      const now = new Date("2026-03-22T16:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 0,
-        minute: 0,
-        weekdays: [0], // 週一（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      expect(shouldFireWithOffset(schedule, now, 8)).toBe(true);
-    });
-
-    it("UTC 04:00 週一在 offset=8 時正確觸發", () => {
-      // 2026-03-23T04:00:00Z 是 UTC 週一，台北 3/23 12:00
-      const now = new Date("2026-03-23T04:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 12,
-        minute: 0,
-        weekdays: [0], // 週一（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      expect(shouldFireWithOffset(schedule, now, 8)).toBe(true);
-    });
-
-    it("offset 為負值時 weekday 正確回推", () => {
-      // 2026-03-23T02:00:00Z 是 UTC 週一，offset=-5 後為 3/22 週日 21:00
-      const now = new Date("2026-03-23T02:00:00Z");
-      const schedule: ScheduleConfig = {
-        frequency: "every-week",
-        second: 0,
-        intervalMinute: 0,
-        intervalHour: 0,
-        hour: 21,
-        minute: 0,
-        weekdays: [6], // 週日（ISO 慣例）
-        enabled: true,
-        lastTriggeredAt: null,
-      };
-
-      expect(shouldFireWithOffset(schedule, now, -5)).toBe(true);
-    });
-  });
-});
-
-// ---- 排程觸發 multi-instance 分支整合測試 ----
-describe("排程觸發 multi-instance 分支", () => {
-  const CANVAS_ID = "canvas-1";
-  const POD_ID = "pod-1";
-
-  const baseSchedule: ScheduleConfig = {
+/** 基礎排程設定工廠 */
+function makeSchedule(overrides: Partial<ScheduleConfig> = {}): ScheduleConfig {
+  return {
     frequency: "every-second",
     second: 1,
-    intervalMinute: 0,
-    intervalHour: 0,
-    hour: 0,
-    minute: 0,
+    intervalMinute: 5,
+    intervalHour: 1,
+    hour: 9,
+    minute: 30,
     weekdays: [],
     enabled: true,
     lastTriggeredAt: null,
+    ...overrides,
   };
+}
 
-  const basePod = {
-    id: POD_ID,
-    name: "Test Pod",
-    status: "idle" as const,
-    x: 0,
-    y: 0,
-    rotation: 0,
-    model: "opus" as const,
-    workspacePath: "/tmp",
-    claudeSessionId: null,
-    outputStyleId: null,
-    repositoryId: null,
-    commandId: null,
-    multiInstance: false,
-    skillIds: [],
-    subAgentIds: [],
-    mcpServerIds: [],
-    schedule: baseSchedule,
-  };
+// ---- DB helpers（整合測試用） ----
 
-  beforeEach(async () => {
+const CANVAS_ID = "canvas-sched";
+const POD_ID = "pod-sched";
+
+/** 清除 podStore 內部 LRU 快取，防止跨測試 DB 污染 */
+function clearPodStoreCache(): void {
+  type PodStoreTestHooks = { stmtCache: Map<string, unknown> };
+  (podStore as unknown as PodStoreTestHooks).stmtCache.clear();
+}
+
+function insertCanvas(): void {
+  getDb()
+    .prepare(
+      "INSERT OR IGNORE INTO canvases (id, name, sort_index) VALUES (?, ?, ?)",
+    )
+    .run(CANVAS_ID, `canvas-${CANVAS_ID}`, 0);
+}
+
+/**
+ * 直接用 SQL 插入 pod，繞過 sanitizeProviderConfigStrict 對 getProvider.metadata 的依賴。
+ * schedule_json 設為 null 時表示未設排程；非 null 時表示已設排程。
+ */
+function insertPodViaSQL(opts: {
+  podId?: string;
+  canvasId?: string;
+  status?: string;
+  multiInstance?: boolean;
+  commandId?: string | null;
+  scheduleJson?: string | null;
+  workspacePath?: string;
+}): string {
+  const podId = opts.podId ?? POD_ID;
+  const canvasId = opts.canvasId ?? CANVAS_ID;
+  const workspacePath =
+    opts.workspacePath ??
+    path.join(config.canvasRoot, canvasId, `pod-${podId}`);
+
+  getDb()
+    .prepare(
+      `INSERT INTO pods
+       (id, canvas_id, name, status, x, y, rotation, workspace_path,
+        session_id, repository_id, command_id, multi_instance,
+        schedule_json, provider, provider_config_json)
+       VALUES (?, ?, ?, ?, 0, 0, 0, ?, NULL, NULL, ?, ?, ?, 'claude',
+       '{"model":"opus"}')`,
+    )
+    .run(
+      podId,
+      canvasId,
+      `pod-name-${podId}`,
+      opts.status ?? "idle",
+      workspacePath,
+      opts.commandId ?? null,
+      opts.multiInstance ? 1 : 0,
+      opts.scheduleJson ?? null,
+    );
+  return podId;
+}
+
+/** 基礎排程 JSON（每秒觸發，lastTriggeredAt=null） */
+const BASE_SCHEDULE_JSON = JSON.stringify({
+  frequency: "every-second",
+  second: 1,
+  intervalMinute: 0,
+  intervalHour: 0,
+  hour: 0,
+  minute: 0,
+  weekdays: [],
+  enabled: true,
+  lastTriggeredAt: null,
+});
+
+// ============================================================
+// Section 1：shouldFireCheckers 純函數測試（直接用真實匯出值）
+// ============================================================
+
+describe("shouldFireCheckers - every-second", () => {
+  it("首次觸發：lastTriggeredAt 為 null 時回傳 true", () => {
+    const schedule = makeSchedule({ frequency: "every-second", second: 1 });
+    const now = new Date("2026-04-02T00:00:00Z");
+    expect(shouldFireCheckers["every-second"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+
+  it("間隔未到不觸發：距上次 0.5 秒，interval 為 1 秒", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 0.5 * MS_PER_SECOND);
+    const schedule = makeSchedule({
+      frequency: "every-second",
+      second: 1,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-second"](schedule, now, OFFSET)).toBe(
+      false,
+    );
+  });
+
+  it("間隔剛好到達時觸發：距上次 1 秒，interval 為 1 秒", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 1 * MS_PER_SECOND);
+    const schedule = makeSchedule({
+      frequency: "every-second",
+      second: 1,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-second"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+
+  it("超過間隔時也應觸發：距上次 10 秒，interval 為 5 秒", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 10 * MS_PER_SECOND);
+    const schedule = makeSchedule({
+      frequency: "every-second",
+      second: 5,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-second"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+});
+
+describe("shouldFireCheckers - every-x-minute", () => {
+  it("首次觸發：lastTriggeredAt 為 null 時回傳 true", () => {
+    const schedule = makeSchedule({
+      frequency: "every-x-minute",
+      intervalMinute: 5,
+    });
+    const now = new Date("2026-04-02T00:00:00Z");
+    expect(shouldFireCheckers["every-x-minute"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+
+  it("間隔未到不觸發：距上次 4 分鐘，interval 為 5 分鐘", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 4 * MS_PER_MINUTE);
+    const schedule = makeSchedule({
+      frequency: "every-x-minute",
+      intervalMinute: 5,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-x-minute"](schedule, now, OFFSET)).toBe(
+      false,
+    );
+  });
+
+  it("間隔到達時觸發：距上次 5 分鐘，interval 為 5 分鐘", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 5 * MS_PER_MINUTE);
+    const schedule = makeSchedule({
+      frequency: "every-x-minute",
+      intervalMinute: 5,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-x-minute"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+
+  it("超過間隔時也應觸發：距上次 30 分鐘，interval 為 15 分鐘", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 30 * MS_PER_MINUTE);
+    const schedule = makeSchedule({
+      frequency: "every-x-minute",
+      intervalMinute: 15,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-x-minute"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+});
+
+describe("shouldFireCheckers - every-x-hour", () => {
+  it("首次觸發：lastTriggeredAt 為 null 時回傳 true", () => {
+    const schedule = makeSchedule({
+      frequency: "every-x-hour",
+      intervalHour: 2,
+    });
+    const now = new Date("2026-04-02T00:00:00Z");
+    expect(shouldFireCheckers["every-x-hour"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+
+  it("間隔未到不觸發：距上次 1 小時，interval 為 2 小時", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 1 * MS_PER_HOUR);
+    const schedule = makeSchedule({
+      frequency: "every-x-hour",
+      intervalHour: 2,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-x-hour"](schedule, now, OFFSET)).toBe(
+      false,
+    );
+  });
+
+  it("間隔到達時觸發：距上次 2 小時，interval 為 2 小時", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 2 * MS_PER_HOUR);
+    const schedule = makeSchedule({
+      frequency: "every-x-hour",
+      intervalHour: 2,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-x-hour"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+
+  it("超過間隔時也應觸發：距上次 6 小時，interval 為 3 小時", () => {
+    const lastTriggeredAt = new Date("2026-04-02T00:00:00Z");
+    const now = new Date(lastTriggeredAt.getTime() + 6 * MS_PER_HOUR);
+    const schedule = makeSchedule({
+      frequency: "every-x-hour",
+      intervalHour: 3,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-x-hour"](schedule, now, OFFSET)).toBe(
+      true,
+    );
+  });
+});
+
+describe("shouldFireCheckers - every-day", () => {
+  it("時間符合且首次觸發：lastTriggeredAt 為 null 時回傳 true", () => {
+    // offset=0，now 09:30:00Z → 符合 hour=9 minute=30
+    const now = new Date("2026-04-02T09:30:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 9,
+      minute: 30,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, OFFSET)).toBe(true);
+  });
+
+  it("時間符合但當天已觸發則跳過：lastTriggeredAt 為同一天稍早", () => {
+    const lastTriggeredAt = new Date("2026-04-02T05:00:00Z");
+    const now = new Date("2026-04-02T09:30:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 9,
+      minute: 30,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, OFFSET)).toBe(false);
+  });
+
+  it("時間不符合不觸發：排程 09:30，now 為 10:00", () => {
+    const now = new Date("2026-04-02T10:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 9,
+      minute: 30,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, OFFSET)).toBe(false);
+  });
+
+  it("前一天已觸發，今天時間符合時應觸發", () => {
+    const lastTriggeredAt = new Date("2026-04-01T09:30:00Z");
+    const now = new Date("2026-04-02T09:30:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 9,
+      minute: 30,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, OFFSET)).toBe(true);
+  });
+
+  it("秒數不為 0 時不觸發：now 秒數為 15", () => {
+    const now = new Date("2026-04-02T09:30:15Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 9,
+      minute: 30,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, OFFSET)).toBe(false);
+  });
+
+  it("跨日邊界：lastTriggeredAt 昨日 23:59，now 今日 00:00 時間符合時回傳 true", () => {
+    // offset=0，排程 hour=0 minute=0，now 為今日 00:00:00
+    const lastTriggeredAt = new Date("2026-04-01T23:59:00Z");
+    const now = new Date("2026-04-02T00:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 0,
+      minute: 0,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, OFFSET)).toBe(true);
+  });
+});
+
+describe("shouldFireCheckers - every-week", () => {
+  // 2026-04-06T09:30:00Z 是 UTC 週一，toOffsettedParts offset=0 下 day=0（ISO 慣例 0=週一）
+  const MONDAY_UTC = "2026-04-06T09:30:00Z";
+  const TUESDAY_UTC = "2026-04-07T09:30:00Z";
+
+  it("星期符合、時間符合且首次觸發：lastTriggeredAt 為 null 時回傳 true", () => {
+    const now = new Date(MONDAY_UTC);
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 9,
+      minute: 30,
+      weekdays: [0],
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, OFFSET)).toBe(true);
+  });
+
+  it("星期不符合不觸發：排程為週一，now 為週二", () => {
+    const now = new Date(TUESDAY_UTC);
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 9,
+      minute: 30,
+      weekdays: [0],
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, OFFSET)).toBe(false);
+  });
+
+  it("星期符合但時間不符合不觸發：排程週一 09:30，now 為週一 10:00", () => {
+    const now = new Date("2026-04-06T10:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 9,
+      minute: 30,
+      weekdays: [0],
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, OFFSET)).toBe(false);
+  });
+
+  it("星期符合且時間符合但當天已觸發則跳過", () => {
+    const lastTriggeredAt = new Date("2026-04-06T05:00:00Z");
+    const now = new Date(MONDAY_UTC);
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 9,
+      minute: 30,
+      weekdays: [0],
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, OFFSET)).toBe(false);
+  });
+
+  it("上週已觸發，本週同一天時間符合應觸發", () => {
+    const lastTriggeredAt = new Date("2026-03-30T09:30:00Z"); // 上週一
+    const now = new Date(MONDAY_UTC); // 本週一
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 9,
+      minute: 30,
+      weekdays: [0],
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, OFFSET)).toBe(true);
+  });
+});
+
+// ============================================================
+// Section 2：isSameDayWithOffset 輔助函數測試
+// ============================================================
+
+describe("isSameDayWithOffset 輔助函數", () => {
+  it("相同日期（UTC offset=0）應回傳 true", () => {
+    const d1 = new Date("2026-02-05T10:00:00Z");
+    const d2 = new Date("2026-02-05T15:30:00Z");
+    expect(isSameDayWithOffset(d1, d2, 0)).toBe(true);
+  });
+
+  it("不同日期（UTC offset=0）應回傳 false", () => {
+    const d1 = new Date("2026-02-05T10:00:00Z");
+    const d2 = new Date("2026-02-06T10:00:00Z");
+    expect(isSameDayWithOffset(d1, d2, 0)).toBe(false);
+  });
+
+  it("不同月份應回傳 false", () => {
+    const d1 = new Date("2026-02-05T10:00:00Z");
+    const d2 = new Date("2026-03-05T10:00:00Z");
+    expect(isSameDayWithOffset(d1, d2, 0)).toBe(false);
+  });
+
+  it("不同年份應回傳 false", () => {
+    const d1 = new Date("2025-02-05T10:00:00Z");
+    const d2 = new Date("2026-02-05T10:00:00Z");
+    expect(isSameDayWithOffset(d1, d2, 0)).toBe(false);
+  });
+});
+
+// ============================================================
+// Section 3：時區 offset 修正測試（shouldFireCheckers 搭配固定 offset）
+// ============================================================
+
+describe("shouldFireCheckers 時區修正 - every-day", () => {
+  it("UTC 04:00 在 offset=8 時應於排程 hour=12 minute=0 觸發", () => {
+    const now = new Date("2026-03-20T04:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 12,
+      minute: 0,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, 8)).toBe(true);
+  });
+
+  it("UTC 04:00 在 offset=0 時不應於排程 hour=12 minute=0 觸發", () => {
+    const now = new Date("2026-03-20T04:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 12,
+      minute: 0,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, 0)).toBe(false);
+  });
+
+  it("UTC 16:00 在 offset=-8 時應於排程 hour=8 minute=0 觸發", () => {
+    const now = new Date("2026-03-20T16:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 8,
+      minute: 0,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, -8)).toBe(true);
+  });
+
+  it("offset=8 時 isSameDay 以使用者時區判斷（UTC 跨日但使用者時區同一天不重複觸發）", () => {
+    // lastTriggered: 台北 3/20 22:00（UTC 14:00）；now: 台北 3/21 00:00（UTC 16:00）
+    // 台北已是 3/21，但時間不符 (00:00 != 12:00) → false
+    const lastTriggeredAt = new Date("2026-03-20T14:00:00Z");
+    const now = new Date("2026-03-20T16:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 12,
+      minute: 0,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, 8)).toBe(false);
+  });
+
+  it("offset=8 時 isSameDay：UTC 同一天但台北同一天應不重複觸發", () => {
+    // lastTriggered: 台北 3/20 04:00（UTC 19:00）；now: 台北 3/20 12:00（UTC 04:00 隔日）
+    const lastTriggeredAt = new Date("2026-03-19T20:00:00Z");
+    const now = new Date("2026-03-20T04:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-day",
+      hour: 12,
+      minute: 0,
+      lastTriggeredAt,
+    });
+    expect(shouldFireCheckers["every-day"](schedule, now, 8)).toBe(false);
+  });
+});
+
+describe("shouldFireCheckers 時區修正 - every-week", () => {
+  it("UTC 週日 16:00 在 offset=8 時 weekday 應為 0（週一，ISO 慣例）", () => {
+    // 2026-03-22T16:00:00Z 是 UTC 週日，台北時間 3/23 00:00 週一
+    const now = new Date("2026-03-22T16:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 0,
+      minute: 0,
+      weekdays: [0],
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, 8)).toBe(true);
+  });
+
+  it("UTC 週一 04:00 在 offset=8 時正確觸發（台北週一 12:00）", () => {
+    // 2026-03-23T04:00:00Z 是 UTC 週一，台北 3/23 12:00
+    const now = new Date("2026-03-23T04:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 12,
+      minute: 0,
+      weekdays: [0],
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, 8)).toBe(true);
+  });
+
+  it("offset 為負值時 weekday 正確回推：UTC 週一 02:00 在 offset=-5 為週日 21:00", () => {
+    // 2026-03-23T02:00:00Z UTC 週一，offset=-5 後為 3/22 週日 21:00
+    const now = new Date("2026-03-23T02:00:00Z");
+    const schedule = makeSchedule({
+      frequency: "every-week",
+      hour: 21,
+      minute: 0,
+      weekdays: [6],
+    });
+    expect(shouldFireCheckers["every-week"](schedule, now, -5)).toBe(true);
+  });
+});
+
+// ============================================================
+// Section 4：fireSchedule 整合測試（真 podStore + 真 messageStore）
+// ============================================================
+
+describe("scheduleService.fireSchedule 整合測試", () => {
+  let emitSpy: ReturnType<typeof vi.spyOn>;
+  let getTimezoneOffsetSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // 初始化真實 in-memory DB
+    clearPodStoreCache();
+    initTestDb();
+    insertCanvas();
+
+    // spy socketService.emitToCanvas（不整體 mock）
+    emitSpy = vi
+      .spyOn(socketService, "emitToCanvas")
+      .mockImplementation(() => {});
+
+    // spy configStore.getTimezoneOffset（固定回傳 0，不需要整體 mock）
+    getTimezoneOffsetSpy = vi
+      .spyOn(configStore, "getTimezoneOffset")
+      .mockReturnValue(0);
+
+    // 清除所有 SDK boundary mock 的呼叫紀錄
     vi.clearAllMocks();
-    mockGetTimezoneOffset.mockReturnValue(0);
-    mockLaunchMultiInstanceRun.mockResolvedValue({
+
+    // 重新設定 spy（clearAllMocks 會清除 mock，需重新設定）
+    emitSpy = vi
+      .spyOn(socketService, "emitToCanvas")
+      .mockImplementation(() => {});
+    getTimezoneOffsetSpy = vi
+      .spyOn(configStore, "getTimezoneOffset")
+      .mockReturnValue(0);
+
+    // SDK mock 的預設行為
+    asMock(executeStreamingChatModule.executeStreamingChat).mockResolvedValue(
+      undefined,
+    );
+    asMock(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).mockResolvedValue({
       runId: "run-1",
       canvasId: CANVAS_ID,
       sourcePodId: POD_ID,
     });
-    mockExecuteStreamingChat.mockResolvedValue(undefined);
-    mockAddMessage.mockResolvedValue(undefined);
-    mockCheckAndTriggerWorkflows.mockResolvedValue(undefined);
-    mockCommandList.mockResolvedValue([]);
-
-    // 重新 import scheduleService 以套用 mock
-    vi.resetModules();
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(null);
   });
 
-  it("multiInstance Pod 排程觸發時應呼叫 launchMultiInstanceRun（無 command 時 displayMessage 為空字串）", async () => {
-    const multiInstancePod = { ...basePod, multiInstance: true };
-    mockGetAllWithSchedule.mockReturnValue([
-      { canvasId: CANVAS_ID, pod: multiInstancePod },
-    ]);
-    mockCommandList.mockResolvedValue([]);
+  afterEach(() => {
+    clearPodStoreCache();
+    closeDb();
+    resetStatements();
+    vi.restoreAllMocks();
+  });
 
-    const { scheduleService } =
-      await import("../../src/services/scheduleService.js");
-    await (scheduleService as any).fireSchedule(
-      CANVAS_ID,
-      multiInstancePod,
-      new Date(),
-    );
+  // ---- 一般模式（multiInstance=false） ----
 
-    expect(mockLaunchMultiInstanceRun).toHaveBeenCalledWith(
+  it("一般模式：無 commandId 時 message 使用排程啟動語句觸發 executeStreamingChat", async () => {
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
+      multiInstance: false,
+      commandId: null,
+    });
+    // 無 commandId 時 tryExpandCommandMessage 不呼叫 commandService.read，直接回傳原始訊息（空字串）
+    // expandScheduleMessage 偵測到空字串後改用 SCHEDULE_FALLBACK_MESSAGE
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(null);
+
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    expect(pod).toBeDefined();
+
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         canvasId: CANVAS_ID,
         podId: POD_ID,
-        message: "",
-        displayMessage: "",
+        message: "排程啟動，完成以下任務：",
         abortable: false,
       }),
+      expect.any(Object),
     );
-    expect(mockExecuteStreamingChat).not.toHaveBeenCalled();
-    expect(mockSetStatus).not.toHaveBeenCalled();
-    expect(mockSetScheduleLastTriggeredAt).toHaveBeenCalledWith(
-      CANVAS_ID,
-      POD_ID,
-      expect.any(Date),
-    );
-    expect(mockEmitToCanvas).toHaveBeenCalled();
+    expect(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).not.toHaveBeenCalled();
   });
 
-  it("multiInstance Pod 有 commandId 時 displayMessage 應帶 /commandName", async () => {
-    const COMMAND_ID = "cmd-1";
-    const multiInstancePod = {
-      ...basePod,
+  it("一般模式：有 commandId 且展開成功時應呼叫 executeStreamingChat 帶展開後內容", async () => {
+    const COMMAND_CONTENT = "my-command-markdown";
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
+      multiInstance: false,
+      commandId: "cmd-1",
+    });
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(
+      COMMAND_CONTENT,
+    );
+
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining(COMMAND_CONTENT),
+        abortable: false,
+      }),
+      expect.any(Object),
+    );
+    expect(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("一般模式：commandId 存在但 command 已被刪除時 message 使用排程啟動語句", async () => {
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
+      multiInstance: false,
+      commandId: "deleted-cmd",
+    });
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(null);
+
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "排程啟動，完成以下任務：" }),
+      expect.any(Object),
+    );
+  });
+
+  it("一般模式：觸發後 podStore.setScheduleLastTriggeredAt 更新 DB，DB 內 lastTriggeredAt 不再為 null", async () => {
+    insertPodViaSQL({ scheduleJson: BASE_SCHEDULE_JSON, multiInstance: false });
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    const now = new Date("2026-04-02T10:00:00Z");
+
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, now);
+
+    // 從 DB 重新讀取，確認 schedule_json 的 lastTriggeredAt 已更新
+    const updated = podStore.getById(CANVAS_ID, POD_ID)!;
+    expect(updated.schedule?.lastTriggeredAt).toBeInstanceOf(Date);
+    expect(updated.schedule?.lastTriggeredAt!.toISOString()).toBe(
+      now.toISOString(),
+    );
+  });
+
+  it("一般模式：觸發後 socketService.emitToCanvas 發出 SCHEDULE_FIRED 事件", async () => {
+    insertPodViaSQL({ scheduleJson: BASE_SCHEDULE_JSON, multiInstance: false });
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    const now = new Date();
+
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, now);
+
+    expect(emitSpy).toHaveBeenCalledWith(
+      CANVAS_ID,
+      WebSocketResponseEvents.SCHEDULE_FIRED,
+      expect.objectContaining({ podId: POD_ID }),
+    );
+  });
+
+  it("一般模式：injectUserMessage 寫入 messageStore 並 emit POD_CHAT_USER_MESSAGE", async () => {
+    const COMMAND_CONTENT = "cmd-content";
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
+      multiInstance: false,
+      commandId: "cmd-1",
+    });
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(
+      COMMAND_CONTENT,
+    );
+
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    // messageStore.addMessage 應寫入含展開內容的字串（getMessages 只接受 podId）
+    const messages = messageStore.getMessages(POD_ID);
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0].role).toBe("user");
+    expect(messages[0].content).toContain(COMMAND_CONTENT);
+
+    // socketService.emitToCanvas 應 emit POD_CHAT_USER_MESSAGE
+    expect(emitSpy).toHaveBeenCalledWith(
+      CANVAS_ID,
+      WebSocketResponseEvents.POD_CHAT_USER_MESSAGE,
+      expect.objectContaining({
+        podId: POD_ID,
+        content: expect.stringContaining(COMMAND_CONTENT),
+      }),
+    );
+  });
+
+  it("一般模式：Pod 狀態為 busy 時跳過觸發", async () => {
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
+      multiInstance: false,
+      status: "chatting",
+    });
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).not.toHaveBeenCalled();
+    expect(emitSpy).not.toHaveBeenCalled();
+  });
+
+  // ---- multi-instance 模式 ----
+
+  it("multi-instance 模式：無 commandId 時 message 使用排程啟動語句觸發 launchMultiInstanceRun", async () => {
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
       multiInstance: true,
-      commandId: COMMAND_ID,
-    };
-    mockGetAllWithSchedule.mockReturnValue([
-      { canvasId: CANVAS_ID, pod: multiInstancePod },
-    ]);
-    mockCommandList.mockResolvedValue([
-      { id: COMMAND_ID, name: "my-command", groupId: null },
-    ]);
+      commandId: null,
+    });
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(null);
 
-    const { scheduleService } =
-      await import("../../src/services/scheduleService.js");
-    await (scheduleService as any).fireSchedule(
-      CANVAS_ID,
-      multiInstancePod,
-      new Date(),
-    );
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
 
-    expect(mockLaunchMultiInstanceRun).toHaveBeenCalledWith(
+    expect(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         canvasId: CANVAS_ID,
         podId: POD_ID,
-        message: "",
-        displayMessage: "/my-command ",
+        message: "排程啟動，完成以下任務：",
         abortable: false,
       }),
     );
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).not.toHaveBeenCalled();
   });
 
-  it("有 commandId 但 command 已被刪除時 displayMessage 應為空字串", async () => {
-    const multiInstancePod = {
-      ...basePod,
+  it("multi-instance 模式：有 commandId 且展開成功時呼叫 launchMultiInstanceRun 帶展開後內容", async () => {
+    const COMMAND_CONTENT = "multi-instance-cmd";
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
+      multiInstance: true,
+      commandId: "cmd-mi",
+    });
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(
+      COMMAND_CONTENT,
+    );
+
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    expect(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining(COMMAND_CONTENT),
+        abortable: false,
+      }),
+    );
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).not.toHaveBeenCalled();
+    // multi-instance 路徑不走 messageStore.addMessage（由 launchMultiInstanceRun 內部處理）
+    expect(messageStore.getMessages(CANVAS_ID, POD_ID)).toHaveLength(0);
+  });
+
+  it("multi-instance 模式：commandId 存在但 command 已被刪除時 message 使用排程啟動語句", async () => {
+    insertPodViaSQL({
+      scheduleJson: BASE_SCHEDULE_JSON,
       multiInstance: true,
       commandId: "deleted-cmd",
-    };
-    mockGetAllWithSchedule.mockReturnValue([
-      { canvasId: CANVAS_ID, pod: multiInstancePod },
-    ]);
-    mockCommandList.mockResolvedValue([]);
+    });
+    asMock(commandServiceModule.commandService.read).mockResolvedValue(null);
 
-    const { scheduleService } =
-      await import("../../src/services/scheduleService.js");
-    await (scheduleService as any).fireSchedule(
-      CANVAS_ID,
-      multiInstancePod,
-      new Date(),
-    );
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
 
-    expect(mockLaunchMultiInstanceRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        canvasId: CANVAS_ID,
-        podId: POD_ID,
-        displayMessage: "",
-      }),
+    expect(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "排程啟動，完成以下任務：" }),
     );
   });
 
-  it("非 multiInstance Pod 排程觸發時應走一般模式", async () => {
-    const normalPod = { ...basePod, multiInstance: false };
-    mockGetAllWithSchedule.mockReturnValue([
-      { canvasId: CANVAS_ID, pod: normalPod },
-    ]);
+  it("multi-instance 模式：觸發後 DB 內 lastTriggeredAt 已更新", async () => {
+    insertPodViaSQL({ scheduleJson: BASE_SCHEDULE_JSON, multiInstance: true });
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+    const now = new Date("2026-04-02T10:00:00Z");
 
-    const { scheduleService } =
-      await import("../../src/services/scheduleService.js");
-    await (scheduleService as any).fireSchedule(
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, now);
+
+    const updated = podStore.getById(CANVAS_ID, POD_ID)!;
+    expect(updated.schedule?.lastTriggeredAt?.toISOString()).toBe(
+      now.toISOString(),
+    );
+  });
+
+  it("multi-instance 模式：觸發後 socketService.emitToCanvas 發出 SCHEDULE_FIRED 事件", async () => {
+    insertPodViaSQL({ scheduleJson: BASE_SCHEDULE_JSON, multiInstance: true });
+    const pod = podStore.getById(CANVAS_ID, POD_ID)!;
+
+    await (scheduleService as any).fireSchedule(CANVAS_ID, pod, new Date());
+
+    expect(emitSpy).toHaveBeenCalledWith(
       CANVAS_ID,
-      normalPod,
+      WebSocketResponseEvents.SCHEDULE_FIRED,
+      expect.objectContaining({ podId: POD_ID }),
+    );
+  });
+
+  // ---- fireScheduleById（getById 路徑） ----
+
+  it("fireScheduleById：找不到 Pod 時應跳過（不呼叫任何 SDK 入口）", async () => {
+    // 不插入任何 pod
+    await (scheduleService as any).fireScheduleById(
+      CANVAS_ID,
+      "nonexistent-pod",
       new Date(),
     );
 
-    expect(mockExecuteStreamingChat).toHaveBeenCalled();
-    expect(mockLaunchMultiInstanceRun).not.toHaveBeenCalled();
-    expect(mockSetStatus).toHaveBeenCalledWith(CANVAS_ID, POD_ID, "chatting");
-    expect(mockSetScheduleLastTriggeredAt).toHaveBeenCalledWith(
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).not.toHaveBeenCalled();
+    expect(
+      launchMultiInstanceRunModule.launchMultiInstanceRun,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fireScheduleById：找到 Pod 後正確呼叫 fireSchedule 流程", async () => {
+    insertPodViaSQL({ scheduleJson: BASE_SCHEDULE_JSON, multiInstance: false });
+
+    await (scheduleService as any).fireScheduleById(
       CANVAS_ID,
       POD_ID,
-      expect.any(Date),
+      new Date(),
     );
-    expect(mockEmitToCanvas).toHaveBeenCalled();
+
+    expect(
+      executeStreamingChatModule.executeStreamingChat,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- listScheduleInfo 驗證 ----
+
+  it("listScheduleInfo：有排程的 Pod 被列出，無排程的 Pod 不被列出", () => {
+    insertPodViaSQL({
+      podId: "pod-with-schedule",
+      scheduleJson: BASE_SCHEDULE_JSON,
+    });
+    insertPodViaSQL({ podId: "pod-no-schedule", scheduleJson: null });
+
+    const list = podStore.listScheduleInfo();
+    const ids = list.map((x) => x.podId);
+
+    expect(ids).toContain("pod-with-schedule");
+    expect(ids).not.toContain("pod-no-schedule");
+  });
+
+  it("listScheduleInfo：disabled 排程不被列出", () => {
+    const disabledScheduleJson = JSON.stringify({
+      ...JSON.parse(BASE_SCHEDULE_JSON),
+      enabled: false,
+    });
+    insertPodViaSQL({
+      podId: "pod-disabled",
+      scheduleJson: disabledScheduleJson,
+    });
+
+    const list = podStore.listScheduleInfo();
+    expect(list.map((x) => x.podId)).not.toContain("pod-disabled");
   });
 });

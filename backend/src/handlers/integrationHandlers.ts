@@ -34,6 +34,31 @@ import {
   withCanvasId,
 } from "../utils/handlerHelpers.js";
 
+/**
+ * 為任意 Promise 加上逾時機制。
+ * 內部正確使用 clearTimeout，確保 promise resolve/reject 後計時器立即被清除，
+ * 不會造成計時器累積。
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  errorMsg: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(errorMsg)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (reason) => {
+        clearTimeout(timer);
+        reject(reason);
+      },
+    );
+  });
+}
+
 function sanitizeApp(app: IntegrationApp): SanitizedIntegrationApp {
   const provider = integrationRegistry.get(app.provider);
   const sanitizedConfig = provider ? provider.sanitizeConfig(app.config) : {};
@@ -52,6 +77,7 @@ function getProviderOrEmitError(
   providerName: string,
   responseEvent: WebSocketResponseEvents,
   requestId: string,
+  canvasId: string | null,
 ): IntegrationProvider | null {
   try {
     return integrationRegistry.getOrThrow(providerName);
@@ -60,6 +86,7 @@ function getProviderOrEmitError(
       connectionId,
       responseEvent,
       createI18nError("errors.providerNotFound", { name: providerName }),
+      canvasId,
       requestId,
       undefined,
       "PROVIDER_NOT_FOUND",
@@ -82,6 +109,7 @@ function getAppOrEmitError(
       "Integration App",
       appId,
       requestId,
+      null,
     );
     return null;
   }
@@ -100,6 +128,7 @@ export async function handleIntegrationAppCreate(
     providerName,
     WebSocketResponseEvents.INTEGRATION_APP_CREATED,
     requestId,
+    null,
   );
   if (!provider) return;
 
@@ -112,6 +141,7 @@ export async function handleIntegrationAppCreate(
       connectionId,
       WebSocketResponseEvents.INTEGRATION_APP_CREATED,
       createI18nError("errors.configValidationFailed", { message }),
+      null,
       requestId,
       undefined,
       "VALIDATION_ERROR",
@@ -131,6 +161,7 @@ export async function handleIntegrationAppCreate(
       WebSocketResponseEvents.INTEGRATION_APP_CREATED,
       requestId,
       createI18nError("errors.integrationAppCreateFailed"),
+      null,
     )
   )
     return;
@@ -151,20 +182,18 @@ export async function handleIntegrationAppCreate(
     app: sanitizeApp(integrationAppStore.getById(app.id) ?? app),
   });
 
-  // 背景執行初始化，狀態變更透過 broadcastConnectionStatus 通知前端
+  // 背景執行初始化，狀態變更透過 broadcastConnectionStatus 通知前端。
+  // 30 秒逾時：對應 Slack OAuth handshake、外部 API 首次連線等最慢情境的合理上限。
   const INIT_TIMEOUT_MS = 30_000;
-  Promise.race([
-    provider.initialize(app),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("初始化逾時")), INIT_TIMEOUT_MS),
-    ),
-  ]).catch((error) => {
-    logger.error(
-      "Integration",
-      "Error",
-      `Integration App「${app.name}」初始化失敗或逾時：${getErrorMessage(error)}`,
-    );
-  });
+  withTimeout(provider.initialize(app), INIT_TIMEOUT_MS, "初始化逾時").catch(
+    (error) => {
+      logger.error(
+        "Integration",
+        "Error",
+        `Integration App「${app.name}」初始化失敗或逾時：${getErrorMessage(error)}`,
+      );
+    },
+  );
 }
 
 export async function handleIntegrationAppDelete(
@@ -187,6 +216,7 @@ export async function handleIntegrationAppDelete(
     app.provider,
     WebSocketResponseEvents.INTEGRATION_APP_DELETED,
     requestId,
+    null,
   );
   if (!provider) return;
 
@@ -319,6 +349,7 @@ export async function handleIntegrationAppResourcesRefresh(
     app.provider,
     WebSocketResponseEvents.INTEGRATION_APP_RESOURCES_REFRESHED,
     requestId,
+    null,
   );
   if (!provider) return;
 
@@ -332,6 +363,7 @@ export async function handleIntegrationAppResourcesRefresh(
       createI18nError("errors.refreshResourcesFailed", {
         message: getErrorMessage(error),
       }),
+      null,
       requestId,
     );
     return;
@@ -381,6 +413,7 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
         "Integration App",
         appId,
         requestId,
+        canvasId,
       );
       return;
     }
@@ -392,6 +425,7 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
         createI18nError("errors.integrationAppNotConnected", {
           name: app.name,
         }),
+        canvasId,
         requestId,
         undefined,
         "NOT_CONNECTED",
@@ -404,25 +438,9 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
       providerName,
       WebSocketResponseEvents.POD_INTEGRATION_BOUND,
       requestId,
+      canvasId,
     );
     if (!provider) return;
-
-    const bindPayload = { resourceId, ...(extra ? { extra } : {}) };
-    const bindResult = provider.bindSchema.safeParse(bindPayload);
-    if (!bindResult.success) {
-      const message = bindResult.error.issues
-        .map((issue) => issue.message)
-        .join("；");
-      emitError(
-        connectionId,
-        WebSocketResponseEvents.POD_INTEGRATION_BOUND,
-        createI18nError("errors.bindConfigValidationFailed", { message }),
-        requestId,
-        undefined,
-        "VALIDATION_ERROR",
-      );
-      return;
-    }
 
     const resource = app.resources.find((r) => r.id === resourceId);
     if (!resource && provider.strictResourceValidation) {
@@ -432,6 +450,7 @@ export const handlePodBindIntegration = withCanvasId<PodBindIntegrationPayload>(
         "Resource",
         resourceId,
         requestId,
+        canvasId,
       );
       return;
     }
@@ -489,6 +508,7 @@ export const handlePodUnbindIntegration =
             podName: getPodDisplayName(canvasId, podId),
             provider: providerName,
           }),
+          canvasId,
           requestId,
           undefined,
           "NOT_BOUND",

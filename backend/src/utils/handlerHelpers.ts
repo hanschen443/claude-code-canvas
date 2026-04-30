@@ -1,11 +1,16 @@
 import type { WebSocketResponseEvents } from "../schemas/index.js";
 import type { Pod, Result } from "../types/index.js";
+import { toPodPublicView } from "../types/index.js";
 import { podStore } from "../services/podStore.js";
 import { canvasStore } from "../services/canvasStore.js";
 import { socketService } from "../services/socketService.js";
 import { emitError, emitNotFound } from "./websocketResponse.js";
 import { logger, type LogCategory } from "./logger.js";
 import { createI18nError, type I18nError } from "./i18nError.js";
+import {
+  getProvider,
+  type ProviderCapabilities,
+} from "../services/provider/index.js";
 
 export function handleResultError<T>(
   result: Result<T>,
@@ -13,6 +18,7 @@ export function handleResultError<T>(
   event: WebSocketResponseEvents,
   requestId: string,
   fallbackError: string | I18nError,
+  canvasId: string | null,
   errorCode?: string,
 ): result is {
   success: false;
@@ -23,6 +29,7 @@ export function handleResultError<T>(
       connectionId,
       event,
       result.error ?? fallbackError,
+      canvasId,
       requestId,
       undefined,
       errorCode ?? "INTERNAL_ERROR",
@@ -44,6 +51,7 @@ export function getCanvasId(
       connectionId,
       responseEvent,
       createI18nError("errors.activeCanvasNotFound"),
+      null,
       requestId,
       undefined,
       "INTERNAL_ERROR",
@@ -85,6 +93,35 @@ export function withCanvasId<TPayload = unknown>(
   };
 }
 
+/**
+ * 守門：檢查 Pod 對應的 provider 是否支援指定 capability。
+ * 不支援時發送 CAPABILITY_NOT_SUPPORTED 錯誤並回傳 false，呼叫端應立即 early return。
+ * 支援時回傳 true 繼續執行。
+ */
+export function assertCapability(
+  connectionId: string,
+  pod: Pod,
+  key: keyof ProviderCapabilities,
+  responseEvent: WebSocketResponseEvents,
+  requestId: string,
+  canvasId: string | null,
+): boolean {
+  const cap = getProvider(pod.provider).metadata.capabilities;
+  if (cap[key]) return true;
+  emitError(
+    connectionId,
+    responseEvent,
+    createI18nError("errors.capabilityNotSupported", {
+      provider: pod.provider,
+    }),
+    canvasId,
+    requestId,
+    pod.id,
+    "CAPABILITY_NOT_SUPPORTED",
+  );
+  return false;
+}
+
 export function validatePod(
   connectionId: string,
   podId: string,
@@ -99,7 +136,14 @@ export function validatePod(
   const pod = podStore.getById(canvasId, podId);
 
   if (!pod) {
-    emitNotFound(connectionId, responseEvent, "Pod", podId, requestId);
+    emitNotFound(
+      connectionId,
+      responseEvent,
+      "Pod",
+      podId,
+      requestId,
+      canvasId,
+    );
     return undefined;
   }
 
@@ -134,7 +178,7 @@ export function emitPodUpdated(
     requestId,
     canvasId,
     success: true,
-    pod: updatedPod,
+    pod: updatedPod ? toPodPublicView(updatedPod) : undefined,
   });
 }
 
@@ -167,6 +211,7 @@ export async function handleResourceDelete(
       resourceName,
       resourceId,
       requestId,
+      canvasId,
     );
     return;
   }
@@ -180,6 +225,7 @@ export async function handleResourceDelete(
         resource: resourceName,
         count: String(podsUsing.length),
       }),
+      canvasId,
       requestId,
       undefined,
       "IN_USE",

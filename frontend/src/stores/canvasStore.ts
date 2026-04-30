@@ -77,12 +77,6 @@ export const useCanvasStore = defineStore("canvas", {
         throw error;
       });
 
-      if (!response.canvases) {
-        console.warn("[CanvasStore] 後端未回傳任何 Canvas");
-        this.isLoading = false;
-        return;
-      }
-
       this.canvases = response.canvases.sort(
         (a, b) => a.sortIndex - b.sortIndex,
       );
@@ -107,8 +101,9 @@ export const useCanvasStore = defineStore("canvas", {
           responseEvent: WebSocketResponseEvents.CANVAS_SWITCHED,
           payload: { canvasId: firstCanvas.id },
         });
-      } catch (error) {
-        console.error("[CanvasStore] 切換 Canvas 失敗", error);
+      } catch {
+        const { showErrorToast } = useToast();
+        showErrorToast("Canvas", t("store.canvas.switchFailed"));
         return;
       }
 

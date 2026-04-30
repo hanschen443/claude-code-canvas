@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed } from "vue";
 import type { Pod } from "@/types";
 import type { ContentBlock } from "@/types/websocket/requests";
 import ChatHeader from "./ChatHeader.vue";
@@ -12,6 +12,8 @@ import { useChatStore } from "@/stores/chat";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useRunStore } from "@/stores/run/runStore";
 import { isMultiInstanceSourcePod } from "@/utils/multiInstanceGuard";
+import { useToast } from "@/composables/useToast";
+import { useEscapeClose } from "@/composables/useEscapeClose";
 
 const props = defineProps<{
   pod: Pod;
@@ -24,6 +26,7 @@ const emit = defineEmits<{
 const chatStore = useChatStore();
 const connectionStore = useConnectionStore();
 const runStore = useRunStore();
+const { showErrorToast } = useToast();
 
 const messages = computed(() => chatStore.getMessages(props.pod.id));
 const isTyping = computed(() => props.pod.status === "chatting");
@@ -54,9 +57,13 @@ const handleSend = async (
   content: string,
   contentBlocks?: ContentBlock[],
 ): Promise<void> => {
-  if (!content.trim() && !contentBlocks) return;
+  if (!content.trim() && (!contentBlocks || contentBlocks.length === 0)) return;
 
-  await chatStore.sendMessage(props.pod.id, content, contentBlocks);
+  try {
+    await chatStore.sendMessage(props.pod.id, content, contentBlocks);
+  } catch {
+    showErrorToast("Pod", "訊息發送失敗");
+  }
 };
 
 const handleAbort = (): void => {
@@ -73,24 +80,13 @@ const handleMultiInstanceSend = async (message: string): Promise<void> => {
   emit("close");
 };
 
-const handleKeydown = (event: KeyboardEvent): void => {
-  if (event.key === "Escape") {
-    const openDialog = document.querySelector(
-      '[data-state="open"][role="dialog"]',
-    );
-    if (openDialog) {
-      return;
-    }
-    handleClose();
-  }
-};
-
-onMounted(() => {
-  document.addEventListener("keydown", handleKeydown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener("keydown", handleKeydown);
+// ESC 關閉：若有 reka-ui Dialog 開啟中則略過，避免干擾 Dialog 自身的 ESC 處理
+useEscapeClose(() => {
+  const openDialog = document.querySelector(
+    '[data-state="open"][role="dialog"]',
+  );
+  if (openDialog) return;
+  handleClose();
 });
 </script>
 

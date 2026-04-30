@@ -6,24 +6,17 @@ import { workflowStateService } from "./workflow/index.js";
 import { connectionStore } from "./connectionStore.js";
 import { repositorySyncService } from "./repositorySyncService.js";
 import { podManifestService } from "./podManifestService.js";
-import {
-  noteStore,
-  skillNoteStore,
-  repositoryNoteStore,
-  commandNoteStore,
-  subAgentNoteStore,
-  mcpServerNoteStore,
-} from "./noteStores.js";
+import { repositoryNoteStore, commandNoteStore } from "./noteStores.js";
 import { WebSocketResponseEvents } from "../schemas/index.js";
 import type { PodDeletedPayload } from "../types/index.js";
 import type { CreatePodRequest } from "../types/api.js";
 import type { Result } from "../types/index.js";
 import { ok, err } from "../types/index.js";
 import type { Pod } from "../types/pod.js";
-import { isPodBusy } from "../types/pod.js";
+import { isPodBusy, toPodPublicView } from "../types/pod.js";
 import { logger } from "../utils/logger.js";
 import { createI18nError } from "../utils/i18nError.js";
-import { claudeService } from "./claude/claudeService.js";
+import { abortRegistry } from "./provider/abortRegistry.js";
 import { runExecutionService } from "./workflow/runExecutionService.js";
 
 interface CreatePodResult {
@@ -40,12 +33,8 @@ export function deleteAllPodNotes(
     };
     key: keyof NonNullable<PodDeletedPayload["deletedNoteIds"]>;
   }> = [
-    { store: noteStore, key: "note" },
-    { store: skillNoteStore, key: "skillNote" },
     { store: repositoryNoteStore, key: "repositoryNote" },
     { store: commandNoteStore, key: "commandNote" },
-    { store: subAgentNoteStore, key: "subAgentNote" },
-    { store: mcpServerNoteStore, key: "mcpServerNote" },
   ];
 
   const result: PodDeletedPayload["deletedNoteIds"] = {};
@@ -91,13 +80,13 @@ export async function deletePodWithCleanup(
 
   // 若 Pod 正在執行查詢，先中止以避免記憶體洩漏
   if (isPodBusy(pod.status)) {
-    // abortQuery 只回傳 boolean，不會拋例外，直接呼叫即可
-    claudeService.abortQuery(podId);
+    // abort 只回傳 boolean，不會拋例外，直接呼叫即可
+    abortRegistry.abort(podId);
 
     // 中止 Run 模式的查詢（key 格式為 ${runId}:${podId}）
     const activeRunIds = runExecutionService.getActiveRunIdsForPod(podId);
     for (const runId of activeRunIds) {
-      claudeService.abortQuery(`${runId}:${podId}`);
+      abortRegistry.abort(`${runId}:${podId}`);
     }
   }
 
@@ -173,8 +162,9 @@ export async function createPodWithWorkspace(
 
   socketService.emitToCanvas(canvasId, WebSocketResponseEvents.POD_CREATED, {
     requestId,
+    canvasId,
     success: true,
-    pod,
+    pod: toPodPublicView(pod),
   });
 
   return { success: true, data: { pod } };

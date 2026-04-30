@@ -1,6 +1,10 @@
-import type { ToastCategory } from '@/composables/useToast'
+import type { ToastCategory } from "@/composables/useToast";
 
-type ShowErrorToast = (category: ToastCategory, action: string, reason?: string) => string
+type ShowErrorToast = (
+  category: ToastCategory,
+  action: string,
+  reason?: string,
+) => string;
 
 export function isNullResponse<T>(
   response: T | null | undefined,
@@ -8,9 +12,9 @@ export function isNullResponse<T>(
   category: ToastCategory,
   action: string,
 ): response is null | undefined {
-  if (!response) {
-    showErrorToast(category, action)
-    return true
+  if (response === null || response === undefined) {
+    showErrorToast(category, action);
+    return true;
   }
-  return false
+  return false;
 }

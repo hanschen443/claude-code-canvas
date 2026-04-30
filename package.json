@@ -1,6 +1,6 @@
 {
-  "name": "claude-code-canvas",
-  "version": "1.0.7",
+  "name": "agent-canvas",
+  "version": "1.1.5",
   "private": true,
   "description": "AI Agent 畫布工具",
   "scripts": {

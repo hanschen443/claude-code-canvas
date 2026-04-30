@@ -211,6 +211,12 @@
     "multiInstance": {
       "readonlyHint": "This Pod is part of a Multi-Instance workflow. View details in run history."
     },
+    "provider": {
+      "title": "Provider",
+      "unknownDescription": "This Provider is offline or not yet supported. Chat is unavailable.",
+      "loadFailedDescription": "Unable to load provider capabilities. Some features may not work.",
+      "loadingHint": "Provider is loading, please wait"
+    },
     "clearWorkflow": {
       "title": "Clear Workflow",
       "description": "The following PODs will have all messages cleared:",
@@ -222,11 +228,46 @@
       "description": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
       "confirm": "Confirm Delete"
     },
+    "upload": {
+      "uploading": "Uploading... {percent}%",
+      "fileCount": "{count} file(s) total",
+      "failedTitle": "Some files failed to upload",
+      "failedAllTitle": "All files failed to upload",
+      "retry": "Retry failed files",
+      "cannotDeleteWhileUploading": "Cannot delete while uploading",
+      "failureReason": {
+        "network": "Network error",
+        "unknown": "Unknown error",
+        "aborted": "Upload cancelled",
+        "UPLOAD_NO_FILE": "No file provided",
+        "UPLOAD_INVALID_SESSION_ID": "Invalid upload session ID",
+        "ATTACHMENT_TOO_LARGE": "File exceeds the 10 MB limit",
+        "ATTACHMENT_INVALID_NAME": "Invalid file name",
+        "ATTACHMENT_WRITE_FAILED": "Server failed to write file",
+        "ATTACHMENT_DISK_FULL": "Server disk space is full"
+      }
+    },
     "slot": {
       "duplicateTitle": "Already exists, cannot insert",
-      "skillDuplicate": "This Skill is already bound to this Pod",
-      "subAgentDuplicate": "This SubAgent is already bound to this Pod",
-      "mcpServerDuplicate": "This MCP Server is already bound to this Pod"
+      "providerDisabled": "This provider doesn't support this",
+      "pluginsLabel": "Plugins",
+      "pluginsLoading": "Loading...",
+      "pluginsBusyTooltip": "Task in progress, please wait.",
+      "pluginsEmpty": "No plugins installed",
+      "pluginsToggleFailed": "Update failed, rolled back",
+      "pluginsCodexHint": "Codex plugins are globally managed by codex",
+      "mcpLabel": "MCPs",
+      "mcpLoading": "Loading…",
+      "mcpBusyTooltip": "Cannot toggle while pod is busy",
+      "mcpEmpty": "No MCP server installed",
+      "mcpClaudeEmptyHint": "Run `claude mcp add` to install",
+      "mcpCodexEmptyHint": "Run `codex mcp add` to install",
+      "mcpToggleFailed": "Failed to toggle MCP server",
+      "mcpLoadFailed": "Failed to load",
+      "mcpCodexHint": "Codex MCP servers are managed globally by codex",
+      "searchPlaceholder": "Search…",
+      "pluginsSearchEmpty": "No matching plugin found",
+      "mcpSearchEmpty": "No matching MCP server found"
     }
   },
   "run": {
@@ -296,6 +337,9 @@
     "notConnected": "WebSocket is not connected",
     "requestTimeout": "Request timed out: {event}"
   },
+  "composableDeleteResource": {
+    "deleteFailed": "Delete failed, please try again later"
+  },
   "canvas": {
     "noActiveCanvas": "No active canvas",
     "emptyState": "Right-click to create Pod or Note",
@@ -361,16 +405,10 @@
     },
     "podContextMenu": {
       "downloadDirectory": "Download Working Directory (zip)",
-      "plugin": "Plugin",
       "connect": "Connect {label}",
       "disconnect": "Disconnect {label}",
       "downloadDirectoryFailed": "Failed to download directory",
-      "downloadDirectoryFailedDesc": "Unable to download working directory, please try again later",
-      "noPluginInstalled": "No plugins installed",
-      "pluginLoadFailed": "Failed to load plugin list",
-      "pluginLoadFailedDesc": "Unable to retrieve installed plugins, please try again later",
-      "pluginUpdateFailed": "Plugin configuration failed",
-      "pluginUpdateFailedDesc": "Unable to update Pod plugin settings, please try again later"
+      "downloadDirectoryFailedDesc": "Unable to download working directory, please try again later"
     },
     "connectionContextMenu": {
       "triggerModeAuto": "Auto Trigger (Auto)",
@@ -389,7 +427,8 @@
       "summaryModelChangeFailed": "Unable to change summary model",
       "aiDecideModelChanged": "AI decide model changed",
       "aiDecideModelChangeFailed": "Unable to change AI decide model",
-      "modelSwitched": "Switched to {model}"
+      "modelSwitched": "Switched to {model}",
+      "loading": "Loading..."
     },
     "confirmDelete": {
       "cannotDelete": "Cannot delete",
@@ -403,19 +442,6 @@
       "namePlaceholder": "Name",
       "contentPlaceholder": "Content",
       "editTitleWithType": "Edit {type}"
-    },
-    "mcpServer": {
-      "createTitle": "Add MCP Server",
-      "editTitle": "Edit MCP Server",
-      "description": "Paste JSON-format MCP Server config. The first key is the name, the value is the config.",
-      "parseError": "JSON format error, please check the syntax",
-      "minOneServer": "Please enter at least one MCP Server config",
-      "nameInvalid": "Name can only contain letters, numbers, underscores and hyphens",
-      "modeError": "Config must contain a command field (stdio mode) or type + url fields (http/sse mode)",
-      "commandEmpty": "command field cannot be empty",
-      "urlInvalid": "url field format is invalid",
-      "argsInvalid": "args field must be an array of strings",
-      "parseLost": "Parse result lost, please resubmit"
     },
     "scheduleModal": {
       "createTitle": "Set Schedule",
@@ -454,11 +480,7 @@
       "aiErrorReason": "Error: {reason}"
     },
     "podTypeMenu": {
-      "newOutputStyle": "New Output Style",
-      "newSubAgent": "New SubAgent",
       "newCommand": "New Command",
-      "newOutputStyleGroup": "New Output Style Group",
-      "newSubAgentGroup": "New SubAgent Group",
       "newCommandGroup": "New Command Group"
     }
   },
@@ -467,7 +489,8 @@
       "deleted": "{name} has been deleted",
       "orderSaveFailed": "Failed to save order",
       "renameFailed": "Rename failed",
-      "renamed": "Renamed successfully"
+      "renamed": "Renamed successfully",
+      "switchFailed": "Failed to switch canvas"
     },
     "connection": {
       "alreadyExists": "Connection already exists",
@@ -498,6 +521,9 @@
     },
     "backup": {
       "completed": "Backup completed"
+    },
+    "run": {
+      "loadFailed": "Failed to load run history"
     },
     "repository": {
       "createFailed": "Failed to create folder",
@@ -559,16 +585,9 @@
       "imageInvalidData": "Invalid image data",
       "uploadTooMany": "You can only upload 1 image at a time",
       "speechMaxLength": "Maximum text length reached",
-      "speechUnsupported": "Speech input is not supported by this browser"
-    },
-    "skillImport": {
-      "invalidFormat": "Invalid file format, only ZIP files are supported",
-      "fileTooLarge": "File size exceeds 5MB limit",
-      "networkFailed": "Network transfer failed, please try again",
-      "base64Failed": "Base64 conversion failed",
-      "importFailed": "Import failed",
-      "importSuccess": "Imported successfully",
-      "importSuccessOverwrite": "Imported successfully (overwritten)"
+      "speechUnsupported": "Speech input is not supported by this browser",
+      "podDropReadFailed": "Failed to read file.",
+      "podDropSendFailed": "Failed to send file."
     },
     "eventHandler": {
       "podCreated": "Pod created",
@@ -582,16 +601,9 @@
       "canvasCreated": "Canvas created",
       "canvasRenamed": "Canvas renamed",
       "pasted": "Pasted successfully",
-      "outputStyleDeleted": "Output style deleted",
-      "skillDeleted": "Skill deleted",
       "worktreeCreated": "Worktree created",
       "repositoryDeleted": "Repository deleted",
-      "subAgentDeleted": "SubAgent deleted",
-      "commandDeleted": "Command deleted",
-      "mcpServerCreated": "MCP Server created",
-      "mcpServerUpdated": "MCP Server updated",
-      "mcpServerDeleted": "MCP Server deleted",
-      "mcpServerReadFailed": "Failed to read MCP Server"
+      "commandDeleted": "Command deleted"
     },
     "deleteSelection": {
       "partialFailed": "Some deletions failed",
@@ -705,14 +717,27 @@
     "noteCreateFailed": "Failed to create {type}",
     "connectionCreateFailed": "Failed to create connection: {message}",
     "activeCanvasNotFound": "No active Canvas found",
-    "resourceInUse": "{resource} is being used by {count} Pod(s), cannot delete"
+    "capabilityNotSupported": "{provider} does not support this capability",
+    "resourceInUse": "{resource} is being used by {count} Pod(s), cannot delete",
+    "attachmentFolderNotAllowed": "Folders are not supported.",
+    "attachmentEmpty": "No files to upload. Please select files and try again.",
+    "attachmentTooLarge": "A single file exceeds the 10 MB limit.",
+    "attachmentInvalidName": "Invalid file name.",
+    "attachmentDiskFull": "Disk space is full. Unable to write file.",
+    "attachmentWriteFailed": "Failed to write file. Please try again later.",
+    "uploadSessionNotFound": "Upload session not found or expired. Please try uploading again.",
+    "uploadInvalidSessionId": "The upload session ID is invalid.",
+    "uploadNoFile": "No file found in the request. Please select a file and try again.",
+    "invalidWorkspacePath": "The project directory is unavailable. Please re-select or remove the Repository binding."
   },
   "progress": {
     "preparingPull": "Preparing pull...",
     "pullComplete": "Pull complete",
     "preparingCheckout": "Preparing branch switch...",
     "branchCreated": "Branch created",
-    "checkoutComplete": "Branch switch complete"
+    "checkoutComplete": "Branch switch complete",
+    "repositoryCloneStart": "Starting Git clone...",
+    "repositoryCreated": "Repository created, starting clone..."
   },
   "settings": {
     "title": "Global Settings",

@@ -1,51 +1,51 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { FileText, Pencil, X } from 'lucide-vue-next'
+import { ref } from "vue";
+import { FileText, Pencil, X } from "lucide-vue-next";
 
 interface Props {
-  item: { id: string; name: string }
-  isIndented?: boolean
-  editable?: boolean
+  item: { id: string; name: string };
+  isIndented?: boolean;
+  editable?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
   isIndented: false,
-  editable: true
-})
+  editable: true,
+});
 
 const emit = defineEmits<{
-  select: []
-  edit: [event: Event]
-  delete: [event: Event]
-  dragstart: [event: DragEvent]
-  dragend: [event: DragEvent]
-}>()
+  select: [];
+  edit: [event: Event];
+  delete: [event: Event];
+  dragstart: [event: DragEvent];
+  dragend: [event: DragEvent];
+}>();
 
-const isDragging = ref(false)
+const isDragging = ref(false);
 
 const handleSelect = (): void => {
-  emit('select')
-}
+  emit("select");
+};
 
 const handleEdit = (event: Event): void => {
-  event.stopPropagation()
-  emit('edit', event)
-}
+  event.stopPropagation();
+  emit("edit", event);
+};
 
 const handleDelete = (event: Event): void => {
-  event.stopPropagation()
-  emit('delete', event)
-}
+  event.stopPropagation();
+  emit("delete", event);
+};
 
 const handleDragStart = (event: DragEvent): void => {
-  isDragging.value = true
-  emit('dragstart', event)
-}
+  isDragging.value = true;
+  emit("dragstart", event);
+};
 
 const handleDragEnd = (event: DragEvent): void => {
-  isDragging.value = false
-  emit('dragend', event)
-}
+  isDragging.value = false;
+  emit("dragend", event);
+};
 </script>
 
 <template>
@@ -70,13 +70,13 @@ const handleDragEnd = (event: DragEvent): void => {
     </button>
     <button
       v-if="editable"
-      class="pod-menu-submenu-edit-btn"
+      class="pod-menu-submenu-action-btn pod-menu-submenu-edit-btn"
       @click="handleEdit"
     >
       <Pencil :size="14" />
     </button>
     <button
-      class="pod-menu-submenu-delete-btn"
+      class="pod-menu-submenu-action-btn pod-menu-submenu-delete-btn"
       @click="handleDelete"
     >
       <X :size="14" />

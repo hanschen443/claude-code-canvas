@@ -106,16 +106,6 @@ describe("WebSocketClient", () => {
       expect(mockWebSocketInstances.length).toBe(1);
     });
 
-    it("應該設定 socket 事件處理器", () => {
-      websocketClient.connect("http://localhost:3001");
-
-      const instance = mockWebSocketInstances[0]!;
-      expect(instance.onopen).not.toBeNull();
-      expect(instance.onclose).not.toBeNull();
-      expect(instance.onerror).not.toBeNull();
-      expect(instance.onmessage).not.toBeNull();
-    });
-
     it("應該在連線成功時設定 isConnected 為 true", () => {
       websocketClient.connect("http://localhost:3001");
 

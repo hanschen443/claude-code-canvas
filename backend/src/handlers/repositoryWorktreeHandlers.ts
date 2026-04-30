@@ -103,7 +103,12 @@ async function validateWorktreePrerequisites(
     worktreeName,
   );
   if (pathSafetyError) return pathSafetyError;
-  return checkBranchAvailability(repositoryPath, worktreeName);
+  const branchError = await checkBranchAvailability(
+    repositoryPath,
+    worktreeName,
+  );
+  if (branchError) return branchError;
+  return null;
 }
 
 export async function handleRepositoryWorktreeCreate(
@@ -137,6 +142,7 @@ export async function handleRepositoryWorktreeCreate(
       connectionId,
       responseEvent,
       prerequisiteError.error,
+      null,
       requestId,
       undefined,
       prerequisiteError.errorCode,
@@ -163,6 +169,7 @@ export async function handleRepositoryWorktreeCreate(
       connectionId,
       responseEvent,
       createI18nError("errors.worktreeCreateFailed"),
+      null,
       requestId,
       undefined,
       "INTERNAL_ERROR",

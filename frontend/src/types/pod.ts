@@ -3,7 +3,79 @@ import type { IntegrationBinding } from "./integration";
 
 export type ModelType = "opus" | "sonnet" | "haiku";
 
-export type PodStatus = "idle" | "chatting" | "summarizing" | "error";
+export type PodStatus =
+  | "idle"
+  | "chatting"
+  | "summarizing"
+  | "error"
+  | "uploading";
+
+/**
+ * Pod 所屬的 Provider 名稱。
+ * 刻意保持寬鬆 string，不使用 "claude" | "codex" literal union，原因如下：
+ *   1. 後端 providerCapabilityStore 動態建構 ALLOWED_PROVIDERS；
+ *      若前端 compile-time 釘死 union，每次後端新增 provider 時
+ *      兩端的 union 容易不同步，導致型別錯誤或靜默地拒絕合法值。
+ *   2. 前端執行時驗證（透過 providerCapabilityStore 的 key 集合）
+ *      即可有效過濾無效 provider，無需 compile-time 限制。
+ * compile-time 的型別縮窄由 providerOptions.ts 的 narrow helper
+ *   （getClaudeOptions / getCodexOptions）在需要的地方達成。
+ *
+ * 鏡射自後端 backend/src/services/provider/types.ts（ProviderName）；
+ * 修改時請同步。
+ */
+export type PodProvider = string;
+
+/**
+ * Provider 通用設定，資料形狀維持平坦 { model: string }。
+ * 不因 discriminated union 拆分，避免 DB 遷移與全專案 access path 改動。
+ * Provider-specific 型別請見 ClaudeOptions / CodexOptions，
+ * 並透過 providerOptions.ts 的 narrow helper 取得強型別。
+ *
+ * 鏡射自後端 backend/src/services/provider/types.ts（ChatRequestContext.providerConfig）；
+ * 修改時請同步。
+ */
+export type ProviderConfig = { model: string };
+
+/**
+ * Claude Provider 的執行選項型別。
+ * 鏡射自後端 backend/src/services/provider/claudeProvider.ts（ClaudeOptions）；
+ * 目前僅含 model，未來可擴充欄位。
+ * 修改後端 ClaudeOptions 時請同步更新此型別。
+ */
+export interface ClaudeOptions {
+  model: string;
+}
+
+/**
+ * Codex Provider 的執行選項型別。
+ * 鏡射自後端 backend/src/services/provider/codexProvider.ts（CodexOptions）；
+ * 目前僅含 model，未來可擴充欄位。
+ * 修改後端 CodexOptions 時請同步更新此型別。
+ */
+export interface CodexOptions {
+  model: string;
+}
+
+/**
+ * Provider 可選模型選項的共用型別。
+ * label 為 UI 顯示名稱，value 為實際傳給後端 providerConfig.model 的字串。
+ * 鏡射自後端 `provider:list` payload 中 `availableModels` 欄位的元素結構，
+ * 前後端共用此資料契約。
+ */
+export interface ModelOption {
+  label: string;
+  value: string;
+}
+
+/** 各 Provider 支援的功能能力表 */
+export interface ProviderCapabilities {
+  chat: boolean;
+  plugin: boolean;
+  repository: boolean;
+  command: boolean;
+  mcp: boolean;
+}
 
 export type FrequencyType =
   | "every-second"
@@ -34,17 +106,15 @@ export interface Pod {
   rotation: number;
   status?: PodStatus;
   workspacePath?: string;
-  outputStyleId?: string | null;
-  skillIds?: string[];
-  subAgentIds?: string[];
-  mcpServerIds?: string[];
+  mcpServerNames?: string[];
   pluginIds?: string[];
-  model?: ModelType;
   repositoryId?: string | null;
-  multiInstance?: boolean;
+  multiInstance: boolean;
   commandId?: string | null;
   schedule?: Schedule | null;
   integrationBindings?: IntegrationBinding[];
+  provider: PodProvider;
+  providerConfig: ProviderConfig;
 }
 
 export interface PodTypeConfig {

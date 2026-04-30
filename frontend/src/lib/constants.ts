@@ -2,7 +2,7 @@ export const POD_MENU_X_OFFSET = 112;
 export const POD_MENU_Y_OFFSET = 50;
 export const HEADER_HEIGHT = 64;
 
-export const MAX_MESSAGE_LENGTH = 1000;
+export const MAX_MESSAGE_LENGTH = 10000;
 export const CONTENT_PREVIEW_LENGTH = 30;
 export const RESPONSE_PREVIEW_LENGTH = 40;
 
@@ -25,6 +25,12 @@ export const NOTE_HEIGHT = 30;
 export const PASTE_TIMEOUT_MS = 10000;
 
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+/** 單一 ContentBlock base64Data 大小上限（5 MB decoded） */
+export const MAX_CONTENT_BLOCK_SIZE_BYTES = 5 * 1024 * 1024;
+/** 所有 ContentBlock base64Data 加總大小上限（20 MB decoded） */
+export const MAX_CONTENT_BLOCKS_TOTAL_BYTES = 20 * 1024 * 1024;
+/** 單檔大小上限 10 MB */
+export const MAX_POD_DROP_FILE_BYTES = 10 * 1024 * 1024;
 export const SUPPORTED_IMAGE_MEDIA_TYPES = [
   "image/jpeg",
   "image/png",

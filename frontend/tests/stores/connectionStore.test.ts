@@ -12,6 +12,7 @@ import {
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { usePodStore } from "@/stores/pod/podStore";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useSelectionStore } from "@/stores/pod/selectionStore";
 import type {
   Connection,
@@ -44,35 +45,15 @@ vi.mock("@/composables/useToast", () => ({
   }),
 }));
 
-// Mock useCanvasWebSocketAction
-const mockExecuteAction = vi.fn();
-vi.mock("@/composables/useCanvasWebSocketAction", () => ({
-  useCanvasWebSocketAction: () => ({
-    executeAction: mockExecuteAction,
-  }),
-}));
-
 describe("connectionStore", () => {
-  setupStoreTest(() => {
-    mockExecuteAction.mockResolvedValue({ success: false, error: "未知錯誤" });
-  });
+  setupStoreTest();
 
   describe("初始狀態", () => {
-    it("connections 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useConnectionStore();
 
       expect(store.connections).toEqual([]);
-    });
-
-    it("selectedConnectionId 應為 null", () => {
-      const store = useConnectionStore();
-
       expect(store.selectedConnectionId).toBeNull();
-    });
-
-    it("draggingConnection 應為 null", () => {
-      const store = useConnectionStore();
-
       expect(store.draggingConnection).toBeNull();
     });
   });
@@ -188,22 +169,18 @@ describe("connectionStore", () => {
         expect(result).toEqual(conn2);
       });
 
-      it("無 selectedConnectionId 時應回傳 null", () => {
-        const store = useConnectionStore();
-        const conn = createMockConnection();
-        store.connections = [conn];
-        store.selectedConnectionId = null;
-
-        const result = store.selectedConnection;
-
-        expect(result).toBeNull();
-      });
-
-      it("selectedConnectionId 不存在於 connections 中時應回傳 null", () => {
+      // 參數化：getter 找不到時應回傳 null
+      it.each([
+        { desc: "無 selectedConnectionId（null）", selectedId: null as null },
+        {
+          desc: "selectedConnectionId 不存在於 connections 中",
+          selectedId: "non-existent",
+        },
+      ])("$desc 時應回傳 null", ({ selectedId }) => {
         const store = useConnectionStore();
         const conn = createMockConnection({ id: "conn-1" });
         store.connections = [conn];
-        store.selectedConnectionId = "non-existent";
+        store.selectedConnectionId = selectedId;
 
         const result = store.selectedConnection;
 
@@ -302,6 +279,44 @@ describe("connectionStore", () => {
   });
 
   describe("createConnection", () => {
+    /**
+     * 統一設定 Claude 與 Codex 兩個 provider 的 capability（availableModels）。
+     * Claude case 與 Codex case 都使用此 helper，確保 mock 設定方式一致。
+     */
+    function setupConnectionCapabilities() {
+      const capabilityStore = useProviderCapabilityStore();
+      capabilityStore.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: true,
+            command: true,
+            mcp: true,
+          },
+          availableModels: [
+            { value: "sonnet", label: "Sonnet" },
+            { value: "opus", label: "Opus" },
+          ],
+        },
+        {
+          name: "codex",
+          capabilities: {
+            chat: true,
+            plugin: true,
+            repository: false,
+            command: true,
+            mcp: false,
+          },
+          availableModels: [
+            { value: "gpt-5.4", label: "GPT-5.4" },
+            { value: "gpt-4.5", label: "GPT-4.5" },
+          ],
+        },
+      ]);
+    }
+
     it("成功時應回傳 Connection、預設 triggerMode 為 auto", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
@@ -314,9 +329,8 @@ describe("connectionStore", () => {
         triggerMode: "auto",
       });
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: { connection: { ...newConnection } },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: { ...newConnection },
       });
 
       const result = await store.createConnection(
@@ -327,20 +341,17 @@ describe("connectionStore", () => {
       );
 
       expect(result).toEqual(newConnection);
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "connection:create",
           responseEvent: "connection:created",
-          payload: {
+          payload: expect.objectContaining({
             sourcePodId: "pod-a",
             sourceAnchor: "bottom",
             targetPodId: "pod-b",
             targetAnchor: "top",
-          },
-        }),
-        expect.objectContaining({
-          errorCategory: "Connection",
-          errorAction: "建立失敗",
+            canvasId: "canvas-1",
+          }),
         }),
       );
     });
@@ -361,7 +372,7 @@ describe("connectionStore", () => {
       expect(console.warn).toHaveBeenCalledWith(
         "[ConnectionStore] 無法將 Pod 連接到自身",
       );
-      expect(mockExecuteAction).not.toHaveBeenCalled();
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
     it("重複連接時應回傳 null 並顯示 Toast", async () => {
@@ -388,16 +399,12 @@ describe("connectionStore", () => {
         description: "這兩個 Pod 之間已經有連線了",
         duration: 3000,
       });
-      expect(mockExecuteAction).not.toHaveBeenCalled();
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
     it("無 activeCanvasId 時應回傳 null", async () => {
       const store = useConnectionStore();
-
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "沒有啟用的畫布",
-      });
+      // activeCanvasId 未設定，useCanvasWebSocketAction 會直接回傳 failure
 
       const result = await store.createConnection(
         "pod-a",
@@ -407,6 +414,7 @@ describe("connectionStore", () => {
       );
 
       expect(result).toBeNull();
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
     it("WebSocket 回應無 connection 時應回傳 null", async () => {
@@ -414,7 +422,8 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({ success: true, data: {} });
+      // 回傳沒有 connection 欄位的物件
+      mockCreateWebSocketRequest.mockResolvedValueOnce({});
 
       const result = await store.createConnection(
         "pod-a",
@@ -431,18 +440,15 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: {
-          connection: {
-            id: "conn-1",
-            sourcePodId: "pod-a",
-            sourceAnchor: "bottom",
-            targetPodId: "pod-b",
-            targetAnchor: "top",
-            triggerMode: "ai-decide",
-            connectionStatus: "ai-approved",
-          },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-1",
+          sourcePodId: "pod-a",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-b",
+          targetAnchor: "top",
+          triggerMode: "ai-decide",
+          connectionStatus: "ai-approved",
         },
       });
 
@@ -461,16 +467,13 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: {
-          connection: {
-            id: "conn-1",
-            sourcePodId: "pod-a",
-            sourceAnchor: "bottom",
-            targetPodId: "pod-b",
-            targetAnchor: "top",
-          },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-1",
+          sourcePodId: "pod-a",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-b",
+          targetAnchor: "top",
         },
       });
 
@@ -489,31 +492,140 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: {
-          connection: {
-            id: "conn-1",
-            targetPodId: "pod-b",
-            targetAnchor: "top",
-            sourceAnchor: "bottom",
-          },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-1",
+          targetPodId: "pod-b",
+          targetAnchor: "top",
+          sourceAnchor: "bottom",
         },
       });
 
       await store.createConnection(null, "bottom", "pod-b", "top");
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
-          payload: {
+          payload: expect.objectContaining({
             sourceAnchor: "bottom",
             targetPodId: "pod-b",
             targetAnchor: "top",
+            canvasId: "canvas-1",
             // 注意：sourcePodId 不存在
-          },
+          }),
         }),
-        expect.anything(),
       );
+      // 確認 payload 中確實沒有 sourcePodId
+      const callPayload =
+        mockCreateWebSocketRequest.mock.calls[0]?.[0]?.payload;
+      expect(callPayload).not.toHaveProperty("sourcePodId");
+    });
+
+    it("上游為 Claude Pod 時，summaryModel 應為 Claude 的預設模型", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+
+      // 建立 Claude Pod 並放入 podStore
+      const claudePod = createMockPod({
+        id: "pod-claude",
+        provider: "claude",
+      });
+      podStore.pods = [claudePod];
+
+      // 使用共用 helper 統一設定 capability（與 Codex case 相同方式）
+      setupConnectionCapabilities();
+
+      // 後端回傳不帶 summaryModel，應由前端以 provider 預設填入
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-claude",
+          sourcePodId: "pod-claude",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-target",
+          targetAnchor: "top",
+        },
+      });
+
+      const result = await store.createConnection(
+        "pod-claude",
+        "bottom",
+        "pod-target",
+        "top",
+      );
+
+      expect(result?.summaryModel).toBe("sonnet");
+    });
+
+    it("上游為 Codex Pod 時，summaryModel 應為 Codex 的預設模型", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+
+      // 建立 Codex Pod 並放入 podStore
+      const codexPod = createMockPod({
+        id: "pod-codex",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+      });
+      podStore.pods = [codexPod];
+
+      // 使用共用 helper 統一設定 capability（與 Claude case 相同方式）
+      setupConnectionCapabilities();
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-codex",
+          sourcePodId: "pod-codex",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-target",
+          targetAnchor: "top",
+        },
+      });
+
+      const result = await store.createConnection(
+        "pod-codex",
+        "bottom",
+        "pod-target",
+        "top",
+      );
+
+      expect(result?.summaryModel).toBe("gpt-5.4");
+    });
+
+    it("capability 查無資料時，summaryModel 應 fallback 為 DEFAULT_SUMMARY_MODEL", async () => {
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      // providerCapabilityStore 維持空白（capability 尚未推送）
+
+      const unknownPod = createMockPod({
+        id: "pod-unknown",
+        provider: "unknown-provider",
+      });
+      podStore.pods = [unknownPod];
+
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-unknown",
+          sourcePodId: "pod-unknown",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-target",
+          targetAnchor: "top",
+        },
+      });
+
+      const result = await store.createConnection(
+        "pod-unknown",
+        "bottom",
+        "pod-target",
+        "top",
+      );
+
+      // capability 未載入，應 fallback 為 DEFAULT_SUMMARY_MODEL（"sonnet"）
+      expect(result?.summaryModel).toBe("sonnet");
     });
   });
 
@@ -523,22 +635,18 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: { success: true },
-      });
+      mockCreateWebSocketRequest.mockResolvedValueOnce({ success: true });
 
       await store.deleteConnection("conn-1");
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "connection:delete",
           responseEvent: "connection:deleted",
-          payload: { connectionId: "conn-1" },
-        }),
-        expect.objectContaining({
-          errorCategory: "Connection",
-          errorAction: "刪除失敗",
+          payload: expect.objectContaining({
+            connectionId: "conn-1",
+            canvasId: "canvas-1",
+          }),
         }),
       );
     });
@@ -547,11 +655,7 @@ describe("connectionStore", () => {
       const store = useConnectionStore();
       // store 中不含 conn-1，模擬後端廣播已先到達將其移除
       store.connections = [];
-
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "刪除失敗",
-      });
+      // mockCreateWebSocketRequest 預設回傳 null，模擬請求失敗
 
       await store.deleteConnection("conn-1");
 
@@ -562,11 +666,7 @@ describe("connectionStore", () => {
       const store = useConnectionStore();
       const conn = createMockConnection({ id: "conn-1" });
       store.connections = [conn];
-
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "刪除失敗",
-      });
+      // mockCreateWebSocketRequest 預設回傳 null，模擬請求失敗
 
       await store.deleteConnection("conn-1");
 
@@ -674,9 +774,8 @@ describe("connectionStore", () => {
         triggerMode: "ai-decide",
       });
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: { connection: { ...updatedConnection } },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: { ...updatedConnection },
       });
 
       const result = await store.updateConnectionTriggerMode(
@@ -685,26 +784,22 @@ describe("connectionStore", () => {
       );
 
       expect(result).toEqual(updatedConnection);
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "connection:update",
           responseEvent: "connection:updated",
-          payload: { connectionId: "conn-1", triggerMode: "ai-decide" },
-        }),
-        expect.objectContaining({
-          errorCategory: "Connection",
-          errorAction: "更新失敗",
+          payload: expect.objectContaining({
+            connectionId: "conn-1",
+            triggerMode: "ai-decide",
+            canvasId: "canvas-1",
+          }),
         }),
       );
     });
 
     it("無 activeCanvasId 時應回傳 null", async () => {
       const store = useConnectionStore();
-
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "沒有啟用的畫布",
-      });
+      // activeCanvasId 未設定，useCanvasWebSocketAction 會直接回傳 failure
 
       const result = await store.updateConnectionTriggerMode(
         "conn-1",
@@ -712,6 +807,7 @@ describe("connectionStore", () => {
       );
 
       expect(result).toBeNull();
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
     it("WebSocket 回應無 connection 時應回傳 null", async () => {
@@ -719,7 +815,8 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({ success: true, data: {} });
+      // 回傳沒有 connection 欄位的物件
+      mockCreateWebSocketRequest.mockResolvedValueOnce({});
 
       const result = await store.updateConnectionTriggerMode(
         "conn-1",
@@ -734,19 +831,16 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: {
-          connection: {
-            id: "conn-1",
-            sourcePodId: "pod-a",
-            sourceAnchor: "bottom",
-            targetPodId: "pod-b",
-            targetAnchor: "top",
-            triggerMode: "ai-decide",
-            connectionStatus: "ai-rejected",
-            decideReason: "不符合條件",
-          },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-1",
+          sourcePodId: "pod-a",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-b",
+          targetAnchor: "top",
+          triggerMode: "ai-decide",
+          connectionStatus: "ai-rejected",
+          decideReason: "不符合條件",
         },
       });
 
@@ -763,17 +857,14 @@ describe("connectionStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = useConnectionStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: {
-          connection: {
-            id: "conn-1",
-            sourcePodId: "pod-a",
-            sourceAnchor: "bottom",
-            targetPodId: "pod-b",
-            targetAnchor: "top",
-            triggerMode: "direct",
-          },
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        connection: {
+          id: "conn-1",
+          sourcePodId: "pod-a",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-b",
+          targetAnchor: "top",
+          triggerMode: "direct",
         },
       });
 
@@ -2139,6 +2230,188 @@ describe("connectionStore", () => {
       );
 
       expect(store.getPodWorkflowRole("pod-b")).toBe("tail");
+    });
+  });
+
+  describe("reconcileSummaryModelsForPod", () => {
+    function setupCapabilities() {
+      const capabilityStore = useProviderCapabilityStore();
+      capabilityStore.syncFromPayload([
+        {
+          name: "claude",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: true,
+            command: true,
+            mcp: true,
+          },
+          availableModels: [
+            { value: "sonnet", label: "Sonnet" },
+            { value: "opus", label: "Opus" },
+            { value: "haiku", label: "Haiku" },
+          ],
+        },
+        {
+          name: "codex",
+          capabilities: {
+            chat: true,
+            plugin: false,
+            repository: false,
+            command: false,
+            mcp: false,
+          },
+          availableModels: [
+            { value: "gpt-5.4", label: "GPT-5.4" },
+            { value: "gpt-5.5", label: "GPT-5.5" },
+          ],
+        },
+      ]);
+    }
+
+    it("Claude → Codex 切換時，原本是 sonnet 的 connection 應被更新為 gpt-5.4", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "codex" });
+      podStore.pods = [pod];
+
+      const conn = createMockConnection({
+        id: "conn-1",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      // reconcileSummaryModelsForPod 需要有 activeCanvasId 才能透過 executeAction 發送請求
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+
+      mockCreateWebSocketRequest.mockResolvedValue({
+        connection: {
+          id: "conn-1",
+          sourcePodId: "pod-src",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-dst",
+          targetAnchor: "top",
+          summaryModel: "gpt-5.4",
+        },
+      });
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            connectionId: "conn-1",
+            summaryModel: "gpt-5.4",
+            canvasId: "canvas-1",
+          }),
+        }),
+      );
+    });
+
+    it("Codex → Claude 切換時，原本是 gpt-5.5 的 connection 應被更新為 sonnet", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "claude" });
+      podStore.pods = [pod];
+
+      const conn = createMockConnection({
+        id: "conn-2",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "gpt-5.5" as never,
+      });
+      store.connections = [conn];
+
+      const canvasStore = useCanvasStore();
+      canvasStore.activeCanvasId = "canvas-1";
+
+      mockCreateWebSocketRequest.mockResolvedValue({
+        connection: {
+          id: "conn-2",
+          sourcePodId: "pod-src",
+          sourceAnchor: "bottom",
+          targetPodId: "pod-dst",
+          targetAnchor: "top",
+          summaryModel: "sonnet",
+        },
+      });
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            connectionId: "conn-2",
+            summaryModel: "sonnet",
+            canvasId: "canvas-1",
+          }),
+        }),
+      );
+    });
+
+    it("同 provider 內 model 仍合法時不觸發更新", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "claude" });
+      podStore.pods = [pod];
+
+      const conn = createMockConnection({
+        id: "conn-3",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
+    });
+
+    it("podId 不存在時直接返回，不執行任何操作", async () => {
+      const store = useConnectionStore();
+      const conn = createMockConnection({
+        id: "conn-4",
+        sourcePodId: "pod-src",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      await store.reconcileSummaryModelsForPod("non-existent");
+
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
+    });
+
+    it("無以該 Pod 為 source 的 connection 時不執行任何操作", async () => {
+      const store = useConnectionStore();
+      const podStore = usePodStore();
+      setupCapabilities();
+
+      const pod = createMockPod({ id: "pod-src", provider: "codex" });
+      podStore.pods = [pod];
+
+      // 這條 connection 是 pod-other 為 source，不應受影響
+      const conn = createMockConnection({
+        id: "conn-5",
+        sourcePodId: "pod-other",
+        targetPodId: "pod-dst",
+        summaryModel: "sonnet",
+      });
+      store.connections = [conn];
+
+      await store.reconcileSummaryModelsForPod("pod-src");
+
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
   });
 });

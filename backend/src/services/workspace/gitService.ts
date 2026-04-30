@@ -294,9 +294,18 @@ class GitService {
       const git = simpleGit(workspacePath);
       await git.revparse(["HEAD"]);
       return ok(true);
-    } catch {
-      // 空 repo 沒有 HEAD，這是正常情況不需要 log
-      return ok(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // 空 repo 沒有 HEAD、ambiguous argument 等情況屬正常，視為「無 commit」
+      if (
+        message.includes("ambiguous argument") ||
+        message.includes("unknown revision") ||
+        message.includes("bad revision") ||
+        message.includes("does not have any commits")
+      ) {
+        return ok(false);
+      }
+      return err(message);
     }
   }
 

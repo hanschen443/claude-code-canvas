@@ -22,6 +22,7 @@ import {
   handleWorkflowStop,
 } from "./workflowApi.js";
 import { handleDownloadPodDirectory } from "./podDownloadApi.js";
+import { handleUpload } from "./uploadApi.js";
 import { JSON_HEADERS } from "./constants.js";
 import { logger } from "../utils/logger.js";
 
@@ -126,6 +127,11 @@ const ROUTES: Route[] = [
       pathname: "/api/canvas/:id/pods/:podId/download",
     }),
     handler: handleDownloadPodDirectory,
+  },
+  {
+    method: "POST",
+    pattern: new URLPattern({ pathname: "/api/upload" }),
+    handler: handleUpload,
   },
 ];
 

@@ -6,6 +6,12 @@ import { config } from "../config/index.js";
 import { buildAuthenticatedUrl } from "./workspace/gitService.js";
 import { logger } from "../utils/logger.js";
 
+/** 確保內容結尾有換行符，方便後續追加條目 */
+function ensureNewlineSeparator(content: string): string {
+  if (content.length === 0) return "";
+  return content.endsWith("\n") ? content : content + "\n";
+}
+
 function parseBackupError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -27,6 +33,9 @@ function parseBackupError(error: unknown): string {
   return "備份推送失敗";
 }
 
+const DEFAULT_BACKUP_USER = "AgentCanvas Backup";
+const DEFAULT_BACKUP_EMAIL = "backup@agentcanvas.local";
+
 class BackupService {
   private static readonly GITIGNORE_ENTRIES = ["encryption.key"];
   private backupDir: string = config.appDataRoot;
@@ -37,9 +46,13 @@ class BackupService {
       const git = simpleGit(this.backupDir);
       const isRepo = await git.checkIsRepo();
       if (!isRepo) {
+        const backupUser =
+          process.env.AGENT_CANVAS_BACKUP_USER ?? DEFAULT_BACKUP_USER;
+        const backupEmail =
+          process.env.AGENT_CANVAS_BACKUP_EMAIL ?? DEFAULT_BACKUP_EMAIL;
         await git.init();
-        await git.addConfig("user.name", "ClaudeCanvas Backup");
-        await git.addConfig("user.email", "backup@claudecanvas.local");
+        await git.addConfig("user.name", backupUser);
+        await git.addConfig("user.email", backupEmail);
       }
       await this.ensureGitignore();
       return ok(undefined);
@@ -97,8 +110,8 @@ class BackupService {
     );
 
     if (missingEntries.length > 0) {
-      const suffix = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-      const newContent = content + suffix + missingEntries.join("\n") + "\n";
+      const newContent =
+        ensureNewlineSeparator(content) + missingEntries.join("\n") + "\n";
       await fs.writeFile(gitignorePath, newContent, "utf-8");
       logger.log(
         "Backup",
@@ -110,22 +123,26 @@ class BackupService {
 
   private async commitIfChanged(
     git: ReturnType<typeof simpleGit>,
-  ): Promise<void> {
+  ): Promise<Result<void>> {
     const timestamp = new Date().toISOString();
     try {
-      await git.commit(`ClaudeCanvas 自動備份 ${timestamp}`);
+      await git.commit(`AgentCanvas 自動備份 ${timestamp}`);
+      return ok(undefined);
     } catch (commitError) {
-      // 無檔案變更時 commit 會失敗，這不視為錯誤，繼續 push
       const commitMessage =
         commitError instanceof Error
           ? commitError.message
           : String(commitError);
+      // 沒有變更的 commit 視為正常（空 commit），允許繼續推送
       if (
-        !commitMessage.includes("nothing to commit") &&
-        !commitMessage.includes("nothing added to commit")
+        commitMessage.includes("nothing to commit") ||
+        commitMessage.includes("nothing added to commit")
       ) {
-        logger.error("Backup", "Error", "備份 commit 失敗", commitError);
+        return ok(undefined);
       }
+      // 其他 commit 失敗是真實錯誤，應阻止繼續 push
+      logger.error("Backup", "Error", "備份 commit 失敗", commitError);
+      return err("備份 commit 失敗");
     }
   }
 
@@ -144,8 +161,9 @@ class BackupService {
 
       const git = simpleGit(this.backupDir);
       await git.add("-A");
-      await this.commitIfChanged(git);
-      await git.raw(["push", "--force", "origin", "HEAD"]);
+      const commitResult = await this.commitIfChanged(git);
+      if (!commitResult.success) return commitResult;
+      await git.raw(["push", "--force-with-lease", "origin", "HEAD"]);
       return ok(undefined);
     } catch (error) {
       const errorMessage = parseBackupError(error);

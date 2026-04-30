@@ -12,12 +12,7 @@ import {
   getCanvasId,
 } from "../helpers";
 import { createConnection } from "../helpers";
-import {
-  createOutputStyle,
-  createMcpServer,
-  createMcpServerNote,
-  createRepository,
-} from "../helpers";
+import { createRepository } from "../helpers";
 import {
   WebSocketRequestEvents,
   WebSocketResponseEvents,
@@ -29,9 +24,6 @@ import {
   type PodSetSchedulePayload,
   type PodDeletePayload,
   type ConnectionListPayload,
-  type NoteCreatePayload,
-  type NoteListPayload,
-  type McpServerNoteListPayload,
   type PodBindRepositoryPayload,
 } from "../../src/schemas";
 import {
@@ -43,9 +35,6 @@ import {
   type PodScheduleSetPayload,
   type PodDeletedPayload,
   type ConnectionListResultPayload,
-  type NoteCreatedPayload,
-  type NoteListResultPayload,
-  type McpServerNoteListResultPayload,
   type PodRepositoryBoundPayload,
 } from "../../src/types";
 
@@ -67,9 +56,10 @@ describe("Pod 管理", () => {
       expect(pod.x).toBe(100);
       expect(pod.y).toBe(200);
       expect(pod.rotation).toBe(5);
-      expect(pod.workspacePath).toBeDefined();
-      expect(pod.skillIds).toEqual([]);
-      expect(pod.subAgentIds).toEqual([]);
+      // workspacePath 與 sessionId 已從 WebSocket broadcast 中移除（PodPublicView），
+      // 前端不應收到這些伺服器側敏感欄位
+      expect((pod as Record<string, unknown>).workspacePath).toBeUndefined();
+      expect((pod as Record<string, unknown>).sessionId).toBeUndefined();
     });
 
     it("新建立的 Pod 預設狀態為 idle", async () => {
@@ -273,7 +263,8 @@ describe("Pod 管理", () => {
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, "sonnet");
 
-      expect(updatedPod.model).toBe("sonnet");
+      // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
+      expect(updatedPod.providerConfig?.model).toBe("sonnet");
     });
 
     it("成功設定 Pod 模型為 Haiku", async () => {
@@ -281,7 +272,8 @@ describe("Pod 管理", () => {
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, "haiku");
 
-      expect(updatedPod.model).toBe("haiku");
+      // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
+      expect(updatedPod.providerConfig?.model).toBe("haiku");
     });
 
     it("成功設定 Pod 模型為 Opus", async () => {
@@ -289,7 +281,8 @@ describe("Pod 管理", () => {
       const pod = await createPod(client);
       const updatedPod = await setPodModel(client, pod.id, "opus");
 
-      expect(updatedPod.model).toBe("opus");
+      // Pod.model 已移除，改用 providerConfig.model 作為唯一來源
+      expect(updatedPod.providerConfig?.model).toBe("opus");
     });
 
     it("設定不存在的 Pod 模型時失敗", async () => {
@@ -359,89 +352,6 @@ describe("Pod 管理", () => {
         (c) => c.sourcePodId === podA.id || c.targetPodId === podA.id,
       );
       expect(related).toHaveLength(0);
-    });
-
-    it("刪除 Pod 時清理相關筆記", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const style = await createOutputStyle(
-        client,
-        `style-${uuidv4()}`,
-        "# Test",
-      );
-
-      const canvasId = await getCanvasId(client);
-      await emitAndWaitResponse<NoteCreatePayload, NoteCreatedPayload>(
-        client,
-        WebSocketRequestEvents.NOTE_CREATE,
-        WebSocketResponseEvents.NOTE_CREATED,
-        {
-          requestId: uuidv4(),
-          canvasId,
-          outputStyleId: style.id,
-          name: "Bound Note",
-          x: 0,
-          y: 0,
-          boundToPodId: pod.id,
-          originalPosition: null,
-        },
-      );
-
-      await emitAndWaitResponse<PodDeletePayload, PodDeletedPayload>(
-        client,
-        WebSocketRequestEvents.POD_DELETE,
-        WebSocketResponseEvents.POD_DELETED,
-        { requestId: uuidv4(), canvasId, podId: pod.id },
-      );
-
-      const listResponse = await emitAndWaitResponse<
-        NoteListPayload,
-        NoteListResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.NOTE_LIST,
-        WebSocketResponseEvents.NOTE_LIST_RESULT,
-        { requestId: uuidv4(), canvasId },
-      );
-
-      const bound = listResponse.notes!.filter(
-        (n) => n.boundToPodId === pod.id,
-      );
-      expect(bound).toHaveLength(0);
-    });
-
-    it("刪除 Pod 時清理綁定的 MCP Server Note", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const mcpServer = await createMcpServer(client, `mcp-${uuidv4()}`);
-
-      const canvasId = await getCanvasId(client);
-      await createMcpServerNote(client, mcpServer.id, {
-        boundToPodId: pod.id,
-        originalPosition: { x: 0, y: 0 },
-      });
-
-      await emitAndWaitResponse<PodDeletePayload, PodDeletedPayload>(
-        client,
-        WebSocketRequestEvents.POD_DELETE,
-        WebSocketResponseEvents.POD_DELETED,
-        { requestId: uuidv4(), canvasId, podId: pod.id },
-      );
-
-      const listResponse = await emitAndWaitResponse<
-        McpServerNoteListPayload,
-        McpServerNoteListResultPayload
-      >(
-        client,
-        WebSocketRequestEvents.MCP_SERVER_NOTE_LIST,
-        WebSocketResponseEvents.MCP_SERVER_NOTE_LIST_RESULT,
-        { requestId: uuidv4(), canvasId },
-      );
-
-      const bound = listResponse.notes!.filter(
-        (n) => n.boundToPodId === pod.id,
-      );
-      expect(bound).toHaveLength(0);
     });
 
     it("刪除不存在的 Pod 時失敗", async () => {

@@ -7,6 +7,10 @@ import type {
 } from "./types.js";
 import type { WorkflowStatusDelegate } from "./workflowStatusDelegate.js";
 import { podStore } from "../podStore.js";
+import { connectionStore } from "../connectionStore.js";
+import { socketService } from "../socketService.js";
+import { WebSocketResponseEvents } from "../../schemas/index.js";
+import type { ConnectionUpdatedPayload } from "../../types/index.js";
 import { runStore, TRIGGERABLE_STATUSES } from "../runStore.js";
 import { logger } from "../../utils/logger.js";
 import { LazyInitializable } from "./lazyInitializable.js";
@@ -36,6 +40,72 @@ interface EnqueueParams {
 }
 
 class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
+  /**
+   * 純函數：判斷 run instance 下的目標 Pod 是否可被觸發。
+   * 回傳 false 表示應跳過觸發。
+   */
+  private isRunInstanceTriggerable(
+    runContext: PipelineContext["runContext"],
+    targetPodId: string,
+  ): boolean {
+    if (!runContext) return true;
+    const targetInstance = runStore.getPodInstance(
+      runContext.runId,
+      targetPodId,
+    );
+    return !targetInstance || TRIGGERABLE_STATUSES.has(targetInstance.status);
+  }
+
+  /**
+   * lazy 修正：若 disposableChatService 因 model 不合法做了 fallback，
+   * 將合法的 resolvedModel 寫回 DB 並廣播 CONNECTION_UPDATED，
+   * 讓前端右鍵選單下次拿到合法的 model 值。
+   */
+  private reconcileSummaryModelIfNeeded(
+    canvasId: string,
+    connectionId: string,
+    connection: PipelineContext["connection"],
+    resolvedModel: string,
+  ): void {
+    if (resolvedModel === connection.summaryModel) return;
+
+    const updatedConnection = connectionStore.update(canvasId, connectionId, {
+      summaryModel: resolvedModel,
+    });
+    if (!updatedConnection) return;
+
+    const broadcastPayload: ConnectionUpdatedPayload = {
+      requestId: "",
+      canvasId,
+      success: true,
+      connection: updatedConnection,
+    };
+    socketService.emitToCanvas(
+      canvasId,
+      WebSocketResponseEvents.CONNECTION_UPDATED,
+      broadcastPayload,
+    );
+    logger.log(
+      "Workflow",
+      "Pipeline",
+      `[lazyModel] connection "${connectionId}" summaryModel 已由 "${connection.summaryModel}" 修正為 "${resolvedModel}"`,
+    );
+  }
+
+  /**
+   * 【效能說明 — fan-out 批次處理】
+   *
+   * execute() 一次僅處理「單一 connection」（一個 sourcePod → 一個 targetPod）。
+   * fan-out 場景（一個 sourcePod 觸發多個下游 targetPod）是由上層呼叫方
+   *（workflowService / triggerService 等）對每條 connection 個別呼叫 execute()。
+   *
+   * 因此「N 條 connection 在同一個 execute() 內同時修正 summaryModel 並廣播」的場景
+   * 並不存在——每次呼叫只可能有一次 DB write 與一次廣播，不需要在 execute() 內
+   * 做批次合併。
+   *
+   * 若未來上層改為在單一 execute() 內處理多條 connection，
+   * 應在此處改用 Promise.all 並行 update，再合併成一個 batch 廣播事件。
+   */
   async execute(
     context: PipelineContext,
     strategy: TriggerStrategy,
@@ -45,7 +115,6 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
     const { targetPodId, id: connectionId } = connection;
 
     const targetPod = podStore.getById(canvasId, targetPodId);
-
     if (!targetPod) {
       logger.error(
         "Workflow",
@@ -55,23 +124,22 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       return;
     }
 
-    if (runContext) {
-      const targetInstance = runStore.getPodInstance(
-        runContext.runId,
-        targetPodId,
+    if (!this.isRunInstanceTriggerable(runContext, targetPodId)) {
+      const targetInstance = runContext
+        ? runStore.getPodInstance(runContext.runId, targetPodId)
+        : null;
+      logger.log(
+        "Workflow",
+        "Pipeline",
+        `目標 Pod「${targetPod.name}」已為 ${targetInstance?.status} 狀態，跳過觸發`,
       );
-      if (targetInstance && !TRIGGERABLE_STATUSES.has(targetInstance.status)) {
-        logger.log(
-          "Workflow",
-          "Pipeline",
-          `目標 Pod「${targetPod.name}」已為 ${targetInstance.status} 狀態，跳過觸發`,
-        );
-        return;
-      }
+      return;
     }
 
-    const sourcePodName =
-      podStore.getById(canvasId, sourcePodId)?.name ?? sourcePodId;
+    const sourcePod = podStore.getById(canvasId, sourcePodId);
+    const sourcePodName = sourcePod?.name ?? sourcePodId;
+    // provider 來自 sourcePod，若找不到則預設 "claude" 確保向下相容
+    const provider = sourcePod?.provider ?? "claude";
 
     logger.log(
       "Workflow",
@@ -86,8 +154,9 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
         canvasId,
         sourcePodId,
         targetPodId,
-        runContext,
+        provider,
         connection.summaryModel,
+        runContext,
         pathway,
         delegate,
       );
@@ -99,6 +168,15 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
         `[generateSummary] 無法生成摘要或取得備用內容`,
       );
       return;
+    }
+
+    if (summaryResult.resolvedModel) {
+      this.reconcileSummaryModelIfNeeded(
+        canvasId,
+        connectionId,
+        connection,
+        summaryResult.resolvedModel,
+      );
     }
 
     const collectResult = await this.runCollectSourcesStage(
@@ -291,12 +369,26 @@ class WorkflowPipeline extends LazyInitializable<PipelineDeps> {
       getMultiInputGroupConnections(canvasId, targetPodId).length > 1;
 
     if (isMultiInput) {
+      // multi-input 路徑僅允許 "auto" 與 "ai-decide"，
+      // "direct" 不應進入此分支（direct 有自己的 collectSources 路徑）。
+      // 以 if 守門縮窄型別，避免強制斷言。
+      if (triggerMode !== "auto" && triggerMode !== "ai-decide") {
+        logger.warn(
+          "Workflow",
+          "Pipeline",
+          `[runCollectSourcesStage] 不預期的 triggerMode "${triggerMode}" 進入 multi-input 分支，跳過處理`,
+        );
+        return {
+          finalSummary: summaryContent,
+          finalIsSummarized: isSummarized,
+        };
+      }
       await this.deps.multiInputService.handleMultiInputForConnection({
         canvasId,
         sourcePodId,
         connection,
         summary: summaryContent,
-        triggerMode: triggerMode as "auto" | "ai-decide",
+        triggerMode,
         runContext: context.runContext,
       });
       return null;

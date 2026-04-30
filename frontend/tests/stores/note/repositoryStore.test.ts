@@ -34,27 +34,12 @@ describe("repositoryStore", () => {
   });
 
   describe("初始狀態", () => {
-    it("availableItems 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = useRepositoryStore();
 
       expect(store.availableItems).toEqual([]);
-    });
-
-    it("notes 應為空陣列", () => {
-      const store = useRepositoryStore();
-
       expect(store.notes).toEqual([]);
-    });
-
-    it("isLoading 應為 false", () => {
-      const store = useRepositoryStore();
-
       expect(store.isLoading).toBe(false);
-    });
-
-    it("error 應為 null", () => {
-      const store = useRepositoryStore();
-
       expect(store.error).toBeNull();
     });
   });
@@ -548,7 +533,6 @@ describe("repositoryStore", () => {
           force: false,
         }),
       );
-      expect(result).toHaveProperty("requestId");
       expect(typeof result.requestId).toBe("string");
     });
 
@@ -677,7 +661,6 @@ describe("repositoryStore", () => {
           repositoryId: "repo-1",
         }),
       );
-      expect(result).toHaveProperty("requestId");
       expect(typeof result.requestId).toBe("string");
     });
 

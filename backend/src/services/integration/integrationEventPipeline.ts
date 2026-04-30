@@ -4,24 +4,52 @@ import { executeStreamingChat } from "../claude/streamingChatExecutor.js";
 import { logger } from "../../utils/logger.js";
 import { fireAndForget } from "../../utils/operationHelpers.js";
 import { workflowExecutionService } from "../workflow/index.js";
-import { shouldSendBusyReply } from "../../utils/busyChatManager.js";
+import {
+  shouldSendBusyReply,
+  BUSY_REPLY_COOLDOWN_MS,
+} from "../../utils/busyChatManager.js";
 import { isWorkflowChainBusy } from "../../utils/workflowChainTraversal.js";
 import { integrationRegistry } from "./integrationRegistry.js";
 import type { NormalizedEvent } from "./types.js";
 import { shouldFilterJiraEvent } from "./providers/jiraProvider.js";
 import { isPodBusy } from "../../types/index.js";
-import {
-  injectUserMessage,
-  buildDisplayContentWithCommand,
-} from "../../utils/chatHelpers.js";
+import { injectUserMessage } from "../../utils/chatHelpers.js";
 import { launchMultiInstanceRun } from "../../utils/runChatHelpers.js";
 import { onRunChatComplete } from "../../utils/chatCallbacks.js";
+import { tryExpandCommandMessage } from "../commandExpander.js";
 import {
   replyContextStore,
   buildReplyContextKey,
   setReplyContextIfPresent,
 } from "./replyContextStore.js";
 import { NormalModeExecutionStrategy } from "../normalExecutionStrategy.js";
+
+/**
+ * Integration event.text 長度上限（字元數）。
+ * 超過此限制時截斷並記 log warning，避免惡意長訊息灌版或佔用 LLM context window。
+ */
+const MAX_EVENT_TEXT_LENGTH = 8000;
+
+/**
+ * 依 Provider 與 eventFilter 過濾綁定的 Pod 清單。
+ * 目前僅 Jira 需要特殊過濾邏輯；其他 Provider 直接回傳原始清單。
+ */
+function filterPodsByProvider(
+  provider: string,
+  appId: string,
+  event: NormalizedEvent,
+  pods: Array<{ canvasId: string; pod: Pod }>,
+): Array<{ canvasId: string; pod: Pod }> {
+  if (provider !== "jira") {
+    return pods;
+  }
+
+  return pods.filter(({ pod }) => {
+    const binding = pod.integrationBindings?.find((b) => b.appId === appId);
+    const eventFilter = binding?.extra?.["eventFilter"] as string | undefined;
+    return !shouldFilterJiraEvent(eventFilter, event.rawEvent);
+  });
+}
 
 class IntegrationEventPipeline {
   private busyReplyCooldowns = new Map<string, number>();
@@ -57,19 +85,13 @@ class IntegrationEventPipeline {
       return;
     }
 
-    // 針對 Jira 事件依各 Pod 的 eventFilter 過濾
-    const filteredPods =
-      provider === "jira"
-        ? boundPods.filter(({ pod }) => {
-            const binding = pod.integrationBindings?.find(
-              (b) => b.appId === appId,
-            );
-            const eventFilter = binding?.extra?.["eventFilter"] as
-              | string
-              | undefined;
-            return !shouldFilterJiraEvent(eventFilter, event.rawEvent);
-          })
-        : boundPods;
+    // 依 Provider 的特定過濾規則（目前 Jira 依各 Pod 的 eventFilter 過濾）
+    const filteredPods = filterPodsByProvider(
+      provider,
+      appId,
+      event,
+      boundPods,
+    );
 
     if (filteredPods.length === 0) return;
 
@@ -101,11 +123,23 @@ class IntegrationEventPipeline {
   ): void {
     if (this.shouldReplyBusy(normalPods, multiInstancePods)) {
       const cooldownKey = `${appId}:${event.resourceId}`;
+      // 順手清除已過期的 cooldown key，防止 Map 無限成長
+      this.evictExpiredCooldowns();
       if (shouldSendBusyReply(this.busyReplyCooldowns, cooldownKey)) {
         this.sendAckReply(provider, appId, event, "目前忙碌中，請稍後再試");
       }
     } else {
       this.sendAckReply(provider, appId, event, "已接收到命令");
+    }
+  }
+
+  /** 清除 busyReplyCooldowns 中所有超過冷卻期的 key，避免 Map 無限成長 */
+  private evictExpiredCooldowns(): void {
+    const now = Date.now();
+    for (const [key, lastReplyTime] of this.busyReplyCooldowns) {
+      if (now - lastReplyTime >= BUSY_REPLY_COOLDOWN_MS) {
+        this.busyReplyCooldowns.delete(key);
+      }
     }
   }
 
@@ -251,12 +285,40 @@ class IntegrationEventPipeline {
     if (!currentPod) return;
 
     const podName = currentPod.name;
-    const displayText = buildDisplayContentWithCommand(
-      event.text,
-      currentPod.commandId ?? null,
-    );
 
-    await injectUserMessage({ canvasId, podId, content: displayText });
+    // 長度上限檢查：超過 MAX_EVENT_TEXT_LENGTH 時截斷並記 warn，避免惡意長訊息灌版。
+    // 注意：必須先截斷再展開 Command，否則 <command> 標籤可能被截斷切爛。
+    let textToInject = event.text;
+    if (textToInject.length > MAX_EVENT_TEXT_LENGTH) {
+      logger.warn(
+        "Integration",
+        "Warn",
+        `[IntegrationEventPipeline] event.text 超過長度上限（${textToInject.length} > ${MAX_EVENT_TEXT_LENGTH}），截斷後注入（provider=${event.provider}, podId=${podId}）`,
+      );
+      textToInject = textToInject.slice(0, MAX_EVENT_TEXT_LENGTH);
+    }
+
+    // 在 inject 與 executeStreamingChat 之前先展開 Command，
+    // 確保歷史記錄與送進 LLM 的訊息一致（不一致為原 bug）。
+    const expandResult = await tryExpandCommandMessage(
+      currentPod,
+      textToInject,
+      "integrationEventPipeline",
+    );
+    if (!expandResult.ok) {
+      // 背景觸發路徑無 UI 推送通道，僅記 warn 並終止本次 inject 流程
+      logger.warn(
+        "Integration",
+        "Warn",
+        `[IntegrationEventPipeline] Pod「${podName}」綁定的 Command「${expandResult.commandId}」不存在，跳過此次注入（provider=${event.provider}, podId=${podId}）`,
+      );
+      return;
+    }
+
+    // tryExpandCommandMessage 對 string 輸入回傳 string，型別在此已收斂
+    const resolvedMessage = expandResult.message;
+
+    await injectUserMessage({ canvasId, podId, content: resolvedMessage });
 
     logger.log(
       "Integration",
@@ -282,7 +344,13 @@ class IntegrationEventPipeline {
 
     try {
       await executeStreamingChat(
-        { canvasId, podId, message: event.text, abortable: false, strategy },
+        {
+          canvasId,
+          podId,
+          message: resolvedMessage,
+          abortable: false,
+          strategy,
+        },
         { onComplete },
       );
     } catch (error) {
@@ -304,18 +372,12 @@ class IntegrationEventPipeline {
     event: NormalizedEvent,
   ): Promise<void> {
     let replyKey: string | undefined;
-    const currentPod = podStore.getById(canvasId, podId);
-    const displayMessage = buildDisplayContentWithCommand(
-      event.text,
-      currentPod?.commandId ?? null,
-    );
 
     try {
       await launchMultiInstanceRun({
         canvasId,
         podId,
         message: event.text,
-        displayMessage,
         abortable: false,
         onRunContextCreated: (runContext) => {
           replyKey = buildReplyContextKey(runContext, podId);
@@ -332,6 +394,7 @@ class IntegrationEventPipeline {
         `[IntegrationEventPipeline] Pod「${podId}」multiInstance Run 執行失敗`,
         error,
       );
+      throw error;
     } finally {
       if (replyKey) {
         replyContextStore.delete(replyKey);

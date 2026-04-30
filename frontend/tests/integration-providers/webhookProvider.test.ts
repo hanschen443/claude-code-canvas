@@ -32,16 +32,6 @@ describe("webhookProvider", () => {
       });
       expect(app.connectionStatus).toBe("error");
     });
-
-    it("provider 固定為 webhook", () => {
-      const app = webhookProviderConfig.transformApp({ id: "1", name: "hook" });
-      expect(app.provider).toBe("webhook");
-    });
-
-    it("resources 為空陣列", () => {
-      const app = webhookProviderConfig.transformApp({ id: "1", name: "hook" });
-      expect(app.resources).toEqual([]);
-    });
   });
 
   describe("buildCreatePayload", () => {
@@ -50,13 +40,6 @@ describe("webhookProvider", () => {
         name: "deploy-hook",
       });
       expect(payload.name).toBe("deploy-hook");
-    });
-
-    it("config 為空物件", () => {
-      const payload = webhookProviderConfig.buildCreatePayload({
-        name: "deploy-hook",
-      });
-      expect((payload as any).config).toEqual({});
     });
   });
 

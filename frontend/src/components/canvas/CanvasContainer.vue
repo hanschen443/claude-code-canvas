@@ -5,7 +5,6 @@ import { useDeleteSelection } from "@/composables/canvas";
 import { useRemoteCursors } from "@/composables/canvas/useRemoteCursors";
 import { useCursorTracker } from "@/composables/canvas/useCursorTracker";
 import { useEditModal } from "@/composables/canvas/useEditModal";
-import { useMcpServerModal } from "@/composables/canvas/useMcpServerModal";
 import { useDeleteResource } from "@/composables/canvas/useDeleteResource";
 import { useCanvasProgressTasks } from "@/composables/canvas/useCanvasProgressTasks";
 import { useCanvasContextMenus } from "@/composables/canvas/useCanvasContextMenus";
@@ -28,13 +27,15 @@ import CreateRepositoryModal from "./CreateRepositoryModal.vue";
 import CloneRepositoryModal from "./CloneRepositoryModal.vue";
 import ConfirmDeleteModal from "./ConfirmDeleteModal.vue";
 import CreateEditModal from "./CreateEditModal.vue";
-import McpServerModal from "./McpServerModal.vue";
 import IntegrationConnectModal from "@/components/integration/IntegrationConnectModal.vue";
-import type { Pod, PodTypeConfig, Position, McpServerConfig } from "@/types";
+import type { Pod, PodTypeConfig, Position } from "@/types";
+import type { PodProvider, ProviderConfig } from "@/types/pod";
 import {
   POD_MENU_X_OFFSET,
   POD_MENU_Y_OFFSET,
   DEFAULT_POD_ROTATION_RANGE,
+  POD_WIDTH,
+  POD_HEIGHT,
 } from "@/lib/constants";
 import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
 import { useIntegrationStore } from "@/stores/integrationStore";
@@ -43,12 +44,8 @@ const {
   podStore,
   viewportStore,
   selectionStore,
-  outputStyleStore,
-  skillStore,
-  subAgentStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
 } = useCanvasContext();
 
@@ -81,16 +78,7 @@ const {
   handleOpenCreateGroupModal,
   handleOpenEditModal,
   handleCreateEditSubmit,
-} = useEditModal(
-  { outputStyleStore, subAgentStore, commandStore, viewportStore },
-  lastMenuPosition,
-);
-
-const {
-  mcpServerModal,
-  handleOpenMcpServerModal: openMcpServerModal,
-  handleMcpServerModalSubmit: submitMcpServerModal,
-} = useMcpServerModal({ viewportStore, lastMenuPosition });
+} = useEditModal({ commandStore, viewportStore }, lastMenuPosition);
 
 const {
   showDeleteModal,
@@ -100,12 +88,8 @@ const {
   handleOpenDeleteGroupModal,
   handleConfirmDelete: handleDeleteConfirm,
 } = useDeleteResource({
-  outputStyleStore,
-  skillStore,
-  subAgentStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
 });
 
 const { allProgressTasks, handleCloneStarted, handlePullStarted } =
@@ -128,26 +112,60 @@ const {
   showTrashZone,
   isTrashHighlighted,
   isCanvasEmpty,
-  handleCreateOutputStyleNote,
-  handleCreateSkillNote,
-  handleCreateSubAgentNote,
   handleCreateRepositoryNote,
   handleCreateCommandNote,
-  handleCreateMcpServerNote,
   getRepositoryBranchName,
   handleNoteDoubleClick,
 } = useCanvasNoteHandlers({
   podStore,
   viewportStore,
-  outputStyleStore,
-  skillStore,
-  subAgentStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   trashZoneRef,
   handleOpenEditModal,
-  mcpServerModal,
+});
+
+/**
+ * 視口虛擬化：只渲染當前視口範圍（含 buffer）內的 Pod，
+ * 避免 50+ Pod 時全部保留在 DOM 耗用記憶體與 layout 資源。
+ *
+ * 選擇此方案（v-for 過濾）而非 v-show，原因：
+ *   - ConnectionLine 的座標計算完全依賴 Pod 資料（pod.x, pod.y, pod.rotation），
+ *     不依賴 DOM 元件實例，因此連線不受 Pod unmount 影響。
+ *   - selection、minimap 等功能仍走 podStore.pods 全集，不受影響。
+ *   - v-if 真正移除 DOM，可節省記憶體與渲染成本；v-show 僅隱藏，無法達到此效果。
+ */
+const VIEWPORT_BUFFER_RATIO = 0.5;
+
+const visiblePods = computed(() => {
+  const { offset, zoom } = viewportStore;
+
+  // 視窗尺寸（螢幕座標）
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+
+  // 加上 buffer，避免 Pod 剛進入邊緣時閃爍
+  const bufferX = screenW * VIEWPORT_BUFFER_RATIO;
+  const bufferY = screenH * VIEWPORT_BUFFER_RATIO;
+
+  // 將帶有 buffer 的螢幕邊界轉換為 canvas 座標系
+  const canvasLeft = (-offset.x - bufferX) / zoom;
+  const canvasTop = (-offset.y - bufferY) / zoom;
+  const canvasRight = (-offset.x + screenW + bufferX) / zoom;
+  const canvasBottom = (-offset.y + screenH + bufferY) / zoom;
+
+  return podStore.pods.filter((pod) => {
+    // 使用 Pod 的 AABB（忽略旋轉以求簡單，旋轉後邊界略大也在 buffer 容許範圍內）
+    const podRight = pod.x + POD_WIDTH;
+    const podBottom = pod.y + POD_HEIGHT;
+
+    return (
+      podRight >= canvasLeft &&
+      pod.x <= canvasRight &&
+      podBottom >= canvasTop &&
+      pod.y <= canvasBottom
+    );
+  });
 });
 
 const handleContextMenu = (e: MouseEvent): void => {
@@ -172,12 +190,8 @@ const handleCanvasClick = (e: MouseEvent): void => {
   const ignoredSelectors = [
     ".connection-line",
     ".pod-doodle",
-    ".output-style-note",
-    ".skill-note",
-    ".subagent-note",
     ".repository-note",
     ".command-note",
-    ".mcp-server-note",
   ];
   if (ignoredSelectors.some((selector) => target.closest(selector))) {
     return;
@@ -191,7 +205,11 @@ const handleCanvasClick = (e: MouseEvent): void => {
   connectionStore.selectConnection(null);
 };
 
-const handleSelectType = async (_config: PodTypeConfig): Promise<void> => {
+const handleSelectType = async (
+  _config: PodTypeConfig,
+  provider: PodProvider,
+  providerConfig: ProviderConfig,
+): Promise<void> => {
   if (!podStore.typeMenu.position) return;
 
   const { x: canvasX, y: canvasY } = screenToCanvasPosition(
@@ -207,6 +225,9 @@ const handleSelectType = async (_config: PodTypeConfig): Promise<void> => {
     y: canvasY - POD_MENU_Y_OFFSET,
     output: [],
     rotation: Math.round(rotation * 10) / 10,
+    multiInstance: false,
+    provider,
+    providerConfig,
   };
 
   podStore.hideTypeMenu();
@@ -288,19 +309,29 @@ const withMenuPosition = <T extends (...args: never[]) => unknown>(
   }) as T;
 };
 
-const handleMcpServerModalSubmit = async (payload: {
-  name: string;
-  config: McpServerConfig;
-}): Promise<void> => {
-  await submitMcpServerModal(payload, mcpServerStore);
-};
-
 const wrappedHandleOpenCreateModal = withMenuPosition(handleOpenCreateModal);
 const wrappedHandleOpenCreateGroupModal = withMenuPosition(
   handleOpenCreateGroupModal,
 );
 const wrappedHandleOpenEditModal = withMenuPosition(handleOpenEditModal);
-const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
+
+/** 處理 PodTypeMenu 的統一 create-note 事件，依 type 分派至對應的 note 建立函式 */
+const handleCreateNote = (payload: { type: string; id: string }): void => {
+  if (payload.type === "repository") {
+    handleCreateRepositoryNote(payload.id);
+  } else if (payload.type === "command") {
+    handleCreateCommandNote(payload.id);
+  }
+};
+
+/** 處理 PodTypeMenu 的統一 open-modal 事件，依 type 分派至對應的 Modal 開啟函式 */
+const handleOpenModal = (payload: { type: string }): void => {
+  if (payload.type === "createRepository") {
+    handleOpenCreateRepositoryModal();
+  } else if (payload.type === "cloneRepository") {
+    handleOpenCloneRepositoryModal();
+  }
+};
 </script>
 
 <template>
@@ -313,8 +344,9 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
 
     <SelectionBox />
 
+    <!-- 視口虛擬化：只渲染可見範圍（含 buffer）內的 Pod，詳見 visiblePods computed -->
     <CanvasPod
-      v-for="pod in podStore.pods"
+      v-for="pod in visiblePods"
       :key="pod.id"
       :pod="pod"
       @select="handleSelectPod"
@@ -323,38 +355,6 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
       @drag-end="handleDragEnd"
       @drag-complete="handlePodDragComplete"
       @contextmenu="handlePodContextMenu"
-    />
-
-    <GenericNote
-      v-for="note in outputStyleStore.getUnboundNotes"
-      :key="note.id"
-      :note="note"
-      note-type="outputStyle"
-      @drag-end="noteHandlerMap.outputStyle.handleDragEnd"
-      @drag-move="noteHandlerMap.outputStyle.handleDragMove"
-      @drag-complete="noteHandlerMap.outputStyle.handleDragComplete"
-      @dblclick="handleNoteDoubleClick"
-    />
-
-    <GenericNote
-      v-for="note in skillStore.getUnboundNotes"
-      :key="note.id"
-      :note="note"
-      note-type="skill"
-      @drag-end="noteHandlerMap.skill.handleDragEnd"
-      @drag-move="noteHandlerMap.skill.handleDragMove"
-      @drag-complete="noteHandlerMap.skill.handleDragComplete"
-    />
-
-    <GenericNote
-      v-for="note in subAgentStore.getUnboundNotes"
-      :key="note.id"
-      :note="note"
-      note-type="subAgent"
-      @drag-end="noteHandlerMap.subAgent.handleDragEnd"
-      @drag-move="noteHandlerMap.subAgent.handleDragMove"
-      @drag-complete="noteHandlerMap.subAgent.handleDragComplete"
-      @dblclick="handleNoteDoubleClick"
     />
 
     <GenericNote
@@ -380,17 +380,6 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
       @dblclick="handleNoteDoubleClick"
     />
 
-    <GenericNote
-      v-for="note in mcpServerStore.getUnboundNotes"
-      :key="note.id"
-      :note="note"
-      note-type="mcpServer"
-      @drag-end="noteHandlerMap.mcpServer.handleDragEnd"
-      @drag-move="noteHandlerMap.mcpServer.handleDragMove"
-      @drag-complete="noteHandlerMap.mcpServer.handleDragComplete"
-      @dblclick="handleNoteDoubleClick"
-    />
-
     <EmptyState v-if="isCanvasEmpty" />
   </CanvasViewport>
 
@@ -402,21 +391,14 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
     v-if="podStore.typeMenu.visible && podStore.typeMenu.position"
     :position="podStore.typeMenu.position"
     @select="handleSelectType"
-    @create-output-style-note="handleCreateOutputStyleNote"
-    @create-skill-note="handleCreateSkillNote"
-    @create-subagent-note="handleCreateSubAgentNote"
-    @create-repository-note="handleCreateRepositoryNote"
-    @create-command-note="handleCreateCommandNote"
-    @create-mcp-server-note="handleCreateMcpServerNote"
-    @open-mcp-server-modal="handleOpenMcpServerModal"
+    @create-note="handleCreateNote"
+    @open-modal="handleOpenModal"
     @clone-started="handleCloneStarted"
     @open-create-modal="wrappedHandleOpenCreateModal"
     @open-create-group-modal="wrappedHandleOpenCreateGroupModal"
     @open-edit-modal="wrappedHandleOpenEditModal"
     @open-delete-modal="handleOpenDeleteModal"
     @open-delete-group-modal="handleOpenDeleteGroupModal"
-    @open-create-repository-modal="handleOpenCreateRepositoryModal"
-    @open-clone-repository-modal="handleOpenCloneRepositoryModal"
     @close="podStore.hideTypeMenu"
   />
 
@@ -473,7 +455,7 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
     v-model:open="showDeleteModal"
     :item-name="deleteTarget?.name ?? ''"
     :is-in-use="isDeleteTargetInUse"
-    :item-type="deleteTarget?.type ?? 'outputStyle'"
+    :item-type="deleteTarget?.type ?? 'repository'"
     @confirm="handleDeleteConfirm"
   />
 
@@ -486,14 +468,6 @@ const handleOpenMcpServerModal = withMenuPosition(openMcpServerModal);
     :name-editable="editModal.mode === 'create'"
     :show-content="editModal.showContent"
     @submit="handleCreateEditSubmit"
-  />
-
-  <McpServerModal
-    v-model:open="mcpServerModal.visible"
-    :mode="mcpServerModal.mode"
-    :initial-name="mcpServerModal.initialName"
-    :initial-config="mcpServerModal.initialConfig"
-    @submit="handleMcpServerModalSubmit"
   />
 
   <IntegrationConnectModal

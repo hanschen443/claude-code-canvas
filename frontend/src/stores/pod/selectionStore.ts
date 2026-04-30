@@ -7,13 +7,7 @@ import {
   NOTE_HEIGHT,
 } from "@/lib/constants";
 
-export type NoteType =
-  | "outputStyleNote"
-  | "skillNote"
-  | "repositoryNote"
-  | "subAgentNote"
-  | "commandNote"
-  | "mcpServerNote";
+export type NoteType = "repositoryNote" | "commandNote";
 
 type SelectionBox = { minX: number; maxX: number; minY: number; maxY: number };
 
@@ -99,14 +93,20 @@ export interface CalculateSelectionParams {
   noteGroups: Array<{ notes: BaseNote[]; type: NoteType }>;
 }
 
+interface SelectionStateInternal extends SelectionState {
+  /** 內部同步維護的 Set 索引，避免 selectedElementSet getter 每次讀取重建 Set */
+  _selectedElementSet: Set<string>;
+}
+
 export const useSelectionStore = defineStore("selection", {
-  state: (): SelectionState => ({
+  state: (): SelectionStateInternal => ({
     isSelecting: false,
     box: null,
     selectedElements: [],
     boxSelectJustEnded: false,
     isCtrlMode: false,
     initialSelectedElements: [],
+    _selectedElementSet: new Set<string>(),
   }),
 
   getters: {
@@ -117,28 +117,10 @@ export const useSelectionStore = defineStore("selection", {
       selectIdsByType(state.selectedElements, "pod"),
 
     /**
-     * 取得選中的 OutputStyleNote ID 列表
-     */
-    selectedOutputStyleNoteIds: (state): string[] =>
-      selectIdsByType(state.selectedElements, "outputStyleNote"),
-
-    /**
-     * 取得選中的 SkillNote ID 列表
-     */
-    selectedSkillNoteIds: (state): string[] =>
-      selectIdsByType(state.selectedElements, "skillNote"),
-
-    /**
      * 取得選中的 RepositoryNote ID 列表
      */
     selectedRepositoryNoteIds: (state): string[] =>
       selectIdsByType(state.selectedElements, "repositoryNote"),
-
-    /**
-     * 取得選中的 SubAgentNote ID 列表
-     */
-    selectedSubAgentNoteIds: (state): string[] =>
-      selectIdsByType(state.selectedElements, "subAgentNote"),
 
     /**
      * 取得選中的 CommandNote ID 列表
@@ -147,21 +129,15 @@ export const useSelectionStore = defineStore("selection", {
       selectIdsByType(state.selectedElements, "commandNote"),
 
     /**
-     * 取得選中的 McpServerNote ID 列表
-     */
-    selectedMcpServerNoteIds: (state): string[] =>
-      selectIdsByType(state.selectedElements, "mcpServerNote"),
-
-    /**
      * 是否有選中的元素
      */
     hasSelection: (state): boolean => state.selectedElements.length > 0,
 
     /**
-     * 選中元素的 Set 索引（從 selectedElements 衍生，O(1) 查找）
+     * 選中元素的 Set 索引（O(1) 讀取，由各 mutation 同步維護）
      */
     selectedElementSet: (state): Set<string> =>
-      buildElementSet(state.selectedElements),
+      (state as SelectionStateInternal)._selectedElementSet,
 
     /**
      * 檢查元素是否已選取（O(1) 查找）
@@ -175,6 +151,14 @@ export const useSelectionStore = defineStore("selection", {
 
   actions: {
     /**
+     * 以新的 elements 陣列同步重建內部 _selectedElementSet。
+     * 所有會替換 selectedElements 的路徑都必須呼叫此函式，確保 Set 與陣列保持同步。
+     */
+    _syncSet(elements: SelectableElement[]): void {
+      this._selectedElementSet = buildElementSet(elements);
+    },
+
+    /**
      * 開始框選
      */
     startSelection(
@@ -187,10 +171,13 @@ export const useSelectionStore = defineStore("selection", {
       this.isCtrlMode = isCtrlPressed;
 
       if (isCtrlPressed) {
+        // Ctrl 模式：保留現有選取作為 initialSelectedElements，_selectedElementSet 不需重建
         this.initialSelectedElements = [...this.selectedElements];
       } else {
+        // 非 Ctrl 模式：清空選取，同步重建 _selectedElementSet
         this.selectedElements = [];
         this.initialSelectedElements = [];
+        this._syncSet([]);
       }
     },
 
@@ -235,6 +222,7 @@ export const useSelectionStore = defineStore("selection", {
       this.isSelecting = false;
       this.box = null;
       this.selectedElements = [];
+      this._syncSet([]);
     },
 
     /**
@@ -242,22 +230,27 @@ export const useSelectionStore = defineStore("selection", {
      */
     setSelectedElements(elements: SelectableElement[]): void {
       this.selectedElements = elements;
+      this._syncSet(elements);
     },
 
     /**
      * Toggle 元素選取狀態
      */
     toggleElement(element: SelectableElement): void {
+      const key = toElementKey(element.type, element.id);
       const index = this.selectedElements.findIndex(
         (el) => el.type === element.type && el.id === element.id,
       );
 
       if (index !== -1) {
         this.selectedElements.splice(index, 1);
+        this._selectedElementSet.delete(key);
       } else {
         this.selectedElements.push(element);
+        this._selectedElementSet.add(key);
       }
     },
+
     calculateSelectedElements(params: CalculateSelectionParams): void {
       if (!this.box) return;
 
@@ -273,9 +266,12 @@ export const useSelectionStore = defineStore("selection", {
         ...findNotesInSelectionBox(params.noteGroups, box),
       ];
 
-      this.selectedElements = this.isCtrlMode
+      const next = this.isCtrlMode
         ? applyCtrlModeToggle(this.initialSelectedElements, selected)
         : selected;
+
+      this.selectedElements = next;
+      this._syncSet(next);
     },
   },
 });

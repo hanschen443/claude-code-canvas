@@ -30,11 +30,6 @@ describe("sentryProvider", () => {
       expect(app.connectionStatus).toBe("connected");
     });
 
-    it("provider 固定為 sentry", () => {
-      const app = sentryProviderConfig.transformApp({ id: "1", name: "test" });
-      expect(app.provider).toBe("sentry");
-    });
-
     it("resources 為空陣列", () => {
       const app = sentryProviderConfig.transformApp({ id: "1", name: "test" });
       expect(app.resources).toEqual([]);

@@ -21,15 +21,29 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runQueueService } from "../../src/services/workflow/runQueueService.js";
 import { runStore } from "../../src/services/runStore.js";
 import { logger } from "../../src/utils/logger.js";
-import {
-  createMockRunContext,
-  TEST_IDS,
-} from "../mocks/workflowTestFactories.js";
 import { buildRunQueueKey } from "../../src/services/workflow/workflowHelpers.js";
 import type { RunQueueItem } from "../../src/services/workflow/runQueueService.js";
+import type { RunContext } from "../../src/types/run.js";
 
-const { canvasId, targetPodId, sourcePodId, connectionId } = TEST_IDS;
-const mockRunContext = createMockRunContext();
+// ─── 常數（本地定義，不依賴工廠檔）────────────────────────────────────────────
+
+const canvasId = "canvas-1";
+const sourcePodId = "source-pod";
+const targetPodId = "target-pod";
+const connectionId = "conn-1";
+
+// ─── 工廠函式 ─────────────────────────────────────────────────────────────────
+
+function makeRunContext(overrides?: Partial<RunContext>): RunContext {
+  return {
+    runId: "test-run-id",
+    canvasId,
+    sourcePodId,
+    ...overrides,
+  };
+}
+
+const mockRunContext = makeRunContext();
 
 const mockQueuedPodInstance = vi.fn();
 const mockHasActiveStream = vi.fn().mockReturnValue(false);
@@ -174,7 +188,7 @@ describe("RunQueueService", () => {
 
   describe("不同 runId:podId 的佇列互相獨立", () => {
     it("兩個不同 key 的佇列各自獨立", () => {
-      const otherRunContext = createMockRunContext({ runId: "other-run" });
+      const otherRunContext = makeRunContext({ runId: "other-run" });
 
       runQueueService.enqueue(createQueueItem({ runContext: mockRunContext }));
       runQueueService.enqueue(createQueueItem({ runContext: otherRunContext }));

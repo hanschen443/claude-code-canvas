@@ -184,13 +184,14 @@ class CanvasStore {
 
     const transaction = getDb().transaction(() => {
       const allCanvases = this.stmts.canvas.selectAll.all() as CanvasRow[];
+      const canvasMap = new Map(
+        allCanvases.map((canvas) => [canvas.id, canvas]),
+      );
       const reorderedSet = new Set(canvasIds);
       const notReordered = allCanvases.filter(
         (canvas) => !reorderedSet.has(canvas.id),
       );
-      const reordered = canvasIds.map(
-        (canvasId) => allCanvases.find((canvas) => canvas.id === canvasId)!,
-      );
+      const reordered = canvasIds.map((canvasId) => canvasMap.get(canvasId)!);
       const finalOrder = [...reordered, ...notReordered];
       finalOrder.forEach((canvas, index) => {
         this.stmts.canvas.updateSortIndex.run({

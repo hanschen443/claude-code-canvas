@@ -25,7 +25,7 @@ export class NormalModeExecutionStrategy implements ExecutionStrategy {
 
   getSessionId(podId: string): string | undefined {
     const result = podStore.getByIdGlobal(podId);
-    return result?.pod.claudeSessionId ?? undefined;
+    return result?.pod.sessionId ?? undefined;
   }
 
   getQueryKey(podId: string): string {
@@ -56,7 +56,7 @@ export class NormalModeExecutionStrategy implements ExecutionStrategy {
   onStreamComplete(podId: string, sessionId: string | undefined): void {
     podStore.setStatus(this.canvasId, podId, "idle");
     if (sessionId) {
-      podStore.setClaudeSessionId(this.canvasId, podId, sessionId);
+      podStore.setSessionId(this.canvasId, podId, sessionId);
     }
   }
 

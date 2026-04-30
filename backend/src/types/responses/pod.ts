@@ -1,25 +1,25 @@
-import type { Pod, PodStatus } from "../pod.js";
+import type { PodPublicView, PodStatus } from "../pod.js";
 import type { MessageRole } from "../message.js";
 
 export interface PodCreatedPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
 export interface PodListResultPayload {
   requestId: string;
   success: boolean;
-  pods?: Pod[];
+  pods?: PodPublicView[];
   error?: string;
 }
 
 export interface PodGetResultPayload {
   requestId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -27,7 +27,7 @@ export interface PodMovedPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -35,7 +35,7 @@ export interface PodRenamedPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   podId?: string;
   name?: string;
   error?: string;
@@ -45,7 +45,7 @@ export interface PodModelSetPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -53,9 +53,28 @@ export interface PodScheduleSetPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
+
+/** Pod plugin 設定結果（discriminated union，以 success 欄位區分兩條路徑） */
+export type PodPluginsSetPayload =
+  | {
+      requestId: string;
+      canvasId: string;
+      success: true;
+      pod?: PodPublicView;
+      /** self-healing 過濾掉的 plugin ID 清單（未安裝的 plugin） */
+      ignoredIds: string[];
+    }
+  | {
+      requestId: string;
+      canvasId: string;
+      podId?: string;
+      success: false;
+      /** pod-busy：Pod 正忙碌，無法修改 plugin 設定 */
+      reason: "pod-busy";
+    };
 
 export interface PodDeletedPayload {
   requestId: string;
@@ -63,12 +82,8 @@ export interface PodDeletedPayload {
   success: boolean;
   podId?: string;
   deletedNoteIds?: {
-    note?: string[];
-    skillNote?: string[];
     repositoryNote?: string[];
     commandNote?: string[];
-    subAgentNote?: string[];
-    mcpServerNote?: string[];
   };
   error?: string;
 }
@@ -143,35 +158,11 @@ export interface PodErrorPayload {
   code: string;
 }
 
-export interface PodOutputStyleBoundPayload {
-  requestId: string;
-  canvasId: string;
-  success: boolean;
-  pod?: Pod;
-  error?: string;
-}
-
-export interface PodOutputStyleUnboundPayload {
-  requestId: string;
-  canvasId: string;
-  success: boolean;
-  pod?: Pod;
-  error?: string;
-}
-
-export interface PodSkillBoundPayload {
-  requestId: string;
-  canvasId: string;
-  success: boolean;
-  pod?: Pod;
-  error?: string;
-}
-
 export interface PodRepositoryBoundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -179,15 +170,7 @@ export interface PodRepositoryUnboundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
-  error?: string;
-}
-
-export interface PodSubAgentBoundPayload {
-  requestId: string;
-  canvasId: string;
-  success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -195,7 +178,7 @@ export interface PodMultiInstanceSetPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -203,7 +186,7 @@ export interface PodCommandBoundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 
@@ -211,7 +194,7 @@ export interface PodCommandUnboundPayload {
   requestId: string;
   canvasId: string;
   success: boolean;
-  pod?: Pod;
+  pod?: PodPublicView;
   error?: string;
 }
 

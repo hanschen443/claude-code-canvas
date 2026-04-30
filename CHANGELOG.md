@@ -1,5 +1,160 @@
 # Changelog
 
+## [1.1.5] - 2026-04-29
+
+### 新增
+- 拖曳檔案到 Pod 顯示真實上傳進度條與檔案數量
+- 上傳中對聊天區、右鍵選單、連線把手、刪除按鈕進行操作限制（Pod 仍可拖移）
+- 部分檔案上傳失敗時其他檔案繼續上傳，失敗檔依錯誤碼顯示具體原因並支援重試
+- Pod Plugins/MCPs popover 加入搜尋與 ScrollArea
+
+### 修正
+- pluginScanner 測試在 CI 跨平台失敗
+- McpPopover 載入失敗訊息改善（不再誤導為「尚未安裝」）
+- 錯誤訊息不再直接洩漏後端訊息
+
+### 優化
+- 測試架構重構 Phase 1-4：淘汰 mock-only handler、改用真實作、合併重複測試用例
+  - 後端：刪除 25 檔 mock-only handler/api、用真 SQLite + 真 store 全面重寫高 mock 密度測試
+  - 前端：刪除 3 檔無價值測試、podStore/connectionStore 改 mock 邊界、移除自家 store/composable/子元件 mock
+- Pod popover toggle 清單組裝改用純函式，流程更清晰
+- menus.css 抽出共用 action 按鈕與搜尋框基底樣式
+- pluginScanner 測試改用 tmp dir，產品碼加可注入 plugins root
+- 統一 i18n locale 結構與錯誤處理
+- Switch model-value 改用 Set.has 提升查找效能
+- tests/setup.ts 改為 top-level await 消除 i18n patch race condition
+
+## [1.1.4] - 2026-04-28
+
+### 新增
+- 拖曳檔案到 Pod 觸發 Agent 功能
+- 統一前後端常量（MAX_MESSAGE_LENGTH、MAX_CONTENT_BLOCK_SIZE_BYTES 等）
+- 拖曳資料夾錯誤訊息國際化支援（三語）
+- 強化資料驗證與防禦（UUID 邊界檢查、檔名路徑字元過濾、df 輸出欄位驗證）
+
+### 修正
+- 修正連線右鍵選單的 Summary Model / AI Model 子選單關閉延遲 180ms 的卡頓問題
+- 修正 Pod 旋轉 highlight 顯示
+- 修正 MCP 與 Plugin toggle 互動行為
+- 修正 ConnectionContextMenu 子選單 hover delay
+- 修正 Repository 變動不清訊息與 session 同步問題
+- 修正 Chat input focus 與輸入行為
+- 優化連線與 Pod 互動體驗，強化防禦與效能
+- 優化啟動流程結構（runMigrations、startBackgroundServices 函式抽出）
+- 優化暫存清理與檔案讀取效能（tmpCleanupService 改用 chunk 並行 stat、前端拖檔改用 chunk 並行讀取）
+- 補強單元測試覆蓋率
+
+## [1.1.3] - 2026-04-28
+
+### 修正
+- 修復綁定 integration 到 codex pod 時 canvasId 與 i18n key 缺失的問題
+- 修復排程觸發時訊息顯示不一致、webhook API 觸發對話歷史不完整的問題
+- 修復 workflow 路徑驗證，遇到不存在的 Command 時現在能正確回報錯誤
+- 修復前端記憶體洩漏（workflow listeners 因 reference 不符無法解綁）
+- 強化 Connection Line Summary Model 的安全性（防 prompt injection、補 update 驗證、防錯誤訊息洩漏）
+
+### 改進
+- 簡化部分 handler 抽象層級，抽出多個重用 helper（PullProgressResult、resolveErrorCode、withTimeout 等）
+- 改善 Workflow 執行效能（Codex 子程序並行限制、SQLite RETURNING 減少查詢、BFS adjacencyMap 預建）
+- 補三語翻譯（中、英、日）與 i18n key
+- 改名 findGroupType → checkIsCommandGroup 反映實際行為
+- slackProvider 加 60 秒頻道快取，避免每次 refreshResources 進行 full pull
+- telegramProvider 重試前補 abort/has 檢查避免 destroy 競態殘留
+- 大幅補強單元測試（integration binding、schema 失敗路徑、E2E 測試等）
+- 精簡冗餘防衛性編程，改善產品體感與程式碼可維護性
+
+## [1.1.2] - 2026-04-27
+
+### 新增
+- 統一 Command 展開流程：skipCommandExpand 參數支援上游事先展開避免雙重展開
+- 補上核心分支單元測試（streamingChatExecutor 與 launchMultiInstanceRun）
+- Paste API 回應新增 canvasId 欄位，前端完成後顯示成功/失敗 Toast 提示
+
+### 修正
+- SQLite 路徑遷移：資料庫內殘留 ClaudeCanvas 路徑全面替換為 AgentCanvas
+- 修復貼上 Pod 缺少 canvasId 導致前端無法回應的問題
+- Webhook 觸發 Command 展開重構：避免重複展開並統一 Command 不存在時的處理邏輯
+- 排程觸發時 Command 展開流程重構：實現空字串 fallback 機制避免 stdin 為空崩潰
+- 修復 14 個前端 ESLint warning（排版格式化、Vue 指令屬性斷行）
+
+## [1.1.1] - 2026-04-27
+
+### 修正
+- 修復 install.sh 執行時 checksum 驗證失敗的問題（release workflow 產生的 checksums.txt 含 dist/ 路徑前綴，與 install.sh 期待的純檔名不一致）
+
+## [1.1.0] - 2026-04-27
+
+### 新增
+- 專案改名 claude-code-canvas → agent-canvas（前後端文件、配置、遷移機制全面更新）
+- Pod 模型選擇器動畫優化：async/await 時序控制、收合動畫精準串接、元件卸載時 timer 清理
+- 統一 Claude/Codex 模型選項結構（ModelOption interface、CLAUDE_OPTIONS/CODEX_OPTIONS 對稱）
+- Plugin 系統全面取代 SkillNote，整合 Plugin Gateway 重構
+- SubAgent 連根拔重構完成
+- Command 跨 Provider 統一展開機制（tryExpandCommandMessage 共用 helper）
+- 資料庫 migration 流程強化（runMigration/isIgnorableMigrationError helper，消除重複 try-catch）
+- Pod 設定流程清晰度提升（ensureModelField/buildUpdatedPod/loadRelation 專用 helper）
+- Claude Provider 敏感資訊保護強化（固定字串替代原始錯誤、路徑訊息泛化、warn log sanitize）
+- Pod Slot 結構最佳化（5 個 createSlotConfig helper、ALLOWED_STATUSES/PROVIDERS 改 Set）
+- Claude Provider 訊息分派改進（dispatchSystemMessage/createReplyToolHandler 邏輯拆分）
+- ESLint 檢查修復：268 個 warning 清到 0（排版、型別標註、any 限制）
+- 補強單元測試覆蓋：capabilities/eventsSchema/buildClaudeOptions/runClaudeQuery/providerTypes 五份測試檔
+- Codex Provider 抽象層擴充完成，Provider interface 標準化 metadata + 配置驗證
+- 模型選項管理：支援多 Provider 動態模型列表與白名單驗證
+- Claude Agent SDK 升級至 0.2.119（新 Provider 擴充機制支援）
+- Provider 統一抽象層重構：AgentProvider<TOptions> 介面標準化
+- 統一 abortRegistry 管理所有 abort 生命週期，移除跨抽象邊界的 hack
+- Provider 透過 metadata.defaultOptions 自報預設值，模型 default 單一來源
+- 前端新增 providerOptions helper 與 Pod 未知 Provider fallback UI
+- Codex Pod Run 模式漏用 worktreePath 的 bug 修復
+- 新增 provider 擴充 playbook（README/types/claudeProvider/codexProvider 四份 .md）
+
+### 修正
+- 修復建立 Pod 時前端 console 出現 canvasId 缺失警告
+- 修復新建 Pod 沒及時顯示的問題
+- 修復下游 Pod 透過工作流觸發時 Command 沒展開成 xml tag
+- 修復 Run 模式（multiInstance）觸發時 Command 沒展開成 xml tag
+- 修復排程觸發時 codex 因 stdin 為空崩潰、Command 沒展開、無 commandId 時直接跳過不觸發 AI 的問題
+- 補回 README 改名遺漏項目（標題、安裝 URL、CLI 指令全面更新為 agent-canvas / Agent Canvas）
+- Pod 建立與更新的原子性保護（DB transaction 包起主表與 join table 寫入）
+- 避免伺服器系統路徑透過 provider:list 回應洩漏給前端
+- 補齊前後端 provider 清單型別契約一致性（CapabilityConfig 與 SET 引入）
+- 修復 WebSocket 請求缺 requestId 導致後端驗證失敗
+- 強化 Codex 子程序 stderr 並行收集，避免緩衝滿時卡住
+- 擴充 Codex 敏感資訊遮蔽規則（Authorization/api_key/sk- 等模式）
+- Pod Model Selector 動畫期間鎖定選取值，避免競態造成切換異常
+- Pod 複製貼上被錯誤轉為 Claude 的問題修復
+- 修復貼上流程中 provider/model 設定遺失（DB schema 移除舊 Pod.model 欄位）
+- 強化貼上路徑驗證避免任意目錄複製
+- Codex Pod abort 後 thread/resume 失敗修復
+- Codex 對話事件順序與錯誤處理修正（session_started 早發、可恢復錯誤不中斷對話）
+- Codex CLI 安全性強化（model 名稱白名單、環境變數明確允許清單、stderr 敏感資訊過濾）
+- 同名 Pod 並發建立的競爭條件修復（DB UNIQUE 約束 + 自動加序號後綴）
+- Pod 運行時光暈定位錯亂修復（脫離 transform 容器獨立元素）
+- Claude Pod 上 note 拖放綁定失敗修復（保留響應性）
+- Pod 建立安全性補強：provider allowlist 守門、model 名稱格式驗證、Pod id 格式驗證
+- Pod 名稱編輯驗證失敗改為 Toast 提示
+- Pod 模型 roundtrip 型別安全修復
+
+### 優化
+- Pod 貼上效能最佳化（改並發建立、重名查詢改記憶體查找）
+- sortedOptions 改為單次迴圈，去掉 find + filter 兩次掃描
+- PodModelSelector 動畫效能優化（去掉 box-shadow Paint 掉幀）
+- Pod 介面收斂、效能最佳化、安全性強化
+- Codex 整合流程補強、isCollapsing guard、未知 provider fallback 測試補充
+- podStore 拆分 resolveProviderConfig、codexProvider 抽出 collectStderr/handleExitCode/isEnoentError
+- Provider 命名清單改用 Set<string>，減少 model 驗證的陣列分配
+- 程式碼品質與可讀性改善（命名、註解、重複邏輯抽 helper、型別重組）
+- MCP 重構（複雜度降低、安全性強化、效能優化、廣播路徑改 PodPublicView）
+- MCP 多人協作：podEventHandlers 加 POD_MCP_SERVER_NAMES_UPDATED listener、connection 改進
+- MCP 效能優化：podStore podMap O(1) 查找、createNoteStore notesByPodId getter、selectionStore 維護避免重建、pasteHandlers syncBoundNotes 改批次
+- Provider Header 漸層改用 rem 相對單位、補 dark mode 漸層色
+- Pod 狀態光暈（執行中藍、彙整黃、選中薄荷綠）改用 Compositor 加速動畫
+- PodTypeMenu 六個 section build 函式抽為 factory + 宣告式 config 陣列
+- 模型 emit 事件合併為 8 個（相關事件改 discriminated union）
+- Pod 介面響應性與型別安全改善
+- 消除 Record 濫用、修復過度嵌套、統一命名
+- 動畫效能優化（transition 改列舉具體屬性取代 all）
+
 ## [1.0.7] - 2026-04-13
 
 ### 修正

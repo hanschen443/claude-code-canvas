@@ -13,7 +13,8 @@
   z-index: 40;
 }
 
-.pod-menu-submenu-search {
+/* 搜尋框共用基底：pod-menu-submenu-search 與 pod-popover-search 共享 */
+:where(.pod-menu-submenu-search, .pod-popover-search) {
   width: 100%;
   padding: 4px 8px;
   border: none;
@@ -26,8 +27,12 @@
   box-sizing: border-box;
 }
 
+.pod-menu-submenu-search {
+  /* 繼承共用基底，無需額外屬性 */
+}
+
 .pod-menu-submenu::before {
-  content: '';
+  content: "";
   position: absolute;
   left: -12px;
   top: 0;
@@ -57,38 +62,28 @@
 }
 
 /* Pod Menu Submenu Scrollable */
-.pod-menu-submenu-scrollable,
-.pod-skill-menu-scrollable,
-.pod-subagent-menu-scrollable {
+.pod-menu-submenu-scrollable {
   max-height: calc(36px * 5 + 8px);
   overflow-y: auto;
 }
 
-/* Scrollbar 基礎樣式 */
-.pod-menu-submenu-scrollable::-webkit-scrollbar,
-.pod-skill-menu-scrollable::-webkit-scrollbar,
-.pod-subagent-menu-scrollable::-webkit-scrollbar {
+/* Scrollbar base styles */
+.pod-menu-submenu-scrollable::-webkit-scrollbar {
   width: 8px;
 }
 
-.pod-menu-submenu-scrollable::-webkit-scrollbar-track,
-.pod-skill-menu-scrollable::-webkit-scrollbar-track,
-.pod-subagent-menu-scrollable::-webkit-scrollbar-track {
+.pod-menu-submenu-scrollable::-webkit-scrollbar-track {
   background: oklch(0.9 0.01 50);
   border-radius: 4px;
 }
 
-.pod-menu-submenu-scrollable::-webkit-scrollbar-thumb,
-.pod-skill-menu-scrollable::-webkit-scrollbar-thumb,
-.pod-subagent-menu-scrollable::-webkit-scrollbar-thumb {
+.pod-menu-submenu-scrollable::-webkit-scrollbar-thumb {
   background: oklch(0.6 0.02 50);
   border-radius: 4px;
   border: 1px solid var(--doodle-ink);
 }
 
-.pod-menu-submenu-scrollable::-webkit-scrollbar-thumb:hover,
-.pod-skill-menu-scrollable::-webkit-scrollbar-thumb:hover,
-.pod-subagent-menu-scrollable::-webkit-scrollbar-thumb:hover {
+.pod-menu-submenu-scrollable::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0.02 50);
 }
 
@@ -114,8 +109,8 @@
   background: transparent;
 }
 
-/* Pod Menu Submenu Edit Button */
-.pod-menu-submenu-edit-btn {
+/* Pod Menu Submenu Action Button（共用基底：edit-btn 與 delete-btn 共享） */
+.pod-menu-submenu-action-btn {
   display: none;
   align-items: center;
   justify-content: center;
@@ -128,41 +123,23 @@
   border-radius: 4px;
   color: oklch(0.5 0.02 50);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
   flex-shrink: 0;
 }
 
-.pod-menu-submenu-item-wrapper:hover .pod-menu-submenu-edit-btn {
+.pod-menu-submenu-item-wrapper:hover .pod-menu-submenu-action-btn {
   display: flex;
 }
 
+/* Pod Menu Submenu Edit Button */
 .pod-menu-submenu-edit-btn:hover {
   background: oklch(0.85 0.08 200);
   color: oklch(0.4 0.12 200);
 }
 
 /* Pod Menu Submenu Delete Button */
-.pod-menu-submenu-delete-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-right: 4px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: oklch(0.5 0.02 50);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.pod-menu-submenu-item-wrapper:hover .pod-menu-submenu-delete-btn {
-  display: flex;
-}
-
 .pod-menu-submenu-delete-btn:hover {
   background: oklch(0.9 0.15 25);
   color: oklch(0.5 0.2 25);
@@ -214,4 +191,20 @@
 .pod-menu-submenu-group-delete-disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+/* Pod Popover Search：繼承共用基底，僅補 margin-bottom modifier */
+.pod-popover-search {
+  margin-bottom: 4px;
+}
+
+/* Pod Popover Scrollable */
+.pod-popover-scrollable {
+  max-height: calc(36px * 5);
+}
+
+/* reka-ui ScrollAreaViewport: explicit max-height to enable overflow */
+.pod-popover-scrollable [data-reka-scroll-area-viewport] {
+  max-height: inherit;
+  overflow-y: auto;
 }

@@ -56,7 +56,7 @@ export interface ExecutionStrategy {
 
   /**
    * 取得 Claude session ID。
-   * Normal: pod.claudeSessionId / Run: runPodInstance.claudeSessionId
+   * Normal: pod.sessionId / Run: runPodInstance.sessionId
    */
   getSessionId(podId: string): string | undefined;
 
@@ -159,7 +159,7 @@ export class RunModeExecutionStrategy implements ExecutionStrategy {
 
   getSessionId(podId: string): string | undefined {
     const instance = runStore.getPodInstance(this.runContext.runId, podId);
-    return instance?.claudeSessionId ?? undefined;
+    return instance?.sessionId ?? undefined;
   }
 
   getQueryKey(podId: string): string {
@@ -191,7 +191,7 @@ export class RunModeExecutionStrategy implements ExecutionStrategy {
     if (sessionId) {
       const instance = runStore.getPodInstance(this.runContext.runId, podId);
       if (instance) {
-        runStore.updatePodInstanceClaudeSessionId(instance.id, sessionId);
+        runStore.updatePodInstanceSessionId(instance.id, sessionId);
       }
     }
   }

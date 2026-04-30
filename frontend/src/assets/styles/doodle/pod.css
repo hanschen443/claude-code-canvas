@@ -1,10 +1,24 @@
 /* Pod card doodle style */
+
+/* class 命名規則：pod-provider-${provider}，新增 provider 時在底部加對應 class 即可 */
+
+/* --pod-provider-gradient-stop 使用 rem 而非 px：
+   避免受 CanvasViewport transform: scale(zoom) 影響，漸層終止點維持穩定視覺比例 */
+:root {
+  --pod-provider-gradient-stop: 1rem;
+}
+
 .pod-doodle {
+  /* --model-notch-width 已移至 .pod-wrapper（共同祖先），
+     讓 PodModelSelector 與此處的 .model-notch 都能讀到同一變數 */
   background: var(--card);
   border: 2px solid var(--doodle-ink);
   border-radius: 6px;
   box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4);
-  transition: all 0.15s ease;
+  /* 優化：列舉變動屬性，減少 Paint 成本（避免 transition: all 觸發全屬性重算） */
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
   cursor: pointer;
   position: relative;
 }
@@ -19,43 +33,43 @@
   box-shadow: 4px 4px 0 oklch(0.4 0.02 50 / 0.5);
 }
 
-/* ===========================================
-   Pod Notch System (凹槽系統)
+/* Pod Notch System（凹槽系統）：各 notch 位置與對應 Slot 內容對齊 */
 
-   結構說明：
-   - .pod-notch-area: Slot 容器的位置（Output Style）
-   - .pod-skill-notch-area: Slot 容器的位置（Skill）
-   - .model-notch: POD 上方的 Model 凹槽視覺效果
-   - ::before: POD 左側的凹槽視覺效果（Output Style）
-   - ::after: POD 左側的凹槽視覺效果（Skill）
-
-   位置對齊注意事項：
-   - .pod-notch-area 的 top 要和 Slot 內容對齊
-   - ::before 的 top 是凹槽視覺效果的位置（相對於 .pod-doodle）
-   - 兩者的 top 值可能不同，因為參考點不同
-   =========================================== */
-
-.pod-with-notch {
+/* Pod 容器基底：rotate 變換、model notch 寬度變數、hover/dragging 狀態 */
+.pod-wrapper {
+  /* notch 與 card 寬度的單一真相來源；定義在此讓 PodModelSelector（兄弟層）
+     與 .pod-doodle（子層）都能透過 CSS 繼承讀到此變數 */
+  --model-notch-width: 110px;
   position: relative;
+  /* isolation: isolate 建立獨立的 stacking context，使 notch（z-index: -1）
+     被限制在 pod-wrapper 內部，不會跌到外層的 .connection-layer（z-index: 5）之下，
+     同時仍保持「在 pod-doodle 後方探出一角」的視覺效果 */
+  isolation: isolate;
   transition: transform 0.15s ease;
   transform: rotate(var(--pod-rotation, 0deg));
 }
 
-.pod-with-notch:has(.pod-doodle:hover) {
-  transform: translate(-0.5px, -0.5px) rotate(calc(var(--pod-rotation, 0deg) + 0.5deg));
+.pod-wrapper:has(.pod-doodle:hover) {
+  transform: translate(-0.5px, -0.5px)
+    rotate(calc(var(--pod-rotation, 0deg) + 0.5deg));
 }
 
-.pod-with-notch.dragging,
-.pod-with-notch.dragging:hover {
+.pod-wrapper.dragging,
+.pod-wrapper.dragging:hover {
   transform: rotate(calc(var(--pod-rotation, 0deg) - 1deg));
 }
 
-/* Model 凹槽（POD 上方） */
+/* Model 凹槽（POD 上方中央）
+   寬度為 notch（110px）、與 `.model-cards-stack` 的 card 維持 85% 差距；詳見 `--model-notch-width` 定義。
+   height: 8px 覆蓋 Pod 上邊 border 產生「挖槽」視覺。
+   z-index: -1 確保被 Pod 本體遮住底部，只露出上方。 */
 .model-notch {
   position: absolute;
   top: -6px;
-  left: 8px;
-  width: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* 使用 .pod-doodle 上定義的 --model-notch-width；card 為 notch 的 95%，保持 5% 差距 */
+  width: var(--model-notch-width);
   height: 8px;
   background: var(--card);
   border: 2px solid var(--doodle-ink);
@@ -64,36 +78,28 @@
   z-index: -1;
 }
 
-/* Output Style Slot 容器位置（移至右側） */
-.pod-notch-area {
-  right: 0;
-  top: 18px;
-  transform: translateX(100%);
-}
-
-/* Output Style 凹槽視覺效果（POD 右側的小突出） */
-.pod-with-notch .pod-doodle::before {
-  content: '';
+/* Plugin 凹槽視覺效果（POD 左側） */
+.pod-with-plugin-notch .pod-doodle::after {
+  content: "";
   position: absolute;
-  right: -6px;  /* 凹槽往右延伸的距離 */
-  top: 16px;    /* 凹槽的垂直位置（相對於 .pod-doodle） */
-  width: 8px;   /* 凹槽寬度 */
-  height: 32px; /* 凹槽高度 */
+  left: -6px;
+  top: 42px;
+  width: 8px;
+  height: 32px;
   background: var(--card);
   border: 2px solid var(--doodle-ink);
-  border-left: none;
-  border-radius: 0 4px 4px 0;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
   z-index: -1;
 }
 
-/* Skill 凹槽視覺效果（POD 左側） */
-.pod-with-skill-notch .pod-doodle::after {
-  content: '';
+/* MCP Slot 凹槽視覺效果（POD 左側，Plugin 凹槽下方 40px） */
+.pod-with-mcp-notch .mcp-notch {
   position: absolute;
-  left: -6px;   /* 凹槽往左延伸的距離 */
-  top: 16px;    /* 凹槽的垂直位置（與 Output Style 同高） */
-  width: 8px;   /* 凹槽寬度 */
-  height: 32px; /* 凹槽高度 */
+  left: -6px;
+  top: 82px;
+  width: 8px;
+  height: 32px;
   background: var(--card);
   border: 2px solid var(--doodle-ink);
   border-right: none;
@@ -110,13 +116,16 @@
   border: 2px solid var(--doodle-ink);
   border-radius: 50%;
   cursor: default;
-  transition: all 0.2s ease;
+  /* 優化：列舉變動屬性（scale、box-shadow），減少 Paint 成本（避免 transition: all 觸發全屬性重算） */
+  transition:
+    box-shadow 0.2s ease,
+    scale 0.2s ease;
   z-index: 50;
   transform-origin: center;
 }
 
 .pod-anchor::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -172,7 +181,11 @@
   border: 2px solid var(--doodle-ink);
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* 優化：列舉變動屬性（transform、box-shadow、background-color），減少 Paint 成本（避免 transition: all 觸發全屬性重算） */
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    background-color 0.2s ease;
   box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4);
 }
 
@@ -274,25 +287,102 @@
   background: oklch(0.78 0.1 150);
 }
 
-/* POD Status Animation Styles */
+/* ===========================================
+   POD Status Glow Layer（光暈層）
 
-/* Chatting 狀態的脈衝動畫（增強版 - 更明顯可見） */
-.pod-status-chatting {
-  animation: pod-chatting-pulse 2s ease-in-out infinite;
+   實作說明：
+   - 光暈渲染改為獨立的 .pod-glow-layer div，位於 CanvasPod.vue
+     最外層 wrapper（.absolute.select-none）內，作為 .pod-wrapper
+     的前一個兄弟元素
+   - 此層不在任何 transform: rotate 容器內，故 box-shadow 渲染
+     位置不受祖先 transform 影響，完整包覆 Pod 四周
+   - 動畫只動 opacity（Compositor Thread 可加速，無 Main Thread Paint）
+
+   定位說明：
+   - position: absolute; inset: 0 讓此層與外層 wrapper 等大
+   - 外層 wrapper（.absolute.select-none）size 由 .pod-wrapper
+     內容撐起（即 pod-doodle 的大小），故 inset: 0 剛好覆蓋整個 Pod
+   - pointer-events: none 確保不影響點擊事件
+   - border-radius 與 pod-doodle 一致（6px）
+   =========================================== */
+
+.pod-glow-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 6px;
+  /* 預設無光暈 */
 }
 
-/* Summarizing 狀態的向內收縮光暈（金黃色，像資料被彙整） */
-.pod-status-summarizing {
-  animation: pod-summarizing-collect 2s ease-in-out infinite;
+/* Chatting 狀態：藍色脈衝光暈，只動 opacity */
+.pod-glow-layer.pod-status-chatting {
+  box-shadow:
+    0 0 20px oklch(0.75 0.22 220 / 0.8),
+    0 0 32px oklch(0.65 0.2 220 / 0.5);
+  animation: pod-glow-pulse-opacity 2s ease-in-out infinite;
 }
 
-/* Error 狀態樣式 */
-.pod-status-error {
-  box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-              0 0 8px oklch(0.65 0.2 25 / 0.5);
+/* Summarizing 狀態：金黃色呼吸光暈，只動 opacity */
+.pod-glow-layer.pod-status-summarizing {
+  box-shadow:
+    0 0 20px 8px oklch(0.8 0.18 85 / 0.7),
+    0 0 30px 12px oklch(0.75 0.15 85 / 0.5);
+  animation: pod-glow-pulse-opacity 2s ease-in-out infinite;
+}
+
+/* ===========================================
+   Pod 內層 Highlight（跟著 Pod 旋轉）
+
+   - .pod-inner-highlight 位於 .pod-wrapper 內層（在 rotate 容器內）
+   - selected/drag-over 狀態放在此層，使 outline/box-shadow 跟著 Pod 旋轉
+   - chatting/summarizing 等光暈仍留在外層 .pod-glow-layer（不受 rotate 截切）
+   =========================================== */
+
+.pod-inner-highlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 6px;
+  /* 預設無 highlight */
+}
+
+/* Selected 狀態：薄荷綠外圈描邊（跟著 Pod 旋轉）
+   改用 outline 而非 box-shadow，避免與 chatting/summarizing 的 box-shadow 互蓋，
+   讓兩種視覺效果可以同時並存。*/
+.pod-inner-highlight.pod-glow-selected {
+  outline: 3px solid oklch(0.65 0.15 170 / 0.6);
+  outline-offset: 0px;
+}
+
+/* Drop Target 狀態：藍紫色（violet，hue 280）外圈 glow（跟著 Pod 旋轉）
+   與 selected 薄荷綠（hue 170）明顯區分，
+   與 deciding 紫色（hue 300）也有 20 度色相差距。
+   使用 box-shadow 而非 outline，讓光量感更明顯（drop 是互動提示需要即時回饋）。*/
+.pod-inner-highlight.pod-glow-drop-target {
+  box-shadow:
+    0 0 0 3px oklch(0.65 0.18 280 / 0.7),
+    0 0 16px 4px oklch(0.65 0.18 280 / 0.4);
+}
+
+/* keyframes：只動 opacity（Compositor Thread 可加速，無 Paint）
+   chatting 與 summarizing 共用此動畫，兩者僅 box-shadow 色彩不同 */
+@keyframes pod-glow-pulse-opacity {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Error 狀態：紅色光暈，由 .pod-glow-layer.pod-status-error 負責渲染 */
+.pod-glow-layer.pod-status-error {
+  box-shadow: 0 0 8px oklch(0.65 0.2 25 / 0.5);
 }
 
 /* 排程觸發動畫狀態 - 作用於整個按鈕（包含背景） */
+/* keyframe schedule-fired-jump 定義於 animations.css */
 .schedule-button.schedule-fired-animating {
   animation: schedule-fired-jump 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   z-index: 100;
@@ -301,19 +391,106 @@
 
 /* 無障礙支援：減少動態效果 */
 @media (prefers-reduced-motion: reduce) {
-  .pod-status-chatting {
+  .pod-glow-layer.pod-status-chatting {
     animation: none;
-    box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-                0 0 12px oklch(0.7 0.18 220 / 0.6);
+    opacity: 0.7;
   }
 
-  .pod-status-summarizing {
+  .pod-glow-layer.pod-status-summarizing {
     animation: none;
-    box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.4),
-                0 0 8px 2px oklch(0.8 0.18 85 / 0.7);
+    opacity: 0.7;
   }
 
   .schedule-button.schedule-fired-animating {
     animation: none;
   }
+}
+
+/* ===========================================
+   Provider Pod 漸層樣式
+
+   套用對象：.pod-doodle 容器（Pod 本體）
+   效果：頂端依 provider 顏色，在 Pod 頂端 padding 區
+         （約 1rem）前淡化為 var(--card) 奶油白
+
+   注意：
+   - 漸層終止點使用 --pod-provider-gradient-stop（宣告於檔案頂部）
+   - 採用 1rem 而非 16px（px 絕對值）的理由：
+     CanvasViewport 使用 transform: scale(zoom) 縮放時，
+     px 會被等比例放大縮小（zoom 2x 時 16px 視覺變成 32px），
+     rem 不受 viewport transform 縮放影響，視覺比例維持穩定
+   - 選擇 1rem（根元素 font-size 通常 16px）讓漸層只在頂端
+     padding 區完成，Mini screen 以下完全維持 var(--card) 奶油白，
+     保持閱讀對比度
+   - 靜態漸層，無 transition/animation（效能考量）
+   - 狀態光暈（chatting/summarizing）由外層 .pod-glow-layer div 負責，
+     不受 .pod-wrapper 的 transform: rotate 影響
+
+   class 與後端 PodProvider 枚舉的耦合說明詳見檔案頂部註解。
+   =========================================== */
+
+/* Claude Pod：淡磚紅 → 奶油白（--pod-provider-gradient-stop 終止） */
+.pod-provider-claude {
+  background: linear-gradient(
+    to bottom,
+    var(--pod-provider-claude-top) 0,
+    var(--card) var(--pod-provider-gradient-stop)
+  );
+}
+
+/* Codex Pod：淺灰 → 奶油白（--pod-provider-gradient-stop 終止） */
+.pod-provider-codex {
+  background: linear-gradient(
+    to bottom,
+    var(--pod-provider-codex-top) 0,
+    var(--card) var(--pod-provider-gradient-stop)
+  );
+}
+
+/* Gemini Pod：淡天空藍 → 奶油白（--pod-provider-gradient-stop 終止） */
+.pod-provider-gemini {
+  background: linear-gradient(
+    to bottom,
+    var(--pod-provider-gemini-top) 0,
+    var(--card) var(--pod-provider-gradient-stop)
+  );
+}
+
+/* =============================================
+   未知 Provider fallback badge（Phase 6 A）
+
+   顯示條件：providerCapabilityStore.loaded = true
+             且 isKnownProvider(pod.provider) = false
+   設計原則：
+   - 插入在 PodHeader 下方、PodMiniScreen 上方
+   - 不遮蓋 output 歷史（無遮罩/overlay）
+   - 視覺語言：小型警示 badge，帶紅點 + 灰文字
+   ============================================= */
+.unknown-provider-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--destructive) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+}
+
+.unknown-provider-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--destructive);
+  flex-shrink: 0;
+}
+
+.unknown-provider-badge__text {
+  font-size: 0.6rem;
+  color: var(--destructive);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

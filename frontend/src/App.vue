@@ -29,17 +29,14 @@ import { useIntegrationStore } from "@/stores/integrationStore";
 import { getAllProviders } from "@/integration/providerRegistry";
 import { useRunStore } from "@/stores/run/runStore";
 import { useConfigStore } from "@/stores/configStore";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 
 const {
   podStore,
   viewportStore,
   chatStore,
-  outputStyleStore,
-  skillStore,
-  subAgentStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
   canvasStore,
 } = useCanvasContext();
@@ -47,6 +44,7 @@ const {
 const integrationStore = useIntegrationStore();
 const runStore = useRunStore();
 const configStore = useConfigStore();
+const providerCapabilityStore = useProviderCapabilityStore();
 
 const cursorStore = useCursorStore();
 
@@ -84,29 +82,12 @@ const loadCanvasData = async (): Promise<void> => {
 
   await Promise.all([
     (async (): Promise<void> => {
-      await outputStyleStore.loadOutputStyles();
-      await outputStyleStore.loadNotesFromBackend();
-      await outputStyleStore.rebuildNotesFromPods(podStore.pods);
-    })(),
-    (async (): Promise<void> => {
-      await skillStore.loadSkills();
-      await skillStore.loadNotesFromBackend();
-    })(),
-    (async (): Promise<void> => {
-      await subAgentStore.loadItems();
-      await subAgentStore.loadNotesFromBackend();
-    })(),
-    (async (): Promise<void> => {
       await repositoryStore.loadRepositories();
       await repositoryStore.loadNotesFromBackend();
     })(),
     (async (): Promise<void> => {
       await commandStore.loadCommands();
       await commandStore.loadNotesFromBackend();
-    })(),
-    (async (): Promise<void> => {
-      await mcpServerStore.loadMcpServers();
-      await mcpServerStore.loadNotesFromBackend();
     })(),
     connectionStore.loadConnectionsFromBackend(),
     ...getAllProviders().map((provider) =>
@@ -174,9 +155,7 @@ const handlePodStatusChanged = (payload: PodStatusChangedPayload): void => {
   podStore.updatePodStatus(payload.podId, payload.status);
 };
 
-const handleScheduleFired = async (
-  payload: ScheduleFiredPayload,
-): Promise<void> => {
+const handleScheduleFired = (payload: ScheduleFiredPayload): void => {
   const pod = podStore.getPodById(payload.podId);
   if (pod) {
     podStore.triggerScheduleFiredAnimation(payload.podId);
@@ -185,15 +164,6 @@ const handleScheduleFired = async (
     if (pod.multiInstance === true) {
       return;
     }
-
-    const command = pod.commandId
-      ? commandStore.typedAvailableItems.find(
-          (command) => command.id === pod.commandId,
-        )
-      : null;
-    const displayMessage = command ? `/${command.name} ` : "";
-
-    chatStore.addUserMessage(payload.podId, displayMessage);
   }
 };
 
@@ -293,6 +263,9 @@ watch(
     if (connected) {
       chatStore.unregisterListeners();
       chatStore.registerListeners();
+
+      // 連線就緒後（含 reconnect）立即拉一次 provider capabilities
+      providerCapabilityStore.loadFromBackend();
     }
   },
   { flush: "sync" },
@@ -344,12 +317,8 @@ watch(
 
     podStore.resetForCanvasSwitch();
     connectionStore.resetForCanvasSwitch();
-    outputStyleStore.resetForCanvasSwitch();
-    skillStore.resetForCanvasSwitch();
-    subAgentStore.resetForCanvasSwitch();
     repositoryStore.resetForCanvasSwitch();
     commandStore.resetForCanvasSwitch();
-    mcpServerStore.resetForCanvasSwitch();
     chatStore.resetForCanvasSwitch();
 
     await loadCanvasData();
@@ -398,7 +367,11 @@ onUnmounted(() => {
       <CanvasContainer />
     </main>
 
-    <ChatModal v-if="selectedPod" :pod="selectedPod" @close="handleCloseChat" />
+    <ChatModal
+      v-if="selectedPod"
+      :pod="selectedPod"
+      @close="handleCloseChat"
+    />
 
     <RunChatModal
       v-if="runStore.activeRunChatModal"

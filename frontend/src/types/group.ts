@@ -1,7 +1,7 @@
-export type GroupType = 'command' | 'outputStyle' | 'subAgent'
+export type GroupType = "command";
 
 export interface Group {
-  id: string
-  name: string
-  type: GroupType
+  id: string;
+  name: string;
+  type: GroupType;
 }

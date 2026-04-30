@@ -18,9 +18,8 @@ import {
 import { usePodStore } from "@/stores/pod/podStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useConnectionStore } from "@/stores/connectionStore";
-import type { Pod, ModelType, Schedule } from "@/types";
+import type { Pod, Schedule } from "@/types";
 import { MAX_POD_NAME_LENGTH } from "@/lib/constants";
-
 // Mock WebSocket
 vi.mock("@/services/websocket", () => webSocketMockFactory());
 
@@ -37,53 +36,18 @@ vi.mock("@/composables/useToast", () => ({
 // Mock sanitizeErrorForUser
 vi.mock("@/utils/errorSanitizer", () => mockErrorSanitizerFactory());
 
-// Mock useCanvasWebSocketAction
-const mockExecuteAction = vi.fn();
-vi.mock("@/composables/useCanvasWebSocketAction", () => ({
-  useCanvasWebSocketAction: () => ({
-    executeAction: mockExecuteAction,
-  }),
-}));
-
 describe("podStore", () => {
-  setupStoreTest(() => {
-    mockExecuteAction.mockResolvedValue({ success: false, error: "未知錯誤" });
-  });
+  setupStoreTest();
 
   describe("初始狀態", () => {
-    it("pods 應為空陣列", () => {
+    it("各欄位應有正確預設值", () => {
       const store = usePodStore();
 
       expect(store.pods).toEqual([]);
-    });
-
-    it("selectedPodId 應為 null", () => {
-      const store = usePodStore();
-
       expect(store.selectedPodId).toBeNull();
-    });
-
-    it("activePodId 應為 null", () => {
-      const store = usePodStore();
-
       expect(store.activePodId).toBeNull();
-    });
-
-    it("typeMenu.visible 應為 false", () => {
-      const store = usePodStore();
-
       expect(store.typeMenu.visible).toBe(false);
-    });
-
-    it("typeMenu.position 應為 null", () => {
-      const store = usePodStore();
-
       expect(store.typeMenu.position).toBeNull();
-    });
-
-    it("scheduleFiredPodIds 應為空 Set", () => {
-      const store = usePodStore();
-
       expect(store.scheduleFiredPodIds).toBeInstanceOf(Set);
       expect(store.scheduleFiredPodIds.size).toBe(0);
     });
@@ -103,22 +67,18 @@ describe("podStore", () => {
         expect(result).toEqual(pod2);
       });
 
-      it("無 selectedPodId 時應回傳 null", () => {
-        const store = usePodStore();
-        const pod = createMockPod();
-        store.pods = [pod];
-        store.selectedPodId = null;
-
-        const result = store.selectedPod;
-
-        expect(result).toBeNull();
-      });
-
-      it("selectedPodId 不存在於 pods 中時應回傳 null", () => {
+      // 參數化：getter 找不到時應回傳 null
+      it.each([
+        { desc: "無 selectedPodId（null）", selectedId: null as null },
+        {
+          desc: "selectedPodId 不存在於 pods 中",
+          selectedId: "non-existent-id",
+        },
+      ])("$desc 時應回傳 null", ({ selectedId }) => {
         const store = usePodStore();
         const pod = createMockPod({ id: "pod-1" });
         store.pods = [pod];
-        store.selectedPodId = "non-existent-id";
+        store.selectedPodId = selectedId;
 
         const result = store.selectedPod;
 
@@ -347,8 +307,8 @@ describe("podStore", () => {
       expect(result.x).toBe(100);
       expect(result.y).toBe(150);
       expect(result.output).toEqual([]);
-      expect(result.outputStyleId).toBeNull();
-      expect(result.model).toBe("opus");
+      // store 未載入 defaultOptions 時，enrichPod 回傳 placeholder { model: "" }
+      expect(result.providerConfig?.model).toBe("");
       expect(result.multiInstance).toBe(false);
       expect(result.commandId).toBeNull();
       expect(result.schedule).toBeNull();
@@ -362,8 +322,7 @@ describe("podStore", () => {
         y: 600,
         rotation: 1.5,
         output: ["existing"],
-        outputStyleId: "style-1",
-        model: "sonnet",
+        providerConfig: { model: "sonnet" },
         multiInstance: true,
         commandId: "cmd-1",
         schedule,
@@ -375,8 +334,7 @@ describe("podStore", () => {
       expect(result.y).toBe(600);
       expect(result.rotation).toBe(1.5);
       expect(result.output).toEqual(["existing"]);
-      expect(result.outputStyleId).toBe("style-1");
-      expect(result.model).toBe("sonnet");
+      expect(result.providerConfig.model).toBe("sonnet");
       expect(result.multiInstance).toBe(true);
       expect(result.commandId).toBe("cmd-1");
       expect(result.schedule).toEqual(schedule);
@@ -514,7 +472,6 @@ describe("podStore", () => {
       expect(store.pods[0]?.x).toBe(100);
       expect(console.warn).toHaveBeenCalledWith(
         "[PodStore] updatePod 驗證失敗，已忽略更新",
-        { podId: "pod-1" },
       );
     });
 
@@ -551,6 +508,27 @@ describe("podStore", () => {
   });
 
   describe("createPodWithBackend", () => {
+    /** 建立 createPodWithBackend 所需的預設 payload，可透過 overrides 覆寫任意欄位 */
+    function buildCreatePodPayload(
+      overrides?: Partial<Omit<Pod, "id">>,
+    ): Omit<Pod, "id"> {
+      return {
+        name: "Pod",
+        x: 100,
+        y: 100,
+        rotation: 0,
+        output: [],
+        status: "idle",
+        repositoryId: null,
+        multiInstance: false,
+        commandId: null,
+        schedule: null,
+        provider: "claude",
+        providerConfig: { model: "opus" },
+        ...overrides,
+      };
+    }
+
     it("成功時應回傳 Pod、顯示成功 Toast、使用本地座標", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
@@ -558,42 +536,37 @@ describe("podStore", () => {
 
       const newPod = createMockPod({ id: "pod-backend-1", name: "New Pod" });
 
-      mockExecuteAction.mockResolvedValueOnce({
+      // createWebSocketRequest 回傳後端原始回應（含 requestId、success、pod）
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { pod: newPod },
+        pod: newPod,
       });
 
-      const result = await store.createPodWithBackend({
-        name: "New Pod",
-        x: 300,
-        y: 400,
-        rotation: 0.5,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-      });
+      const result = await store.createPodWithBackend(
+        buildCreatePodPayload({
+          name: "New Pod",
+          x: 300,
+          y: 400,
+          rotation: 0.5,
+        }),
+      );
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      // 驗證 createWebSocketRequest 被呼叫的 requestEvent / responseEvent / payload
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "pod:create",
           responseEvent: "pod:created",
-          payload: {
+          // useCanvasWebSocketAction 會自動注入 canvasId
+          payload: expect.objectContaining({
+            canvasId: "canvas-1",
             name: "New Pod",
             x: 300,
             y: 400,
             rotation: 0.5,
-          },
-        }),
-        expect.objectContaining({
-          errorCategory: "Pod",
-          errorAction: "建立失敗",
+            provider: "claude",
+            providerConfig: { model: "opus" },
+          }),
         }),
       );
       expect(mockShowSuccessToast).toHaveBeenCalledWith(
@@ -610,31 +583,14 @@ describe("podStore", () => {
     });
 
     it("無 activeCanvasId 時應回傳 null", async () => {
+      // 不設定 activeCanvasId，useCanvasWebSocketAction 會早期返回 { success: false }
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "沒有啟用的畫布",
-      });
-
-      const result = await store.createPodWithBackend({
-        name: "Pod",
-        x: 100,
-        y: 100,
-        rotation: 0,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-      });
+      const result = await store.createPodWithBackend(buildCreatePodPayload());
 
       expect(result).toBeNull();
+      // 無 activeCanvasId 時不應發送 WebSocket 請求
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
     it("WebSocket 回應無 pod 時應回傳 null 並顯示錯誤 Toast", async () => {
@@ -642,27 +598,13 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
+      // 後端回傳成功但沒有 pod 欄位
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: {},
       });
 
-      const result = await store.createPodWithBackend({
-        name: "Pod",
-        x: 100,
-        y: 100,
-        rotation: 0,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-      });
+      const result = await store.createPodWithBackend(buildCreatePodPayload());
 
       expect(result).toBeNull();
       expect(mockShowErrorToast).toHaveBeenCalledWith(
@@ -672,32 +614,17 @@ describe("podStore", () => {
       );
     });
 
-    it("失敗時應顯示錯誤 Toast 並回傳 null", async () => {
+    it("WebSocket 請求失敗時應回傳 null", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "Pod 建立失敗",
-      });
+      // createWebSocketRequest 拋出例外（後端返回 success:false 或逾時）
+      mockCreateWebSocketRequest.mockRejectedValueOnce(
+        new Error("Pod 建立失敗"),
+      );
 
-      const result = await store.createPodWithBackend({
-        name: "Pod",
-        x: 100,
-        y: 100,
-        rotation: 0,
-        output: [],
-        status: "idle",
-        model: "opus",
-        outputStyleId: null,
-        skillIds: [],
-        subAgentIds: [],
-        repositoryId: null,
-        multiInstance: false,
-        commandId: null,
-        schedule: null,
-      });
+      const result = await store.createPodWithBackend(buildCreatePodPayload());
 
       expect(result).toBeNull();
     });
@@ -711,22 +638,23 @@ describe("podStore", () => {
       const pod = createMockPod({ id: "pod-1", name: "Test Pod" });
       store.pods = [pod];
 
-      mockExecuteAction.mockResolvedValueOnce({
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true },
+        podId: "pod-1",
       });
 
       await store.deletePodWithBackend("pod-1");
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      // 驗證 createWebSocketRequest 收到正確的事件與 payload
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "pod:delete",
           responseEvent: "pod:deleted",
-          payload: { podId: "pod-1" },
-        }),
-        expect.objectContaining({
-          errorCategory: "Pod",
-          errorAction: "刪除失敗",
+          payload: expect.objectContaining({
+            canvasId: "canvas-1",
+            podId: "pod-1",
+          }),
         }),
       );
       expect(mockShowSuccessToast).toHaveBeenCalledWith(
@@ -741,9 +669,9 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true },
       });
 
       await store.deletePodWithBackend("non-existent");
@@ -760,10 +688,10 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "Pod 刪除失敗",
-      });
+      // createWebSocketRequest 拋出例外代表後端失敗或 WS 錯誤
+      mockCreateWebSocketRequest.mockRejectedValueOnce(
+        new Error("Pod 刪除失敗"),
+      );
 
       await store.deletePodWithBackend("pod-1");
 
@@ -893,22 +821,23 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true },
       });
 
       await store.renamePodWithBackend("pod-1", "New Name");
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      // 驗證 createWebSocketRequest 收到正確的事件與 payload（含 canvasId）
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "pod:rename",
           responseEvent: "pod:renamed",
-          payload: { podId: "pod-1", name: "New Name" },
-        }),
-        expect.objectContaining({
-          errorCategory: "Pod",
-          errorAction: "Pod 重新命名失敗",
+          payload: expect.objectContaining({
+            canvasId: "canvas-1",
+            podId: "pod-1",
+            name: "New Name",
+          }),
         }),
       );
       expect(mockShowSuccessToast).toHaveBeenCalledWith(
@@ -919,16 +848,14 @@ describe("podStore", () => {
     });
 
     it("無 activeCanvasId 時應不顯示成功 Toast", async () => {
+      // 不設定 activeCanvasId
       const store = usePodStore();
-
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "沒有啟用的畫布",
-      });
 
       await store.renamePodWithBackend("pod-1", "New Name");
 
       expect(mockShowSuccessToast).not.toHaveBeenCalled();
+      // 無 activeCanvasId 時不應發送 WebSocket 請求
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
     it("失敗時應不顯示成功 Toast", async () => {
@@ -936,10 +863,10 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "Pod 重新命名失敗",
-      });
+      // createWebSocketRequest 拋出例外代表後端失敗
+      mockCreateWebSocketRequest.mockRejectedValueOnce(
+        new Error("Pod 重新命名失敗"),
+      );
 
       await store.renamePodWithBackend("pod-1", "New Name");
 
@@ -976,9 +903,9 @@ describe("podStore", () => {
       const pod = createMockPod({ id: "pod-1", name: "舊名稱" });
       store.pods = [pod];
 
-      mockExecuteAction.mockResolvedValueOnce({
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true },
       });
 
       await simulateHandleUpdatePod(store, { ...pod, name: "新名稱" });
@@ -993,17 +920,16 @@ describe("podStore", () => {
       const pod = createMockPod({ id: "pod-1", name: "舊名稱" });
       store.pods = [pod];
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "後端錯誤",
-      });
+      // 失敗場景：createWebSocketRequest 拋出例外
+      mockCreateWebSocketRequest.mockRejectedValueOnce(new Error("後端錯誤"));
 
       await simulateHandleUpdatePod(store, { ...pod, name: "新名稱" });
 
+      // 樂觀更新不回滾，名稱保持為新名稱
       expect(store.getPodById("pod-1")?.name).toBe("新名稱");
     });
 
-    it("名稱沒有改變時不應呼叫 renamePodWithBackend", async () => {
+    it("名稱沒有改變時不應發送 WebSocket 請求", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
@@ -1012,7 +938,8 @@ describe("podStore", () => {
 
       await simulateHandleUpdatePod(store, { ...pod, x: 999 });
 
-      expect(mockExecuteAction).not.toHaveBeenCalled();
+      // 名稱未改變，不應發送任何 WebSocket 請求
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
       expect(store.getPodById("pod-1")?.x).toBe(999);
     });
   });
@@ -1055,40 +982,6 @@ describe("podStore", () => {
     });
   });
 
-  describe("updatePodModel", () => {
-    it("應更新 Pod 的 model", () => {
-      const store = usePodStore();
-      const pod = createMockPod({ id: "pod-1", model: "opus" });
-      store.pods = [pod];
-
-      store.updatePodModel("pod-1", "sonnet");
-
-      expect(store.pods[0]?.model).toBe("sonnet");
-    });
-
-    it("Pod 不存在時不應報錯", () => {
-      const store = usePodStore();
-
-      expect(() => store.updatePodModel("non-existent", "haiku")).not.toThrow();
-    });
-
-    it("應支援所有 ModelType", () => {
-      const store = usePodStore();
-      const models: ModelType[] = ["opus", "sonnet", "haiku"];
-
-      for (const model of models) {
-        const pod = createMockPod({ id: `pod-${model}`, model: "opus" });
-        store.pods = [pod];
-
-        store.updatePodModel(`pod-${model}`, model);
-
-        expect(store.pods.find((p) => p.id === `pod-${model}`)?.model).toBe(
-          model,
-        );
-      }
-    });
-  });
-
   describe("setScheduleWithBackend", () => {
     it("成功時應回傳更新的 Pod、顯示成功 Toast（更新）", async () => {
       const canvasStore = useCanvasStore();
@@ -1098,22 +991,25 @@ describe("podStore", () => {
       const schedule = createMockSchedule();
       const updatedPod = createMockPod({ id: "pod-1", schedule });
 
-      mockExecuteAction.mockResolvedValueOnce({
+      // createWebSocketRequest 回傳後端原始回應（含 requestId、success、pod）
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true, pod: updatedPod },
+        pod: updatedPod,
       });
 
       const result = await store.setScheduleWithBackend("pod-1", schedule);
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      // 驗證 createWebSocketRequest 被呼叫的事件與 payload（含 canvasId）
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "pod:set-schedule",
           responseEvent: "pod:schedule:set",
-          payload: { podId: "pod-1", schedule },
-        }),
-        expect.objectContaining({
-          errorCategory: "Schedule",
-          errorAction: "操作失敗",
+          payload: expect.objectContaining({
+            canvasId: "canvas-1",
+            podId: "pod-1",
+            schedule,
+          }),
         }),
       );
       expect(mockShowSuccessToast).toHaveBeenCalledWith("Schedule", "更新成功");
@@ -1127,9 +1023,10 @@ describe("podStore", () => {
 
       const updatedPod = createMockPod({ id: "pod-1", schedule: null });
 
-      mockExecuteAction.mockResolvedValueOnce({
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true, pod: updatedPod },
+        pod: updatedPod,
       });
 
       const result = await store.setScheduleWithBackend("pod-1", null);
@@ -1139,43 +1036,39 @@ describe("podStore", () => {
     });
 
     it("無 activeCanvasId 時應回傳 null", async () => {
+      // 不設定 activeCanvasId
       const store = usePodStore();
-
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "沒有啟用的畫布",
-      });
 
       const schedule = createMockSchedule();
       const result = await store.setScheduleWithBackend("pod-1", schedule);
 
       expect(result).toBeNull();
+      // 無 activeCanvasId 時不應發送 WebSocket 請求
+      expect(mockCreateWebSocketRequest).not.toHaveBeenCalled();
     });
 
-    it("executeAction 失敗時應回傳 null", async () => {
+    it("WebSocket 請求失敗時應回傳 null", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "Schedule 設定失敗",
-      });
+      // createWebSocketRequest 拋出例外（後端錯誤或逾時）
+      mockCreateWebSocketRequest.mockRejectedValueOnce(
+        new Error("Schedule 設定失敗"),
+      );
 
       const result = await store.setScheduleWithBackend("pod-1", null);
 
       expect(result).toBeNull();
     });
 
-    it("回應 success: false 時應回傳 null", async () => {
+    it("後端回應 success: false 時應回傳 null", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: { success: false },
-      });
+      // 後端回傳 success:false 時 createWebSocketRequest 會 reject
+      mockCreateWebSocketRequest.mockRejectedValueOnce(new Error("操作失敗"));
 
       const result = await store.setScheduleWithBackend("pod-1", null);
 
@@ -1187,9 +1080,11 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
+      // 後端回應成功但未包含 pod 欄位
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true },
+        // 沒有 pod 欄位
       });
 
       const result = await store.setScheduleWithBackend("pod-1", null);
@@ -1299,7 +1194,8 @@ describe("podStore", () => {
         store.addPodFromEvent(incompletePod);
 
         expect(store.pods[0]?.x).toBe(100);
-        expect(store.pods[0]?.model).toBe("opus");
+        // store 未載入 defaultOptions 時，enrichPod 回傳 placeholder { model: "" }
+        expect(store.pods[0]?.providerConfig?.model).toBe("");
       });
     });
 
@@ -1396,36 +1292,6 @@ describe("podStore", () => {
       });
     });
 
-    describe("updatePodOutputStyle", () => {
-      it("應更新 Pod 的 outputStyleId", () => {
-        const store = usePodStore();
-        const pod = createMockPod({ id: "pod-1", outputStyleId: null });
-        store.pods = [pod];
-
-        store.updatePodOutputStyle("pod-1", "style-1");
-
-        expect(store.pods[0]?.outputStyleId).toBe("style-1");
-      });
-
-      it("可以清除 outputStyleId", () => {
-        const store = usePodStore();
-        const pod = createMockPod({ id: "pod-1", outputStyleId: "style-1" });
-        store.pods = [pod];
-
-        store.updatePodOutputStyle("pod-1", null);
-
-        expect(store.pods[0]?.outputStyleId).toBeNull();
-      });
-
-      it("Pod 不存在時不應報錯", () => {
-        const store = usePodStore();
-
-        expect(() =>
-          store.updatePodOutputStyle("non-existent", "style-1"),
-        ).not.toThrow();
-      });
-    });
-
     describe("updatePodRepository", () => {
       it("應更新 Pod 的 repositoryId", () => {
         const store = usePodStore();
@@ -1486,6 +1352,51 @@ describe("podStore", () => {
       });
     });
 
+    describe("updatePodPlugins", () => {
+      it("應更新 Pod 的 pluginIds", () => {
+        const store = usePodStore();
+        const pod = createMockPod({ id: "pod-1" });
+        store.pods = [pod];
+
+        store.updatePodPlugins("pod-1", ["plugin-a", "plugin-b"]);
+
+        expect(store.pods[0]?.pluginIds).toEqual(["plugin-a", "plugin-b"]);
+      });
+
+      it("可以清空 pluginIds（傳入空陣列）", () => {
+        const store = usePodStore();
+        const pod = createMockPod({ id: "pod-1", pluginIds: ["plugin-a"] });
+        store.pods = [pod];
+
+        store.updatePodPlugins("pod-1", []);
+
+        expect(store.pods[0]?.pluginIds).toEqual([]);
+      });
+
+      it("可模擬樂觀更新後回滾（先更新再還原）", () => {
+        const store = usePodStore();
+        const pod = createMockPod({ id: "pod-1", pluginIds: ["plugin-a"] });
+        store.pods = [pod];
+
+        // 樂觀更新
+        store.updatePodPlugins("pod-1", ["plugin-a", "plugin-b"]);
+        expect(store.pods[0]?.pluginIds).toEqual(["plugin-a", "plugin-b"]);
+
+        // 模擬 API 失敗（success: false），回滾到舊值
+        store.updatePodPlugins("pod-1", ["plugin-a"]);
+        expect(store.pods[0]?.pluginIds).toEqual(["plugin-a"]);
+      });
+
+      it("Pod 不存在時應 early return（pod-busy 路徑也適用）", () => {
+        const store = usePodStore();
+
+        expect(() =>
+          store.updatePodPlugins("non-existent", ["plugin-a"]),
+        ).not.toThrow();
+        expect(store.pods).toHaveLength(0);
+      });
+    });
+
     describe("clearPodOutputsByIds", () => {
       it("應清空指定多個 Pod 的 output", () => {
         const store = usePodStore();
@@ -1532,52 +1443,53 @@ describe("podStore", () => {
 
       const updatedPod = createMockPod({ id: "pod-1", multiInstance: true });
 
-      mockExecuteAction.mockResolvedValueOnce({
+      // createWebSocketRequest 回傳後端原始回應
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true, pod: updatedPod },
+        pod: updatedPod,
       });
 
       const result = await store.setMultiInstanceWithBackend("pod-1", true);
 
-      expect(mockExecuteAction).toHaveBeenCalledWith(
+      // 驗證 createWebSocketRequest 被呼叫的事件與 payload（含 canvasId）
+      expect(mockCreateWebSocketRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           requestEvent: "pod:set-multi-instance",
           responseEvent: "pod:multi-instance:set",
-          payload: { podId: "pod-1", multiInstance: true },
-        }),
-        expect.objectContaining({
-          errorCategory: "Pod",
-          errorAction: "操作失敗",
+          payload: expect.objectContaining({
+            canvasId: "canvas-1",
+            podId: "pod-1",
+            multiInstance: true,
+          }),
         }),
       );
       expect(mockShowSuccessToast).toHaveBeenCalledWith("Pod", "更新成功");
       expect(result).toEqual(updatedPod);
     });
 
-    it("executeAction 失敗時應回傳 null", async () => {
+    it("WebSocket 請求失敗時應回傳 null", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: false,
-        error: "Pod 設定失敗",
-      });
+      // createWebSocketRequest 拋出例外（後端錯誤或逾時）
+      mockCreateWebSocketRequest.mockRejectedValueOnce(
+        new Error("Pod 設定失敗"),
+      );
 
       const result = await store.setMultiInstanceWithBackend("pod-1", false);
 
       expect(result).toBeNull();
     });
 
-    it("回應 success: false 時應回傳 null", async () => {
+    it("後端回應 success: false 時應回傳 null", async () => {
       const canvasStore = useCanvasStore();
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        data: { success: false },
-      });
+      // 後端回傳 success:false 時 createWebSocketRequest 會 reject
+      mockCreateWebSocketRequest.mockRejectedValueOnce(new Error("操作失敗"));
 
       const result = await store.setMultiInstanceWithBackend("pod-1", false);
 
@@ -1589,9 +1501,11 @@ describe("podStore", () => {
       canvasStore.activeCanvasId = "canvas-1";
       const store = usePodStore();
 
-      mockExecuteAction.mockResolvedValueOnce({
+      // 後端回應成功但未包含 pod 欄位
+      mockCreateWebSocketRequest.mockResolvedValueOnce({
+        requestId: "req-1",
         success: true,
-        data: { success: true },
+        // 沒有 pod 欄位
       });
 
       const result = await store.setMultiInstanceWithBackend("pod-1", true);
@@ -1604,14 +1518,19 @@ describe("podStore", () => {
     it("應處理多個 Pod 並使用 enrichPod", () => {
       const store = usePodStore();
       const pod1 = createMockPod({ id: "pod-1", x: undefined as any });
-      const pod2 = createMockPod({ id: "pod-2", model: undefined as any });
+      // 模擬 providerConfig 缺失時 enrichPod 應補預設值
+      const pod2 = createMockPod({
+        id: "pod-2",
+        providerConfig: undefined as any,
+      });
 
       store.syncPodsFromBackend([pod1, pod2]);
 
       expect(store.pods).toHaveLength(2);
       // enrichPod 應填入預設值
       expect(store.pods[0]?.x).toBe(100);
-      expect(store.pods[1]?.model).toBe("opus");
+      // store 未載入 defaultOptions 時，enrichPod 回傳 placeholder { model: "" }
+      expect(store.pods[1]?.providerConfig?.model).toBe("");
     });
 
     it("應過濾掉無效 Pod", () => {
@@ -1652,25 +1571,113 @@ describe("podStore", () => {
     });
   });
 
-  describe("updatePodField", () => {
-    it("Pod 存在時應成功更新 outputStyleId 欄位", () => {
+  describe("updatePodProviderConfigModel", () => {
+    it("合法 model 名稱應成功更新 providerConfig.model", () => {
       const store = usePodStore();
-      const pod = createMockPod({ id: "pod-1", outputStyleId: null });
+      // 建立一個 codex provider 的 Pod，初始 model 為 gpt-5.4
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+      });
       store.pods = [pod];
 
-      store.updatePodField("pod-1", "outputStyleId", "style-abc");
+      // gpt-4o-mini 符合 isValidModelName 規則（字母、數字、點、連字號）
+      store.updatePodProviderConfigModel("pod-1", "gpt-4o-mini");
 
-      expect(store.pods[0]?.outputStyleId).toBe("style-abc");
+      expect(store.pods[0]?.providerConfig?.model).toBe("gpt-4o-mini");
     });
 
-    it("Pod 存在時應成功更新 model 欄位", () => {
+    it("非法 model 名稱應被拒絕，store state 不應被更新", () => {
       const store = usePodStore();
-      const pod = createMockPod({ id: "pod-1", model: "opus" });
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+      });
       store.pods = [pod];
 
-      store.updatePodField("pod-1", "model", "sonnet");
+      // "../etc/passwd" 含有 "/" 不符合 isValidModelName 規則，應被拒絕
+      store.updatePodProviderConfigModel("pod-1", "../etc/passwd");
 
-      expect(store.pods[0]?.model).toBe("sonnet");
+      // model 不應被更新
+      expect(store.pods[0]?.providerConfig?.model).toBe("gpt-5.4");
+      expect(console.warn).toHaveBeenCalledWith(
+        "[PodStore] model 不合法，已拒絕更新：../etc/passwd",
+      );
+    });
+
+    it("空字串 model 應被拒絕，store state 不應被更新", () => {
+      const store = usePodStore();
+      const pod = createMockPod({
+        id: "pod-1",
+        providerConfig: { model: "opus" },
+      });
+      store.pods = [pod];
+
+      store.updatePodProviderConfigModel("pod-1", "");
+
+      // model 不應被更新
+      expect(store.pods[0]?.providerConfig?.model).toBe("opus");
+      expect(console.warn).toHaveBeenCalledWith(
+        "[PodStore] model 不合法，已拒絕更新：",
+      );
+    });
+
+    it("Pod 不存在時應靜默忽略不拋錯，store state 不變", () => {
+      const store = usePodStore();
+      const pod = createMockPod({ id: "pod-1" });
+      store.pods = [pod];
+      const originalModel = store.pods[0]?.providerConfig?.model;
+
+      // 對不存在的 podId 呼叫，不應 throw，也不應改動其他 pod
+      expect(() =>
+        store.updatePodProviderConfigModel("non-existent", "valid-model"),
+      ).not.toThrow();
+      expect(store.pods[0]?.providerConfig?.model).toBe(originalModel);
+    });
+
+    it("model 更新後 providerConfig 僅含 model 欄位（provider 判別改由 Pod.provider 負責）", () => {
+      const store = usePodStore();
+      // ProviderConfig 現在只有 model 欄位，provider 身份由上層 Pod.provider 負責
+      const pod = createMockPod({
+        id: "pod-1",
+        provider: "codex",
+        providerConfig: { model: "gpt-5.4" },
+      });
+      store.pods = [pod];
+
+      // valid-model 符合 isValidModelName 規則
+      store.updatePodProviderConfigModel("pod-1", "valid-model");
+
+      expect(store.pods[0]?.providerConfig?.model).toBe("valid-model");
+      // Pod.provider 仍為 'codex'，providerConfig 只有 model 欄位
+      expect(store.pods[0]?.provider).toBe("codex");
+      expect(Object.keys(store.pods[0]?.providerConfig ?? {})).toEqual([
+        "model",
+      ]);
+    });
+  });
+
+  describe("updatePodField", () => {
+    it("Pod 存在時應成功更新 commandId 欄位", () => {
+      const store = usePodStore();
+      const pod = createMockPod({ id: "pod-1", commandId: null });
+      store.pods = [pod];
+
+      store.updatePodField("pod-1", "commandId", "cmd-abc");
+
+      expect(store.pods[0]?.commandId).toBe("cmd-abc");
+    });
+
+    it("Pod 存在時應成功更新 commandId 至另一個值", () => {
+      const store = usePodStore();
+      const pod = createMockPod({ id: "pod-1", commandId: "cmd-old" });
+      store.pods = [pod];
+
+      store.updatePodField("pod-1", "commandId", "cmd-new");
+
+      expect(store.pods[0]?.commandId).toBe("cmd-new");
     });
 
     it("Pod 不存在時應靜默忽略不拋錯", () => {
@@ -1678,7 +1685,7 @@ describe("podStore", () => {
       store.pods = [];
 
       expect(() =>
-        store.updatePodField("non-existent", "model", "haiku"),
+        store.updatePodField("non-existent", "commandId", null),
       ).not.toThrow();
       expect(store.pods).toHaveLength(0);
     });

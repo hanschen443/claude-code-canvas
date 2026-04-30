@@ -1,11 +1,13 @@
-import type { Pod, PodStatus, ModelType } from "../pod";
-import type { OutputStyleNote } from "@/types";
-import type { SkillNote } from "@/types";
+import type {
+  Pod,
+  PodStatus,
+  ModelType,
+  PodProvider,
+  ProviderCapabilities,
+} from "../pod";
 import type { Repository, RepositoryNote } from "@/types";
-import type { SubAgentNote } from "@/types";
 import type { CommandNote } from "@/types";
 import type { AnchorPosition } from "@/types";
-import type { McpServerConfig, McpServerNote } from "../mcpServer";
 import type { InstalledPlugin } from "../plugin";
 import type { ResultPayload } from "./index";
 import type {
@@ -14,12 +16,14 @@ import type {
   RunPodStatus,
   PathwayState,
 } from "../run";
+import type { McpListItem } from "../mcp";
 
 export interface ConnectionReadyPayload {
   socketId: string;
 }
 
 export interface PodCreatedPayload extends ResultPayload {
+  canvasId?: string;
   pod?: Pod;
 }
 
@@ -46,12 +50,8 @@ export interface PodScheduleSetPayload extends ResultPayload {
 export interface PodDeletedPayload extends ResultPayload {
   podId?: string;
   deletedNoteIds?: {
-    note?: string[];
-    skillNote?: string[];
     repositoryNote?: string[];
     commandNote?: string[];
-    subAgentNote?: string[];
-    mcpServerNote?: string[];
   };
 }
 
@@ -90,10 +90,17 @@ export interface PodChatAbortedPayload {
   messageId: string;
 }
 
+/** 後端 i18nError 格式：key 為 i18n 翻譯 key，params 為插值參數 */
+export interface I18nErrorPayload {
+  key: string;
+  params?: Record<string, string | number>;
+}
+
 export interface PodErrorPayload {
   requestId?: string;
   podId?: string;
-  error: string;
+  /** 後端可能傳純字串或 i18nError 格式物件，前端需統一處理 */
+  error: string | I18nErrorPayload;
   code: string;
 }
 
@@ -125,31 +132,6 @@ export interface PodChatHistoryResultPayload extends ResultPayload {
   messages?: PersistedMessage[];
 }
 
-export interface OutputStyleCreatedPayload {
-  requestId: string;
-  success: boolean;
-  outputStyle?: { id: string; name: string };
-  error?: string;
-}
-
-export interface OutputStyleUpdatedPayload {
-  requestId: string;
-  success: boolean;
-  outputStyle?: { id: string; name: string };
-  error?: string;
-}
-
-export interface OutputStyleReadResultPayload {
-  requestId: string;
-  success: boolean;
-  outputStyle?: { id: string; name: string; content: string };
-  error?: string;
-}
-
-export interface NoteCreatedPayload extends ResultPayload {
-  note?: OutputStyleNote;
-}
-
 export interface ConnectionPayloadItem {
   id: string;
   sourcePodId?: string;
@@ -168,7 +150,8 @@ export interface ConnectionPayloadItem {
     | "ai-rejected"
     | "ai-error";
   decideReason?: string | null;
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
 }
 
@@ -215,26 +198,15 @@ export interface WorkflowClearResultPayload extends ResultPayload {
 }
 
 export interface PasteError {
-  type:
-    | "pod"
-    | "outputStyleNote"
-    | "skillNote"
-    | "repositoryNote"
-    | "subAgentNote"
-    | "commandNote"
-    | "mcpServerNote";
+  type: "pod" | "repositoryNote" | "commandNote";
   originalId: string;
   error: string;
 }
 
 export interface CanvasPasteResultPayload extends ResultPayload {
   createdPods: Pod[];
-  createdOutputStyleNotes: OutputStyleNote[];
-  createdSkillNotes: SkillNote[];
   createdRepositoryNotes: RepositoryNote[];
-  createdSubAgentNotes: SubAgentNote[];
   createdCommandNotes: CommandNote[];
-  createdMcpServerNotes: McpServerNote[];
   createdConnections: ConnectionPayloadItem[];
   podIdMapping: Record<string, string>;
   errors: PasteError[];
@@ -263,27 +235,6 @@ export interface PodMessagesClearedPayload {
 
 export interface PodMultiInstanceSetPayload extends ResultPayload {
   pod?: Pod;
-}
-
-export interface SubAgentCreatedPayload {
-  requestId: string;
-  success: boolean;
-  subAgent?: { id: string; name: string };
-  error?: string;
-}
-
-export interface SubAgentUpdatedPayload {
-  requestId: string;
-  success: boolean;
-  subAgent?: { id: string; name: string };
-  error?: string;
-}
-
-export interface SubAgentReadResultPayload {
-  requestId: string;
-  success: boolean;
-  subAgent?: { id: string; name: string; content: string };
-  error?: string;
 }
 
 export interface CommandCreatedPayload {
@@ -371,7 +322,7 @@ export interface GroupCreatedPayload {
   group?: {
     id: string;
     name: string;
-    type: "command" | "outputStyle" | "subAgent";
+    type: "command";
   };
   error?: string;
 }
@@ -382,7 +333,7 @@ export interface GroupListResultPayload {
   groups?: Array<{
     id: string;
     name: string;
-    type: "command" | "outputStyle" | "subAgent";
+    type: "command";
   }>;
   error?: string;
 }
@@ -394,14 +345,6 @@ export interface GroupDeletedPayload extends ResultPayload {
 export interface MovedToGroupPayload extends ResultPayload {
   itemId?: string;
   groupId?: string | null;
-}
-
-export interface SkillImportedPayload {
-  requestId: string;
-  success: boolean;
-  skill?: { id: string; name: string; description: string };
-  isOverwrite?: boolean;
-  error?: string;
 }
 
 export interface WorkflowAiDecidePendingPayload {
@@ -481,25 +424,21 @@ export interface CursorMovedPayload {
   color: string;
 }
 
-export interface McpServerCreatedPayload {
-  requestId: string;
-  success: boolean;
-  mcpServer?: { id: string; name: string };
-  error?: string;
+/** MCP server 清單查詢結果 */
+export interface McpListResultPayload extends ResultPayload {
+  /** 與後端 providerSchema（"claude" | "codex" | "gemini"）對齊；gemini 目前不支援 mcp，但 schema 必須允許以便回傳空清單 */
+  provider?: "claude" | "codex" | "gemini";
+  items?: McpListItem[];
 }
 
-export interface McpServerUpdatedPayload {
-  requestId: string;
-  success: boolean;
-  mcpServer?: { id: string; name: string };
-  error?: string;
-}
-
-export interface McpServerReadResultPayload {
-  requestId: string;
-  success: boolean;
-  mcpServer?: { id: string; name: string; config: McpServerConfig };
-  error?: string;
+/** Pod 的 MCP server 名稱清單已更新 */
+export interface PodMcpServerNamesUpdatedPayload extends ResultPayload {
+  canvasId: string;
+  podId?: string;
+  mcpServerNames?: string[];
+  /** self-healing 過濾掉的 MCP server name 清單（不存在於 ~/.claude.json） */
+  ignoredNames?: string[];
+  pod?: Pod;
 }
 
 export interface CursorLeftPayload {
@@ -520,9 +459,24 @@ export interface ConfigUpdatedPayload extends ResultPayload {
   backupEnabled?: boolean;
 }
 
-export interface PodPluginsSetPayload extends ResultPayload {
-  pod?: Pod;
-}
+/** Pod plugin 設定結果（discriminated union，以 success 欄位區分兩條路徑） */
+export type PodPluginsSetPayload =
+  | {
+      requestId?: string;
+      canvasId: string;
+      success: true;
+      pod?: Pod;
+      /** self-healing 過濾掉的 plugin ID 清單（未安裝的 plugin） */
+      ignoredIds?: string[];
+    }
+  | {
+      requestId?: string;
+      canvasId: string;
+      podId?: string;
+      success: false;
+      /** pod-busy：Pod 正忙碌，無法修改 plugin 設定 */
+      reason: "pod-busy";
+    };
 
 export interface PluginListResultPayload extends ResultPayload {
   plugins?: InstalledPlugin[];
@@ -606,6 +560,21 @@ export interface RunToolResultPayload {
   toolUseId: string;
   toolName: string;
   output: string;
+}
+
+/** Provider 列表查詢結果，包含每個 Provider 的功能能力表、預設選項與可選模型清單 */
+export interface ProviderListResultPayload extends ResultPayload {
+  providers?: Array<{
+    name: PodProvider;
+    capabilities: ProviderCapabilities;
+    /** Provider 預設執行時選項（已移除 pathToClaudeCodeExecutable 等伺服器敏感路徑） */
+    defaultOptions: Record<string, unknown>;
+    /**
+     * Provider 聲告支援的模型清單，前端模型選擇器依此動態渲染選項。
+     * 每個元素為 { label, value } pair，label 供 UI 顯示、value 為實際 model id。
+     */
+    availableModels: ReadonlyArray<{ label: string; value: string }>;
+  }>;
 }
 
 export type BackupTestConnectionResultPayload = ResultPayload;

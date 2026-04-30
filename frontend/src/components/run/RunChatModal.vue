@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed } from "vue";
 import { X } from "lucide-vue-next";
 import { useRunStore } from "@/stores/run/runStore";
 import ChatMessages from "@/components/chat/ChatMessages.vue";
 import RunStatusIcon from "./RunStatusIcon.vue";
 import type { RunStatus } from "@/types/run";
+import { useEscapeClose } from "@/composables/useEscapeClose";
 
 const props = defineProps<{
   runId: string;
@@ -33,26 +34,13 @@ const handleClose = (): void => {
   emit("close");
 };
 
-const handleKeydown = (event: KeyboardEvent): void => {
-  if (event.key === "Escape") {
-    const openDialog = document.querySelector(
-      '[data-state="open"][role="dialog"]',
-    );
-    if (openDialog) {
-      return;
-    }
-    event.stopPropagation();
-    event.preventDefault();
-    handleClose();
-  }
-};
-
-onMounted(() => {
-  document.addEventListener("keydown", handleKeydown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener("keydown", handleKeydown);
+// ESC 關閉：若有 reka-ui Dialog 開啟中則略過，避免干擾 Dialog 自身的 ESC 處理
+useEscapeClose(() => {
+  const openDialog = document.querySelector(
+    '[data-state="open"][role="dialog"]',
+  );
+  if (openDialog) return;
+  handleClose();
 });
 </script>
 

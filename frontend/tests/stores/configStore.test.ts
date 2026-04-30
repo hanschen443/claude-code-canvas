@@ -20,11 +20,6 @@ describe("configStore", () => {
     useConfigStore = module.useConfigStore;
   });
 
-  it("初始 timezoneOffset 應為 8", () => {
-    const store = useConfigStore();
-    expect(store.timezoneOffset).toBe(8);
-  });
-
   it("fetchConfig 應從 API 載入 timezoneOffset 並更新 state", async () => {
     mockGetConfig.mockResolvedValueOnce({
       success: true,

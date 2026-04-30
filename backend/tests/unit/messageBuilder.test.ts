@@ -1,39 +1,68 @@
-import { describe, it, expect } from 'vitest';
-import { buildClaudeContentBlocks } from '../../src/services/claude/messageBuilder.js';
-import type { ContentBlock } from '../../src/types/index.js';
+import { describe, it, expect } from "vitest";
+import { buildClaudeContentBlocks } from "../../src/services/claude/messageBuilder.js";
+import type { ContentBlock } from "../../src/types/index.js";
 
 function textBlock(text: string): ContentBlock {
-    return { type: 'text', text };
+  return { type: "text", text };
 }
 
-describe('messageBuilder', () => {
-    describe('applyCommandPrefix（透過 buildClaudeContentBlocks 驗證）', () => {
-        it('prefix 為空字串時應直接回傳原 text，不套用 prefix', () => {
-            const blocks: ContentBlock[] = [textBlock('hello')];
+function imageBlock(
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+  base64Data: string,
+): ContentBlock {
+  return { type: "image", mediaType, base64Data };
+}
 
-            const result = buildClaudeContentBlocks(blocks, null);
+describe("buildClaudeContentBlocks", () => {
+  it("純文字 block 應直接轉成 Claude text content", () => {
+    const blocks: ContentBlock[] = [textBlock("hello")];
 
-            expect(result[0]).toEqual({ type: 'text', text: 'hello' });
-        });
+    const result = buildClaudeContentBlocks(blocks);
 
-        it('prefixApplied 已為 true 時不應再次套用 prefix（第二個 text block 不套用）', () => {
-            const blocks: ContentBlock[] = [
-                textBlock('first'),
-                textBlock('second'),
-            ];
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ type: "text", text: "hello" });
+  });
 
-            const result = buildClaudeContentBlocks(blocks, 'cmd');
+  it("純圖片 block 應轉成 Claude image content", () => {
+    const blocks: ContentBlock[] = [imageBlock("image/png", "abc123")];
 
-            expect(result[0]).toEqual({ type: 'text', text: '/cmd first' });
-            expect(result[1]).toEqual({ type: 'text', text: 'second' });
-        });
+    const result = buildClaudeContentBlocks(blocks);
 
-        it('正常套用 prefix 並將 prefixApplied 改為 true', () => {
-            const blocks: ContentBlock[] = [textBlock('message')];
-
-            const result = buildClaudeContentBlocks(blocks, 'myCommand');
-
-            expect(result[0]).toEqual({ type: 'text', text: '/myCommand message' });
-        });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/png",
+        data: "abc123",
+      },
     });
+  });
+
+  it("text + image 混合 blocks 應依序轉成對應 content", () => {
+    const blocks: ContentBlock[] = [
+      textBlock("說明文字"),
+      imageBlock("image/jpeg", "imgdata"),
+    ];
+
+    const result = buildClaudeContentBlocks(blocks);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ type: "text", text: "說明文字" });
+    expect(result[1]).toEqual({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: "imgdata",
+      },
+    });
+  });
+
+  it("空陣列時應 fallback 回傳「請開始執行」text content", () => {
+    const result = buildClaudeContentBlocks([]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ type: "text", text: "請開始執行" });
+  });
 });

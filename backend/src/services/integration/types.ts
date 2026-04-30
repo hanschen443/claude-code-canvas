@@ -44,7 +44,6 @@ export interface IntegrationProvider {
   name: string;
   displayName: string;
   createAppSchema: z.ZodType;
-  bindSchema: z.ZodType;
 
   validateCreate(config: IntegrationAppConfig): Result<void>;
   sanitizeConfig(config: IntegrationAppConfig): Record<string, unknown>;

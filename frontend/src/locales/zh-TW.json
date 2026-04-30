@@ -211,6 +211,12 @@
     "multiInstance": {
       "readonlyHint": "此 Pod 屬於 Multi-Instance 流程，請從歷程查看"
     },
+    "provider": {
+      "title": "Provider",
+      "unknownDescription": "此 Provider 已下線或尚未支援，無法開啟對話",
+      "loadFailedDescription": "無法取得 provider capabilities，部分功能可能不正常",
+      "loadingHint": "Provider 載入中，請稍候"
+    },
     "clearWorkflow": {
       "title": "清理 Workflow",
       "description": "即將清空以下 POD 的所有訊息：",
@@ -222,11 +228,46 @@
       "description": "確定要刪除「{name}」嗎？此操作無法復原。",
       "confirm": "確認刪除"
     },
+    "upload": {
+      "uploading": "上傳中... {percent}%",
+      "fileCount": "共 {count} 個檔案",
+      "failedTitle": "部分檔案上傳失敗",
+      "failedAllTitle": "所有檔案上傳失敗",
+      "retry": "重試失敗的檔案",
+      "cannotDeleteWhileUploading": "上傳中無法刪除",
+      "failureReason": {
+        "network": "網路錯誤",
+        "unknown": "未知錯誤",
+        "aborted": "上傳已取消",
+        "UPLOAD_NO_FILE": "未提供檔案",
+        "UPLOAD_INVALID_SESSION_ID": "上傳識別碼格式錯誤",
+        "ATTACHMENT_TOO_LARGE": "檔案超過 10MB 上限",
+        "ATTACHMENT_INVALID_NAME": "檔名不合法",
+        "ATTACHMENT_WRITE_FAILED": "伺服器寫入失敗",
+        "ATTACHMENT_DISK_FULL": "伺服器磁碟空間不足"
+      }
+    },
     "slot": {
       "duplicateTitle": "已存在，無法插入",
-      "skillDuplicate": "此 Skill 已綁定到此 Pod",
-      "subAgentDuplicate": "此 SubAgent 已綁定到此 Pod",
-      "mcpServerDuplicate": "此 MCP Server 已綁定到此 Pod"
+      "providerDisabled": "此 Provider 不支援此功能",
+      "pluginsLabel": "Plugins",
+      "pluginsLoading": "載入中...",
+      "pluginsBusyTooltip": "任務進行中，請等待完成",
+      "pluginsEmpty": "尚未安裝 plugin",
+      "pluginsToggleFailed": "變更失敗，已回滾",
+      "pluginsCodexHint": "Codex plugin 由 codex 全域管理",
+      "mcpLabel": "MCPs",
+      "mcpLoading": "載入中…",
+      "mcpBusyTooltip": "Pod 執行中無法切換",
+      "mcpEmpty": "尚未安裝 MCP server",
+      "mcpClaudeEmptyHint": "請使用 `claude mcp add` 安裝",
+      "mcpCodexEmptyHint": "請使用 `codex mcp add` 安裝",
+      "mcpToggleFailed": "切換 MCP server 失敗",
+      "mcpLoadFailed": "載入失敗",
+      "mcpCodexHint": "Codex MCP server 由 codex 全域管理",
+      "searchPlaceholder": "搜尋…",
+      "pluginsSearchEmpty": "找不到符合的 plugin",
+      "mcpSearchEmpty": "找不到符合的 MCP server"
     }
   },
   "run": {
@@ -296,6 +337,9 @@
     "notConnected": "WebSocket 尚未連線",
     "requestTimeout": "請求逾時：{event}"
   },
+  "composableDeleteResource": {
+    "deleteFailed": "刪除失敗，請稍後再試"
+  },
   "canvas": {
     "noActiveCanvas": "沒有啟用的畫布",
     "emptyState": "右鍵點擊以建立 Pod 或 Note",
@@ -361,16 +405,10 @@
     },
     "podContextMenu": {
       "downloadDirectory": "下載工作目錄（zip）",
-      "plugin": "Plugin",
       "connect": "連接 {label}",
       "disconnect": "斷開 {label}",
       "downloadDirectoryFailed": "下載目錄失敗",
-      "downloadDirectoryFailedDesc": "無法下載工作目錄，請稍後再試",
-      "noPluginInstalled": "尚未安裝任何 Plugin",
-      "pluginLoadFailed": "載入 Plugin 列表失敗",
-      "pluginLoadFailedDesc": "無法取得已安裝的 Plugin 列表，請稍後再試",
-      "pluginUpdateFailed": "Plugin 設定失敗",
-      "pluginUpdateFailedDesc": "無法更新 Pod Plugin 設定，請稍後再試"
+      "downloadDirectoryFailedDesc": "無法下載工作目錄，請稍後再試"
     },
     "connectionContextMenu": {
       "triggerModeAuto": "自動觸發 (Auto)",
@@ -389,7 +427,8 @@
       "summaryModelChangeFailed": "無法變更總結模型",
       "aiDecideModelChanged": "AI 決策模型已變更",
       "aiDecideModelChangeFailed": "無法變更 AI 決策模型",
-      "modelSwitched": "已切換為 {model}"
+      "modelSwitched": "已切換為 {model}",
+      "loading": "載入中..."
     },
     "confirmDelete": {
       "cannotDelete": "無法刪除",
@@ -403,19 +442,6 @@
       "namePlaceholder": "名稱",
       "contentPlaceholder": "內容",
       "editTitleWithType": "編輯 {type}"
-    },
-    "mcpServer": {
-      "createTitle": "新增 MCP Server",
-      "editTitle": "編輯 MCP Server",
-      "description": "請貼入 JSON 格式的 MCP Server 設定，第一個 key 為名稱，value 為設定內容",
-      "parseError": "JSON 格式錯誤，請檢查語法",
-      "minOneServer": "請輸入至少一個 MCP Server 設定",
-      "nameInvalid": "名稱只能包含英數字、底線和連字號",
-      "modeError": "設定必須包含 command 欄位（stdio 模式）或 type + url 欄位（http/sse 模式）",
-      "commandEmpty": "command 欄位不能為空",
-      "urlInvalid": "url 欄位格式不正確",
-      "argsInvalid": "args 欄位必須是字串陣列",
-      "parseLost": "解析結果遺失，請重新提交"
     },
     "scheduleModal": {
       "createTitle": "設定排程",
@@ -454,11 +480,7 @@
       "aiErrorReason": "錯誤：{reason}"
     },
     "podTypeMenu": {
-      "newOutputStyle": "新增 Output Style",
-      "newSubAgent": "新增 SubAgent",
       "newCommand": "新增 Command",
-      "newOutputStyleGroup": "新增 Output Style 群組",
-      "newSubAgentGroup": "新增 SubAgent 群組",
       "newCommandGroup": "新增 Command 群組"
     }
   },
@@ -467,7 +489,8 @@
       "deleted": "{name} 已被刪除",
       "orderSaveFailed": "排序儲存失敗",
       "renameFailed": "重新命名失敗",
-      "renamed": "重新命名成功"
+      "renamed": "重新命名成功",
+      "switchFailed": "切換 Canvas 失敗"
     },
     "connection": {
       "alreadyExists": "連線已存在",
@@ -498,6 +521,9 @@
     },
     "backup": {
       "completed": "備份完成"
+    },
+    "run": {
+      "loadFailed": "載入 Run 記錄失敗"
     },
     "repository": {
       "createFailed": "建立資料夾失敗",
@@ -559,16 +585,9 @@
       "imageInvalidData": "圖片資料無效",
       "uploadTooMany": "一次最多只能上傳 1 張圖片",
       "speechMaxLength": "已達到最大文字長度限制",
-      "speechUnsupported": "此瀏覽器不支援語音輸入功能"
-    },
-    "skillImport": {
-      "invalidFormat": "檔案格式錯誤，僅支援 ZIP 檔案",
-      "fileTooLarge": "檔案大小超過 5MB 限制",
-      "networkFailed": "網路傳輸失敗，請重試",
-      "base64Failed": "Base64 轉換失敗",
-      "importFailed": "匯入失敗",
-      "importSuccess": "匯入成功",
-      "importSuccessOverwrite": "匯入成功（已覆蓋）"
+      "speechUnsupported": "此瀏覽器不支援語音輸入功能",
+      "podDropReadFailed": "檔案讀取失敗",
+      "podDropSendFailed": "檔案送出失敗"
     },
     "eventHandler": {
       "podCreated": "Pod 建立成功",
@@ -582,16 +601,9 @@
       "canvasCreated": "Canvas 建立成功",
       "canvasRenamed": "Canvas 重命名成功",
       "pasted": "貼上成功",
-      "outputStyleDeleted": "輸出風格已刪除",
-      "skillDeleted": "Skill 已刪除",
       "worktreeCreated": "Worktree 建立成功",
       "repositoryDeleted": "Repository 已刪除",
-      "subAgentDeleted": "SubAgent 已刪除",
-      "commandDeleted": "Command 已刪除",
-      "mcpServerCreated": "MCP Server 已建立",
-      "mcpServerUpdated": "MCP Server 已更新",
-      "mcpServerDeleted": "MCP Server 已刪除",
-      "mcpServerReadFailed": "讀取 MCP Server 失敗"
+      "commandDeleted": "Command 已刪除"
     },
     "deleteSelection": {
       "partialFailed": "刪除部分失敗",
@@ -705,14 +717,27 @@
     "noteCreateFailed": "建立 {type} 失敗",
     "connectionCreateFailed": "建立連線失敗：{message}",
     "activeCanvasNotFound": "找不到使用中的 Canvas",
-    "resourceInUse": "{resource} 正在被 {count} 個 Pod 使用中，無法刪除"
+    "capabilityNotSupported": "{provider} 不支援此功能",
+    "resourceInUse": "{resource} 正在被 {count} 個 Pod 使用中，無法刪除",
+    "attachmentFolderNotAllowed": "不支援拖入資料夾",
+    "attachmentEmpty": "沒有可上傳的檔案，請選擇檔案後再試一次",
+    "attachmentTooLarge": "單檔大小超過 10 MB 上限",
+    "attachmentInvalidName": "檔案名稱不合法",
+    "attachmentDiskFull": "磁碟空間不足，無法寫入檔案",
+    "attachmentWriteFailed": "檔案寫入失敗，請稍後再試",
+    "uploadSessionNotFound": "找不到對應的上傳 session，可能已過期，請重新上傳",
+    "uploadInvalidSessionId": "上傳 session ID 格式不合法",
+    "uploadNoFile": "請求中缺少檔案欄位，請重新選擇檔案上傳",
+    "invalidWorkspacePath": "專案目錄無法使用，請重新選擇或解除 Repository 綁定"
   },
   "progress": {
     "preparingPull": "準備 Pull...",
     "pullComplete": "Pull 完成",
     "preparingCheckout": "準備切換分支...",
     "branchCreated": "分支建立完成",
-    "checkoutComplete": "切換完成"
+    "checkoutComplete": "切換完成",
+    "repositoryCloneStart": "開始 Git clone...",
+    "repositoryCreated": "Repository 已建立，開始 clone..."
   },
   "settings": {
     "title": "全域設定",
