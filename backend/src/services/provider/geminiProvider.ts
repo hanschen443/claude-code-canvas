@@ -35,6 +35,7 @@ import type { Pod } from "../../types/pod.js";
 import type { RunContext } from "../../types/run.js";
 import { buildGeminiEnv, collectStderr } from "../gemini/geminiHelpers.js";
 import { isEnoentError } from "./utils.js";
+import { scanInstalledPlugins } from "../pluginScanner.js";
 
 // ─── 共用 TextDecoder 實例（效能優化）────────────────────────────────────────
 /**
@@ -52,6 +53,8 @@ export interface GeminiOptions {
   model: string;
   /** resume 模式固定為 "cli"（Gemini 透過 --resume sessionId 恢復對話） */
   resumeMode: "cli";
+  /** 已啟用且通過白名單後的 extension name 陣列 */
+  plugins: string[];
 }
 
 /**
@@ -132,12 +135,26 @@ function normalizeMessageToPromptText(
   return parts.join("\n");
 }
 
+/**
+ * 將 plugins 陣列轉換為 `-e` flag 參數。
+ * - 空陣列 → `["-e", "none"]`（停用所有 extension）
+ * - 非空陣列 → 每個 name 展開為 `["-e", name]`
+ */
+function buildExtensionArgs(plugins: string[]): string[] {
+  if (plugins.length === 0) return ["-e", "none"];
+  return plugins.flatMap((name) => ["-e", name]);
+}
+
 // 安全警示：promptText 為未消毒的使用者輸入，必須保持陣列傳參給 Bun.spawn，禁止改為字串拼接（防止 CLI 旗標注入）
 /**
  * 組合新對話的 CLI 參數。
  * prompt 直接透過 --prompt flag 傳入，不用 stdin。
  */
-function buildNewSessionArgs(model: string, promptText: string): string[] {
+function buildNewSessionArgs(
+  model: string,
+  promptText: string,
+  plugins: string[],
+): string[] {
   return [
     "--model",
     model,
@@ -148,6 +165,7 @@ function buildNewSessionArgs(model: string, promptText: string): string[] {
     "yolo",
     "--skip-trust",
     "-s",
+    ...buildExtensionArgs(plugins),
     "--prompt",
     promptText,
   ];
@@ -167,6 +185,7 @@ function buildResumeArgs(
   model: string,
   sessionId: string,
   promptText: string,
+  plugins: string[],
 ): string[] {
   return [
     "--model",
@@ -178,6 +197,7 @@ function buildResumeArgs(
     "yolo",
     "--skip-trust",
     "-s",
+    ...buildExtensionArgs(plugins),
     "--resume",
     sessionId,
     "--prompt",
@@ -202,10 +222,11 @@ function buildGeminiArgs(
   resumeSessionId: string | null,
   model: string,
   promptText: string,
+  plugins: string[],
 ): string[] {
   if (resumeSessionId) {
     if (SESSION_ID_RE.test(resumeSessionId)) {
-      return buildResumeArgs(model, resumeSessionId, promptText);
+      return buildResumeArgs(model, resumeSessionId, promptText, plugins);
     }
 
     // resumeSessionId 格式不合法：整段替換為固定遮罩，不保留任何原字元，防止 CLI 旗標注入與值洩漏
@@ -216,7 +237,7 @@ function buildGeminiArgs(
     );
   }
 
-  return buildNewSessionArgs(model, promptText);
+  return buildNewSessionArgs(model, promptText, plugins);
 }
 
 /**
@@ -563,6 +584,7 @@ const DEFAULT_MODEL = "gemini-2.5-pro";
 const DEFAULT_OPTIONS: GeminiOptions = {
   model: DEFAULT_MODEL,
   resumeMode: "cli",
+  plugins: [],
 };
 
 // ─── Provider 匯出 ────────────────────────────────────────────────────────────
@@ -586,6 +608,8 @@ export const geminiProvider: AgentProvider<GeminiOptions> = {
    * - 讀取 `pod.providerConfig?.model`：若為合法字串（通過 MODEL_RE 驗證）則使用之，
    *   否則回傳 metadata.defaultOptions.model。
    * - resumeMode 固定為 "cli"（Gemini 透過 --resume sessionId 恢復對話）。
+   * - plugins：以 pod.pluginIds 與已安裝 Gemini extension 取交集後得出，
+   *   不存在或不相容的 id 自動略過（silent 過濾 + warn），不 throw。
    * - runContext 本 Phase 不使用（但簽名必須收），以符合 AgentProvider 介面規範。
    */
   async buildOptions(
@@ -598,9 +622,27 @@ export const geminiProvider: AgentProvider<GeminiOptions> = {
         ? rawModel
         : DEFAULT_OPTIONS.model;
 
+    // ── plugins 計算 ──────────────────────────────────────────────
+    let plugins: string[] = [];
+    if (pod.pluginIds && pod.pluginIds.length > 0) {
+      const scan = scanInstalledPlugins("gemini");
+      const installedIds = new Set(scan.map((p) => p.id));
+      const requested = Array.from(new Set(pod.pluginIds));
+      plugins = requested.filter((id) => installedIds.has(id));
+      const skipped = requested.length - plugins.length;
+      if (skipped > 0) {
+        logger.warn(
+          "Chat",
+          "Warn",
+          `[GeminiProvider] 略過 ${skipped} 個不存在或不相容的 extension id（已遮罩）`,
+        );
+      }
+    }
+
     return {
       model,
       resumeMode: "cli",
+      plugins,
     };
   },
 
@@ -647,7 +689,13 @@ export const geminiProvider: AgentProvider<GeminiOptions> = {
       };
       return;
     }
-    const geminiArgs = buildGeminiArgs(resumeSessionId, model, promptText);
+    const plugins = options!.plugins;
+    const geminiArgs = buildGeminiArgs(
+      resumeSessionId,
+      model,
+      promptText,
+      plugins,
+    );
 
     // ── Spawn subprocess + abort signal 設置 ──────────────────────
     // workspacePath 由上層 executor 透過 resolvePodCwd 解析後傳入

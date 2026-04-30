@@ -32,7 +32,7 @@ export async function listPlugins(
   >({
     requestEvent: WebSocketRequestEvents.PLUGIN_LIST,
     responseEvent: WebSocketResponseEvents.PLUGIN_LIST_RESULT,
-    payload: { provider: provider as "claude" | "codex" },
+    payload: { provider },
   });
 
   const data = result.plugins ?? [];

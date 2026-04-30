@@ -44,7 +44,7 @@ describe("GEMINI_CAPABILITIES smoke 測試", () => {
   it("GEMINI_CAPABILITIES 等於預期形狀", () => {
     expect(GEMINI_CAPABILITIES).toEqual({
       chat: true,
-      plugin: false,
+      plugin: true,
       repository: true,
       command: true,
       mcp: false,

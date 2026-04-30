@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { InstalledPlugin } from "../services/pluginScanner.js";
+import { providerSchema } from "./podSchemas.js";
 
 export const pluginListSchema = z.object({
   requestId: z.string(),
-  provider: z.enum(["claude", "codex"]).optional(),
+  provider: providerSchema.optional(),
 });
 
 export type PluginListPayload = z.infer<typeof pluginListSchema>;

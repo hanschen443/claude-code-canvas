@@ -341,6 +341,30 @@ describe("usePodCapabilities", () => {
   // ─── Case 7：Gemini Pod ────────────────────────────────────────────────────
 
   describe("Gemini Pod", () => {
+    // T-C2：Gemini provider → isCodex === false
+    it("T-C2：isCodex 應為 false（Gemini 非 codex provider）", () => {
+      const podId = setupPod("gemini");
+      const { isCodex } = usePodCapabilities(podId);
+
+      expect(isCodex.value).toBe(false);
+    });
+
+    // T-C1：Gemini + store capabilities 含 plugin: true → isPluginEnabled === true
+    it("T-C1：store capabilities 含 plugin: true 時，isPluginEnabled 應為 true", () => {
+      const capabilityStore = useProviderCapabilityStore();
+      // 注入 gemini plugin: true（後端開放 plugin 給 gemini 時的狀態）
+      capabilityStore.syncFromPayload([
+        {
+          name: "gemini",
+          capabilities: { ...GEMINI_CAPABILITIES, plugin: true },
+        },
+      ]);
+      const podId = setupPod("gemini");
+      const { isPluginEnabled } = usePodCapabilities(podId);
+
+      expect(isPluginEnabled.value).toBe(true);
+    });
+
     it("metadata 已載入時 isRepositoryEnabled 應為 true（T6）", () => {
       injectAllCapabilities();
       const podId = setupPod("gemini");

@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { requestIdSchema, canvasIdSchema, podIdSchema } from "./base.js";
+import { providerSchema } from "./podSchemas.js";
 
 /** MCP_LIST 請求 payload schema：指定要查詢的 provider */
 export const mcpListRequestSchema = z
   .object({
     requestId: requestIdSchema,
-    provider: z.enum(["claude", "codex"]),
+    provider: providerSchema,
   })
   .strict();
 
@@ -22,7 +23,7 @@ export const mcpListItemSchema = z.object({
 /** MCP_LIST_RESULT 回應 payload schema：帶回 provider 與對應的 MCP server 清單 */
 export const mcpListResultSchema = z
   .object({
-    provider: z.enum(["claude", "codex"]),
+    provider: providerSchema,
     items: z.array(mcpListItemSchema),
   })
   .strict();

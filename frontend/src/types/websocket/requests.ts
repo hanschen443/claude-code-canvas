@@ -340,7 +340,8 @@ export interface PodSetPluginsPayload {
 
 export interface PluginListPayload {
   requestId: string;
-  provider?: "claude" | "codex";
+  /** 依 provider 過濾 plugin 清單；使用 PodProvider（string）支援任意 provider */
+  provider?: PodProvider;
 }
 
 export interface RunDeletePayload {

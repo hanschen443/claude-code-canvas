@@ -371,4 +371,167 @@ describe("PluginPopover", () => {
       expect(mockUpdatePodPluginsApi).not.toHaveBeenCalled();
     });
   });
+
+  // ── Gemini provider ────────────────────────────────────────────────────────
+
+  describe("Gemini provider", () => {
+    const GEMINI_PLUGIN: InstalledPlugin = {
+      id: "gemini-plugin-1",
+      name: "Gemini Plugin",
+      version: "2.1.0",
+      description: "A gemini plugin",
+      repo: "https://github.com/test/gemini-plugin",
+      compatibleProviders: ["gemini"],
+    };
+
+    // T-P1：Gemini + 有 extension 清單：顯示 name 與 v{version}，每筆有可操作的 Switch
+    it("T-P1：顯示每筆 plugin 的 name 與 v{version}，且渲染可操作的 Switch", async () => {
+      mockListPlugins.mockResolvedValue([GEMINI_PLUGIN]);
+      mountPopover({ provider: "gemini" });
+      await flushPromises();
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover).not.toBeNull();
+      expect(popover!.textContent).toContain("Gemini Plugin");
+      expect(popover!.textContent).toContain("v2.1.0");
+
+      // 應渲染 Switch（不是 codex 唯讀分支）
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+    });
+
+    // T-P2：Gemini + localPluginIds 含某 id → 對應 Switch data-checked = true
+    it("T-P2：localPluginIds 含 plugin id 時，對應 Switch data-checked = true", async () => {
+      mockListPlugins.mockResolvedValue([GEMINI_PLUGIN]);
+
+      // 設定 pod-1 已啟用 gemini-plugin-1
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-1",
+          name: "Pod 1",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: ["gemini-plugin-1"],
+          multiInstance: false,
+          provider: "gemini",
+          providerConfig: { model: "gemini-2.5-pro" },
+        },
+      ];
+
+      mountPopover({ provider: "gemini" });
+      await flushPromises();
+
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+      expect(switchBtn!.getAttribute("data-checked")).toBe("true");
+    });
+
+    // T-P3：Gemini 點 Switch 啟用 → 呼叫 updatePodPlugins(canvasId, podId, [...prev, id])
+    it("T-P3：點 Switch 啟用：呼叫 updatePodPluginsApi(canvasId, podId, [...prev, id])", async () => {
+      mockListPlugins.mockResolvedValue([GEMINI_PLUGIN]);
+      mockUpdatePodPluginsApi.mockResolvedValue({
+        pluginIds: ["gemini-plugin-1"],
+      });
+
+      mountPopover({ provider: "gemini" });
+      await flushPromises();
+
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+      // 初始 data-checked = false → 點擊後應啟用
+      switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushPromises();
+
+      expect(mockUpdatePodPluginsApi).toHaveBeenCalledWith(
+        "canvas-1",
+        "pod-1",
+        ["gemini-plugin-1"],
+      );
+    });
+
+    // T-P4：Gemini 點 Switch 取消 → 呼叫 updatePodPlugins(canvasId, podId, prev.filter)
+    it("T-P4：點 Switch 取消：呼叫 updatePodPluginsApi(canvasId, podId, prev.filter)", async () => {
+      mockListPlugins.mockResolvedValue([GEMINI_PLUGIN]);
+      mockUpdatePodPluginsApi.mockResolvedValue({ pluginIds: [] });
+
+      // 設定 pod-1 已啟用 gemini-plugin-1
+      const podStore = usePodStore();
+      podStore.pods = [
+        {
+          id: "pod-1",
+          name: "Pod 1",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          status: "idle",
+          output: [],
+          repositoryId: null,
+          commandId: null,
+          schedule: null,
+          mcpServerNames: [],
+          pluginIds: ["gemini-plugin-1"],
+          multiInstance: false,
+          provider: "gemini",
+          providerConfig: { model: "gemini-2.5-pro" },
+        },
+      ];
+
+      mountPopover({ provider: "gemini" });
+      await flushPromises();
+
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+      // data-checked = true → 點擊後應取消
+      expect(switchBtn!.getAttribute("data-checked")).toBe("true");
+      switchBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushPromises();
+
+      expect(mockUpdatePodPluginsApi).toHaveBeenCalledWith(
+        "canvas-1",
+        "pod-1",
+        [],
+      );
+    });
+
+    // T-P5：Gemini + installedPlugins = [] → 顯示 pluginsEmpty 空狀態
+    it("T-P5：installedPlugins = [] 時顯示 pod.slot.pluginsEmpty 空狀態", async () => {
+      mockListPlugins.mockResolvedValue([]);
+      mountPopover({ provider: "gemini" });
+      await flushPromises();
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover).not.toBeNull();
+      expect(popover!.textContent).toContain("pod.slot.pluginsEmpty");
+    });
+
+    // T-P6：Gemini + busy = true → Switch disabled
+    it("T-P6：busy = true 時 Switch 為 disabled 狀態", async () => {
+      mockListPlugins.mockResolvedValue([GEMINI_PLUGIN]);
+      mountPopover({ provider: "gemini", busy: true });
+      await flushPromises();
+
+      const switchBtn = bodyQuery(".switch-stub");
+      expect(switchBtn).not.toBeNull();
+      expect(switchBtn!.hasAttribute("disabled")).toBe(true);
+    });
+
+    // T-P7：Gemini + listPlugins reject → 顯示 pluginsEmpty 空狀態
+    it("T-P7：listPlugins 載入失敗時顯示 pod.slot.pluginsEmpty 空狀態", async () => {
+      mockListPlugins.mockRejectedValue(new Error("Network error"));
+      mountPopover({ provider: "gemini" });
+      await flushPromises();
+
+      const popover = bodyQuery(".fixed.z-50");
+      expect(popover).not.toBeNull();
+      expect(popover!.textContent).toContain("pod.slot.pluginsEmpty");
+    });
+  });
 });

@@ -1,14 +1,14 @@
 import { promises as fs } from "fs";
-import path from "path";
+import * as fsPath from "path";
 import { Result, ok, err } from "../../types";
 import { config } from "../../config";
 import { logger } from "../../utils/logger.js";
 
 class WorkspaceService {
   private validatePath(workspacePath: string): boolean {
-    const resolvedPath = path.resolve(workspacePath);
-    const resolvedRoot = path.resolve(config.canvasRoot);
-    return resolvedPath.startsWith(resolvedRoot + path.sep);
+    const resolvedPath = fsPath.resolve(workspacePath);
+    const resolvedRoot = fsPath.resolve(config.canvasRoot);
+    return resolvedPath.startsWith(resolvedRoot + fsPath.sep);
   }
 
   async createWorkspace(workspacePath: string): Promise<Result<string>> {

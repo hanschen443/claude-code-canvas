@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import fs from "node:fs";
 import {
   createTmpDir,
   cleanupTmpDir,
@@ -116,6 +117,9 @@ describe("pluginScanner", () => {
       CLAUDE_PLUGINS_INSTALLED_PATH: installedPluginsPath,
       CODEX_PLUGINS_CACHE_DIR: codexCacheDir,
       CLAUDE_PLUGINS_ROOT_OVERRIDE: claudePluginsRoot,
+      // 隔離 Gemini extensions 目錄，防止吃到機器上真實安裝的 extensions
+      GEMINI_EXTENSIONS_ROOT_OVERRIDE:
+        "/tmp/__never_exists_gemini_extensions__",
     });
   });
 
@@ -624,46 +628,296 @@ describe("pluginScanner", () => {
     });
   });
 
-  describe("gemini provider 提前返回", () => {
-    it("scanInstalledPlugins('gemini') 應直接回傳空陣列，不執行任何掃描", async () => {
-      // 即使有 installed_plugins.json，傳入 gemini 仍應回傳空陣列
-      const installPath = join(claudeTestDir, "some-plugin", "1.0.0");
-      await mkdir(installPath, { recursive: true });
-      await writeClaudePluginManifest(installPath, "Some Plugin", "desc");
+  // ─────────────────────────────────────────────────────────────────
+  // Gemini extension 掃描（A1–A5）
+  // ─────────────────────────────────────────────────────────────────
 
+  describe("Gemini extension 掃描", () => {
+    // 測試用 Gemini extensions 根目錄（每個 test 透過 env var 注入）
+    let geminiExtRoot: string;
+    // 每個 it 個別覆寫 GEMINI_EXTENSIONS_ROOT_OVERRIDE，afterEach 還原
+    let restoreGeminiEnv: () => void = () => {};
+
+    beforeEach(async () => {
+      // 在 tmpHome 下建立 Gemini extensions 根目錄，每個 it 獨立
+      geminiExtRoot = await mkdtemp(join(tmpHome, "gemini-ext-"));
+      restoreGeminiEnv = overrideEnv({
+        GEMINI_EXTENSIONS_ROOT_OVERRIDE: geminiExtRoot,
+      });
+    });
+
+    afterEach(() => {
+      restoreGeminiEnv();
+    });
+
+    /** 在 geminiExtRoot 下建立 extension 子目錄，並寫入 gemini-extension.json */
+    async function writeGeminiExtensionManifest(
+      extName: string,
+      manifest: object,
+    ): Promise<string> {
+      const extDir = join(geminiExtRoot, extName);
+      await mkdir(extDir, { recursive: true });
       await writeFile(
-        installedPluginsPath,
-        makeInstalledPluginsJson({
-          "some-plugin@repo": [
-            {
-              scope: "user",
-              installPath,
-              version: "1.0.0",
-              installedAt: "",
-              lastUpdated: "",
-            },
-          ],
-        }),
+        join(extDir, "gemini-extension.json"),
+        JSON.stringify(manifest),
       );
+      return extDir;
+    }
+
+    // Gemini A1：兩個合法 extension 子目錄
+    it("A1: 兩個合法 extension 子目錄應回傳兩筆，欄位映射正確", async () => {
+      await writeGeminiExtensionManifest("context7", {
+        name: "context7",
+        version: "1.2.0",
+        description: "Context7 extension",
+      });
+      await writeGeminiExtensionManifest("stock-deep-analyzer", {
+        name: "stock-deep-analyzer",
+        version: "0.5.1",
+        description: "Stock analyzer",
+      });
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins("gemini");
+
+      expect(result).toHaveLength(2);
+
+      const ids = result.map((p) => p.id);
+      expect(ids).toContain("context7");
+      expect(ids).toContain("stock-deep-analyzer");
+
+      const ctx7 = result.find((p) => p.id === "context7")!;
+      expect(ctx7.name).toBe("context7");
+      expect(ctx7.version).toBe("1.2.0");
+      expect(ctx7.description).toBe("Context7 extension");
+      // installPath 應為 geminiExtRoot/context7/ 結尾
+      expect(ctx7.installPath).toBe(join(geminiExtRoot, "context7") + "/");
+      expect(ctx7.compatibleProviders).toEqual(["gemini"]);
+      expect(ctx7.repo).toBe("");
+    });
+
+    // Gemini A2：子目錄缺 gemini-extension.json
+    it("A2: 子目錄缺 gemini-extension.json 應跳過該子目錄", async () => {
+      // 合法 extension
+      await writeGeminiExtensionManifest("valid-ext", {
+        name: "valid-ext",
+        version: "1.0.0",
+        description: "Valid",
+      });
+      // 缺 manifest 的子目錄（只建目錄，不寫 gemini-extension.json）
+      await mkdir(join(geminiExtRoot, "no-manifest-ext"), { recursive: true });
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins("gemini");
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("valid-ext");
+    });
+
+    // Gemini A3：extensions 目錄下有檔案（非目錄）應跳過
+    it("A3: extensions 根目錄下的檔案（非目錄）應跳過，不嘗試讀取", async () => {
+      // 一個合法 extension
+      await writeGeminiExtensionManifest("real-ext", {
+        name: "real-ext",
+        version: "1.0.0",
+        description: "Real extension",
+      });
+      // 一個檔案（非目錄），模擬 extension-enablement.json
+      await writeFile(
+        join(geminiExtRoot, "extension-enablement.json"),
+        JSON.stringify({ enabled: ["real-ext"] }),
+      );
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins("gemini");
+
+      // 只應回傳目錄形式的 extension，檔案應被略過
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("real-ext");
+    });
+
+    // Gemini A4：manifest JSON 解析失敗
+    it("A4: manifest JSON 解析失敗應跳過該筆，其他正常 extension 仍回傳", async () => {
+      // 合法 extension
+      await writeGeminiExtensionManifest("good-ext", {
+        name: "good-ext",
+        version: "2.0.0",
+        description: "Good extension",
+      });
+      // 損壞 JSON 的 extension
+      const brokenDir = join(geminiExtRoot, "broken-ext");
+      await mkdir(brokenDir, { recursive: true });
+      await writeFile(
+        join(brokenDir, "gemini-extension.json"),
+        "not-valid-json{{{",
+      );
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins("gemini");
+
+      // 只應回傳合法的 extension
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("good-ext");
+    });
+
+    // Gemini A5：~/.gemini/extensions 目錄不存在
+    it("A5: ~/.gemini/extensions 目錄不存在應回空陣列、不丟錯", async () => {
+      // 覆寫為不存在的路徑
+      restoreGeminiEnv();
+      restoreGeminiEnv = overrideEnv({
+        GEMINI_EXTENSIONS_ROOT_OVERRIDE: join(
+          tmpHome,
+          "nonexistent-gemini-root",
+        ),
+      });
 
       const { scanInstalledPlugins } = await reimportPluginScanner();
       const result = scanInstalledPlugins("gemini");
 
       expect(result).toEqual([]);
     });
+  });
 
-    it("scanInstalledPlugins('gemini') 不觸發快取、且全集掃描後再傳 gemini 仍回傳空陣列", async () => {
-      const installPath = join(claudeTestDir, "another-plugin", "1.0.0");
-      await mkdir(installPath, { recursive: true });
-      await writeClaudePluginManifest(installPath, "Another Plugin", "desc");
+  // ─────────────────────────────────────────────────────────────────
+  // per-source Cache 行為（B1–B6）
+  //
+  // 實作說明：scanInstalledPlugins(provider?) 的實際行為是
+  // 「掃描全部三個 source → 合併 → 以 compatibleProviders 過濾」，
+  // 而非「provider 決定要掃哪個 source」。
+  // 因此 Cache 測試以 per-source 隔離驗證，而非 per-provider 隔離。
+  // ─────────────────────────────────────────────────────────────────
 
+  describe("per-source Cache 行為", () => {
+    let geminiExtRoot: string;
+    let restoreGeminiEnv: () => void = () => {};
+
+    beforeEach(async () => {
+      geminiExtRoot = await mkdtemp(join(tmpHome, "gemini-cache-test-"));
+      restoreGeminiEnv = overrideEnv({
+        GEMINI_EXTENSIONS_ROOT_OVERRIDE: geminiExtRoot,
+      });
+    });
+
+    afterEach(() => {
+      restoreGeminiEnv();
+    });
+
+    /** 在 geminiExtRoot 下建立合法 extension */
+    async function writeGeminiExt(
+      extName: string,
+      version = "1.0.0",
+    ): Promise<void> {
+      const extDir = join(geminiExtRoot, extName);
+      await mkdir(extDir, { recursive: true });
+      await writeFile(
+        join(extDir, "gemini-extension.json"),
+        JSON.stringify({ name: extName, version, description: extName }),
+      );
+    }
+
+    // Cache B1：scanInstalledPlugins("claude") 不含 Gemini 專屬 plugin
+    // 實作行為：掃全部 source（包含 Gemini）後以 compatibleProviders 過濾，
+    // 因此 Gemini 路徑確實會被讀取，但 Gemini-only plugin 不會出現在 "claude" 結果中。
+    it("B1: scanInstalledPlugins('claude') 結果不含 Gemini-only plugin（Gemini source 雖被讀取，但過濾後不在 claude 結果內）", async () => {
+      // 建立 Gemini-only extension
+      await writeGeminiExt("gemini-only-plugin");
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const claudeResult = scanInstalledPlugins("claude");
+
+      // Gemini-only plugin 的 compatibleProviders 只有 gemini，不應出現在 claude 結果
+      const hasGeminiOnly = claudeResult.some(
+        (p) => p.id === "gemini-only-plugin",
+      );
+      expect(hasGeminiOnly).toBe(false);
+    });
+
+    // Cache B2：scanInstalledPlugins("gemini") 連續呼叫兩次，第二次走 per-source cache
+    it("B2: scanInstalledPlugins('gemini') 連續呼叫兩次，Gemini source 第二次走 per-source cache（readdirSync 只被呼叫一次）", async () => {
+      await writeGeminiExt("cached-ext");
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+
+      // spy on fs.readdirSync 計算呼叫次數（針對 geminiExtRoot 的呼叫）
+      const readdirSpy = vi.spyOn(fs, "readdirSync");
+
+      const result1 = scanInstalledPlugins("gemini");
+      const callCountAfterFirst = readdirSpy.mock.calls.filter(
+        (args) => args[0] === geminiExtRoot,
+      ).length;
+
+      const result2 = scanInstalledPlugins("gemini");
+      const callCountAfterSecond = readdirSpy.mock.calls.filter(
+        (args) => args[0] === geminiExtRoot,
+      ).length;
+
+      // 第二次呼叫時 geminiExtRoot 的 readdirSync 次數不應增加（走 cache）
+      expect(callCountAfterSecond).toBe(callCountAfterFirst);
+      expect(result1).toEqual(result2);
+
+      readdirSpy.mockRestore();
+    });
+
+    // Cache B3：Gemini cache 過期後重新掃描
+    it("B3: Gemini cache 過期後（vi.useFakeTimers + advance 超過 30 秒）應重新讀取磁碟", async () => {
+      await writeGeminiExt("initial-ext");
+
+      vi.useFakeTimers();
+
+      const { scanInstalledPlugins, clearScanInstalledPluginsCache } =
+        await reimportPluginScanner();
+
+      const result1 = scanInstalledPlugins("gemini");
+      expect(result1).toHaveLength(1);
+      expect(result1[0].id).toBe("initial-ext");
+
+      // 在 cache 有效期內加入新 extension（但 cache 還沒過期，應看不到）
+      const newExtDir = join(geminiExtRoot, "new-ext");
+      await mkdir(newExtDir, { recursive: true });
+      await writeFile(
+        join(newExtDir, "gemini-extension.json"),
+        JSON.stringify({
+          name: "new-ext",
+          version: "1.0.0",
+          description: "new",
+        }),
+      );
+
+      // 時間前進 31 秒，使 cache 過期
+      vi.advanceTimersByTime(31000);
+
+      const result2 = scanInstalledPlugins("gemini");
+      // cache 過期後重新掃描，應看到新加入的 extension
+      expect(result2).toHaveLength(2);
+      const ids = result2.map((p) => p.id);
+      expect(ids).toContain("initial-ext");
+      expect(ids).toContain("new-ext");
+
+      vi.useRealTimers();
+      clearScanInstalledPluginsCache();
+    });
+
+    // Cache B4：Gemini cache 不影響 Claude / Codex 的 cache 狀態（per-source 獨立）
+    it("B4: Gemini source 的 cache 與 Claude/Codex source 的 cache 互相獨立（per-source 隔離）", async () => {
+      // 建立 Claude plugin
+      const claudeInstallPath = join(
+        claudeTestDir,
+        "claude-plugin-b4",
+        "1.0.0",
+      );
+      await mkdir(claudeInstallPath, { recursive: true });
+      await writeClaudePluginManifest(
+        claudeInstallPath,
+        "Claude Plugin B4",
+        "desc",
+      );
       await writeFile(
         installedPluginsPath,
         makeInstalledPluginsJson({
-          "another-plugin@repo": [
+          "claude-plugin-b4@repo": [
             {
               scope: "user",
-              installPath,
+              installPath: claudeInstallPath,
               version: "1.0.0",
               installedAt: "",
               lastUpdated: "",
@@ -672,15 +926,88 @@ describe("pluginScanner", () => {
         }),
       );
 
-      const { scanInstalledPlugins } = await reimportPluginScanner();
+      // 建立 Gemini extension
+      await writeGeminiExt("gemini-plugin-b4");
 
-      // 先不帶 provider 觸發全集快取
-      const all = scanInstalledPlugins();
-      expect(all).toHaveLength(1);
+      const { scanInstalledPlugins, clearScanInstalledPluginsCache } =
+        await reimportPluginScanner();
 
-      // 再傳 gemini：不在支援清單內，應直接回傳空陣列（不依賴快取）
+      // 先掃 gemini，建立 Gemini source cache
       const geminiResult = scanInstalledPlugins("gemini");
-      expect(geminiResult).toEqual([]);
+      expect(geminiResult).toHaveLength(1);
+      expect(geminiResult[0].id).toBe("gemini-plugin-b4");
+
+      // 再掃 claude，結果應正確（Claude source cache 獨立）
+      const claudeResult = scanInstalledPlugins("claude");
+      expect(claudeResult.some((p) => p.id === "claude-plugin-b4@repo")).toBe(
+        true,
+      );
+      // Gemini-only plugin 不應出現在 claude 結果
+      expect(claudeResult.some((p) => p.id === "gemini-plugin-b4")).toBe(false);
+
+      clearScanInstalledPluginsCache();
+    });
+
+    // Cache B5：scanInstalledPlugins() 不傳 provider → 三家結果合併（含 Gemini）
+    it("B5: scanInstalledPlugins() 不傳 provider 時回傳三家來源合併結果（含 Gemini extension）", async () => {
+      // 建立 Claude plugin
+      const claudeInstallPath = join(
+        claudeTestDir,
+        "claude-plugin-b5",
+        "1.0.0",
+      );
+      await mkdir(claudeInstallPath, { recursive: true });
+      await writeClaudePluginManifest(
+        claudeInstallPath,
+        "Claude Plugin B5",
+        "desc",
+      );
+      await writeFile(
+        installedPluginsPath,
+        makeInstalledPluginsJson({
+          "claude-plugin-b5@repo": [
+            {
+              scope: "user",
+              installPath: claudeInstallPath,
+              version: "1.0.0",
+              installedAt: "",
+              lastUpdated: "",
+            },
+          ],
+        }),
+      );
+
+      // 建立 Gemini extension
+      await writeGeminiExt("gemini-plugin-b5");
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins();
+
+      // 應同時包含 Claude plugin 和 Gemini extension
+      const ids = result.map((p) => p.id);
+      expect(ids).toContain("claude-plugin-b5@repo");
+      expect(ids).toContain("gemini-plugin-b5");
+
+      // Claude plugin 的 compatibleProviders 含 claude
+      const claudePlugin = result.find(
+        (p) => p.id === "claude-plugin-b5@repo",
+      )!;
+      expect(claudePlugin.compatibleProviders).toContain("claude");
+
+      // Gemini extension 的 compatibleProviders 只有 gemini
+      const geminiPlugin = result.find((p) => p.id === "gemini-plugin-b5")!;
+      expect(geminiPlugin.compatibleProviders).toEqual(["gemini"]);
+    });
+
+    // Cache B6：未支援的 provider 仍回空陣列
+    it("B6: 傳入未支援的 provider（任意字串）應回空陣列", async () => {
+      // 建立 Gemini extension，確保非空環境下測試
+      await writeGeminiExt("some-ext");
+
+      const { scanInstalledPlugins } = await reimportPluginScanner();
+      const result = scanInstalledPlugins("unknown-provider-xyz");
+
+      expect(result).toEqual([]);
     });
   });
 
@@ -803,8 +1130,8 @@ describe("pluginScanner", () => {
     });
   });
 
-  describe("5 秒 TTL 快取", () => {
-    it("5 秒內重複呼叫應走快取，回傳相同結果", async () => {
+  describe("30 秒 TTL 快取", () => {
+    it("短時間內重複呼叫應走快取，回傳相同結果", async () => {
       const installPath = join(claudeTestDir, "cached-plugin", "1.0.0");
       await mkdir(installPath, { recursive: true });
       await writeClaudePluginManifest(installPath, "Cached Plugin", "desc");

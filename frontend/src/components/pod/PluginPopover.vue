@@ -54,7 +54,11 @@ const filteredPlugins = computed<InstalledPlugin[]>(() => {
 /** 將 localPluginIds 轉成 Set，讓 template v-for 中的查找從 O(n) 降為 O(1) */
 const localPluginIdsSet = computed(() => new Set(localPluginIds.value));
 
-/** Codex provider 唯讀模式：plugin 只展示不可 toggle */
+/**
+ * Codex 唯讀模式旗標。
+ * 僅在 provider === "codex" 時為 true，**不用於 Gemini**：
+ * Gemini 走 `v-else` 可 toggle 分支（name + v{version} + Switch）。
+ */
 const isCodex = computed(() => props.provider === "codex");
 
 const rootRef = ref<HTMLElement | null>(null);
@@ -133,7 +137,7 @@ const handleToggle = async (
   pluginId: string,
   enabled: boolean,
 ): Promise<void> => {
-  // Codex pod 不支援 toggle，防呆直接 return
+  // Codex 唯讀，跳過 toggle；Gemini / Claude 正常往下走
   if (isCodex.value) return;
 
   const nextIds = buildNextIds(localPluginIds.value, pluginId, enabled);
@@ -204,9 +208,9 @@ const handleToggle = async (
         {{ t("pod.slot.pluginsSearchEmpty") }}
       </div>
 
-      <!-- Plugin 列表（Claude：可 toggle；Codex：唯讀展示） -->
+      <!-- Plugin 列表（Claude / Gemini：可 toggle；Codex：唯讀展示） -->
       <template v-else>
-        <!-- Codex 唯讀模式：顯示 name vX.Y.Z + 已啟用勾勾標籤 -->
+        <!-- Codex 唯讀展示分支：顯示 name vX.Y.Z + 已啟用勾勾標籤，不可 toggle -->
         <div v-if="isCodex">
           <ScrollArea class="pod-popover-scrollable">
             <div class="space-y-1">
@@ -232,7 +236,7 @@ const handleToggle = async (
           </p>
         </div>
 
-        <!-- Claude 模式：可 toggle -->
+        <!-- Claude / Gemini 可 toggle 分支：name + v{version} + Switch -->
         <ScrollArea v-else class="pod-popover-scrollable">
           <div class="space-y-1">
             <div

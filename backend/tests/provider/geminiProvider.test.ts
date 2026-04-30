@@ -145,6 +145,8 @@ function makeCtx(
   const defaultOptions: GeminiOptions = {
     model: "gemini-2.5-pro",
     resumeMode: "cli",
+    // plugins 預設空陣列，對應 buildExtensionArgs 會產生 ["-e", "none"]
+    plugins: [],
   };
   return {
     podId: "pod-gemini-test-001",
@@ -185,26 +187,31 @@ describe("GeminiProvider", () => {
     const ctx = makeCtx({
       message: testMessage,
       resumeSessionId: null,
-      options: { model: "gemini-2.5-pro", resumeMode: "cli" },
+      options: { model: "gemini-2.5-pro", resumeMode: "cli", plugins: [] },
     });
     await collectEvents(geminiProvider.chat(ctx));
 
     expect(spawnSpy).toHaveBeenCalledOnce();
     const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
 
-    expect(spawnArgs).toEqual([
-      "gemini",
-      "--model",
-      "gemini-2.5-pro",
-      "--output-format",
-      "stream-json",
-      "--approval-mode",
-      "yolo",
-      "--skip-trust",
-      "-s",
-      "--prompt",
-      testMessage,
-    ]);
+    // 使用 arrayContaining 而非 toEqual，容許新增的 -e none 插入 -s 與 --prompt 之間
+    expect(spawnArgs).toEqual(
+      expect.arrayContaining([
+        "gemini",
+        "--model",
+        "gemini-2.5-pro",
+        "--output-format",
+        "stream-json",
+        "--approval-mode",
+        "yolo",
+        "--skip-trust",
+        "-s",
+        "-e",
+        "none",
+        "--prompt",
+        testMessage,
+      ]),
+    );
 
     // 不應含已移除的非法旗標
     expect(spawnArgs).not.toContain("--session-id");
@@ -1093,6 +1100,131 @@ describe("GeminiProvider", () => {
 
       expect(options.model).toBe(geminiProvider.metadata.defaultOptions.model);
       expect(options.resumeMode).toBe("cli");
+    });
+  });
+
+  // ── Plugin spawn args（P1–P4）────────────────────────────────────────────────
+  describe("Plugin spawn args（buildExtensionArgs）", () => {
+    // P1：options.plugins = [] → spawn args 含 ["-e", "none"]
+    it("P1: options.plugins = [] 時 spawn args 應含 ['-e', 'none']，且不含其他 -e flag", async () => {
+      const mockProc = makeMockProc([
+        JSON.stringify({ type: "result", status: "success" }),
+      ]);
+      spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+      const ctx = makeCtx({
+        options: { model: "gemini-2.5-pro", resumeMode: "cli", plugins: [] },
+      });
+      await collectEvents(geminiProvider.chat(ctx));
+
+      expect(spawnSpy).toHaveBeenCalledOnce();
+      const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+      // 應含 -e none
+      const eIdx = spawnArgs.indexOf("-e");
+      expect(eIdx).toBeGreaterThan(-1);
+      expect(spawnArgs[eIdx + 1]).toBe("none");
+
+      // 不應含任何 extension name（只允許 "none"）
+      const allEFlags: string[] = [];
+      for (let i = 0; i < spawnArgs.length - 1; i++) {
+        if (spawnArgs[i] === "-e") {
+          allEFlags.push(spawnArgs[i + 1]);
+        }
+      }
+      expect(allEFlags).toEqual(["none"]);
+    });
+
+    // P2：options.plugins = ["context7"] → spawn args 含 ["-e", "context7"]，且不含 -e none
+    it("P2: options.plugins = ['context7'] 時 spawn args 含 ['-e', 'context7']，且不含 '-e none'", async () => {
+      const mockProc = makeMockProc([
+        JSON.stringify({ type: "result", status: "success" }),
+      ]);
+      spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+      const ctx = makeCtx({
+        options: {
+          model: "gemini-2.5-pro",
+          resumeMode: "cli",
+          plugins: ["context7"],
+        },
+      });
+      await collectEvents(geminiProvider.chat(ctx));
+
+      expect(spawnSpy).toHaveBeenCalledOnce();
+      const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+      // 應含 -e context7
+      expect(spawnArgs).toEqual(expect.arrayContaining(["-e", "context7"]));
+
+      // 不應含 -e none
+      const noneIdx = spawnArgs.indexOf("none");
+      expect(noneIdx).toBe(-1);
+    });
+
+    // P3：options.plugins = ["context7", "stock-deep-analyzer"] → 兩組 -e <name>，順序與輸入一致
+    it("P3: options.plugins = ['context7', 'stock-deep-analyzer'] 時 spawn args 含兩組 -e <name>，順序與輸入一致", async () => {
+      const mockProc = makeMockProc([
+        JSON.stringify({ type: "result", status: "success" }),
+      ]);
+      spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+      const ctx = makeCtx({
+        options: {
+          model: "gemini-2.5-pro",
+          resumeMode: "cli",
+          plugins: ["context7", "stock-deep-analyzer"],
+        },
+      });
+      await collectEvents(geminiProvider.chat(ctx));
+
+      expect(spawnSpy).toHaveBeenCalledOnce();
+      const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+      // 收集所有 -e <name> 對
+      const eFlags: string[] = [];
+      for (let i = 0; i < spawnArgs.length - 1; i++) {
+        if (spawnArgs[i] === "-e") {
+          eFlags.push(spawnArgs[i + 1]);
+        }
+      }
+
+      // 應有兩組，順序與輸入一致，不含 "none"
+      expect(eFlags).toEqual(["context7", "stock-deep-analyzer"]);
+    });
+
+    // P4：resume 路徑下 plugins flag 一樣 append（-e flag 與 --resume 共存）
+    it("P4: resume 路徑（含有效 resumeSessionId）下 plugins flag 一樣 append，-e flag 與 --resume 共存", async () => {
+      const resumeUuid = "4abf7b33-6c20-4693-9e43-9715b97fb144";
+      const mockProc = makeMockProc([
+        JSON.stringify({ type: "result", status: "success" }),
+      ]);
+      spawnSpy = vi.spyOn(Bun, "spawn").mockReturnValue(mockProc as any);
+
+      const ctx = makeCtx({
+        resumeSessionId: resumeUuid,
+        options: {
+          model: "gemini-2.5-pro",
+          resumeMode: "cli",
+          plugins: ["context7"],
+        },
+      });
+      await collectEvents(geminiProvider.chat(ctx));
+
+      expect(spawnSpy).toHaveBeenCalledOnce();
+      const [spawnArgs] = spawnSpy.mock.calls[0] as [string[], unknown];
+
+      // 應含 --resume <uuid>
+      const resumeIdx = spawnArgs.indexOf("--resume");
+      expect(resumeIdx).toBeGreaterThan(-1);
+      expect(spawnArgs[resumeIdx + 1]).toBe(resumeUuid);
+
+      // 應含 -e context7
+      expect(spawnArgs).toEqual(expect.arrayContaining(["-e", "context7"]));
+
+      // 不應含 -e none（有 plugin 時不走 "none" 路徑）
+      const noneIdx = spawnArgs.indexOf("none");
+      expect(noneIdx).toBe(-1);
     });
   });
 

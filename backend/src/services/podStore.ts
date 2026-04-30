@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { Database } from "bun:sqlite";
+import * as fsPath from "path";
 import { WebSocketResponseEvents } from "../schemas";
 import type {
   Pod,
@@ -405,7 +406,7 @@ class PodStore {
       id,
       name: data.name,
       status: "idle",
-      workspacePath: `${canvasDir}/pod-${id}`,
+      workspacePath: fsPath.join(canvasDir, `pod-${id}`),
       x: data.x,
       y: data.y,
       rotation: data.rotation,
