@@ -10,7 +10,9 @@
   border-radius: 2px;
   box-shadow: 2px 2px 0 oklch(0.4 0.02 50 / 0.3);
   cursor: grab;
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -20,7 +22,11 @@
 }
 
 .note-base.animating {
-  transition: left 0.3s ease, top 0.3s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  transition:
+    left 0.3s ease,
+    top 0.3s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .note-base:hover {
@@ -52,11 +58,6 @@
    各類型 Note
    =================================== */
 
-/* Output Style Note */
-.output-style-note {
-  background: var(--doodle-yellow);
-}
-
 /* Repository Note */
 .repository-note {
   background: var(--doodle-orange);
@@ -85,20 +86,6 @@
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* SubAgent Note - 沙漠色/奶油色筆記 */
-.subagent-note {
-  background: var(--doodle-sand);
-  border-style: dashed;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.subagent-note.selected {
-  box-shadow: 0 0 0 2px oklch(0.65 0.15 170 / 0.6);
-  border-color: oklch(0.55 0.15 170);
 }
 
 /* MCP Server Note */

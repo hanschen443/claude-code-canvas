@@ -1,6 +1,5 @@
-import type { ModelType, Schedule } from "../pod";
+import type { ModelType, Schedule, PodProvider, ProviderConfig } from "../pod";
 import type { AnchorPosition } from "@/types";
-import type { McpServerConfig } from "../mcpServer";
 
 export type ImageMediaType =
   | "image/jpeg"
@@ -15,6 +14,15 @@ export interface PodCreatePayload {
   x: number;
   y: number;
   rotation: number;
+  /** Pod 使用的 AI Provider */
+  provider: PodProvider;
+  /** Provider 對應的設定（含 model 等參數） */
+  providerConfig: ProviderConfig;
+}
+
+/** 查詢可用 Provider 列表 */
+export interface ProviderListPayload {
+  requestId: string;
 }
 
 export interface PodListPayload {
@@ -41,7 +49,8 @@ export interface PodSetModelPayload {
   requestId: string;
   canvasId: string;
   podId: string;
-  model: ModelType;
+  /** 傳送 provider-agnostic 的 model 字串，後端依 provider 解析 */
+  model: string;
 }
 
 export interface PodSetSchedulePayload {
@@ -75,6 +84,8 @@ export interface PodChatSendPayload {
   canvasId: string;
   podId: string;
   message: string | ContentBlock[];
+  /** 拖曳上傳流程的 upload session ID，後端依此取得已上傳的檔案並組裝 triggerText */
+  uploadSessionId?: string;
 }
 
 export interface PodChatHistoryPayload {
@@ -87,17 +98,6 @@ export interface PodChatAbortPayload {
   requestId: string;
   canvasId: string;
   podId: string;
-}
-
-export interface NoteCreatePayload {
-  requestId: string;
-  canvasId: string;
-  outputStyleId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }
 
 export interface ConnectionCreatePayload {
@@ -138,30 +138,14 @@ export interface PastePodItem {
   x: number;
   y: number;
   rotation: number;
-  outputStyleId?: string | null;
-  skillIds?: string[];
-  subAgentIds?: string[];
-  model?: ModelType;
+  /** Pod 使用的 AI Provider（必填，避免貼上時 provider 身份靜默降級） */
+  provider: PodProvider;
+  /** Provider 對應的設定（含 model 等參數） */
+  providerConfig: ProviderConfig;
+  mcpServerNames?: string[];
+  pluginIds?: string[];
   repositoryId?: string | null;
   commandId?: string | null;
-}
-
-export interface PasteOutputStyleNoteItem {
-  outputStyleId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToOriginalPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
-}
-
-export interface PasteSkillNoteItem {
-  skillId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToOriginalPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
 }
 
 export interface PasteRepositoryNoteItem {
@@ -179,7 +163,8 @@ export interface PasteConnectionItem {
   originalTargetPodId: string;
   targetAnchor: AnchorPosition;
   triggerMode?: "auto" | "ai-decide" | "direct";
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
 }
 
@@ -188,7 +173,8 @@ export interface ConnectionUpdatePayload {
   canvasId: string;
   connectionId: string;
   triggerMode?: "auto" | "ai-decide" | "direct";
-  summaryModel?: ModelType;
+  /** summaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  summaryModel?: string;
   aiDecideModel?: ModelType;
 }
 
@@ -196,12 +182,8 @@ export interface CanvasPastePayload {
   requestId: string;
   canvasId: string;
   pods: PastePodItem[];
-  outputStyleNotes: PasteOutputStyleNoteItem[];
-  skillNotes: PasteSkillNoteItem[];
   repositoryNotes: PasteRepositoryNoteItem[];
-  subAgentNotes: PasteSubAgentNoteItem[];
   commandNotes: PasteCommandNoteItem[];
-  mcpServerNotes: PasteMcpServerNoteItem[];
   connections: PasteConnectionItem[];
 }
 
@@ -225,15 +207,6 @@ export interface PodSetMultiInstancePayload {
   multiInstance: boolean;
 }
 
-export interface PasteSubAgentNoteItem {
-  subAgentId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToOriginalPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
-}
-
 export interface CommandNoteCreatePayload {
   requestId: string;
   canvasId: string;
@@ -247,15 +220,6 @@ export interface CommandNoteCreatePayload {
 
 export interface PasteCommandNoteItem {
   commandId: string;
-  name: string;
-  x: number;
-  y: number;
-  boundToOriginalPodId: string | null;
-  originalPosition: { x: number; y: number } | null;
-}
-
-export interface PasteMcpServerNoteItem {
-  mcpServerId: string;
   name: string;
   x: number;
   y: number;
@@ -314,13 +278,13 @@ export interface GroupCreatePayload {
   requestId: string;
   canvasId: string;
   name: string;
-  type: "command" | "outputStyle" | "subAgent";
+  type: "command";
 }
 
 export interface GroupListPayload {
   requestId: string;
   canvasId: string;
-  type: "command" | "outputStyle" | "subAgent";
+  type: "command";
 }
 
 export interface GroupDeletePayload {
@@ -336,33 +300,22 @@ export interface MoveToGroupPayload {
   groupId: string | null;
 }
 
-export interface SkillImportPayload {
+/** 查詢指定 Provider 的 MCP server 清單 */
+export interface McpListPayload {
   requestId: string;
-  canvasId: string;
-  fileName: string;
-  fileData: string;
-  fileSize: number;
+  /**
+   * 目前 mcp 不支援 gemini，本欄位刻意維持 `"claude" | "codex"`。
+   * 新增 gemini mcp 支援時需同步擴充此型別並更新後端對應的 handler。
+   */
+  provider: "claude" | "codex";
 }
 
-export interface McpServerCreatePayload {
+/** 設定指定 Pod 的 MCP server 名稱清單 */
+export interface PodSetMcpServerNamesPayload {
   requestId: string;
   canvasId: string;
-  name: string;
-  config: McpServerConfig;
-}
-
-export interface McpServerUpdatePayload {
-  requestId: string;
-  canvasId: string;
-  mcpServerId: string;
-  name: string;
-  config: McpServerConfig;
-}
-
-export interface McpServerReadPayload {
-  requestId: string;
-  canvasId: string;
-  mcpServerId: string;
+  podId: string;
+  mcpServerNames: string[];
 }
 
 export interface CursorMovePayload {
@@ -391,6 +344,8 @@ export interface PodSetPluginsPayload {
 
 export interface PluginListPayload {
   requestId: string;
+  /** 依 provider 過濾 plugin 清單；限制為已知 provider 字面量，獲得型別系統列舉約束 */
+  provider?: "claude" | "codex" | "gemini";
 }
 
 export interface RunDeletePayload {

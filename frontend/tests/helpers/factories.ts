@@ -19,12 +19,8 @@ import type {
   ToolUseStatus,
 } from "@/types/chat";
 import type { BaseNote } from "@/types/note";
-import type { OutputStyleNote } from "@/types/outputStyle";
-import type { SkillNote } from "@/types/skill";
 import type { Repository, RepositoryNote } from "@/types/repository";
-import type { SubAgentNote, SubAgent } from "@/types/subAgent";
 import type { CommandNote } from "@/types/command";
-import type { McpServerNote } from "@/types/mcpServer";
 import type { Group } from "@/types/group";
 import type { WorkflowRun, RunPodInstance } from "@/types/run";
 
@@ -36,10 +32,26 @@ let messageCounter = 0;
 let noteCounter = 0;
 let scheduleCounter = 0;
 let repositoryCounter = 0;
-let subAgentCounter = 0;
 let groupCounter = 0;
 let runCounter = 0;
 let runPodInstanceCounter = 0;
+
+/**
+ * 重置所有 factory 計數器，確保跨測試檔案不互相污染 ID 值。
+ * 通常在 setupStoreTest 的 beforeEach 中呼叫。
+ */
+export function resetFactoryCounters(): void {
+  canvasCounter = 0;
+  podCounter = 0;
+  connectionCounter = 0;
+  messageCounter = 0;
+  noteCounter = 0;
+  scheduleCounter = 0;
+  repositoryCounter = 0;
+  groupCounter = 0;
+  runCounter = 0;
+  runPodInstanceCounter = 0;
+}
 
 /**
  * 建立 Mock Canvas
@@ -72,11 +84,25 @@ export function createMockSchedule(overrides?: Partial<Schedule>): Schedule {
   };
 }
 
+/** 各 provider 的預設 providerConfig，與後端 capabilities.ts 保持同步 */
+const DEFAULT_PROVIDER_CONFIGS: Partial<
+  Record<Pod["provider"], Pod["providerConfig"]>
+> = {
+  claude: { model: "opus" },
+  codex: { model: "gpt-5.4" },
+  gemini: { model: "gemini-2.5-pro" },
+};
+
 /**
- * 建立 Mock Pod
+ * 建立測試用 Mock Pod，預設 provider 為 "claude"。
+ * 傳入不同 provider 時，自動套用對應預設 providerConfig；可透過 overrides.providerConfig 覆蓋。
  */
 export function createMockPod(overrides?: Partial<Pod>): Pod {
   const id = `pod-${++podCounter}`;
+  const provider = overrides?.provider ?? "claude";
+  const defaultProviderConfig = DEFAULT_PROVIDER_CONFIGS[provider] ?? {
+    model: "opus",
+  };
   return {
     id,
     name: `Pod ${podCounter}`,
@@ -85,14 +111,14 @@ export function createMockPod(overrides?: Partial<Pod>): Pod {
     output: [],
     rotation: 0,
     status: "idle" as PodStatus,
-    model: "opus" as ModelType,
-    outputStyleId: null,
-    skillIds: [],
-    subAgentIds: [],
     repositoryId: null,
     multiInstance: false,
     commandId: null,
     schedule: null,
+    mcpServerNames: [],
+    pluginIds: [],
+    provider: "claude",
+    providerConfig: defaultProviderConfig,
     ...overrides,
   };
 }
@@ -156,23 +182,12 @@ export function createMockAssistantMessage(
 
 /**
  * 建立 Mock Note (依類型)
+ * TODO Phase 6: canvas paste 重構後補回 mcpServer 型別
  */
 export function createMockNote(
-  type:
-    | "outputStyle"
-    | "skill"
-    | "repository"
-    | "subAgent"
-    | "command"
-    | "mcpServer",
+  type: "repository" | "command" | "mcpServer",
   overrides?: Partial<BaseNote>,
-):
-  | OutputStyleNote
-  | SkillNote
-  | RepositoryNote
-  | SubAgentNote
-  | CommandNote
-  | McpServerNote {
+): RepositoryNote | CommandNote | (BaseNote & { mcpServerId: string }) {
   const baseNote: BaseNote = {
     id: `note-${++noteCounter}`,
     name: `Note ${noteCounter}`,
@@ -184,29 +199,11 @@ export function createMockNote(
   };
 
   switch (type) {
-    case "outputStyle":
-      return {
-        ...baseNote,
-        outputStyleId: `output-style-${noteCounter}`,
-      } as OutputStyleNote;
-
-    case "skill":
-      return {
-        ...baseNote,
-        skillId: `skill-${noteCounter}`,
-      } as SkillNote;
-
     case "repository":
       return {
         ...baseNote,
         repositoryId: `repository-${noteCounter}`,
       } as RepositoryNote;
-
-    case "subAgent":
-      return {
-        ...baseNote,
-        subAgentId: `sub-agent-${noteCounter}`,
-      } as SubAgentNote;
 
     case "command":
       return {
@@ -215,10 +212,11 @@ export function createMockNote(
       } as CommandNote;
 
     case "mcpServer":
+      // TODO Phase 6: canvas paste 重構後補回 McpServerNote 型別
       return {
         ...baseNote,
         mcpServerId: `mcp-server-${noteCounter}`,
-      } as McpServerNote;
+      } as BaseNote & { mcpServerId: string };
   }
 }
 
@@ -247,35 +245,13 @@ export function createMockRepositoryNote(
 }
 
 /**
- * 建立 Mock SubAgent
- */
-export function createMockSubAgent(overrides?: Partial<SubAgent>): SubAgent {
-  return {
-    id: `subagent-${++subAgentCounter}`,
-    name: `SubAgent ${subAgentCounter}`,
-    description: `Description for SubAgent ${subAgentCounter}`,
-    groupId: null,
-    ...overrides,
-  };
-}
-
-/**
- * 建立 Mock SubAgentNote
- */
-export function createMockSubAgentNote(
-  overrides?: Partial<SubAgentNote>,
-): SubAgentNote {
-  return createMockNote("subAgent", overrides) as SubAgentNote;
-}
-
-/**
  * 建立 Mock Group
  */
 export function createMockGroup(overrides?: Partial<Group>): Group {
   return {
     id: `group-${++groupCounter}`,
     name: `Group ${groupCounter}`,
-    type: "subAgent",
+    type: "command",
     ...overrides,
   };
 }

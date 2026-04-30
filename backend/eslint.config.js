@@ -36,6 +36,9 @@ export default [
         URLPattern: "readonly",
         fetch: "readonly",
         ReadableStream: "readonly",
+        File: "readonly",
+        FormData: "readonly",
+        TextDecoder: "readonly",
       },
     },
     plugins: {

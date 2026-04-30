@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import type { PersistedMessage, PersistedSubMessage } from "../types";
 import type { PathwayState } from "../types/run.js";
 import { getStmts } from "../database/stmtsHelper.js";
-import { getDb } from "../database/index.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 import {
   pathwayStateToSqliteInt,
@@ -65,7 +64,7 @@ export interface RunPodInstance {
   runId: string;
   podId: string;
   status: RunPodInstanceStatus;
-  claudeSessionId: string | null;
+  sessionId: string | null;
   errorMessage: string | null;
   triggeredAt: string | null;
   completedAt: string | null;
@@ -99,7 +98,7 @@ interface RunPodInstanceRow {
   run_id: string;
   pod_id: string;
   status: string;
-  claude_session_id: string | null;
+  session_id: string | null;
   error_message: string | null;
   triggered_at: string | null;
   completed_at: string | null;
@@ -136,7 +135,7 @@ function rowToRunPodInstance(row: RunPodInstanceRow): RunPodInstance {
     runId: row.run_id,
     podId: row.pod_id,
     status: row.status as RunPodInstanceStatus,
-    claudeSessionId: row.claude_session_id,
+    sessionId: row.session_id,
     errorMessage: row.error_message,
     triggeredAt: row.triggered_at,
     completedAt: row.completed_at,
@@ -215,9 +214,7 @@ class RunStore {
    * 用於 graceful shutdown 時清理未完成的 Run
    */
   getRunningRuns(): WorkflowRun[] {
-    const rows = getDb()
-      .prepare("SELECT * FROM workflow_runs WHERE status = 'running'")
-      .all() as WorkflowRunRow[];
+    const rows = this.stmts.workflowRun.selectRunning.all() as WorkflowRunRow[];
     return rows.map(rowToWorkflowRun);
   }
 
@@ -263,7 +260,7 @@ class RunStore {
       runId,
       podId,
       status: "pending",
-      claudeSessionId: null,
+      sessionId: null,
       errorMessage: null,
       triggeredAt: null,
       completedAt: null,
@@ -277,7 +274,7 @@ class RunStore {
       $runId: instance.runId,
       $podId: instance.podId,
       $status: instance.status,
-      $claudeSessionId: instance.claudeSessionId,
+      $sessionId: instance.sessionId,
       $errorMessage: instance.errorMessage,
       $triggeredAt: instance.triggeredAt,
       $completedAt: instance.completedAt,
@@ -355,12 +352,9 @@ class RunStore {
     });
   }
 
-  updatePodInstanceClaudeSessionId(
-    instanceId: string,
-    sessionId: string,
-  ): void {
-    this.stmts.runPodInstance.updateClaudeSessionId.run({
-      $claudeSessionId: sessionId,
+  updatePodInstanceSessionId(instanceId: string, sessionId: string): void {
+    this.stmts.runPodInstance.updateSessionId.run({
+      $sessionId: sessionId,
       $id: instanceId,
     });
   }
@@ -372,15 +366,22 @@ class RunStore {
     return rows.map(rowToRunPodInstance);
   }
 
+  /**
+   * 新增一筆 Run 訊息到 DB 並回傳完整 PersistedMessage。
+   *
+   * @param id - 選填。當 caller 需要讓「外部資源（如附件目錄）的路徑」與 message id 對齊時，
+   *             可預先產生 uuid 並傳入；未傳則由函式內部自動產生。
+   */
   addRunMessage(
     runId: string,
     podId: string,
     role: "user" | "assistant",
     content: string,
     subMessages?: PersistedSubMessage[],
+    id?: string,
   ): PersistedMessage {
     const message: PersistedMessage = {
-      id: randomUUID(),
+      id: id ?? randomUUID(),
       role,
       content,
       timestamp: new Date().toISOString(),

@@ -20,19 +20,20 @@ import type {
   PodErrorPayload,
   PodMessagesClearedPayload,
 } from "@/types/websocket";
-import type { Command } from "@/types/command";
-import type { Pod } from "@/types/pod";
 import { createMessageActions } from "./chatMessageActions";
 import { createConnectionActions } from "./chatConnectionActions";
 import { createHistoryActions } from "./chatHistoryActions";
 import { abortSafetyTimers } from "./abortSafetyTimers";
 import { usePodStore } from "../pod/podStore";
-import { useCommandStore } from "../note/commandStore";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
 import { isMultiInstanceSourcePod } from "@/utils/multiInstanceGuard";
 import { t } from "@/i18n";
+import {
+  MAX_CONTENT_BLOCK_SIZE_BYTES,
+  MAX_CONTENT_BLOCKS_TOTAL_BYTES,
+} from "@/lib/constants";
 
-const ABORT_SAFETY_TIMEOUT_MS = 10_000;
+const ABORT_TIMEOUT_MS = 10_000;
 
 // 單例 store 的 actions 快取，避免每次呼叫都重新建立物件
 let cachedConnectionActions: ReturnType<typeof createConnectionActions> | null =
@@ -40,61 +41,23 @@ let cachedConnectionActions: ReturnType<typeof createConnectionActions> | null =
 let cachedMessageActions: ReturnType<typeof createMessageActions> | null = null;
 let cachedHistoryActions: ReturnType<typeof createHistoryActions> | null = null;
 
+/** 清除 actions 快取，由 store lifecycle（disconnectWebSocket）自動觸發。
+ * 僅在測試的 beforeEach 中允許直接呼叫，生產端不需手動調用。
+ */
 export function resetChatActionsCache(): void {
   cachedConnectionActions = null;
   cachedMessageActions = null;
   cachedHistoryActions = null;
 }
 
+/** 內部別名，供 store lifecycle 使用，語意更明確 */
+const clearActionsCache = resetChatActionsCache;
+
 function hasMessageContent(
   content: string,
   contentBlocks: ContentBlock[] | undefined,
 ): boolean {
-  return (contentBlocks?.length ?? 0) > 0 || content.trim().length > 0;
-}
-
-function resolveCommandForPod(
-  podId: string,
-  pods: Pod[],
-  availableCommands: Command[],
-): Command | null {
-  const pod = pods.find((podItem) => podItem.id === podId);
-  if (!pod?.commandId) return null;
-  return (
-    availableCommands.find((command) => command.id === pod.commandId) ?? null
-  );
-}
-
-function buildTextPayload(
-  content: string,
-  command: Command | null | undefined,
-): string {
-  return command ? `/${command.name} ${content}` : content;
-}
-
-function buildBlockPayload(
-  contentBlocks: ContentBlock[],
-  command: Command | null | undefined,
-): ContentBlock[] {
-  let prefixApplied = false;
-  return contentBlocks.map((block) => {
-    if (block.type === "text" && command && !prefixApplied) {
-      prefixApplied = true;
-      return { ...block, text: `/${command.name} ${block.text}` };
-    }
-    return block;
-  });
-}
-
-function buildMessagePayload(
-  content: string,
-  contentBlocks: ContentBlock[] | undefined,
-  command: Command | null | undefined,
-): string | ContentBlock[] {
-  if (!contentBlocks || contentBlocks.length === 0) {
-    return buildTextPayload(content, command);
-  }
-  return buildBlockPayload(contentBlocks, command);
+  return !!contentBlocks?.length || content.trim().length > 0;
 }
 
 export type ChatStoreInstance = ReturnType<typeof useChatStore>;
@@ -177,6 +140,8 @@ export const useChatStore = defineStore("chat", {
     },
 
     disconnectWebSocket(): void {
+      // 在 WebSocket 斷線時清除 actions 快取，避免跨測試或跨 session 的狀態污染
+      clearActionsCache();
       const connectionActions = this.getConnectionActions();
       connectionActions.disconnectWebSocket();
     },
@@ -273,19 +238,29 @@ export const useChatStore = defineStore("chat", {
 
       if (!hasMessageContent(content, contentBlocks)) return;
 
-      const podStore = usePodStore();
-      const commandStore = useCommandStore();
-      const command = resolveCommandForPod(
-        podId,
-        podStore.pods,
-        commandStore.typedAvailableItems,
-      );
-      const messagePayload = buildMessagePayload(
-        content,
-        contentBlocks,
-        command,
-      );
+      // contentBlocks 大小驗證：單 block < 5MB，總計 < 20MB（decoded bytes 估算）
+      if (contentBlocks && contentBlocks.length > 0) {
+        let totalBytes = 0;
+        for (const block of contentBlocks) {
+          if (block.type === "image") {
+            // base64 字串長度 * 3/4 ≈ decoded bytes
+            const blockBytes = Math.ceil((block.base64Data.length * 3) / 4);
+            if (blockBytes > MAX_CONTENT_BLOCK_SIZE_BYTES) {
+              throw new Error(t("composable.chat.imageTooLarge"));
+            }
+            totalBytes += blockBytes;
+          }
+        }
+        if (totalBytes > MAX_CONTENT_BLOCKS_TOTAL_BYTES) {
+          throw new Error(t("composable.chat.imageTooLarge"));
+        }
+      }
 
+      // 後端會根據 pod 綁定的 commandId 自行展開指令，前端直接送原文
+      const messagePayload: string | ContentBlock[] =
+        contentBlocks && contentBlocks.length > 0 ? contentBlocks : content;
+
+      const podStore = usePodStore();
       const canvasId = getActiveCanvasIdOrWarn("ChatStore");
       if (!canvasId) return;
 
@@ -301,6 +276,40 @@ export const useChatStore = defineStore("chat", {
 
       this.setTyping(podId, true);
       // 前端發送時立即更新，不等待 WebSocket 事件來回
+      // multi-instance run 模式下源頭 pod 狀態由 run 流程管控，不應覆蓋為 chatting
+      if (!isMultiInstanceSourcePod(podId)) {
+        podStore.updatePodStatus(podId, "chatting");
+      }
+    },
+
+    /** 拖曳上傳流程專用的發送方法。
+     * 純上傳情境不需要 content / contentBlocks，後端根據 uploadSessionId 取得已上傳檔案並組裝 triggerText。
+     */
+    async sendMessageWithUploadSession(
+      podId: string,
+      uploadSessionId: string,
+    ): Promise<void> {
+      if (!this.isConnected) {
+        throw new Error(t("composable.chat.websocketNotConnected"));
+      }
+
+      const podStore = usePodStore();
+      const canvasId = getActiveCanvasIdOrWarn("ChatStore");
+      if (!canvasId) return;
+
+      // 純拖曳流程：不帶 message / contentBlocks，僅帶 uploadSessionId 交由後端處理
+      websocketClient.emit<PodChatSendPayload>(
+        WebSocketRequestEvents.POD_CHAT_SEND,
+        {
+          requestId: generateRequestId(),
+          canvasId,
+          podId,
+          message: "",
+          uploadSessionId,
+        },
+      );
+
+      this.setTyping(podId, true);
       // multi-instance run 模式下源頭 pod 狀態由 run 流程管控，不應覆蓋為 chatting
       if (!isMultiInstanceSourcePod(podId)) {
         podStore.updatePodStatus(podId, "chatting");
@@ -370,7 +379,7 @@ export const useChatStore = defineStore("chat", {
         if (this.isTypingByPodId.get(podId)) {
           this.setTyping(podId, false);
         }
-      }, ABORT_SAFETY_TIMEOUT_MS);
+      }, ABORT_TIMEOUT_MS);
       abortSafetyTimers.set(podId, timer);
     },
 
@@ -437,6 +446,8 @@ export const useChatStore = defineStore("chat", {
       this.isTypingByPodId.clear();
       this.historyLoadingStatus.clear();
       this.historyLoadingError.clear();
+      // 清除累積長度追蹤，避免跨 canvas 的舊 messageId 殘留導致計算錯誤
+      this.accumulatedLengthByMessageId.clear();
     },
   },
 });

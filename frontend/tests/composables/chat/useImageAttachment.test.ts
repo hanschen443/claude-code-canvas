@@ -40,37 +40,16 @@ describe("useImageAttachment", () => {
   });
 
   describe("isValidImageType", () => {
-    it("jpeg 回傳 true", () => {
-      const { isValidImageType } = useImageAttachment({
-        editableRef,
-        insertNodeAtCursor,
-      });
-      expect(isValidImageType("image/jpeg")).toBe(true);
-    });
-
-    it("png 回傳 true", () => {
-      const { isValidImageType } = useImageAttachment({
-        editableRef,
-        insertNodeAtCursor,
-      });
-      expect(isValidImageType("image/png")).toBe(true);
-    });
-
-    it("gif 回傳 true", () => {
-      const { isValidImageType } = useImageAttachment({
-        editableRef,
-        insertNodeAtCursor,
-      });
-      expect(isValidImageType("image/gif")).toBe(true);
-    });
-
-    it("webp 回傳 true", () => {
-      const { isValidImageType } = useImageAttachment({
-        editableRef,
-        insertNodeAtCursor,
-      });
-      expect(isValidImageType("image/webp")).toBe(true);
-    });
+    it.each(["image/jpeg", "image/png", "image/gif", "image/webp"])(
+      "%s 回傳 true",
+      (mimeType) => {
+        const { isValidImageType } = useImageAttachment({
+          editableRef,
+          insertNodeAtCursor,
+        });
+        expect(isValidImageType(mimeType)).toBe(true);
+      },
+    );
 
     it("text/plain 回傳 false", () => {
       const { isValidImageType } = useImageAttachment({

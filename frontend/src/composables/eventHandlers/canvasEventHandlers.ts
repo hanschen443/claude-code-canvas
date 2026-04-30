@@ -1,22 +1,14 @@
 import { WebSocketResponseEvents } from "@/services/websocket";
 import { usePodStore } from "@/stores/pod/podStore";
 import { useConnectionStore } from "@/stores/connectionStore";
-import { useOutputStyleStore } from "@/stores/note/outputStyleStore";
-import { useSkillStore } from "@/stores/note/skillStore";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
-import { useSubAgentStore } from "@/stores/note/subAgentStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import type {
   Pod,
-  OutputStyleNote,
-  SkillNote,
   RepositoryNote,
-  SubAgentNote,
   CommandNote,
   Canvas,
-  McpServerNote,
   Connection,
 } from "@/types";
 import { createUnifiedHandler } from "./sharedHandlerUtils";
@@ -56,7 +48,10 @@ const handleCanvasRenamed = createUnifiedHandler<
   (payload) => {
     useCanvasStore().renameCanvasFromEvent(payload.canvasId, payload.newName);
   },
-  { toastMessage: () => t("composable.eventHandler.canvasRenamed"), skipCanvasCheck: true },
+  {
+    toastMessage: () => t("composable.eventHandler.canvasRenamed"),
+    skipCanvasCheck: true,
+  },
 );
 
 const handleCanvasDeleted = createUnifiedHandler<
@@ -81,45 +76,25 @@ const handleCanvasPasted = createUnifiedHandler<
   BasePayload & {
     canvasId: string;
     createdPods?: Pod[];
-    createdOutputStyleNotes?: OutputStyleNote[];
-    createdSkillNotes?: SkillNote[];
     createdRepositoryNotes?: RepositoryNote[];
-    createdSubAgentNotes?: SubAgentNote[];
     createdCommandNotes?: CommandNote[];
-    createdMcpServerNotes?: McpServerNote[];
     createdConnections?: RawConnectionFromEvent[];
   }
 >(
   (payload) => {
     const podStore = usePodStore();
     const connectionStore = useConnectionStore();
-    const outputStyleStore = useOutputStyleStore();
-    const skillStore = useSkillStore();
     const repositoryStore = useRepositoryStore();
-    const subAgentStore = useSubAgentStore();
     const commandStore = useCommandStore();
-    const mcpServerStore = useMcpServerStore();
 
     addCreatedItems(payload.createdPods, (pod) =>
       podStore.addPodFromEvent(pod),
     );
-    addCreatedItems(payload.createdOutputStyleNotes, (note) =>
-      outputStyleStore.addNoteFromEvent(note),
-    );
-    addCreatedItems(payload.createdSkillNotes, (note) =>
-      skillStore.addNoteFromEvent(note),
-    );
     addCreatedItems(payload.createdRepositoryNotes, (note) =>
       repositoryStore.addNoteFromEvent(note),
     );
-    addCreatedItems(payload.createdSubAgentNotes, (note) =>
-      subAgentStore.addNoteFromEvent(note),
-    );
     addCreatedItems(payload.createdCommandNotes, (note) =>
       commandStore.addNoteFromEvent(note),
-    );
-    addCreatedItems(payload.createdMcpServerNotes, (note) =>
-      mcpServerStore.addNoteFromEvent(note),
     );
     addCreatedItems(payload.createdConnections, (connection) =>
       connectionStore.addConnectionFromEvent(connection),

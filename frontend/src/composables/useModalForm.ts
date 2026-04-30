@@ -1,20 +1,20 @@
-import { ref } from 'vue'
-import type { Ref } from 'vue'
+import { ref } from "vue";
+import type { Ref } from "vue";
 
 export interface UseModalFormOptions<TValue> {
-  initialValue?: TValue
-  validator: (value: TValue) => string | null
-  onSubmit: (value: TValue) => Promise<string | null>
-  onClose: () => void
+  initialValue?: TValue;
+  validator: (value: TValue) => string | null;
+  onSubmit: (value: TValue) => Promise<string | null>;
+  onClose: () => void;
 }
 
 export interface UseModalFormReturn<TValue> {
-  inputValue: Ref<TValue>
-  isSubmitting: Ref<boolean>
-  errorMessage: Ref<string>
-  handleSubmit: () => Promise<void>
-  handleClose: () => void
-  resetForm: () => void
+  inputValue: Ref<TValue>;
+  isSubmitting: Ref<boolean>;
+  errorMessage: Ref<string>;
+  handleSubmit: () => Promise<void>;
+  handleClose: () => void;
+  resetForm: () => void;
 }
 
 /**
@@ -24,43 +24,43 @@ export interface UseModalFormReturn<TValue> {
 export function useModalForm<TValue>(
   options: UseModalFormOptions<TValue>,
 ): UseModalFormReturn<TValue> {
-  const { initialValue, validator, onSubmit, onClose } = options
+  const { initialValue, validator, onSubmit, onClose } = options;
 
-  const inputValue = ref(initialValue ?? ('' as TValue)) as Ref<TValue>
-  const isSubmitting = ref(false)
-  const errorMessage = ref('')
+  const inputValue = ref(initialValue ?? ("" as TValue)) as Ref<TValue>;
+  const isSubmitting = ref(false);
+  const errorMessage = ref("");
 
   const resetForm = (): void => {
-    inputValue.value = initialValue ?? ('' as TValue)
-    errorMessage.value = ''
-  }
+    inputValue.value = initialValue ?? ("" as TValue);
+    errorMessage.value = "";
+  };
 
   const handleSubmit = async (): Promise<void> => {
-    const validationError = validator(inputValue.value)
+    const validationError = validator(inputValue.value);
     if (validationError) {
-      errorMessage.value = validationError
-      return
+      errorMessage.value = validationError;
+      return;
     }
 
-    isSubmitting.value = true
-    errorMessage.value = ''
+    isSubmitting.value = true;
+    errorMessage.value = "";
 
-    const submitError = await onSubmit(inputValue.value)
+    const submitError = await onSubmit(inputValue.value);
 
-    isSubmitting.value = false
+    isSubmitting.value = false;
 
     if (submitError) {
-      errorMessage.value = submitError
-      return
+      errorMessage.value = submitError;
+      return;
     }
 
-    resetForm()
-  }
+    resetForm();
+  };
 
   const handleClose = (): void => {
-    onClose()
-    resetForm()
-  }
+    onClose();
+    resetForm();
+  };
 
   return {
     inputValue,
@@ -69,5 +69,5 @@ export function useModalForm<TValue>(
     handleSubmit,
     handleClose,
     resetForm,
-  }
+  };
 }

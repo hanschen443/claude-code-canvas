@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Eraser, Trash2, Timer } from "lucide-vue-next";
 import {
   Dialog,
@@ -28,10 +29,13 @@ const props = withDefaults(
     scheduleEnabled: boolean;
     scheduleTooltip: string;
     isScheduleFiredAnimating?: boolean;
+    /** 上傳中時為 true，刪除按鈕應 disabled */
+    isUploading?: boolean;
   }>(),
   {
     isScheduleFiredAnimating: false,
     isWorkflowRunning: false,
+    isUploading: false,
   },
 );
 
@@ -48,6 +52,8 @@ const emit = defineEmits<{
   "open-schedule-modal": [];
   "clear-schedule-fired-animation": [];
 }>();
+
+const { t } = useI18n();
 
 const SCHEDULE_FIRED_ANIMATION_DURATION_MS = 1800;
 const TOGGLE_DEBOUNCE_GUARD_MS = 5000;
@@ -87,6 +93,7 @@ const cleanupLongPress = (): void => {
 const handleEraserMouseDown = (event: MouseEvent): void => {
   event.stopPropagation();
   isLongPress = false;
+
   isLongPressing.value = true;
   longPressProgress.value = 0;
   longPressStartTime = performance.now();
@@ -194,8 +201,13 @@ watch(
     >
       <Timer :size="16" />
     </button>
+    <!-- 上傳中禁用刪除：disabled 封鎖點擊，title 提供原生 tooltip 說明 -->
     <button
       class="pod-action-button-base pod-delete-button"
+      :disabled="isUploading"
+      :title="
+        isUploading ? t('pod.upload.cannotDeleteWhileUploading') : undefined
+      "
       @click.stop="handleDelete"
     >
       <Trash2 :size="16" />
@@ -209,8 +221,14 @@ watch(
       @mouseup="handleEraserMouseUp"
       @mouseleave="handleEraserMouseLeave"
     >
-      <span v-if="isMultiInstanceEnabled" class="multi-instance-icon-m">M</span>
-      <Eraser v-else :size="16" />
+      <span
+        v-if="isMultiInstanceEnabled"
+        class="multi-instance-icon-m"
+      >M</span>
+      <Eraser
+        v-else
+        :size="16"
+      />
     </button>
   </div>
 
@@ -221,9 +239,9 @@ watch(
     <DialogContent>
       <DialogHeader>
         <DialogTitle>{{ $t("pod.clearWorkflow.title") }}</DialogTitle>
-        <DialogDescription>{{
-          $t("pod.clearWorkflow.description")
-        }}</DialogDescription>
+        <DialogDescription>
+          {{ $t("pod.clearWorkflow.description") }}
+        </DialogDescription>
       </DialogHeader>
 
       <div class="py-4">
@@ -239,7 +257,11 @@ watch(
       </div>
 
       <DialogFooter>
-        <Button variant="outline" :disabled="isClearing" @click="cancelClear">
+        <Button
+          variant="outline"
+          :disabled="isClearing"
+          @click="cancelClear"
+        >
           {{ $t("common.cancel") }}
         </Button>
         <Button
@@ -270,12 +292,18 @@ watch(
       </DialogHeader>
 
       <DialogFooter>
-        <Button variant="outline" @click="cancelDelete">{{
-          $t("common.cancel")
-        }}</Button>
-        <Button variant="destructive" @click="confirmDelete">{{
-          $t("pod.delete.confirm")
-        }}</Button>
+        <Button
+          variant="outline"
+          @click="cancelDelete"
+        >
+          {{ $t("common.cancel") }}
+        </Button>
+        <Button
+          variant="destructive"
+          @click="confirmDelete"
+        >
+          {{ $t("pod.delete.confirm") }}
+        </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
@@ -289,7 +317,12 @@ watch(
         top: mousePosition.y + 'px',
       }"
     >
-      <svg class="long-press-ring" width="52" height="52" viewBox="0 0 52 52">
+      <svg
+        class="long-press-ring"
+        width="52"
+        height="52"
+        viewBox="0 0 52 52"
+      >
         <circle
           cx="26"
           cy="26"

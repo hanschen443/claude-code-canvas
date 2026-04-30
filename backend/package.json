@@ -1,7 +1,7 @@
 {
-  "name": "claude-code-canvas-backend",
-  "version": "1.0.7",
-  "description": "Backend server for Claude Code Canvas",
+  "name": "agent-canvas-backend",
+  "version": "1.1.5",
+  "description": "Backend server for Agent Canvas",
   "main": "dist/index.js",
   "type": "module",
   "directories": {
@@ -20,7 +20,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.2.87",
+    "@anthropic-ai/claude-agent-sdk": "0.2.119",
     "@slack/web-api": "^7.14.1",
     "fflate": "^0.8.2",
     "ignore": "^7.0.5",

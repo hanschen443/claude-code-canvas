@@ -8,8 +8,9 @@ import type {
   Connection,
   Pod,
   TriggerMode,
-  ModelType,
+  AiDecideModelType,
 } from "../types";
+import { toPodPublicView } from "../types/index.js";
 import type {
   ConnectionCreatePayload,
   ConnectionListPayload,
@@ -45,6 +46,7 @@ function findConnectionOrEmitError(
       "Connection",
       connectionId,
       requestId,
+      canvasId,
     );
     return undefined;
   }
@@ -66,7 +68,8 @@ function findPodsOrEmitError(
     emitError(
       wsConnectionId,
       responseEvent,
-      createI18nError('errors.sourcePodNotFound', { id: sourcePodId }),
+      createI18nError("errors.sourcePodNotFound", { id: sourcePodId }),
+      canvasId,
       requestId,
       undefined,
       "NOT_FOUND",
@@ -80,7 +83,8 @@ function findPodsOrEmitError(
     emitError(
       wsConnectionId,
       responseEvent,
-      createI18nError('errors.targetPodNotFound', { id: targetPodId }),
+      createI18nError("errors.targetPodNotFound", { id: targetPodId }),
+      canvasId,
       requestId,
       undefined,
       "NOT_FOUND",
@@ -150,7 +154,7 @@ export const handleConnectionCreate = withCanvasId<ConnectionCreatePayload>(
           requestId: "",
           canvasId,
           success: true,
-          pod: result.pod,
+          pod: toPodPublicView(result.pod),
         };
         socketService.emitToCanvas(
           canvasId,
@@ -225,7 +229,8 @@ export const handleConnectionDelete = withCanvasId<ConnectionDeletePayload>(
       emitError(
         wsConnectionId,
         WebSocketResponseEvents.CONNECTION_DELETED,
-        createI18nError('errors.connectionDeleteFailed', { id: connectionId }),
+        createI18nError("errors.connectionDeleteFailed", { id: connectionId }),
+        canvasId,
         requestId,
         undefined,
         "INTERNAL_ERROR",
@@ -262,6 +267,9 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
     payload: ConnectionUpdatePayload,
     requestId: string,
   ): Promise<void> => {
+    // 授權邊界說明：本工具為本地單使用者場景，不存在多使用者概念，
+    // canvas membership 驗證由 withCanvasId 確保 canvasId 合法即可，
+    // 無需額外的使用者身份驗證。
     const { connectionId, triggerMode, summaryModel, aiDecideModel } = payload;
 
     const connection = findConnectionOrEmitError(
@@ -275,8 +283,8 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
 
     const updates: Partial<{
       triggerMode: TriggerMode;
-      summaryModel: ModelType;
-      aiDecideModel: ModelType;
+      summaryModel: string;
+      aiDecideModel: AiDecideModelType;
     }> = {};
     if (triggerMode !== undefined) {
       updates.triggerMode = triggerMode;
@@ -298,7 +306,8 @@ export const handleConnectionUpdate = withCanvasId<ConnectionUpdatePayload>(
       emitError(
         wsConnectionId,
         WebSocketResponseEvents.CONNECTION_UPDATED,
-        createI18nError('errors.connectionUpdateFailed', { id: connectionId }),
+        createI18nError("errors.connectionUpdateFailed", { id: connectionId }),
+        canvasId,
         requestId,
         undefined,
         "INTERNAL_ERROR",

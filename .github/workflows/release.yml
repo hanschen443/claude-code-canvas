@@ -42,12 +42,17 @@ jobs:
         run: TARGET=bun-linux-arm64 bun scripts/compile.ts
 
       - name: 計算 SHA256（供下載驗證用）
-        run: shasum -a 256 dist/claude-code-canvas-* > dist/checksums.txt
+        run: (cd dist && shasum -a 256 agent-canvas-* > checksums.txt)
 
       - name: 擷取 CHANGELOG 對應版本內容
         id: changelog
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          # 驗證版本格式，防止將未預期字串拼入 sed pattern
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "錯誤：版本格式不正確：$VERSION" >&2
+            exit 1
+          fi
           BODY=$(sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | sed '$d')
           echo "body<<EOF" >> $GITHUB_OUTPUT
           echo "$BODY" >> $GITHUB_OUTPUT
@@ -58,8 +63,8 @@ jobs:
         with:
           body: ${{ steps.changelog.outputs.body }}
           files: |
-            dist/claude-code-canvas-darwin-arm64
-            dist/claude-code-canvas-darwin-x64
-            dist/claude-code-canvas-linux-x64
-            dist/claude-code-canvas-linux-arm64
+            dist/agent-canvas-darwin-arm64
+            dist/agent-canvas-darwin-x64
+            dist/agent-canvas-linux-x64
+            dist/agent-canvas-linux-arm64
             dist/checksums.txt

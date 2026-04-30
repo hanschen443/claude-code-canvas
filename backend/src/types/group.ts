@@ -1,9 +1,8 @@
-export type GroupType = 'command' | 'output-style' | 'subagent';
+/** 目前只有一種 Group 類型，未來可擴充新類型 */
+export type GroupType = "command";
 
 export const GROUP_TYPES = {
-  COMMAND: 'command',
-  OUTPUT_STYLE: 'output-style',
-  SUBAGENT: 'subagent',
+  COMMAND: "command",
 } as const;
 
 export interface Group {

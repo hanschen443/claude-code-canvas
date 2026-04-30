@@ -116,313 +116,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
-    });
-  });
-
-  describe("Pod 綁定 Repository 資源同步", () => {
-    async function bindSkillToPod(client: any, podId: string, skillId: string) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_SKILL,
-        WebSocketResponseEvents.POD_SKILL_BOUND,
-        { requestId: uuidv4(), canvasId, podId, skillId },
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
       );
-    }
-
-    async function bindSubAgentToPod(
-      client: any,
-      podId: string,
-      subAgentId: string,
-    ) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_SUBAGENT,
-        WebSocketResponseEvents.POD_SUBAGENT_BOUND,
-        { requestId: uuidv4(), canvasId, podId, subAgentId },
-      );
-    }
-
-    async function bindCommandToPod(
-      client: any,
-      podId: string,
-      commandId: string,
-    ) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_COMMAND,
-        WebSocketResponseEvents.POD_COMMAND_BOUND,
-        { requestId: uuidv4(), canvasId, podId, commandId },
-      );
-    }
-
-    it("綁定 Repository 後 Pod 資源被刪除", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const repo = await createRepository(client, `sync-delete-${uuidv4()}`);
-
-      const { createSkillFile, createSubAgent, createCommand } =
-        await import("../helpers/index.js");
-      const skillId = await createSkillFile(
-        `skill-${uuidv4()}`,
-        "# Test Skill",
-      );
-      const subAgent = await createSubAgent(
-        client,
-        `subagent-${uuidv4()}`,
-        "Test SubAgent",
-      );
-      const command = await createCommand(
-        client,
-        `command-${uuidv4()}`,
-        "Test Command",
-      );
-
-      await bindSkillToPod(client, pod.id, skillId);
-      await bindSubAgentToPod(client, pod.id, subAgent.id);
-      await bindCommandToPod(client, pod.id, command.id);
-
-      const path = await import("path");
-      const fs = await import("fs/promises");
-      const podWorkspacePath = pod.workspacePath;
-
-      const skillPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-      const subAgentPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "agents",
-        `${subAgent.id}.md`,
-      );
-      const commandPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "commands",
-        `${command.id}.md`,
-      );
-
-      const skillExistsBefore = await fs
-        .access(skillPath)
-        .then(() => true)
-        .catch(() => false);
-      const subAgentExistsBefore = await fs
-        .access(subAgentPath)
-        .then(() => true)
-        .catch(() => false);
-      const commandExistsBefore = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
-
-      expect(skillExistsBefore).toBe(true);
-      expect(subAgentExistsBefore).toBe(true);
-      expect(commandExistsBefore).toBe(true);
-
-      const canvasId = await getCanvasId(client);
-      await emitAndWaitResponse<
-        PodBindRepositoryPayload,
-        PodRepositoryBoundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_BIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        { requestId: uuidv4(), canvasId, podId: pod.id, repositoryId: repo.id },
-      );
-
-      const skillExistsAfter = await fs
-        .access(skillPath)
-        .then(() => true)
-        .catch(() => false);
-      const subAgentExistsAfter = await fs
-        .access(subAgentPath)
-        .then(() => true)
-        .catch(() => false);
-      const commandExistsAfter = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
-
-      expect(skillExistsAfter).toBe(false);
-      expect(subAgentExistsAfter).toBe(false);
-      expect(commandExistsAfter).toBe(false);
-    });
-
-    it("綁定後 Repository 資源同步成功", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const repo = await createRepository(client, `sync-add-${uuidv4()}`);
-
-      const { createSkillFile, createSubAgent, createCommand } =
-        await import("../helpers/index.js");
-      const skillId = await createSkillFile(
-        `skill-${uuidv4()}`,
-        "# Test Skill",
-      );
-      const subAgent = await createSubAgent(
-        client,
-        `subagent-${uuidv4()}`,
-        "Test SubAgent",
-      );
-      const command = await createCommand(
-        client,
-        `command-${uuidv4()}`,
-        "Test Command",
-      );
-
-      await bindSkillToPod(client, pod.id, skillId);
-      await bindSubAgentToPod(client, pod.id, subAgent.id);
-      await bindCommandToPod(client, pod.id, command.id);
-
-      const canvasId = await getCanvasId(client);
-      await emitAndWaitResponse<
-        PodBindRepositoryPayload,
-        PodRepositoryBoundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_BIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        { requestId: uuidv4(), canvasId, podId: pod.id, repositoryId: repo.id },
-      );
-
-      const { config } = await import("../../src/config/index.js");
-      const path = await import("path");
-      const fs = await import("fs/promises");
-      const repoPath = path.join(config.repositoriesRoot, repo.id);
-
-      const skillPath = path.join(
-        repoPath,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-      const subAgentPath = path.join(
-        repoPath,
-        ".claude",
-        "agents",
-        `${subAgent.id}.md`,
-      );
-      const commandPath = path.join(
-        repoPath,
-        ".claude",
-        "commands",
-        `${command.id}.md`,
-      );
-
-      const skillExists = await fs
-        .access(skillPath)
-        .then(() => true)
-        .catch(() => false);
-      const subAgentExists = await fs
-        .access(subAgentPath)
-        .then(() => true)
-        .catch(() => false);
-      const commandExists = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
-
-      expect(skillExists).toBe(true);
-      expect(subAgentExists).toBe(true);
-      expect(commandExists).toBe(true);
-    });
-
-    it("重新綁定後舊 Repository 同步成功", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const repo1 = await createRepository(client, `sync-old-${uuidv4()}`);
-      const repo2 = await createRepository(client, `sync-new-${uuidv4()}`);
-
-      const { createSkillFile } = await import("../helpers/index.js");
-      const skillId = await createSkillFile(
-        `skill-${uuidv4()}`,
-        "# Test Skill",
-      );
-
-      await bindSkillToPod(client, pod.id, skillId);
-
-      const canvasId = await getCanvasId(client);
-      await emitAndWaitResponse<
-        PodBindRepositoryPayload,
-        PodRepositoryBoundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_BIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        {
-          requestId: uuidv4(),
-          canvasId,
-          podId: pod.id,
-          repositoryId: repo1.id,
-        },
-      );
-
-      const { config } = await import("../../src/config/index.js");
-      const path = await import("path");
-      const fs = await import("fs/promises");
-      const repo1Path = path.join(config.repositoriesRoot, repo1.id);
-      const skillPath1 = path.join(
-        repo1Path,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-
-      const skill1ExistsBefore = await fs
-        .access(skillPath1)
-        .then(() => true)
-        .catch(() => false);
-      expect(skill1ExistsBefore).toBe(true);
-
-      await emitAndWaitResponse<
-        PodBindRepositoryPayload,
-        PodRepositoryBoundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_BIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        {
-          requestId: uuidv4(),
-          canvasId,
-          podId: pod.id,
-          repositoryId: repo2.id,
-        },
-      );
-
-      const skill1ExistsAfter = await fs
-        .access(skillPath1)
-        .then(() => true)
-        .catch(() => false);
-      expect(skill1ExistsAfter).toBe(false);
-
-      const repo2Path = path.join(config.repositoriesRoot, repo2.id);
-      const skillPath2 = path.join(
-        repo2Path,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-      const skill2Exists = await fs
-        .access(skillPath2)
-        .then(() => true)
-        .catch(() => false);
-      expect(skill2Exists).toBe(true);
     });
   });
 
@@ -471,214 +167,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
-    });
-  });
-
-  describe("Pod 解除綁定 Repository 資源同步", () => {
-    async function bindSkillToPod(client: any, podId: string, skillId: string) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_SKILL,
-        WebSocketResponseEvents.POD_SKILL_BOUND,
-        { requestId: uuidv4(), canvasId, podId, skillId },
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
       );
-    }
-
-    async function bindSubAgentToPod(
-      client: any,
-      podId: string,
-      subAgentId: string,
-    ) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_SUBAGENT,
-        WebSocketResponseEvents.POD_SUBAGENT_BOUND,
-        { requestId: uuidv4(), canvasId, podId, subAgentId },
-      );
-    }
-
-    async function bindCommandToPod(
-      client: any,
-      podId: string,
-      commandId: string,
-    ) {
-      const canvasId = await getCanvasId(client);
-      const { WebSocketRequestEvents, WebSocketResponseEvents } =
-        await import("../../src/schemas/index.js");
-      return await emitAndWaitResponse(
-        client,
-        WebSocketRequestEvents.POD_BIND_COMMAND,
-        WebSocketResponseEvents.POD_COMMAND_BOUND,
-        { requestId: uuidv4(), canvasId, podId, commandId },
-      );
-    }
-
-    it("解除綁定後資源複製到 Pod", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const repo = await createRepository(client, `unbind-copy-${uuidv4()}`);
-
-      const { createSkillFile, createSubAgent, createCommand } =
-        await import("../helpers/index.js");
-      const skillId = await createSkillFile(
-        `skill-${uuidv4()}`,
-        "# Test Skill",
-      );
-      const subAgent = await createSubAgent(
-        client,
-        `subagent-${uuidv4()}`,
-        "Test SubAgent",
-      );
-      const command = await createCommand(
-        client,
-        `command-${uuidv4()}`,
-        "Test Command",
-      );
-
-      await bindSkillToPod(client, pod.id, skillId);
-      await bindSubAgentToPod(client, pod.id, subAgent.id);
-      await bindCommandToPod(client, pod.id, command.id);
-
-      const canvasId = await getCanvasId(client);
-      await emitAndWaitResponse<
-        PodBindRepositoryPayload,
-        PodRepositoryBoundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_BIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        { requestId: uuidv4(), canvasId, podId: pod.id, repositoryId: repo.id },
-      );
-
-      const path = await import("path");
-      const fs = await import("fs/promises");
-      const podWorkspacePath = pod.workspacePath;
-
-      const skillPathBefore = path.join(
-        podWorkspacePath,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-      const skillExistsBefore = await fs
-        .access(skillPathBefore)
-        .then(() => true)
-        .catch(() => false);
-      expect(skillExistsBefore).toBe(false);
-
-      await emitAndWaitResponse<
-        PodUnbindRepositoryPayload,
-        PodRepositoryUnboundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_UNBIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_UNBOUND,
-        { requestId: uuidv4(), canvasId, podId: pod.id },
-      );
-
-      const skillPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-      const subAgentPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "agents",
-        `${subAgent.id}.md`,
-      );
-      const commandPath = path.join(
-        podWorkspacePath,
-        ".claude",
-        "commands",
-        `${command.id}.md`,
-      );
-
-      const skillExists = await fs
-        .access(skillPath)
-        .then(() => true)
-        .catch(() => false);
-      const subAgentExists = await fs
-        .access(subAgentPath)
-        .then(() => true)
-        .catch(() => false);
-      const commandExists = await fs
-        .access(commandPath)
-        .then(() => true)
-        .catch(() => false);
-
-      expect(skillExists).toBe(true);
-      expect(subAgentExists).toBe(true);
-      expect(commandExists).toBe(true);
-    });
-
-    it("解除綁定後舊 Repository 清理完成", async () => {
-      const client = getClient();
-      const pod = await createPod(client);
-      const repo = await createRepository(client, `unbind-clean-${uuidv4()}`);
-
-      const { createSkillFile } = await import("../helpers/index.js");
-      const skillId = await createSkillFile(
-        `skill-${uuidv4()}`,
-        "# Test Skill",
-      );
-
-      await bindSkillToPod(client, pod.id, skillId);
-
-      const canvasId = await getCanvasId(client);
-      await emitAndWaitResponse<
-        PodBindRepositoryPayload,
-        PodRepositoryBoundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_BIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_BOUND,
-        { requestId: uuidv4(), canvasId, podId: pod.id, repositoryId: repo.id },
-      );
-
-      const { config } = await import("../../src/config/index.js");
-      const path = await import("path");
-      const fs = await import("fs/promises");
-      const repoPath = path.join(config.repositoriesRoot, repo.id);
-      const skillPathInRepo = path.join(
-        repoPath,
-        ".claude",
-        "skills",
-        skillId,
-        "SKILL.md",
-      );
-
-      const skillExistsInRepo = await fs
-        .access(skillPathInRepo)
-        .then(() => true)
-        .catch(() => false);
-      expect(skillExistsInRepo).toBe(true);
-
-      await emitAndWaitResponse<
-        PodUnbindRepositoryPayload,
-        PodRepositoryUnboundPayload
-      >(
-        client,
-        WebSocketRequestEvents.POD_UNBIND_REPOSITORY,
-        WebSocketResponseEvents.POD_REPOSITORY_UNBOUND,
-        { requestId: uuidv4(), canvasId, podId: pod.id },
-      );
-
-      const skillExistsAfterUnbind = await fs
-        .access(skillPathInRepo)
-        .then(() => true)
-        .catch(() => false);
-      expect(skillExistsAfterUnbind).toBe(false);
     });
   });
 
@@ -715,7 +206,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("使用中時刪除失敗", async () => {
@@ -745,7 +238,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
   });
 
@@ -783,7 +278,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
   });
 
@@ -807,7 +304,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("非 Git Repository 時建立失敗", async () => {
@@ -834,7 +333,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("無 commit 時建立失敗", async () => {
@@ -867,7 +368,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("分支已存在時建立失敗", async () => {
@@ -918,7 +421,9 @@ describe("Repository 管理", () => {
       );
 
       expect(response.success).toBe(false);
-      expect(response.error).toEqual(expect.objectContaining({ key: expect.any(String) }));
+      expect(response.error).toEqual(
+        expect.objectContaining({ key: expect.any(String) }),
+      );
     });
 
     it("成功建立並包含父 Repository 資訊", async () => {

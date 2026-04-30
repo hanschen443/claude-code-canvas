@@ -39,7 +39,8 @@ import {
   createAssistantMessageWithTool,
   toMessage,
 } from "@/stores/run/runStoreHelpers";
-import { logger } from "@/utils/logger";
+import { useToast } from "@/composables/useToast";
+import { t } from "@/i18n";
 
 interface RunState {
   runs: WorkflowRun[];
@@ -107,8 +108,9 @@ export const useRunStore = defineStore("run", {
         if (response.success && response.runs) {
           this.runs = response.runs;
         }
-      } catch (error) {
-        logger.warn("[RunStore] loadRuns 失敗：", error);
+      } catch {
+        const { showErrorToast } = useToast();
+        showErrorToast("Run", t("store.run.loadFailed"));
       }
     },
 

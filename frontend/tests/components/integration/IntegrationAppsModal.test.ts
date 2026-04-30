@@ -3,7 +3,7 @@ import { mount } from "@vue/test-utils";
 import { createTestingPinia } from "@pinia/testing";
 import type { IntegrationApp } from "@/types/integration";
 
-// Mock Shadcn UI Dialog 元件，避免 teleport 問題
+// Dialog：內部使用 reka-ui Dialog（Teleport），jsdom 下 Teleport 目標不存在導致內容不渲染，保留 stub
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: {
     name: "Dialog",
@@ -18,69 +18,6 @@ vi.mock("@/components/ui/dialog", () => ({
     template: "<div><slot /></div>",
   },
   DialogFooter: { name: "DialogFooter", template: "<div><slot /></div>" },
-}));
-
-vi.mock("@/components/ui/button", () => ({
-  Button: {
-    name: "Button",
-    template:
-      '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
-    props: ["disabled", "variant", "size"],
-    emits: ["click"],
-  },
-}));
-
-vi.mock("@/components/ui/input", () => ({
-  Input: {
-    name: "Input",
-    template:
-      '<input :type="type" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
-    props: ["type", "placeholder", "modelValue"],
-    emits: ["update:modelValue"],
-  },
-}));
-
-// Mock icons
-vi.mock("@/components/icons/SlackIcon.vue", () => ({
-  default: { name: "SlackIcon", template: "<svg />", props: ["size"] },
-}));
-vi.mock("@/components/icons/TelegramIcon.vue", () => ({
-  default: { name: "TelegramIcon", template: "<svg />", props: ["size"] },
-}));
-vi.mock("@/components/icons/JiraIcon.vue", () => ({
-  default: { name: "JiraIcon", template: "<svg />", props: ["size"] },
-}));
-vi.mock("@/components/icons/SentryIcon.vue", () => ({
-  default: { name: "SentryIcon", template: "<svg />", props: ["size"] },
-}));
-
-// Mock lucide icons
-vi.mock("lucide-vue-next", () => ({
-  Trash2: {
-    name: "Trash2",
-    template: '<svg data-icon="trash2" />',
-    props: ["class"],
-  },
-  Plus: {
-    name: "Plus",
-    template: '<svg data-icon="plus" />',
-    props: ["class"],
-  },
-  Copy: {
-    name: "Copy",
-    template: '<svg data-icon="copy" />',
-    props: ["class"],
-  },
-  Check: {
-    name: "Check",
-    template: '<svg data-icon="check" />',
-    props: ["class"],
-  },
-  Webhook: {
-    name: "Webhook",
-    template: '<svg data-icon="webhook" />',
-    props: ["class"],
-  },
 }));
 
 function createMockApp(overrides?: Partial<IntegrationApp>): IntegrationApp {
@@ -128,7 +65,7 @@ describe("IntegrationAppsModal", () => {
       expect(wrapper.text()).toContain("尚未註冊任何 Slack App");
     });
 
-    it("新增表單應根據 Slack provider 渲染 3 個欄位", async () => {
+    it("新增表單根據 provider 渲染正確欄位數（slack=3、含 2 個 password）", async () => {
       const wrapper = await mountComponent({ open: true, provider: "slack" });
 
       const addButton = wrapper
@@ -138,17 +75,6 @@ describe("IntegrationAppsModal", () => {
 
       const inputs = wrapper.findAll("input");
       expect(inputs).toHaveLength(3);
-    });
-
-    it("表單欄位有 password 類型", async () => {
-      const wrapper = await mountComponent({ open: true, provider: "slack" });
-
-      const addButton = wrapper
-        .findAll("button")
-        .find((b) => b.text().includes("新增 App"));
-      await addButton?.trigger("click");
-
-      const inputs = wrapper.findAll("input");
       const passwordInputs = inputs.filter(
         (i) => i.attributes("type") === "password",
       );
@@ -157,45 +83,33 @@ describe("IntegrationAppsModal", () => {
   });
 
   describe("Telegram provider", () => {
-    it("應顯示 Telegram 標題", async () => {
+    it("應顯��標題且表單只有 2 個欄位", async () => {
       const wrapper = await mountComponent({
         open: true,
         provider: "telegram",
       });
       expect(wrapper.text()).toContain("Telegram Apps");
-    });
-
-    it("新增表單應根據 Telegram provider 渲染 2 個欄位", async () => {
-      const wrapper = await mountComponent({
-        open: true,
-        provider: "telegram",
-      });
 
       const addButton = wrapper
         .findAll("button")
         .find((b) => b.text().includes("新增 App"));
       await addButton?.trigger("click");
 
-      const inputs = wrapper.findAll("input");
-      expect(inputs).toHaveLength(2);
+      expect(wrapper.findAll("input")).toHaveLength(2);
     });
   });
 
   describe("Jira provider", () => {
-    it("新增表單應根據 Jira provider 渲染 3 個欄位", async () => {
+    it("表單 3 個欄位，已有 App 時不顯示 resource badges", async () => {
       const wrapper = await mountComponent({ open: true, provider: "jira" });
 
       const addButton = wrapper
         .findAll("button")
         .find((b) => b.text().includes("新增 App"));
       await addButton?.trigger("click");
+      expect(wrapper.findAll("input")).toHaveLength(3);
 
-      const inputs = wrapper.findAll("input");
-      expect(inputs).toHaveLength(3);
-    });
-
-    it("Jira App 卡片不顯示 resources badges", async () => {
-      const wrapper = await mountComponent({ open: true, provider: "jira" });
+      // 注入 jira app 後確認無 resource badge
       const integrationStore = (
         await import("@/stores/integrationStore")
       ).useIntegrationStore();
@@ -209,17 +123,15 @@ describe("IntegrationAppsModal", () => {
           raw: {},
         },
       ];
-
       await wrapper.vm.$nextTick();
 
-      // Jira hasNoResource=true，不應出現 bg-muted 的 resource badge
-      const badges = wrapper.findAll(".rounded-full.bg-muted");
-      expect(badges).toHaveLength(0);
+      // Jira hasNoResource=true，不應出現 resource badge
+      expect(wrapper.findAll(".rounded-full.bg-muted")).toHaveLength(0);
     });
   });
 
   describe("App 列表", () => {
-    it("有 App 時應渲染 App 名稱和資源標籤", async () => {
+    it("有 App 時應渲染名稱、資源標籤與刪除按鈕", async () => {
       const wrapper = await mountComponent({ open: true, provider: "slack" });
       const integrationStore = (
         await import("@/stores/integrationStore")
@@ -230,17 +142,6 @@ describe("IntegrationAppsModal", () => {
 
       expect(wrapper.text()).toContain("Test App");
       expect(wrapper.text()).toContain("#general");
-    });
-
-    it("應渲染刪除按鈕", async () => {
-      const wrapper = await mountComponent({ open: true, provider: "slack" });
-      const integrationStore = (
-        await import("@/stores/integrationStore")
-      ).useIntegrationStore();
-      integrationStore.apps["slack"] = [createMockApp()];
-
-      await wrapper.vm.$nextTick();
-
       const deleteButtons = wrapper
         .findAll("button")
         .filter((b) => b.find("svg").exists());
@@ -249,7 +150,7 @@ describe("IntegrationAppsModal", () => {
   });
 
   describe("表單驗證", () => {
-    it("表單未填時確認按鈕應 disabled", async () => {
+    it("表單未填時確認按鈕 disabled；取消按鈕隱藏表單", async () => {
       const wrapper = await mountComponent({ open: true, provider: "slack" });
 
       const addButton = wrapper
@@ -261,23 +162,11 @@ describe("IntegrationAppsModal", () => {
         .findAll("button")
         .find((b) => b.text().includes("確認新增"));
       expect(confirmButton?.attributes("disabled")).toBeDefined();
-    });
-
-    it("取消按鈕應隱藏表單", async () => {
-      const wrapper = await mountComponent({ open: true, provider: "slack" });
-
-      const addButton = wrapper
-        .findAll("button")
-        .find((b) => b.text().includes("新增 App"));
-      await addButton?.trigger("click");
-
-      expect(wrapper.findAll("input").length).toBeGreaterThan(0);
 
       const cancelButton = wrapper
         .findAll("button")
         .find((b) => b.text().includes("取消"));
       await cancelButton?.trigger("click");
-
       expect(wrapper.findAll("input")).toHaveLength(0);
     });
   });
@@ -290,16 +179,25 @@ describe("IntegrationAppsModal", () => {
   });
 
   describe("開啟時自動 refresh", () => {
-    it("開啟時應對 connected app 觸發 refreshAppResources", async () => {
-      const wrapper = await mountComponent({ open: false, provider: "slack" });
+    it.each([
+      ["connected app 觸發 refreshAppResources", "slack", "connected", true],
+      [
+        "disconnected app 不觸發 refreshAppResources",
+        "slack",
+        "disconnected",
+        false,
+      ],
+    ])("%s", async (_label, provider, status, shouldCall) => {
+      const wrapper = await mountComponent({ open: false, provider });
       const integrationStore = (
         await import("@/stores/integrationStore")
       ).useIntegrationStore();
-      const connectedApp = createMockApp({
-        id: "app-connected",
-        connectionStatus: "connected",
-      });
-      integrationStore.apps["slack"] = [connectedApp];
+      integrationStore.apps[provider] = [
+        createMockApp({
+          id: "app-1",
+          connectionStatus: status as "connected" | "disconnected",
+        }),
+      ];
       integrationStore.refreshAppResources = vi
         .fn()
         .mockResolvedValue(undefined);
@@ -307,10 +205,14 @@ describe("IntegrationAppsModal", () => {
       await wrapper.setProps({ open: true });
       await wrapper.vm.$nextTick();
 
-      expect(integrationStore.refreshAppResources).toHaveBeenCalledWith(
-        "slack",
-        "app-connected",
-      );
+      if (shouldCall) {
+        expect(integrationStore.refreshAppResources).toHaveBeenCalledWith(
+          provider,
+          "app-1",
+        );
+      } else {
+        expect(integrationStore.refreshAppResources).not.toHaveBeenCalled();
+      }
     });
 
     it("Jira provider 開啟時不應觸發 refreshAppResources", async () => {
@@ -338,36 +240,12 @@ describe("IntegrationAppsModal", () => {
       expect(integrationStore.refreshAppResources).not.toHaveBeenCalled();
     });
 
-    it("開啟時不應對 disconnected app 觸發 refreshAppResources", async () => {
-      const wrapper = await mountComponent({ open: false, provider: "slack" });
-      const integrationStore = (
-        await import("@/stores/integrationStore")
-      ).useIntegrationStore();
-      const disconnectedApp = createMockApp({
-        id: "app-disconnected",
-        connectionStatus: "disconnected",
-      });
-      integrationStore.apps["slack"] = [disconnectedApp];
-      integrationStore.refreshAppResources = vi
-        .fn()
-        .mockResolvedValue(undefined);
-
-      await wrapper.setProps({ open: true });
-      await wrapper.vm.$nextTick();
-
-      expect(integrationStore.refreshAppResources).not.toHaveBeenCalled();
-    });
-
     it("關閉 modal 時不應觸發 refreshAppResources", async () => {
       const wrapper = await mountComponent({ open: true, provider: "slack" });
       const integrationStore = (
         await import("@/stores/integrationStore")
       ).useIntegrationStore();
-      const connectedApp = createMockApp({
-        id: "app-connected",
-        connectionStatus: "connected",
-      });
-      integrationStore.apps["slack"] = [connectedApp];
+      integrationStore.apps["slack"] = [createMockApp()];
       integrationStore.refreshAppResources = vi
         .fn()
         .mockResolvedValue(undefined);

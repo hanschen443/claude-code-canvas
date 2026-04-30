@@ -1,13 +1,9 @@
 export {
-  collectBoundNotesFromStore,
-  collectBoundNotes,
   createUnboundNoteCollector,
   collectSelectedPods,
   collectSelectedNotes,
   collectRelatedConnections,
-} from './collectCopyData'
-export type { BoundNotesByType, NoteStores } from './collectCopyData'
+} from "./collectCopyData";
+export type { NoteStores } from "./collectCopyData";
 
-export {
-  calculatePastePositions,
-} from './calculatePaste'
+export { calculatePastePositions } from "./calculatePaste";

@@ -2,8 +2,11 @@
 import type { TriggerMode } from "@/types/connection";
 import type { ModelType } from "@/types/pod";
 import { Zap, Brain, ArrowRight, ChevronRight } from "lucide-vue-next";
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
+
 import { useConnectionStore } from "@/stores/connectionStore";
+import { usePodStore } from "@/stores/pod/podStore";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
 import { useToast } from "@/composables/useToast";
 import { useI18n } from "vue-i18n";
 import {
@@ -15,7 +18,8 @@ interface Props {
   position: { x: number; y: number };
   connectionId: string;
   currentTriggerMode: TriggerMode;
-  currentSummaryModel: ModelType;
+  /** currentSummaryModel 接受任意 provider 的模型名稱字串，不限於 Claude ModelType */
+  currentSummaryModel: string;
   currentAiDecideModel: ModelType;
 }
 
@@ -29,6 +33,8 @@ const emit = defineEmits<{
 }>();
 
 const connectionStore = useConnectionStore();
+const podStore = usePodStore();
+const providerCapabilityStore = useProviderCapabilityStore();
 const { toast } = useToast();
 const { t } = useI18n();
 
@@ -44,7 +50,7 @@ const handleSetTriggerMode = async (targetMode: TriggerMode): Promise<void> => {
   );
 
   if (result) {
-    const modeTextMap: Record<TriggerMode, string> = {
+    const triggerModeLabels: Record<TriggerMode, string> = {
       auto: t("canvas.connectionContextMenu.triggerModeAutoLabel"),
       "ai-decide": t("canvas.connectionContextMenu.triggerModeAiDecideLabel"),
       direct: t("canvas.connectionContextMenu.triggerModeDirectLabel"),
@@ -52,7 +58,7 @@ const handleSetTriggerMode = async (targetMode: TriggerMode): Promise<void> => {
     toast({
       title: t("canvas.connectionContextMenu.triggerModeChanged"),
       description: t("canvas.connectionContextMenu.triggerModeChangedDesc", {
-        mode: modeTextMap[targetMode],
+        mode: triggerModeLabels[targetMode],
       }),
       duration: SHORT_TOAST_DURATION_MS,
     });
@@ -67,20 +73,38 @@ const handleSetTriggerMode = async (targetMode: TriggerMode): Promise<void> => {
   }
 };
 
-const MODEL_LABEL_MAP: Record<ModelType, string> = {
-  haiku: "Haiku",
-  sonnet: "Sonnet",
-  opus: "Opus",
+/** 顯示模型切換成功的 toast */
+const showModelChangeToast = (title: string, label: string): void => {
+  toast({
+    title,
+    description: t("canvas.connectionContextMenu.modelSwitched", {
+      model: label,
+    }),
+    duration: SHORT_TOAST_DURATION_MS,
+  });
 };
 
-const handleSetModel = async (
-  targetModel: ModelType,
-  currentModel: ModelType,
-  updateFn: (connectionId: string, model: ModelType) => Promise<unknown>,
-  successTitle: string,
-  failDesc: string,
-  changedEvent: "summary-model-changed" | "ai-decide-model-changed",
-): Promise<void> => {
+interface SetModelOptions {
+  targetModel: string;
+  currentModel: string;
+  updateFn: (connectionId: string, model: string) => Promise<unknown>;
+  successTitle: string;
+  failDesc: string;
+  changedEvent: "summary-model-changed" | "ai-decide-model-changed";
+  displayLabel?: string;
+}
+
+const handleSetModel = async (options: SetModelOptions): Promise<void> => {
+  const {
+    targetModel,
+    currentModel,
+    updateFn,
+    successTitle,
+    failDesc,
+    changedEvent,
+    displayLabel,
+  } = options;
+
   if (targetModel === currentModel) {
     emit("close");
     return;
@@ -89,16 +113,11 @@ const handleSetModel = async (
   const result = await updateFn(props.connectionId, targetModel);
 
   if (result) {
-    toast({
-      title: successTitle,
-      description: t("canvas.connectionContextMenu.modelSwitched", {
-        model: MODEL_LABEL_MAP[targetModel],
-      }),
-      duration: SHORT_TOAST_DURATION_MS,
-    });
+    showModelChangeToast(successTitle, displayLabel ?? targetModel);
+    // 透過分支縮窄 changedEvent union type，讓 TypeScript emit overload 能正確解析
     if (changedEvent === "summary-model-changed") {
       emit("summary-model-changed");
-    } else {
+    } else if (changedEvent === "ai-decide-model-changed") {
       emit("ai-decide-model-changed");
     }
     emit("close");
@@ -111,25 +130,38 @@ const handleSetModel = async (
   }
 };
 
-const handleSetSummaryModel = (targetModel: ModelType): Promise<void> =>
-  handleSetModel(
-    targetModel,
-    props.currentSummaryModel,
-    connectionStore.updateConnectionSummaryModel,
-    t("canvas.connectionContextMenu.summaryModelChanged"),
-    t("canvas.connectionContextMenu.summaryModelChangeFailed"),
-    "summary-model-changed",
-  );
+/**
+ * Summary Model 的 toast 訊息使用動態 label（由 availableModels 的 label 欄位提供），
+ * 以支援 Claude 以外的 provider 模型（value 可為任意 provider model 字串）。
+ * 呼叫端確保傳入的值來自 summaryModelOptions，後端接受任意 provider model 字串。
+ */
+const handleSetSummaryModel = (
+  targetValue: string,
+  displayLabel: string,
+): Promise<void> =>
+  handleSetModel({
+    targetModel: targetValue,
+    currentModel: props.currentSummaryModel,
+    updateFn: connectionStore.updateConnectionSummaryModel,
+    successTitle: t("canvas.connectionContextMenu.summaryModelChanged"),
+    failDesc: t("canvas.connectionContextMenu.summaryModelChangeFailed"),
+    changedEvent: "summary-model-changed",
+    displayLabel,
+  });
 
-const handleSetAiDecideModel = (targetModel: ModelType): Promise<void> =>
-  handleSetModel(
-    targetModel,
-    props.currentAiDecideModel,
-    connectionStore.updateConnectionAiDecideModel,
-    t("canvas.connectionContextMenu.aiDecideModelChanged"),
-    t("canvas.connectionContextMenu.aiDecideModelChangeFailed"),
-    "ai-decide-model-changed",
-  );
+const handleSetAiDecideModel = (option: {
+  value: ModelType;
+  label: string;
+}): Promise<void> =>
+  handleSetModel({
+    targetModel: option.value,
+    currentModel: props.currentAiDecideModel,
+    updateFn: connectionStore.updateConnectionAiDecideModel,
+    successTitle: t("canvas.connectionContextMenu.aiDecideModelChanged"),
+    failDesc: t("canvas.connectionContextMenu.aiDecideModelChangeFailed"),
+    changedEvent: "ai-decide-model-changed",
+    displayLabel: option.label,
+  });
 
 const menuRef = ref<HTMLElement | null>(null);
 
@@ -158,11 +190,48 @@ onUnmounted(() => {
 const isSummaryMenuOpen = ref(false);
 const isAiModelMenuOpen = ref(false);
 
-const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
+/** ai-model 觸發器區塊的 mouseenter handler */
+const handleAiModelMenuEnter = (): void => {
+  if (props.currentTriggerMode === "ai-decide") {
+    isAiModelMenuOpen.value = true;
+  }
+};
+
+/** ai-model 觸發器區塊的 mouseleave handler */
+const handleAiModelMenuLeave = (): void => {
+  if (props.currentTriggerMode === "ai-decide") {
+    isAiModelMenuOpen.value = false;
+  }
+};
+
+/**
+ * AI Decide Model 子選單專用：硬編碼 Claude 三選一。
+ * 不受上游 provider 影響，始終顯示此固定清單。
+ */
+const AI_DECIDE_MODEL_OPTIONS: { value: ModelType; label: string }[] = [
   { value: "haiku", label: "Haiku" },
   { value: "sonnet", label: "Sonnet" },
   { value: "opus", label: "Opus" },
 ];
+
+/**
+ * 透過當前 connectionId 取得 connection，再查 sourcePodId 對應的上游 Pod，
+ * 最後向 providerCapabilityStore 取上游 provider 的 availableModels，
+ * 作為 Summary Model 子選單的動態按鈕資料來源。
+ */
+const summaryModelOptions = computed(() => {
+  const connection = connectionStore.findConnectionById(props.connectionId);
+  if (!connection?.sourcePodId) return null;
+
+  const sourcePod = podStore.getPodById(connection.sourcePodId);
+  if (!sourcePod) return null;
+
+  const models = providerCapabilityStore.getAvailableModels(sourcePod.provider);
+  // 回傳 null（而非空陣列）是為了讓 template 能以單一條件判斷「資料尚未就緒」並顯示載入中
+  if (models.length === 0) return null;
+
+  return models;
+});
 </script>
 
 <template>
@@ -276,37 +345,57 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
         <span class="font-mono text-foreground">{{
           $t("canvas.connectionContextMenu.summaryModel")
         }}</span>
-        <ChevronRight :size="12" class="text-muted-foreground" />
+        <ChevronRight
+          :size="12"
+          class="text-muted-foreground"
+        />
       </button>
 
-      <!-- 子選單 -->
+      <!-- Summary Model 子選單：根據上游 Pod provider 動態渲染
+           移除 ml-1（4px gap），改在浮層加 pl-1 撐出等價的視覺空間，
+           確保滑鼠從觸發項移往子選單時不會觸發 mouseleave -->
       <div
         v-if="isSummaryMenuOpen"
-        class="absolute left-full top-0 ml-1 bg-card border border-doodle-ink rounded-md p-1 z-50 min-w-[120px]"
+        class="absolute left-full top-0 pl-1 z-50"
+        @mouseenter="isSummaryMenuOpen = true"
+        @mouseleave="isSummaryMenuOpen = false"
       >
-        <button
-          v-for="option in MODEL_OPTIONS"
-          :key="option.value"
-          :class="[
-            'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
-            {
-              'bg-secondary border-l-2 border-l-primary':
-                currentSummaryModel === option.value,
-            },
-          ]"
-          @click="handleSetSummaryModel(option.value)"
+        <div
+          class="bg-card border border-doodle-ink rounded-md p-1 min-w-[120px]"
         >
-          <span
-            :class="[
-              'font-mono',
-              currentSummaryModel === option.value
-                ? 'text-primary font-semibold'
-                : 'text-foreground',
-            ]"
+          <!-- 上游 Pod 不存在或 capability 尚未載入時顯示載入中提示 -->
+          <div
+            v-if="summaryModelOptions === null"
+            class="px-2 py-1 text-xs font-mono text-muted-foreground"
           >
-            {{ option.label }}
-          </span>
-        </button>
+            {{ $t("canvas.connectionContextMenu.loading") }}
+          </div>
+
+          <!-- 動態渲染上游 provider 的可選模型清單 -->
+          <button
+            v-for="option in summaryModelOptions ?? []"
+            :key="option.value"
+            :class="[
+              'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
+              {
+                'bg-secondary border-l-2 border-l-primary':
+                  currentSummaryModel === option.value,
+              },
+            ]"
+            @click="handleSetSummaryModel(option.value, option.label)"
+          >
+            <span
+              :class="[
+                'font-mono',
+                currentSummaryModel === option.value
+                  ? 'text-primary font-semibold'
+                  : 'text-foreground',
+              ]"
+            >
+              {{ option.label }}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -316,12 +405,8 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
       :class="{
         'opacity-50 pointer-events-none': currentTriggerMode !== 'ai-decide',
       }"
-      @mouseenter="
-        currentTriggerMode === 'ai-decide' && (isAiModelMenuOpen = true)
-      "
-      @mouseleave="
-        currentTriggerMode === 'ai-decide' && (isAiModelMenuOpen = false)
-      "
+      @mouseenter="handleAiModelMenuEnter"
+      @mouseleave="handleAiModelMenuLeave"
     >
       <button
         class="w-full flex items-center justify-between gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary"
@@ -330,37 +415,47 @@ const MODEL_OPTIONS: { value: ModelType; label: string }[] = [
         <span class="font-mono text-foreground">{{
           $t("canvas.connectionContextMenu.aiModel")
         }}</span>
-        <ChevronRight :size="12" class="text-muted-foreground" />
+        <ChevronRight
+          :size="12"
+          class="text-muted-foreground"
+        />
       </button>
 
-      <!-- 子選單 -->
+      <!-- 子選單：移除 ml-1（4px gap），改用 pl-1 撐出等價視覺空間 -->
       <div
         v-if="isAiModelMenuOpen"
-        class="absolute left-full top-0 ml-1 bg-card border border-doodle-ink rounded-md p-1 z-50 min-w-[120px]"
+        class="absolute left-full top-0 pl-1 z-50"
+        @mouseenter="isAiModelMenuOpen = true"
+        @mouseleave="isAiModelMenuOpen = false"
       >
-        <button
-          v-for="option in MODEL_OPTIONS"
-          :key="option.value"
-          :class="[
-            'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
-            {
-              'bg-secondary border-l-2 border-l-primary':
-                currentAiDecideModel === option.value,
-            },
-          ]"
-          @click="handleSetAiDecideModel(option.value)"
+        <div
+          class="bg-card border border-doodle-ink rounded-md p-1 min-w-[120px]"
         >
-          <span
+          <!-- AI Decide Model 子選單：始終硬編碼 Claude 三選一，不受上游 provider 影響 -->
+          <button
+            v-for="option in AI_DECIDE_MODEL_OPTIONS"
+            :key="option.value"
             :class="[
-              'font-mono',
-              currentAiDecideModel === option.value
-                ? 'text-primary font-semibold'
-                : 'text-foreground',
+              'w-full flex items-center gap-2 px-2 py-1 rounded text-left text-xs hover:bg-secondary',
+              {
+                'bg-secondary border-l-2 border-l-primary':
+                  currentAiDecideModel === option.value,
+              },
             ]"
+            @click="handleSetAiDecideModel(option)"
           >
-            {{ option.label }}
-          </span>
-        </button>
+            <span
+              :class="[
+                'font-mono',
+                currentAiDecideModel === option.value
+                  ? 'text-primary font-semibold'
+                  : 'text-foreground',
+              ]"
+            >
+              {{ option.label }}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

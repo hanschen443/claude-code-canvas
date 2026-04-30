@@ -123,24 +123,6 @@ describe("SentryProvider - createAppSchema", () => {
 });
 
 // ───────────────────────────────────────────────
-// bindSchema 測試
-// ───────────────────────────────────────────────
-
-describe("SentryProvider - bindSchema", () => {
-  it("綁定 Sentry App 到 Pod 成功（resourceId 為 *）", () => {
-    const result = sentryProvider.bindSchema.safeParse({ resourceId: "*" });
-    expect(result.success).toBe(true);
-  });
-
-  it("resourceId 非 * 應驗證失敗", () => {
-    const result = sentryProvider.bindSchema.safeParse({
-      resourceId: "other-id",
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-// ───────────────────────────────────────────────
 // handleWebhookRequest 測試
 // ───────────────────────────────────────────────
 

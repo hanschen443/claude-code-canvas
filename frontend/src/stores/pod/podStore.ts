@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type {
-  ModelType,
   Pod,
   PodStatus,
   Position,
@@ -31,6 +30,7 @@ import type {
   PodSetMultiInstancePayload,
   PodSetSchedulePayload,
 } from "@/types/websocket";
+import { updatePodMcpServers as updatePodMcpServersApi } from "@/services/mcpApi";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import { t } from "@/i18n";
@@ -38,8 +38,10 @@ import { useCanvasWebSocketAction } from "@/composables/useCanvasWebSocketAction
 import {
   isValidPod as isValidPodFn,
   enrichPod as enrichPodFn,
+  isValidModelName,
 } from "@/lib/podValidation";
 import { getActiveCanvasIdOrWarn } from "@/utils/canvasGuard";
+import { logger } from "@/utils/logger";
 
 const MAX_COORD = 100000;
 
@@ -61,15 +63,26 @@ export const usePodStore = defineStore("pod", () => {
   });
   const scheduleFiredPodIds = ref<Set<string>>(new Set());
 
+  /**
+   * Pod id → Pod 的 Map，隨 pods 陣列自動更新。
+   * 讓 selectedPod 與 getPodById 查找由 O(n) 降為 O(1)。
+   */
+  const podMap = computed((): Map<string, Pod> => {
+    const map = new Map<string, Pod>();
+    for (const pod of pods.value) {
+      map.set(pod.id, pod);
+    }
+    return map;
+  });
+
   const selectedPod = computed(
-    (): Pod | null =>
-      pods.value.find((pod) => pod.id === selectedPodId.value) || null,
+    (): Pod | null => podMap.value.get(selectedPodId.value ?? "") ?? null,
   );
 
   const podCount = computed((): number => pods.value.length);
 
   const getPodById = computed(() => (id: string): Pod | undefined => {
-    return pods.value.find((pod) => pod.id === id);
+    return podMap.value.get(id);
   });
 
   const getNextPodName = computed(() => (): string => {
@@ -86,7 +99,7 @@ export const usePodStore = defineStore("pod", () => {
   });
 
   function findPodById(podId: string): Pod | undefined {
-    return pods.value.find((pod) => pod.id === podId);
+    return podMap.value.get(podId);
   }
 
   function enrichPod(pod: Pod, existingOutput?: string[]): Pod {
@@ -109,16 +122,14 @@ export const usePodStore = defineStore("pod", () => {
     );
     if (index === -1) return;
 
-    const existing = pods.value[index];
+    const existing = pods.value[index]!;
     const mergedPod = {
       ...pod,
-      output: pod.output !== undefined ? pod.output : (existing?.output ?? []),
+      output: pod.output !== undefined ? pod.output : existing.output,
     };
 
     if (!isValidPod(mergedPod)) {
-      console.warn("[PodStore] updatePod 驗證失敗，已忽略更新", {
-        podId: pod.id,
-      });
+      logger.warn("[PodStore] updatePod 驗證失敗，已忽略更新");
       return;
     }
     pods.value.splice(index, 1, mergedPod);
@@ -136,6 +147,8 @@ export const usePodStore = defineStore("pod", () => {
           x: pod.x,
           y: pod.y,
           rotation: pod.rotation,
+          provider: pod.provider,
+          providerConfig: pod.providerConfig,
         },
       },
       {
@@ -160,7 +173,7 @@ export const usePodStore = defineStore("pod", () => {
       x: pod.x,
       y: pod.y,
       rotation: pod.rotation,
-      output: pod.output ?? [],
+      output: pod.output,
     };
   }
 
@@ -344,21 +357,44 @@ export const usePodStore = defineStore("pod", () => {
     pod[field] = value;
   }
 
-  function updatePodOutputStyle(
-    podId: string,
-    outputStyleId: string | null,
-  ): void {
-    updatePodField(podId, "outputStyleId", outputStyleId);
-  }
-
   function clearPodOutputsByIds(podIds: string[]): void {
     for (const podId of podIds) {
       updatePodField(podId, "output", []);
     }
   }
 
-  function updatePodModel(podId: string, model: ModelType): void {
-    updatePodField(podId, "model", model);
+  /**
+   * 切換指定 Pod 的 provider，並自動修正所有下游 connection 的 summaryModel。
+   * 此方法為「使用者主動切換 provider」的唯一入口，初始化載入時不應呼叫，
+   * 以避免 capability 尚未載入時誤重置 summaryModel。
+   */
+  async function updatePodProvider(
+    podId: string,
+    provider: string,
+    providerConfig: Record<string, unknown>,
+  ): Promise<void> {
+    const pod = findPodById(podId);
+    if (!pod) return;
+
+    pod.provider = provider;
+    pod.providerConfig = providerConfig as Pod["providerConfig"];
+
+    const connectionStore = useConnectionStore();
+    await connectionStore.reconcileSummaryModelsForPod(podId);
+  }
+
+  /** 將 model 寫入 providerConfig.model（provider-agnostic） */
+  function updatePodProviderConfigModel(podId: string, model: string): void {
+    const pod = findPodById(podId);
+    if (!pod) return;
+
+    // 驗證 model 名稱格式，防止非法字串（例如 CLI 旗標注入）
+    if (!isValidModelName(model)) {
+      logger.warn(`[PodStore] model 不合法，已拒絕更新：${model}`);
+      return;
+    }
+
+    pod.providerConfig = { ...pod.providerConfig, model };
   }
 
   function updatePodRepository(
@@ -374,6 +410,26 @@ export const usePodStore = defineStore("pod", () => {
 
   function updatePodPlugins(podId: string, pluginIds: string[]): void {
     updatePodField(podId, "pluginIds", pluginIds);
+  }
+
+  /** 純前端狀態更新：設定 pod 的 MCP server 名稱清單（不發 WebSocket） */
+  function updatePodMcpServers(podId: string, names: string[]): void {
+    updatePodField(podId, "mcpServerNames", names);
+  }
+
+  /**
+   * Backend-sync：呼叫 updatePodMcpServers API 後更新本地狀態。
+   * 失敗時 throw McpServerNamesError，由呼叫端決定是否 rollback。
+   */
+  async function setMcpServersWithBackend(
+    podId: string,
+    names: string[],
+  ): Promise<void> {
+    const canvasId = getActiveCanvasIdOrWarn("PodStore");
+    if (!canvasId) return;
+
+    await updatePodMcpServersApi(canvasId, podId, names);
+    updatePodMcpServers(podId, names);
   }
 
   async function setMultiInstanceWithBackend(
@@ -439,13 +495,18 @@ export const usePodStore = defineStore("pod", () => {
   }
 
   function triggerScheduleFiredAnimation(podId: string): void {
-    scheduleFiredPodIds.value.delete(podId);
-    scheduleFiredPodIds.value = new Set([...scheduleFiredPodIds.value, podId]);
+    // 先在原 Set 上操作，再以 new Set() 淺複製觸發響應式更新，避免展開整個 Set
+    const next = new Set(scheduleFiredPodIds.value);
+    next.delete(podId);
+    next.add(podId);
+    scheduleFiredPodIds.value = next;
   }
 
   function clearScheduleFiredAnimation(podId: string): void {
-    scheduleFiredPodIds.value.delete(podId);
-    scheduleFiredPodIds.value = new Set(scheduleFiredPodIds.value);
+    // 同上，淺複製後刪除再賦值觸發響應式
+    const next = new Set(scheduleFiredPodIds.value);
+    next.delete(podId);
+    scheduleFiredPodIds.value = next;
   }
 
   // 切換 canvas 時重設 pod 相關狀態
@@ -485,12 +546,14 @@ export const usePodStore = defineStore("pod", () => {
     showTypeMenu,
     hideTypeMenu,
     updatePodField,
-    updatePodOutputStyle,
     clearPodOutputsByIds,
-    updatePodModel,
+    updatePodProvider,
+    updatePodProviderConfigModel,
     updatePodRepository,
     updatePodCommand,
     updatePodPlugins,
+    updatePodMcpServers,
+    setMcpServersWithBackend,
     setMultiInstanceWithBackend,
     addPodFromEvent,
     removePod,

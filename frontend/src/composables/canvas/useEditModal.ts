@@ -4,8 +4,11 @@ import type { Group, Position } from "@/types";
 import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
 import { t } from "@/i18n";
 
-type ResourceType = "outputStyle" | "subAgent" | "command";
-type GroupType = "outputStyleGroup" | "subAgentGroup" | "commandGroup";
+// 目前只有一種資源類型
+type ResourceType = "command";
+// 目前只有一種 group
+const COMMAND_GROUP_TYPE = "commandGroup" as const;
+type GroupType = typeof COMMAND_GROUP_TYPE;
 type ExtendedResourceType = ResourceType | GroupType;
 
 interface EditModalState {
@@ -20,31 +23,9 @@ interface EditModalState {
 }
 
 interface ResourceStore {
-  readOutputStyle?: (
-    id: string,
-  ) => Promise<{ id: string; name: string; content: string } | null>;
-  readSubAgent?: (
-    id: string,
-  ) => Promise<{ id: string; name: string; content: string } | null>;
   readCommand?: (
     id: string,
   ) => Promise<{ id: string; name: string; content: string } | null>;
-  createOutputStyle?: (
-    name: string,
-    content: string,
-  ) => Promise<{
-    success: boolean;
-    outputStyle?: { id: string };
-    [key: string]: unknown;
-  }>;
-  createSubAgent?: (
-    name: string,
-    content: string,
-  ) => Promise<{
-    success: boolean;
-    subAgent?: { id: string };
-    [key: string]: unknown;
-  }>;
   createCommand?: (
     name: string,
     content: string,
@@ -53,8 +34,6 @@ interface ResourceStore {
     command?: { id: string };
     [key: string]: unknown;
   }>;
-  updateOutputStyle?: (id: string, content: string) => Promise<unknown>;
-  updateSubAgent?: (id: string, content: string) => Promise<unknown>;
   updateCommand?: (id: string, content: string) => Promise<unknown>;
   createNote: (id: string, x: number, y: number) => Promise<void>;
   createGroup?: (
@@ -65,15 +44,11 @@ interface ResourceStore {
 type ResourceStoreMap = Record<ResourceType, ResourceStore>;
 
 interface EditModalStores {
-  outputStyleStore: ResourceStore;
-  subAgentStore: ResourceStore;
   commandStore: ResourceStore;
   viewportStore: { offset: { x: number; y: number }; zoom: number };
 }
 
 const resourceTitleMap: Record<ResourceType, string> = {
-  outputStyle: "Output Style",
-  subAgent: "SubAgent",
   command: "Command",
 };
 
@@ -83,7 +58,7 @@ export function useEditModal(
 ): {
   editModal: Ref<EditModalState>;
   handleOpenCreateModal: (resourceType: ResourceType, title: string) => void;
-  handleOpenCreateGroupModal: (groupType: GroupType, title: string) => void;
+  handleOpenCreateGroupModal: (title: string) => void;
   handleOpenEditModal: (
     resourceType: ResourceType,
     id: string,
@@ -94,8 +69,7 @@ export function useEditModal(
   }) => Promise<void>;
   closeEditModal: () => void;
 } {
-  const { outputStyleStore, subAgentStore, commandStore, viewportStore } =
-    stores;
+  const { commandStore, viewportStore } = stores;
 
   const editModal = ref<EditModalState>({
     visible: false,
@@ -103,14 +77,12 @@ export function useEditModal(
     title: "",
     initialName: "",
     initialContent: "",
-    resourceType: "outputStyle",
+    resourceType: "command",
     itemId: "",
     showContent: true,
   });
 
   const resourceStoreMap: ResourceStoreMap = {
-    outputStyle: outputStyleStore,
-    subAgent: subAgentStore,
     command: commandStore,
   };
 
@@ -120,9 +92,6 @@ export function useEditModal(
       id: string,
     ) => Promise<{ id: string; name: string; content: string } | null>
   > = {
-    outputStyle: (id) =>
-      outputStyleStore.readOutputStyle?.(id) ?? Promise.resolve(null),
-    subAgent: (id) => subAgentStore.readSubAgent?.(id) ?? Promise.resolve(null),
     command: (id) => commandStore.readCommand?.(id) ?? Promise.resolve(null),
   };
 
@@ -174,8 +143,6 @@ export function useEditModal(
         ) => Promise<{ success: boolean; [key: string]: unknown }>
       >
     > = {
-      outputStyle: store.createOutputStyle,
-      subAgent: store.createSubAgent,
       command: store.createCommand,
     };
     const createFn = createFnMap[storeKey];
@@ -201,17 +168,14 @@ export function useEditModal(
     };
   }
 
-  function handleOpenCreateGroupModal(
-    groupType: GroupType,
-    title: string,
-  ): void {
+  function handleOpenCreateGroupModal(title: string): void {
     editModal.value = {
       visible: true,
       mode: "create",
       title,
       initialName: "",
       initialContent: "",
-      resourceType: groupType,
+      resourceType: COMMAND_GROUP_TYPE,
       itemId: "",
       showContent: false,
     };
@@ -252,11 +216,6 @@ export function useEditModal(
     const updateActions: Partial<
       Record<ExtendedResourceType, () => Promise<unknown>>
     > = {
-      outputStyle: () =>
-        outputStyleStore.updateOutputStyle?.(itemId, content) ??
-        Promise.resolve(),
-      subAgent: () =>
-        subAgentStore.updateSubAgent?.(itemId, content) ?? Promise.resolve(),
       command: () =>
         commandStore.updateCommand?.(itemId, content) ?? Promise.resolve(),
     };
@@ -276,15 +235,7 @@ export function useEditModal(
       ExtendedResourceType,
       () => Promise<void | { success: boolean; group?: Group; error?: string }>
     > = {
-      outputStyle: createItemAction("outputStyle", name, content),
-      subAgent: createItemAction("subAgent", name, content),
       command: createItemAction("command", name, content),
-      outputStyleGroup: () =>
-        outputStyleStore.createGroup?.(name) ??
-        Promise.resolve({ success: false }),
-      subAgentGroup: () =>
-        subAgentStore.createGroup?.(name) ??
-        Promise.resolve({ success: false }),
       commandGroup: () =>
         commandStore.createGroup?.(name) ?? Promise.resolve({ success: false }),
     };

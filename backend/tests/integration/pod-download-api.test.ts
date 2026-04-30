@@ -35,11 +35,15 @@ describe("GET /api/canvas/:id/pods/:podId/download", () => {
     const client = getClient();
     const pod = await createPod(client, { name: `download-pod-${uuidv4()}` });
 
+    // workspacePath 已從 WebSocket broadcast（PodPublicView）中移除，透過 podStore 取得完整 Pod
+    const { podStore } = await import("../../src/services/podStore.js");
+    const fullPod = podStore.getById(server.canvasId, pod.id)!;
+
     // 在 pod workspace 建立測試檔案
     const testFileName = "test-file.txt";
     const testFileContent = "Hello from pod workspace!";
     fs.writeFileSync(
-      path.join(pod.workspacePath, testFileName),
+      path.join(fullPod.workspacePath, testFileName),
       testFileContent,
     );
 
@@ -111,7 +115,10 @@ describe("GET /api/canvas/:id/pods/:podId/download", () => {
     const client = getClient();
     const pod = await createPod(client, { name: `gitignore-pod-${uuidv4()}` });
 
-    const workspacePath = pod.workspacePath;
+    // workspacePath 已從 WebSocket broadcast（PodPublicView）中移除，透過 podStore 取得完整 Pod
+    const { podStore } = await import("../../src/services/podStore.js");
+    const fullPod = podStore.getById(server.canvasId, pod.id)!;
+    const workspacePath = fullPod.workspacePath;
 
     // 建立 .gitignore
     fs.writeFileSync(
@@ -184,8 +191,12 @@ describe("GET /api/canvas/:id/pods/:podId/download", () => {
       name: `missing-workspace-pod-${uuidv4()}`,
     });
 
+    // workspacePath 已從 WebSocket broadcast（PodPublicView）中移除，透過 podStore 取得完整 Pod
+    const { podStore } = await import("../../src/services/podStore.js");
+    const fullPod = podStore.getById(server.canvasId, pod.id)!;
+
     // 手動刪除 workspace 目錄
-    fs.rmSync(pod.workspacePath, { recursive: true, force: true });
+    fs.rmSync(fullPod.workspacePath, { recursive: true, force: true });
 
     const response = await downloadPod(server.baseUrl, server.canvasId, pod.id);
 

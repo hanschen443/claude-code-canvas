@@ -1,38 +1,28 @@
 import { WebSocketResponseEvents } from "@/services/websocket";
 import { usePodStore } from "@/stores/pod/podStore";
-import { useOutputStyleStore } from "@/stores/note/outputStyleStore";
-import { useSkillStore } from "@/stores/note/skillStore";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
-import { useSubAgentStore } from "@/stores/note/subAgentStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
 import { useChatStore } from "@/stores/chat/chatStore";
 import type { Pod } from "@/types";
 import { createUnifiedHandler } from "./sharedHandlerUtils";
 import type { BasePayload } from "./sharedHandlerUtils";
 import { t } from "@/i18n";
+import { logger } from "@/utils/logger";
+
+/** 聊天訊息內容最大長度（超過視為異常資料，不寫入 store） */
+const MAX_CHAT_CONTENT_LENGTH = 100_000;
 
 type DeletedNoteIds = {
-  // 'note' 對應後端 PodDeletedPayload.deletedNoteIds.note，實際為 OutputStyleNote 的 ID 清單。
-  // 此命名由後端 WebSocket 協議決定，前端不應單方面更改以避免協議不一致。
-  note?: string[];
-  skillNote?: string[];
   repositoryNote?: string[];
   commandNote?: string[];
-  subAgentNote?: string[];
-  mcpServerNote?: string[];
 };
 
 const noteTypeHandlers: {
-  key: keyof DeletedNoteIds;
+  noteType: keyof DeletedNoteIds;
   getStore: () => { removeNoteFromEvent: (id: string) => void };
 }[] = [
-  { key: "note", getStore: () => useOutputStyleStore() },
-  { key: "skillNote", getStore: () => useSkillStore() },
-  { key: "repositoryNote", getStore: () => useRepositoryStore() },
-  { key: "commandNote", getStore: () => useCommandStore() },
-  { key: "subAgentNote", getStore: () => useSubAgentStore() },
-  { key: "mcpServerNote", getStore: () => useMcpServerStore() },
+  { noteType: "repositoryNote", getStore: () => useRepositoryStore() },
+  { noteType: "commandNote", getStore: () => useCommandStore() },
 ];
 
 export const removeDeletedNotes = (
@@ -40,8 +30,8 @@ export const removeDeletedNotes = (
 ): void => {
   if (!deletedNoteIds) return;
 
-  for (const { key, getStore } of noteTypeHandlers) {
-    const ids = deletedNoteIds[key];
+  for (const { noteType, getStore } of noteTypeHandlers) {
+    const ids = deletedNoteIds[noteType];
     if (!ids || ids.length === 0) continue;
 
     const store = getStore();
@@ -140,12 +130,66 @@ const handleWorkflowClearResult = createUnifiedHandler<
   { toastMessage: () => t("composable.eventHandler.workflowCleared") },
 );
 
-export const handlePodChatUserMessage = (payload: {
+/**
+ * 多人協作同步：當其他 client 切換 Pod 的 Plugin 時，
+ * 更新本地 podStore 狀態，避免各 client 之間狀態不同步。
+ * payload.pod 包含後端廣播的完整 PodPublicView，取 pluginIds 欄位更新本地。
+ */
+const handlePodPluginsSet = createUnifiedHandler<
+  BasePayload & { canvasId: string; success?: boolean; pod?: Pod }
+>((payload) => {
+  if (
+    !payload.success ||
+    !payload.pod?.id ||
+    !Array.isArray(payload.pod.pluginIds) ||
+    !payload.pod.pluginIds.every((id) => typeof id === "string")
+  )
+    return;
+  usePodStore().updatePodPlugins(payload.pod.id, payload.pod.pluginIds);
+});
+
+/**
+ * 多人協作同步：當其他 client 更新 Pod 的 MCP server 名稱清單時，
+ * 更新本地 podStore 狀態，避免各 client 之間狀態不同步。
+ * @internal mcpApi.ts 僅處理自己發出的請求回應；此 handler 負責廣播給所有連線的更新。
+ */
+const handlePodMcpServerNamesUpdated = createUnifiedHandler<
+  BasePayload & {
+    canvasId: string;
+    podId?: string;
+    mcpServerNames?: string[];
+  }
+>((payload) => {
+  if (
+    !payload.podId ||
+    !Array.isArray(payload.mcpServerNames) ||
+    !payload.mcpServerNames.every((n) => typeof n === "string")
+  )
+    return;
+  usePodStore().updatePodMcpServers(payload.podId, payload.mcpServerNames);
+});
+
+const handlePodChatUserMessage = (payload: {
   podId: string;
   messageId: string;
   content: string;
   timestamp: string;
 }): void => {
+  if (
+    typeof payload.content !== "string" ||
+    payload.content.trim().length === 0
+  ) {
+    logger.warn(
+      "[podEventHandlers] handlePodChatUserMessage：content 為空或非字串，已略過",
+    );
+    return;
+  }
+  if (payload.content.length > MAX_CHAT_CONTENT_LENGTH) {
+    logger.warn(
+      `[podEventHandlers] handlePodChatUserMessage：content 超過上限（${payload.content.length} > ${MAX_CHAT_CONTENT_LENGTH}），已略過`,
+    );
+    return;
+  }
   const chatStore = useChatStore();
   chatStore.addRemoteUserMessage(
     payload.podId,
@@ -154,6 +198,18 @@ export const handlePodChatUserMessage = (payload: {
     payload.timestamp,
   );
 };
+
+export function getStandalonePodListeners(): Array<{
+  event: string;
+  handler: (payload: unknown) => void;
+}> {
+  return [
+    {
+      event: WebSocketResponseEvents.POD_CHAT_USER_MESSAGE,
+      handler: handlePodChatUserMessage as (payload: unknown) => void,
+    },
+  ];
+}
 
 export function getPodEventListeners(): Array<{
   event: string;
@@ -185,27 +241,11 @@ export function getPodEventListeners(): Array<{
       handler: handlePodDeleted as (payload: unknown) => void,
     },
     {
-      event: WebSocketResponseEvents.POD_OUTPUT_STYLE_BOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.POD_OUTPUT_STYLE_UNBOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.POD_SKILL_BOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
       event: WebSocketResponseEvents.POD_REPOSITORY_BOUND,
       handler: handlePodStateUpdated as (payload: unknown) => void,
     },
     {
       event: WebSocketResponseEvents.POD_REPOSITORY_UNBOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.POD_SUBAGENT_BOUND,
       handler: handlePodStateUpdated as (payload: unknown) => void,
     },
     {
@@ -221,16 +261,16 @@ export function getPodEventListeners(): Array<{
       handler: handlePodStateUpdated as (payload: unknown) => void,
     },
     {
-      event: WebSocketResponseEvents.POD_MCP_SERVER_BOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
-      event: WebSocketResponseEvents.POD_MCP_SERVER_UNBOUND,
-      handler: handlePodStateUpdated as (payload: unknown) => void,
-    },
-    {
       event: WebSocketResponseEvents.WORKFLOW_CLEAR_RESULT,
       handler: handleWorkflowClearResult as (payload: unknown) => void,
+    },
+    {
+      event: WebSocketResponseEvents.POD_MCP_SERVER_NAMES_UPDATED,
+      handler: handlePodMcpServerNamesUpdated as (payload: unknown) => void,
+    },
+    {
+      event: WebSocketResponseEvents.POD_PLUGINS_SET,
+      handler: handlePodPluginsSet as (payload: unknown) => void,
     },
   ];
 }

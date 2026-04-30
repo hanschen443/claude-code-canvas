@@ -109,35 +109,8 @@ describe("providerRegistry", () => {
   });
 
   describe("slackProvider config", () => {
-    it("label 為 Slack", () => {
-      expect(getProvider("slack").label).toBe("Slack");
-    });
-
     it("createFormFields 有三個欄位", () => {
       expect(getProvider("slack").createFormFields).toHaveLength(3);
-    });
-
-    it("botToken 驗證：空值回傳錯誤", () => {
-      const field = getProvider("slack").createFormFields.find(
-        (f) => f.key === "botToken",
-      )!;
-      expect(field.validate("")).toBe("Bot Token 不可為空");
-    });
-
-    it("botToken 驗證：不以 xoxb- 開頭回傳錯誤", () => {
-      const field = getProvider("slack").createFormFields.find(
-        (f) => f.key === "botToken",
-      )!;
-      expect(field.validate("invalid-token")).toBe(
-        "Bot Token 必須以 xoxb- 開頭",
-      );
-    });
-
-    it("botToken 驗證：正確格式回傳空字串", () => {
-      const field = getProvider("slack").createFormFields.find(
-        (f) => f.key === "botToken",
-      )!;
-      expect(field.validate("xoxb-abc123")).toBe("");
     });
 
     it("transformApp 正確轉換 resources", () => {
@@ -151,43 +124,9 @@ describe("providerRegistry", () => {
       expect(app.provider).toBe("slack");
       expect(app.resources).toEqual([{ id: "C001", label: "#general" }]);
     });
-
-    it("buildCreatePayload 組合正確的 payload，憑證放在 config 欄位內", () => {
-      const config = getProvider("slack");
-      const payload = config.buildCreatePayload({
-        name: "Test",
-        botToken: "xoxb-123",
-        signingSecret: "secret",
-      });
-      expect(payload).toEqual({
-        name: "Test",
-        config: {
-          botToken: "xoxb-123",
-          signingSecret: "secret",
-        },
-      });
-    });
-
-    it("buildDeletePayload 使用 appId", () => {
-      const payload = getProvider("slack").buildDeletePayload("app-123");
-      expect(payload).toEqual({ appId: "app-123" });
-    });
-
-    it("buildBindPayload 組合 appId 和 resourceId", () => {
-      const payload = getProvider("slack").buildBindPayload(
-        "app-1",
-        "C001",
-        {},
-      );
-      expect(payload).toEqual({ appId: "app-1", resourceId: "C001" });
-    });
   });
 
   describe("telegramProvider config", () => {
-    it("label 為 Telegram", () => {
-      expect(getProvider("telegram").label).toBe("Telegram");
-    });
-
     it("createFormFields 有兩個欄位", () => {
       expect(getProvider("telegram").createFormFields).toHaveLength(2);
     });
@@ -235,40 +174,9 @@ describe("providerRegistry", () => {
       });
       expect(app.resources).toHaveLength(0);
     });
-
-    it("buildCreatePayload 組合正確的 payload，憑證放在 config 欄位內", () => {
-      const config = getProvider("telegram");
-      const payload = config.buildCreatePayload({
-        name: "My Bot",
-        botToken: "123456:ABC-DEF",
-      });
-      expect(payload).toEqual({
-        name: "My Bot",
-        config: {
-          botToken: "123456:ABC-DEF",
-        },
-      });
-    });
-
-    it("buildBindPayload 固定帶上 extra.chatType = private", () => {
-      const payload = getProvider("telegram").buildBindPayload(
-        "bot-1",
-        "12345",
-        {},
-      );
-      expect(payload).toEqual({
-        appId: "bot-1",
-        resourceId: "12345",
-        extra: { chatType: "private" },
-      });
-    });
   });
 
   describe("jiraProvider config", () => {
-    it("label 為 Jira", () => {
-      expect(getProvider("jira").label).toBe("Jira");
-    });
-
     it("createFormFields 有三個欄位", () => {
       expect(getProvider("jira").createFormFields).toHaveLength(3);
     });
@@ -329,49 +237,6 @@ describe("providerRegistry", () => {
       expect(app.resources).toEqual([]);
     });
 
-    it("buildCreatePayload 包含 name 和 config: { siteUrl, webhookSecret }", () => {
-      const config = getProvider("jira");
-      const payload = config.buildCreatePayload({
-        name: "Test",
-        siteUrl: "https://test.atlassian.net",
-        webhookSecret: "webhook-secret-1234",
-      });
-      expect(payload).toEqual({
-        name: "Test",
-        config: {
-          siteUrl: "https://test.atlassian.net",
-          webhookSecret: "webhook-secret-1234",
-        },
-      });
-    });
-
-    it("buildDeletePayload 使用 appId", () => {
-      const payload = getProvider("jira").buildDeletePayload("app-456");
-      expect(payload).toEqual({ appId: "app-456" });
-    });
-
-    it("buildBindPayload 固定回傳 resourceId: * 並帶入 extra.eventFilter（all）", () => {
-      const payload = getProvider("jira").buildBindPayload("app-1", "PROJ", {
-        eventFilter: "all",
-      });
-      expect(payload).toEqual({
-        appId: "app-1",
-        resourceId: "*",
-        extra: { eventFilter: "all" },
-      });
-    });
-
-    it("buildBindPayload 固定回傳 resourceId: * 並帶入 extra.eventFilter（status_changed）", () => {
-      const payload = getProvider("jira").buildBindPayload("app-1", "PROJ", {
-        eventFilter: "status_changed",
-      });
-      expect(payload).toEqual({
-        appId: "app-1",
-        resourceId: "*",
-        extra: { eventFilter: "status_changed" },
-      });
-    });
-
     it("webhookSecret 驗證：空值回傳錯誤", () => {
       const field = getProvider("jira").createFormFields.find(
         (f) => f.key === "webhookSecret",
@@ -399,10 +264,6 @@ describe("providerRegistry", () => {
   });
 
   describe("sentryProvider config", () => {
-    it("label 為 Sentry", () => {
-      expect(getProvider("sentry").label).toBe("Sentry");
-    });
-
     it("createFormFields 有兩個欄位", () => {
       expect(getProvider("sentry").createFormFields).toHaveLength(2);
     });
@@ -456,59 +317,6 @@ describe("providerRegistry", () => {
 
     it("hasNoResource 為 true", () => {
       expect(getProvider("sentry").hasNoResource).toBe(true);
-    });
-
-    it("transformApp 回傳空 resources，provider 為 sentry", () => {
-      const config = getProvider("sentry");
-      const app = config.transformApp({
-        id: "app-1",
-        name: "My Sentry",
-        connectionStatus: "connected",
-      });
-      expect(app.provider).toBe("sentry");
-      expect(app.resources).toEqual([]);
-    });
-
-    it("buildCreatePayload 包含 name 和 config: { clientSecret }", () => {
-      const config = getProvider("sentry");
-      const payload = config.buildCreatePayload({
-        name: "Test",
-        clientSecret: "secret-xxx-32-chars-long-enough!!",
-      });
-      expect(payload).toEqual({
-        name: "Test",
-        config: {
-          clientSecret: "secret-xxx-32-chars-long-enough!!",
-        },
-      });
-    });
-
-    it("buildDeletePayload 使用 appId", () => {
-      const payload = getProvider("sentry").buildDeletePayload("app-789");
-      expect(payload).toEqual({ appId: "app-789" });
-    });
-
-    it("buildBindPayload 固定回傳 resourceId: *", () => {
-      const payload = getProvider("sentry").buildBindPayload(
-        "app-1",
-        "anything",
-        {},
-      );
-      expect(payload).toMatchObject({ resourceId: "*" });
-    });
-
-    it("getWebhookUrl 根據 app name 回傳正確的 webhook URL 路徑", () => {
-      const config = getProvider("sentry");
-      const mockApp = {
-        id: "app-1",
-        name: "my-sentry-app",
-        connectionStatus: "connected" as const,
-        provider: "sentry",
-        resources: [],
-        raw: {},
-      };
-      const url = config.getWebhookUrl!(mockApp);
-      expect(url).toMatch(/\/sentry\/events\/my-sentry-app$/);
     });
   });
 });

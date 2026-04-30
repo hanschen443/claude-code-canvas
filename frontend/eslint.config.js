@@ -18,6 +18,7 @@ const sharedGlobals = {
   cancelAnimationFrame: "readonly",
   fetch: "readonly",
   FormData: "readonly",
+  Element: "readonly",
   HTMLElement: "readonly",
   HTMLInputElement: "readonly",
   HTMLTextAreaElement: "readonly",
@@ -33,10 +34,13 @@ const sharedGlobals = {
   File: "readonly",
   FileReader: "readonly",
   FileList: "readonly",
+  DataTransferItemList: "readonly",
+  DataTransfer: "readonly",
   navigator: "readonly",
   performance: "readonly",
   crypto: "readonly",
   AbortController: "readonly",
+  DOMRect: "readonly",
   WebSocket: "readonly",
   MessageEvent: "readonly",
   CloseEvent: "readonly",
@@ -47,6 +51,8 @@ const sharedGlobals = {
   Blob: "readonly",
   ArrayBuffer: "readonly",
   ReadableStream: "readonly",
+  XMLHttpRequest: "readonly",
+  ProgressEvent: "readonly",
 };
 
 export default [

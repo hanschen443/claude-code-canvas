@@ -577,34 +577,3 @@ describe("JiraProvider - shouldFilterJiraEvent", () => {
     expect(shouldFilterJiraEvent("status_changed", rawEvent)).toBe(false);
   });
 });
-
-describe("JiraProvider - bindSchema", () => {
-  it("{ resourceId, extra: { eventFilter: all } } 應通過驗證", () => {
-    const result = jiraProvider.bindSchema.safeParse({
-      resourceId: "*",
-      extra: { eventFilter: "all" },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("{ resourceId, extra: { eventFilter: status_changed } } 應通過驗證", () => {
-    const result = jiraProvider.bindSchema.safeParse({
-      resourceId: "*",
-      extra: { eventFilter: "status_changed" },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("extra.eventFilter 為無效值應驗證失敗", () => {
-    const result = jiraProvider.bindSchema.safeParse({
-      resourceId: "*",
-      extra: { eventFilter: "invalid" },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("{} 缺少 resourceId 與 extra 應驗證失敗", () => {
-    const result = jiraProvider.bindSchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-});

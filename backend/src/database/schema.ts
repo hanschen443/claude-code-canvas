@@ -1,6 +1,38 @@
 import { Database } from "bun:sqlite";
 
-export function createTables(db: Database): void {
+/**
+ * 判斷 migration catch 到的錯誤是否可以忽略（冪等性保護）。
+ * DDL 語句在欄位已存在、已刪除或索引已存在時回傳的錯誤訊息應列入 allowedMessages。
+ */
+function isIgnorableMigrationError(
+  e: unknown,
+  ...allowedMessages: string[]
+): boolean {
+  if (!(e instanceof Error)) return false;
+  return allowedMessages.some((msg) => e.message.includes(msg));
+}
+
+/**
+ * 執行單一 migration SQL，遭遇可忽略錯誤時靜默略過，其餘錯誤重新拋出。
+ * 統一封裝 try-catch 樣板，避免重複。
+ */
+function runMigration(
+  db: Database,
+  sql: string,
+  ignoredMessages: string[],
+): void {
+  try {
+    db.exec(sql);
+  } catch (e) {
+    if (!isIgnorableMigrationError(e, ...ignoredMessages)) throw e;
+  }
+}
+
+/**
+ * 建立所有資料表（CREATE TABLE IF NOT EXISTS）。
+ * 只含純 DDL，不含 migration 語句。
+ */
+function createBaseTables(db: Database): void {
   db.exec(
     "CREATE TABLE IF NOT EXISTS canvases (" +
       "id TEXT PRIMARY KEY," +
@@ -18,39 +50,25 @@ export function createTables(db: Database): void {
       "x REAL NOT NULL DEFAULT 0," +
       "y REAL NOT NULL DEFAULT 0," +
       "rotation REAL NOT NULL DEFAULT 0," +
-      "model TEXT NOT NULL DEFAULT 'opus'," +
       "workspace_path TEXT NOT NULL," +
-      "claude_session_id TEXT," +
-      "output_style_id TEXT," +
+      "session_id TEXT," +
       "repository_id TEXT," +
       "command_id TEXT," +
       "multi_instance INTEGER NOT NULL DEFAULT 0," +
-      "schedule_json TEXT" +
+      "schedule_json TEXT," +
+      "provider TEXT NOT NULL DEFAULT 'claude'," +
+      "provider_config_json TEXT," +
+      "UNIQUE (canvas_id, name)" +
       ")",
   );
   db.exec("CREATE INDEX IF NOT EXISTS idx_pods_canvas_id ON pods(canvas_id)");
 
+  // 新版 MCP server 名稱 join table（以 name 取代舊的 id）
   db.exec(
-    "CREATE TABLE IF NOT EXISTS pod_skill_ids (" +
+    "CREATE TABLE IF NOT EXISTS pod_mcp_server_names (" +
       "pod_id TEXT NOT NULL REFERENCES pods(id) ON DELETE CASCADE," +
-      "skill_id TEXT NOT NULL," +
-      "PRIMARY KEY (pod_id, skill_id)" +
-      ")",
-  );
-
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS pod_sub_agent_ids (" +
-      "pod_id TEXT NOT NULL REFERENCES pods(id) ON DELETE CASCADE," +
-      "sub_agent_id TEXT NOT NULL," +
-      "PRIMARY KEY (pod_id, sub_agent_id)" +
-      ")",
-  );
-
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS pod_mcp_server_ids (" +
-      "pod_id TEXT NOT NULL REFERENCES pods(id) ON DELETE CASCADE," +
-      "mcp_server_id TEXT NOT NULL," +
-      "PRIMARY KEY (pod_id, mcp_server_id)" +
+      "mcp_server_name TEXT NOT NULL," +
+      "PRIMARY KEY (pod_id, mcp_server_name)" +
       ")",
   );
 
@@ -135,14 +153,6 @@ export function createTables(db: Database): void {
   );
 
   db.exec(
-    "CREATE TABLE IF NOT EXISTS mcp_servers (" +
-      "id TEXT PRIMARY KEY," +
-      "name TEXT NOT NULL UNIQUE," +
-      "config_json TEXT NOT NULL" +
-      ")",
-  );
-
-  db.exec(
     "CREATE TABLE IF NOT EXISTS pod_manifests (" +
       "pod_id TEXT NOT NULL," +
       "repository_id TEXT NOT NULL," +
@@ -210,7 +220,7 @@ export function createTables(db: Database): void {
       "run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE," +
       "pod_id TEXT NOT NULL," +
       "status TEXT NOT NULL DEFAULT 'pending'," +
-      "claude_session_id TEXT," +
+      "session_id TEXT," +
       "error_message TEXT," +
       "triggered_at TEXT," +
       "completed_at TEXT," +
@@ -240,38 +250,106 @@ export function createTables(db: Database): void {
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_run_messages_run_pod ON run_messages(run_id, pod_id)",
   );
+}
+
+/**
+ * 執行所有歷史 migration（ALTER TABLE / CREATE INDEX 等）。
+ * 每條 migration 均冪等：重複執行不 throw。
+ */
+function runMigrations(db: Database): void {
+  // Migration: 既有 DB 補上 (canvas_id, name) 唯一索引，防止 TOCTOU rename 競爭條件
+  runMigration(
+    db,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_pods_canvas_name ON pods(canvas_id, name)",
+    ["already exists"],
+  );
+
+  // Migration: pods.claude_session_id 重命名為 session_id（語意統一，支援 Claude 以外的 provider）
+  runMigration(
+    db,
+    "ALTER TABLE pods RENAME COLUMN claude_session_id TO session_id",
+    ["no such column", "duplicate column"],
+  );
+
+  // Migration: run_pod_instances.claude_session_id 重命名為 session_id（語意統一，支援 Claude 以外的 provider）
+  runMigration(
+    db,
+    "ALTER TABLE run_pod_instances RENAME COLUMN claude_session_id TO session_id",
+    ["no such column", "duplicate column"],
+  );
 
   // Migration: run_pod_instances 新增 worktree_path 欄位
-  try {
-    db.exec("ALTER TABLE run_pod_instances ADD COLUMN worktree_path TEXT");
-  } catch (e) {
-    // 欄位已存在時忽略，其他錯誤重新拋出
-    if (!(e instanceof Error && e.message.includes("duplicate column"))) {
-      throw e;
-    }
-  }
+  runMigration(
+    db,
+    "ALTER TABLE run_pod_instances ADD COLUMN worktree_path TEXT",
+    ["duplicate column"],
+  );
 
   // Migration: connections 新增 summary_model 欄位
-  try {
-    db.exec(
-      "ALTER TABLE connections ADD COLUMN summary_model TEXT NOT NULL DEFAULT 'sonnet'",
-    );
-  } catch (e) {
-    // 欄位已存在時忽略，其他錯誤重新拋出
-    if (!(e instanceof Error && e.message.includes("duplicate column"))) {
-      throw e;
-    }
-  }
+  runMigration(
+    db,
+    "ALTER TABLE connections ADD COLUMN summary_model TEXT NOT NULL DEFAULT 'sonnet'",
+    ["duplicate column"],
+  );
 
   // Migration: connections 新增 ai_decide_model 欄位
-  try {
-    db.exec(
-      "ALTER TABLE connections ADD COLUMN ai_decide_model TEXT NOT NULL DEFAULT 'sonnet'",
-    );
-  } catch (e) {
-    // 欄位已存在時忽略，其他錯誤重新拋出
-    if (!(e instanceof Error && e.message.includes("duplicate column"))) {
-      throw e;
-    }
-  }
+  runMigration(
+    db,
+    "ALTER TABLE connections ADD COLUMN ai_decide_model TEXT NOT NULL DEFAULT 'sonnet'",
+    ["duplicate column"],
+  );
+
+  // Migration: pods 新增 provider 欄位（預設 'claude' 確保舊資料相容）
+  runMigration(
+    db,
+    "ALTER TABLE pods ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'",
+    ["duplicate column"],
+  );
+
+  // Migration: pods 新增 provider_config_json 欄位
+  runMigration(db, "ALTER TABLE pods ADD COLUMN provider_config_json TEXT", [
+    "duplicate column",
+  ]);
+
+  // Migration: 移除 pods.model 欄位（providerConfig.model 已成為唯一來源）
+  // SQLite 3.35+ 支援 ALTER TABLE DROP COLUMN，Bun 內建 SQLite 3.51.0 可安全使用
+  // 冪等：欄位不存在時靜默忽略
+  runMigration(db, "ALTER TABLE pods DROP COLUMN model", [
+    "no such column",
+    "no such index",
+    "Cannot drop column",
+  ]);
+
+  // Migration: 砍除 Output Style 功能後移除欄位
+  // 冪等：欄位不存在時靜默忽略
+  runMigration(db, "ALTER TABLE pods DROP COLUMN output_style_id", [
+    "no such column",
+    "Cannot drop column",
+  ]);
+
+  // Migration: 砍除 SkillNote / skillIds 功能後移除 join table
+  // ⚠️ 此操作不可逆，DROP 後資料無法恢復；如需 rollback binary 須先備份
+  // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
+  runMigration(db, "DROP TABLE IF EXISTS pod_skill_ids", []);
+  runMigration(db, "DROP TABLE IF EXISTS skill_notes", []);
+
+  // Migration: 移除 SubAgent 功能後移除 junction table
+  // ⚠️ 此操作不可逆，DROP 後資料無法恢復；如需 rollback binary 須先備份
+  // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
+  runMigration(db, "DROP TABLE IF EXISTS pod_sub_agent_ids", []);
+
+  // Migration: 移除 MCP SQLite CRUD 模式，改為外部 CLI 唯讀。
+  // ⚠️ 此 migration 不可逆。MCP 從 SQLite CRUD 改為外部 CLI 唯讀，
+  //    舊資料直接清除，使用者需在外部 CLI 重新安裝並於 popover 重新啟用。
+  // IF EXISTS 本身不拋錯，ignoredMessages 設為空陣列
+  runMigration(db, "DROP TABLE IF EXISTS mcp_server_notes", []);
+  runMigration(db, "DROP TABLE IF EXISTS pod_mcp_server_ids", []);
+  runMigration(db, "DROP TABLE IF EXISTS mcp_servers", []);
 }
+
+export function createTables(db: Database): void {
+  createBaseTables(db);
+  runMigrations(db);
+}
+
+export { isIgnorableMigrationError, runMigration };

@@ -273,7 +273,6 @@ describe("finalizeSubMessages", () => {
     ];
     const result = finalizeSubMessages(subMessages);
 
-    expect(result).toBeDefined();
     expect(result![0]!.isPartial).toBe(false);
     expect(result![0]!.toolUse).toBeUndefined();
   });
@@ -284,7 +283,6 @@ describe("finalizeSubMessages", () => {
     ];
     const result = finalizeSubMessages(subMessages);
 
-    expect(result).toBeDefined();
     expect(result![0]!.isPartial).toBe(false);
     expect(result![0]!.toolUse).toBeUndefined();
   });
@@ -307,7 +305,6 @@ describe("finalizeSubMessages", () => {
     ];
     const result = finalizeSubMessages(subMessages);
 
-    expect(result).toBeDefined();
     expect(result![0]!.isPartial).toBe(false);
     expect(result![0]!.toolUse![0]!.status).toBe("completed");
   });
@@ -330,7 +327,6 @@ describe("finalizeSubMessages", () => {
     ];
     const result = finalizeSubMessages(subMessages);
 
-    expect(result).toBeDefined();
     expect(result![0]!.toolUse![0]!.status).toBe("completed");
   });
 
@@ -366,7 +362,6 @@ describe("finalizeSubMessages", () => {
 
     const result = finalizeSubMessages(subMessages);
 
-    expect(result).toBeDefined();
     expect(result).toHaveLength(1);
     expect(result![0]!.content).toBe("執行中");
     expect(result![0]!.toolUse).toHaveLength(2);
@@ -393,7 +388,6 @@ describe("finalizeSubMessages", () => {
 
     const result = finalizeSubMessages(subMessages);
 
-    expect(result).toBeDefined();
     expect(result).toHaveLength(1);
     expect(result![0]!.content).toBe("");
     expect(result![0]!.toolUse).toHaveLength(1);

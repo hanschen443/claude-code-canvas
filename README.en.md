@@ -1,6 +1,6 @@
 [繁體中文](README.md) | [日本語](README.ja.md)
 
-# Claude Code Canvas
+# Agent Canvas
 
 A canvas tool for visually designing and executing AI Agent workflows, powered by Claude Agent SDK for agent execution. Also supports team collaboration.
 
@@ -28,7 +28,7 @@ A canvas tool for visually designing and executing AI Agent workflows, powered b
 - Recommended for **local environment** use only, not recommended for cloud deployment (no user authentication is implemented).
 - Since it uses the **Claude Agent SDK**, make sure the service runs in an environment where **Claude is already logged in**. API Key is not supported.
 - Tested on **macOS / Linux**. Other operating systems may have unknown issues.
-- Canvas data is stored in `~/Documents/ClaudeCanvas`
+- Canvas data is stored in `~/Documents/AgentCanvas` (on first launch, the old path `~/Documents/ClaudeCanvas` will be automatically migrated to the new path)
 - AI is currently granted **maximum permissions**. Please be careful with operations.
 
 ## Installation
@@ -36,35 +36,35 @@ A canvas tool for visually designing and executing AI Agent workflows, powered b
 **Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and logged in
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cowbear6598/claude-code-canvas/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/cowbear6598/agent-canvas/main/install.sh | sh
 ```
 
 **Uninstall**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cowbear6598/claude-code-canvas/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/cowbear6598/agent-canvas/main/install.sh | sh -s -- --uninstall
 ```
 
 ## Usage
 
 ```bash
 # Start service (background daemon, default port 3001)
-claude-code-canvas start
+agent-canvas start
 
 # Start with custom port
-claude-code-canvas start --port 8080
+agent-canvas start --port 8080
 
 # Check service status
-claude-code-canvas status
+agent-canvas status
 
 # Stop service
-claude-code-canvas stop
+agent-canvas stop
 
 # View latest logs (default 50 lines)
-claude-code-canvas logs
+agent-canvas logs
 
 # View specific number of log lines
-claude-code-canvas logs -n 100
+agent-canvas logs -n 100
 ```
 
 Open your browser and navigate to `http://localhost:3001` to get started.
@@ -75,16 +75,16 @@ To use Clone features for accessing private repositories, use the `config` comma
 
 ```bash
 # GitHub Token
-claude-code-canvas config set GITHUB_TOKEN ghp_xxxxx
+agent-canvas config set GITHUB_TOKEN ghp_xxxxx
 
 # GitLab Token
-claude-code-canvas config set GITLAB_TOKEN glpat-xxxxx
+agent-canvas config set GITLAB_TOKEN glpat-xxxxx
 
 # Self-hosted GitLab URL (optional, defaults to gitlab.com)
-claude-code-canvas config set GITLAB_URL https://gitlab.example.com
+agent-canvas config set GITLAB_URL https://gitlab.example.com
 
 # List all configurations
-claude-code-canvas config list
+agent-canvas config list
 ```
 
 ## Tutorials
@@ -94,13 +94,9 @@ claude-code-canvas config list
 - A Pod = Claude Code
 - Right-click on the canvas → Pod to create one
 
-![Pod](./tutorials/pod.png)
-
 ### How to Switch Models?
 
 - Hover over the model label on top of the Pod to select Opus / Sonnet / Haiku
-
-![Switch Model](./tutorials/switch-model.gif)
 
 ### Slot Overview
 
@@ -109,15 +105,11 @@ claude-code-canvas config list
 - Command will automatically prepend to your message, e.g., `/command message`
 - Repo changes the working directory; without one, the Pod uses its own directory
 
-![Slot](./tutorials/slot.gif)
-
 ### Connection Line
 
 - Auto: Always triggers the next Pod regardless
 - AI: AI decides whether to trigger the next Pod
 - Direct: Ignores other Connection Lines and triggers directly
-
-![Connection Line](./tutorials/connection-line.gif)
 
 #### Multi-Connection Trigger Rules
 
@@ -135,13 +127,9 @@ Right-click a Connection Line to switch the following models (both default to So
 - **Summary Model**: The model used to generate summaries passed to downstream Pods
 - **AI Model**: The model used to decide whether to trigger downstream Pods (only available in AI mode)
 
-![Connection Line Context Menu](./tutorials/connection-summary.jpg)
-
 ### Normal Mode vs Multi-Instance Mode
 
 Pods default to normal mode. **Long-press the eraser button** to switch to Multi-Instance mode — the button displays an **M** icon when enabled.
-
-![Switch Execute Mode](./tutorials/switch-execute-mode.gif)
 
 #### Normal Mode
 
@@ -163,8 +151,6 @@ Plugins are extensions installed via the Claude CLI that add extra capabilities 
 - **Right-click** Pod → Plugin → Toggle on/off to enable/disable
 - Once enabled, the Plugin is loaded when the Pod processes conversations
 - Plugins are separate from Skills, MCP, and SubAgents — they can all be used together
-
-![Plugin](./tutorials/plugin.png)
 
 ### Workflow Patterns
 
@@ -223,8 +209,6 @@ Plugins are extensions installed via the Claude CLI that add extra capabilities 
 - **Note:** Schedule depends on the timezone set in Settings; Pod skips the scheduled run if it is already busy
 
 ### Header Buttons
-
-![Header Buttons](./tutorials/setting-button.png)
 
 Four icons from left to right:
 

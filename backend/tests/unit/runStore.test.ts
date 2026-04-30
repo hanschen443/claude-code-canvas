@@ -27,14 +27,17 @@ describe("RunStore", () => {
     });
 
     it("根據 canvas_id 查詢 run 列表（依 created_at 降序）", () => {
-      const run1 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第一次");
-      const run2 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第二次");
+      runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第一次");
+      runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "第二次");
 
       const runs = runStore.getRunsByCanvasId(CANVAS_ID);
 
       expect(runs).toHaveLength(2);
-      // 降序：最新的在前
-      expect(runs[0].id === run1.id || runs[0].id === run2.id).toBe(true);
+      // 降序：前面的 createdAt 應不小於後面的
+      const timestamps = runs.map((r) => new Date(r.createdAt).getTime());
+      for (let i = 0; i < timestamps.length - 1; i++) {
+        expect(timestamps[i]).toBeGreaterThanOrEqual(timestamps[i + 1]!);
+      }
     });
 
     it("getRun 查詢單筆 run", () => {
@@ -117,6 +120,25 @@ describe("RunStore", () => {
 
       expect(ids).toHaveLength(2);
     });
+
+    it("getOldestCompletedRunIds 應回傳最舊的 2 個（而非任意 2 個）", () => {
+      // 依序建立三個 completed run（SQLite createdAt 毫秒精度可能相同，
+      // 故使用不同 triggerMessage 作為語意區分，實際排序依 created_at ASC）
+      const run1 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "最早");
+      const run2 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "中間");
+      const run3 = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, "最新");
+      runStore.updateRunStatus(run1.id, "completed");
+      runStore.updateRunStatus(run2.id, "completed");
+      runStore.updateRunStatus(run3.id, "completed");
+
+      const ids = runStore.getOldestCompletedRunIds(CANVAS_ID, 2);
+
+      // limit=2 應回傳最舊的兩個（run1, run2），不應包含最新的 run3
+      expect(ids).toHaveLength(2);
+      expect(ids).toContain(run1.id);
+      expect(ids).toContain(run2.id);
+      expect(ids).not.toContain(run3.id);
+    });
   });
 
   describe("run_pod_instances CRUD", () => {
@@ -129,7 +151,7 @@ describe("RunStore", () => {
       expect(instance.runId).toBe(run.id);
       expect(instance.podId).toBe("pod-1");
       expect(instance.status).toBe("pending");
-      expect(instance.claudeSessionId).toBeNull();
+      expect(instance.sessionId).toBeNull();
       expect(instance.errorMessage).toBeNull();
       expect(instance.triggeredAt).toBeNull();
       expect(instance.completedAt).toBeNull();
@@ -172,14 +194,14 @@ describe("RunStore", () => {
       expect(instances).toHaveLength(2);
     });
 
-    it("updatePodInstanceClaudeSessionId 更新 claude_session_id", () => {
+    it("updatePodInstanceSessionId 更新 session_id", () => {
       const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
       const instance = runStore.createPodInstance(run.id, "pod-1");
 
-      runStore.updatePodInstanceClaudeSessionId(instance.id, "session-abc");
+      runStore.updatePodInstanceSessionId(instance.id, "session-abc");
 
       const updated = runStore.getPodInstance(run.id, "pod-1");
-      expect(updated?.claudeSessionId).toBe("session-abc");
+      expect(updated?.sessionId).toBe("session-abc");
     });
 
     it("createPodInstance 帶入 pending 後 getPodInstance 讀回應為 pending", () => {
@@ -373,6 +395,115 @@ describe("RunStore", () => {
       const fetched = runStore.getRunMessages(run.id, "pod-1");
       expect(fetched[0].subMessages).toEqual(subMessages);
       expect(message.subMessages).toEqual(subMessages);
+    });
+
+    // ================================================================
+    // 測試案例 9 — addRunMessage 傳入外部 id 與不傳兩種路徑
+    // ================================================================
+    it("傳入外部 id 時，run message 的 id 應與傳入值相同", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      const externalId = "attach-dir-uuid-run-123";
+
+      const message = runStore.addRunMessage(
+        run.id,
+        "pod-1",
+        "user",
+        "拖檔觸發訊息",
+        undefined,
+        externalId,
+      );
+
+      // id 應與傳入的外部 id 一致（而非自動產生）
+      expect(message.id).toBe(externalId);
+
+      // getRunMessages 讀回也應該是同樣的 id
+      const fetched = runStore.getRunMessages(run.id, "pod-1");
+      expect(fetched).toHaveLength(1);
+      expect(fetched[0].id).toBe(externalId);
+    });
+
+    it("未傳入外部 id 時，run message 的 id 應由內部自動產生（非空字串）", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+
+      const message = runStore.addRunMessage(
+        run.id,
+        "pod-1",
+        "user",
+        "一般 run 訊息",
+      );
+
+      // id 應為非空字串（randomUUID 格式）
+      expect(message.id).toBeTruthy();
+      expect(typeof message.id).toBe("string");
+    });
+
+    it("兩個訊息分別傳入不同外部 id，DB 中 id 應各自對齊", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      const id1 = "attach-run-1-uuid";
+      const id2 = "attach-run-2-uuid";
+
+      runStore.addRunMessage(run.id, "pod-1", "user", "訊息一", undefined, id1);
+      runStore.addRunMessage(run.id, "pod-1", "user", "訊息二", undefined, id2);
+
+      const messages = runStore.getRunMessages(run.id, "pod-1");
+      expect(messages).toHaveLength(2);
+      const ids = messages.map((m) => m.id);
+      expect(ids).toContain(id1);
+      expect(ids).toContain(id2);
+    });
+  });
+
+  describe("getWorktreePathsByRunId / clearWorktreePathsByRunId", () => {
+    it("createPodInstance 帶 worktreePath 後 getWorktreePathsByRunId 應回傳正確清單", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      // 建立兩個 pod instance，一個有 worktreePath，一個沒有
+      runStore.createPodInstance(
+        run.id,
+        "pod-1",
+        "not-applicable",
+        "not-applicable",
+        "/repos/worktree-pod-1",
+      );
+      runStore.createPodInstance(
+        run.id,
+        "pod-2",
+        "not-applicable",
+        "not-applicable",
+        null,
+      );
+
+      const paths = runStore.getWorktreePathsByRunId(run.id);
+
+      // 只有 worktreePath 不為 null 的 pod 才會出現
+      expect(paths).toHaveLength(1);
+      expect(paths[0]).toMatchObject({
+        podId: "pod-1",
+        worktreePath: "/repos/worktree-pod-1",
+      });
+    });
+
+    it("clearWorktreePathsByRunId 後 getWorktreePathsByRunId 應回傳空陣列", () => {
+      const run = runStore.createRun(CANVAS_ID, SOURCE_POD_ID, TRIGGER_MESSAGE);
+      runStore.createPodInstance(
+        run.id,
+        "pod-1",
+        "not-applicable",
+        "not-applicable",
+        "/repos/worktree-pod-1",
+      );
+      runStore.createPodInstance(
+        run.id,
+        "pod-2",
+        "not-applicable",
+        "not-applicable",
+        "/repos/worktree-pod-2",
+      );
+
+      // 清除後所有 worktreePath 應為 null
+      runStore.clearWorktreePathsByRunId(run.id);
+
+      const paths = runStore.getWorktreePathsByRunId(run.id);
+      expect(paths).toHaveLength(0);
     });
   });
 });

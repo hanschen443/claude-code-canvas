@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import type { Pod, ModelType } from "@/types";
+import { ref, computed, toRef } from "vue";
+import type { Pod } from "@/types";
 import { useCanvasContext } from "@/composables/canvas/useCanvasContext";
 import { useBatchDrag } from "@/composables/canvas";
 import { isCtrlOrCmdPressed } from "@/utils/keyboardHelpers";
@@ -15,13 +15,19 @@ import { usePodNoteBinding } from "@/composables/pod/usePodNoteBinding";
 import { useWorkflowClear } from "@/composables/pod/useWorkflowClear";
 import { usePodSchedule } from "@/composables/pod/usePodSchedule";
 import { usePodAnchorDrag } from "@/composables/pod/usePodAnchorDrag";
+import { usePodFileDrop } from "@/composables/pod/usePodFileDrop";
+import { usePodPopovers } from "@/composables/pod/usePodPopovers";
 import { useToast } from "@/composables/useToast";
 import { useI18n } from "vue-i18n";
 import {
   isMultiInstanceChainPod,
   isMultiInstanceSourcePod,
 } from "@/utils/multiInstanceGuard";
+import { useProviderCapabilityStore } from "@/stores/providerCapabilityStore";
+import { useRunStore } from "@/stores/run/runStore";
+import { useUploadStore } from "@/stores/upload/uploadStore";
 import PodHeader from "@/components/pod/PodHeader.vue";
+import PodUploadOverlay from "@/components/pod/PodUploadOverlay.vue";
 import PodMiniScreen from "@/components/pod/PodMiniScreen.vue";
 import PodSlots from "@/components/pod/PodSlots.vue";
 import PodAnchors from "@/components/pod/PodAnchors.vue";
@@ -29,6 +35,8 @@ import PodActions from "@/components/pod/PodActions.vue";
 import PodModelSelector from "@/components/pod/PodModelSelector.vue";
 import IntegrationStatusIcon from "@/components/integration/IntegrationStatusIcon.vue";
 import ScheduleModal from "@/components/canvas/ScheduleModal.vue";
+import PluginPopover from "@/components/pod/PluginPopover.vue";
+import McpPopover from "@/components/pod/McpPopover.vue";
 
 const props = defineProps<{
   pod: Pod;
@@ -38,38 +46,38 @@ const {
   podStore,
   viewportStore,
   selectionStore,
-  outputStyleStore,
-  skillStore,
-  subAgentStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   connectionStore,
   chatStore,
 } = useCanvasContext();
+const runStore = useRunStore();
+const uploadStore = useUploadStore();
 const { startBatchDrag, isElementSelected, isBatchDragging } = useBatchDrag();
 const { toast } = useToast();
 const { sendCanvasAction } = useSendCanvasAction();
 const { t } = useI18n();
 
+// ---- Provider 未知 fallback 判斷 ----
+const providerCapabilityStore = useProviderCapabilityStore();
+
+/**
+ * 當 store 已載入（loaded = true）且 provider 不在已知清單中，
+ * 視為未知 provider，顯示 fallback UI 並封鎖對話入口。
+ * loaded 為 false 時（metadata 尚未抵達）跳過判斷，避免時序誤判。
+ */
+const isUnknownProvider = computed(
+  () =>
+    providerCapabilityStore.loaded &&
+    !providerCapabilityStore.isKnownProvider(props.pod.provider),
+);
+
 const isActive = computed(() => props.pod.id === podStore.activePodId);
-const boundNote = computed(
-  () => outputStyleStore.getNotesByPodId(props.pod.id)[0],
-);
-const boundSkillNotes = computed(() =>
-  skillStore.getNotesByPodId(props.pod.id),
-);
-const boundSubAgentNotes = computed(() =>
-  subAgentStore.getNotesByPodId(props.pod.id),
-);
 const boundRepositoryNote = computed(
   () => repositoryStore.getNotesByPodId(props.pod.id)[0],
 );
 const boundCommandNote = computed(
   () => commandStore.getNotesByPodId(props.pod.id)[0],
-);
-const boundMcpServerNotes = computed(() =>
-  mcpServerStore.getNotesByPodId(props.pod.id),
 );
 const isSourcePod = computed(() => connectionStore.isSourcePod(props.pod.id));
 const hasUpstreamConnection = computed(() =>
@@ -78,15 +86,35 @@ const hasUpstreamConnection = computed(() =>
 const showScheduleButton = computed(
   () => isSourcePod.value || !hasUpstreamConnection.value,
 );
-const currentModel = computed(() => props.pod.model ?? "opus");
+const currentModel = computed(() => props.pod.providerConfig.model);
 
+// isElementSelected 內部使用 selectedElementSet（Set<string>），O(1) 查找
 const isSelected = computed(() =>
-  selectionStore.selectedPodIds.includes(props.pod.id),
+  selectionStore.isElementSelected("pod", props.pod.id),
 );
 
-const podStatusClass = computed(() => {
-  return props.pod.status ? `pod-status-${props.pod.status}` : "";
+// PodStatus 白名單（對應 types/pod.ts 的 PodStatus union）；
+// 未知 status 不注入任意 class，回傳空字串。
+// 此為靜態常數（不依賴 store），刻意定義在 script setup 頂層而非 computed 內，
+// 確保每次渲染不重新建立 Set，也方便日後新增 status 時集中維護。
+const ALLOWED_STATUSES = new Set<string>([
+  "idle",
+  "chatting",
+  "summarizing",
+  "error",
+]);
+
+const podStatusClasses = computed(() => {
+  const status = props.pod.status;
+  return status && ALLOWED_STATUSES.has(status) ? `pod-status-${status}` : "";
 });
+
+// 依 provider 動態套用漸層 class，方便未來擴增更多 provider
+const podProviderClasses = computed(() =>
+  providerCapabilityStore.allowedProviders.has(props.pod.provider)
+    ? `pod-provider-${props.pod.provider}`
+    : "",
+);
 
 const emit = defineEmits<{
   select: [podId: string];
@@ -100,7 +128,7 @@ const emit = defineEmits<{
 const isEditing = ref(false);
 const showDeleteDialog = ref(false);
 
-const isMultiInstanceEnabled = computed(() => props.pod.multiInstance ?? false);
+const isMultiInstanceEnabled = computed(() => props.pod.multiInstance);
 const isDownstreamMultiInstance = computed(
   () =>
     isMultiInstanceChainPod(props.pod.id) &&
@@ -111,7 +139,7 @@ const isWorkflowRunning = computed(() =>
   connectionStore.isWorkflowRunning(props.pod.id),
 );
 
-const computedPodId = computed(() => props.pod.id);
+const computedPodId = toRef(() => props.pod.id);
 
 const {
   showScheduleModal,
@@ -138,12 +166,8 @@ const { isDragging, startSingleDrag } = usePodDrag(
 );
 
 const { handleNoteDrop, handleNoteRemove } = usePodNoteBinding(computedPodId, {
-  outputStyleStore,
-  skillStore,
-  subAgentStore,
   repositoryStore,
   commandStore,
-  mcpServerStore,
   podStore,
 });
 
@@ -157,17 +181,81 @@ const {
   handleCancelClear,
 } = useWorkflowClear(computedPodId, { chatStore, podStore, connectionStore });
 
-const SLOT_CLASSES = [
-  ".pod-output-style-slot",
-  ".pod-skill-slot",
-  ".pod-subagent-slot",
-  ".pod-repository-slot",
-  ".pod-command-slot",
-  ".pod-mcp-server-slot",
-];
+// Plugin notch 相關狀態
+const pluginActiveCount = computed(() => props.pod.pluginIds?.length ?? 0);
+
+// error 狀態仍允許切換 plugin，故不含 'error'
+const isPodBusy = computed(
+  () => props.pod.status === "chatting" || props.pod.status === "summarizing",
+);
+
+/**
+ * 以下任一為真時禁用 file drop：
+ * - pod 正在 chatting / summarizing（busy）
+ * - 為 multi-instance chain 下游 pod（target），使用者已決策由來源觸發
+ * - 未知 provider，封鎖所有對話入口
+ */
+const isFileDropDisabled = computed(
+  () =>
+    isPodBusy.value ||
+    isDownstreamMultiInstance.value ||
+    isUnknownProvider.value,
+);
+
+const {
+  isDragOver,
+  handleDragEnter,
+  handleDragOver,
+  handleDragLeave,
+  handleDropEvent,
+} = usePodFileDrop({
+  disabled: () => isFileDropDisabled.value,
+});
+
+/**
+ * 包裝 handleDropEvent，綁定當前 pod.id。
+ * 模板中 `@drop` 只傳 DragEvent，podId 由此閉包注入。
+ * 上傳流程結束後，若為 multi-instance source pod 則自動開啟 history panel。
+ */
+const handleDrop = async (event: DragEvent): Promise<void> => {
+  await handleDropEvent(event, props.pod.id);
+  // multi-instance source pod 送出後自動開啟 history panel，
+  // 行為與 ChatModal.handleMultiInstanceSend 一致
+  if (isMultiInstanceSourcePod(props.pod.id)) {
+    runStore.openHistoryPanel();
+  }
+};
+
+const {
+  showPluginPopover,
+  pluginAnchorRect,
+  handlePluginClick,
+  showMcpPopover,
+  mcpAnchorRect,
+  handleMcpClick,
+} = usePodPopovers();
+
+// MCP notch 相關狀態
+const podMcpActiveCount = computed(() => props.pod.mcpServerNames?.length ?? 0);
+
+// ---- 上傳狀態（來自 uploadStore，避免與 chatStore 狀態互相覆蓋）----
+/**
+ * 判斷此 Pod 是否正在上傳中（uploadStore.isUploading getter）。
+ * 封鎖右鍵選單、連線把手、刪除按鈕等互動，但放行 Pod 拖移。
+ */
+const isPodUploading = computed(() => uploadStore.isUploading(props.pod.id));
+
+/** 上傳狀態（uploading / upload-failed / idle），用於控制 overlay 渲染 */
+const podUploadStatus = computed(
+  () => uploadStore.getUploadState(props.pod.id).status,
+);
+
+// 合併成單一 CSS selector 字串，closest() 一次查詢取代原本最差 4 次 DOM 遍歷
+const SLOT_CLASSES =
+  ".pod-plugin-slot, .pod-repository-slot, .pod-command-slot, .pod-mcp-server-slot";
 
 const shouldBlockForSlot = (target: HTMLElement): boolean => {
-  return SLOT_CLASSES.some((cls) => target.closest(cls) !== null);
+  return target.closest(SLOT_CLASSES) !== null;
 };
 
 const handleCtrlClick = (): void => {
@@ -214,25 +302,52 @@ const handleSelectPod = (): void => {
   emit("select", props.pod.id);
 };
 
+/**
+ * 判斷雙擊是否被封鎖，並回傳封鎖原因。
+ * blocked=false 表示可繼續進入對話；blocked=true 表示應終止。
+ * reason 供 handleDblClick 決定是否顯示 toast。
+ */
+const isEditBlocked = (
+  target: Element | null,
+): {
+  blocked: boolean;
+  reason?: "dragging" | "input" | "unknownProvider" | "downstreamMultiInstance";
+} => {
+  if (isEditing.value || isDragging.value)
+    return { blocked: true, reason: "dragging" };
+
+  const el = target as HTMLElement;
+  if (el.tagName === "INPUT" || el.tagName === "TEXTAREA")
+    return { blocked: true, reason: "input" };
+
+  if (isUnknownProvider.value)
+    return { blocked: true, reason: "unknownProvider" };
+  if (isDownstreamMultiInstance.value)
+    return { blocked: true, reason: "downstreamMultiInstance" };
+
+  return { blocked: false };
+};
+
 const handleDblClick = (e: MouseEvent): void => {
-  if (isEditing.value || isDragging.value) return;
-
-  const target = e.target as HTMLElement;
-
-  if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-
-  if (isDownstreamMultiInstance.value) {
+  const { blocked, reason } = isEditBlocked(e.target as Element | null);
+  if (!blocked) {
+    handleSelectPod();
+    return;
+  }
+  if (reason === "unknownProvider") {
+    toast({
+      title: t("pod.provider.title"),
+      description: t("pod.provider.unknownDescription"),
+    });
+  } else if (reason === "downstreamMultiInstance") {
     toast({
       title: "Pod",
       description: t("pod.multiInstance.readonlyHint"),
     });
-    return;
   }
-
-  handleSelectPod();
 };
 
-const handleModelChange = async (model: ModelType): Promise<void> => {
+const handleModelChange = async (model: string): Promise<void> => {
   const response = await sendCanvasAction<
     PodSetModelPayload,
     PodModelSetPayload
@@ -245,7 +360,10 @@ const handleModelChange = async (model: ModelType): Promise<void> => {
   if (!response) return;
   if (!response.pod) return;
 
-  podStore.updatePodModel(props.pod.id, response.pod.model ?? "opus");
+  podStore.updatePodProviderConfigModel(
+    props.pod.id,
+    response.pod.providerConfig.model,
+  );
 };
 
 const handleToggleMultiInstance = async (): Promise<void> => {
@@ -256,6 +374,11 @@ const handleToggleMultiInstance = async (): Promise<void> => {
 };
 
 const handleContextMenu = (e: MouseEvent): void => {
+  // 上傳中封鎖右鍵選單，避免誤觸刪除或其他操作
+  if (isPodUploading.value) {
+    e.preventDefault();
+    return;
+  }
   e.preventDefault();
   emit("contextmenu", { podId: props.pod.id, event: e });
 };
@@ -270,56 +393,74 @@ const handleContextMenu = (e: MouseEvent): void => {
       zIndex: isActive ? 100 : 10,
     }"
     @mousedown="handleMouseDown"
+    @dragenter="handleDragEnter"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
   >
+    <!-- 光暈層：放在 pod-wrapper 之外，不受 transform: rotate 影響 -->
+    <!-- 此層僅承載 chatting/summarizing 等需要完整包覆（不被截切）的光暈效果 -->
+    <!-- selected/drag-over 狀態已移至 pod-wrapper 內層（pod-inner-highlight），跟著旋轉 -->
     <div
-      class="relative pod-with-notch pod-with-skill-notch pod-with-subagent-notch pod-with-model-notch pod-with-repository-notch pod-with-mcp-server-notch"
+      class="pod-glow-layer"
+      :class="[podStatusClasses]"
+    />
+
+    <div
+      class="relative pod-wrapper pod-with-plugin-notch pod-with-mcp-notch pod-with-mcp-server-notch"
       :class="{ dragging: isDragging || isBatchDragging }"
       :style="{ '--pod-rotation': `${pod.rotation}deg` }"
     >
       <PodModelSelector
         :pod-id="pod.id"
+        :provider="pod.provider"
         :current-model="currentModel"
         @update:model="handleModelChange"
       />
 
+      <!-- PodSlots 介面採扁平 props/emit 設計；新增 slot 類型需同步更新 PodSlots props/emits/template 與此處 listener -->
       <PodSlots
         :pod-id="pod.id"
         :pod-rotation="pod.rotation"
-        :bound-output-style-note="boundNote"
-        :bound-skill-notes="boundSkillNotes"
-        :bound-sub-agent-notes="boundSubAgentNotes"
+        :plugin-active-count="pluginActiveCount"
+        :mcp-active-count="podMcpActiveCount"
+        :provider="pod.provider"
         :bound-repository-note="boundRepositoryNote"
         :bound-command-note="boundCommandNote"
-        :bound-mcp-server-notes="boundMcpServerNotes"
-        @output-style-dropped="
-          (noteId) => handleNoteDrop('outputStyle', noteId)
-        "
-        @output-style-removed="() => handleNoteRemove('outputStyle')"
-        @skill-dropped="(noteId) => handleNoteDrop('skill', noteId)"
-        @subagent-dropped="(noteId) => handleNoteDrop('subAgent', noteId)"
+        @plugin-clicked="handlePluginClick"
+        @mcp-clicked="handleMcpClick"
         @repository-dropped="(noteId) => handleNoteDrop('repository', noteId)"
         @repository-removed="() => handleNoteRemove('repository')"
         @command-dropped="(noteId) => handleNoteDrop('command', noteId)"
         @command-removed="() => handleNoteRemove('command')"
-        @mcp-server-dropped="(noteId) => handleNoteDrop('mcpServer', noteId)"
       />
 
       <div
         class="pod-doodle w-56 overflow-visible relative"
         :class="[
-          podStatusClass,
+          podProviderClasses,
           { selected: isSelected, dragging: isDragging || isBatchDragging },
         ]"
         @dblclick="handleDblClick"
         @contextmenu="handleContextMenu"
       >
+        <!-- 內層 highlight：selected/drag-over 狀態，隨 pod-wrapper 的 rotate 一起旋轉 -->
+        <div
+          class="pod-inner-highlight"
+          :class="[
+            { 'pod-glow-selected': isSelected },
+            { 'pod-glow-drop-target': isDragOver },
+          ]"
+        />
         <div class="model-notch" />
-        <div class="subagent-notch" />
+        <div class="mcp-notch" />
         <div class="mcp-server-notch" />
         <div class="repository-notch" />
         <div class="command-notch" />
 
+        <!-- 上傳中隱藏連線把手，避免誤建立連線；放行 Pod 拖移（標題列邏輯未動） -->
         <PodAnchors
+          v-if="!isPodUploading"
           :pod-id="pod.id"
           @drag-start="handleAnchorDragStart"
           @drag-move="handleAnchorDragMove"
@@ -328,7 +469,8 @@ const handleContextMenu = (e: MouseEvent): void => {
 
         <IntegrationStatusIcon :bindings="pod.integrationBindings ?? []" />
 
-        <div class="p-3">
+        <!-- 聊天區容器：加 relative 使 PodUploadOverlay 的 absolute inset-0 可正確定位 -->
+        <div class="p-3 relative">
           <PodHeader
             :name="pod.name"
             :is-editing="isEditing"
@@ -337,10 +479,34 @@ const handleContextMenu = (e: MouseEvent): void => {
             @rename="handleRename"
           />
 
+          <!-- 未知 Provider fallback badge：
+               store 已載入後仍找不到此 provider，表示已下線或尚未支援。
+               僅插入提示 badge，保留下方 output 歷史可見，不遮蓋整個 Pod。 -->
+          <div
+            v-if="isUnknownProvider"
+            class="unknown-provider-badge"
+            data-testid="unknown-provider-badge"
+          >
+            <span class="unknown-provider-badge__dot" />
+            <span class="unknown-provider-badge__text">
+              {{ $t("pod.provider.unknownDescription") }}
+            </span>
+          </div>
+
           <PodMiniScreen :output="pod.output" />
+
+          <!-- 上傳中 / 上傳失敗 overlay：
+               absolute inset-0 蓋住聊天區（輸入區 + 訊息區），封鎖所有點擊。
+               僅在 uploading 或 upload-failed 時渲染，idle 時不 mount，避免不必要的 re-render。
+               overlay 自身內部已有 v-if 控制，外層再加 v-if 雙重保險。 -->
+          <PodUploadOverlay
+            v-if="isPodUploading || podUploadStatus === 'upload-failed'"
+            :pod-id="pod.id"
+          />
         </div>
       </div>
 
+      <!-- is-uploading 傳入，讓刪除按鈕在上傳中 disabled + tooltip -->
       <PodActions
         :pod-id="pod.id"
         :pod-name="pod.name"
@@ -357,6 +523,7 @@ const handleContextMenu = (e: MouseEvent): void => {
         :schedule-tooltip="scheduleTooltip"
         :is-schedule-fired-animating="isScheduleFiredAnimating"
         :is-workflow-running="isWorkflowRunning"
+        :is-uploading="isPodUploading"
         @open-schedule-modal="handleOpenScheduleModal"
         @update:show-clear-dialog="showClearDialog = $event"
         @update:show-delete-dialog="showDeleteDialog = $event"
@@ -377,6 +544,24 @@ const handleContextMenu = (e: MouseEvent): void => {
         @confirm="handleScheduleConfirm"
         @delete="handleScheduleDelete"
         @toggle="handleScheduleToggle"
+      />
+
+      <PluginPopover
+        v-if="showPluginPopover && pluginAnchorRect"
+        :pod-id="pod.id"
+        :anchor-rect="pluginAnchorRect"
+        :busy="isPodBusy"
+        :provider="pod.provider"
+        @close="showPluginPopover = false"
+      />
+
+      <McpPopover
+        v-if="showMcpPopover && mcpAnchorRect"
+        :pod-id="pod.id"
+        :anchor-rect="mcpAnchorRect"
+        :busy="isPodBusy"
+        :provider="pod.provider"
+        @close="showMcpPopover = false"
       />
     </div>
   </div>

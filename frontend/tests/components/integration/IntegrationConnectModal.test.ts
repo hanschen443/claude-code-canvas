@@ -515,7 +515,8 @@ describe("IntegrationConnectModal", () => {
         x: 0,
         y: 0,
         status: "idle",
-        model: "claude-sonnet-4-5",
+        provider: "claude",
+        providerConfig: { model: "claude-sonnet-4-5" },
         output: [],
         integrationBindings: [createMockBinding()],
       } as unknown as (typeof podStore.pods)[number]);

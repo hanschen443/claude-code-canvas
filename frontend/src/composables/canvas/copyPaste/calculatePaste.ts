@@ -1,27 +1,25 @@
-import { POD_WIDTH, POD_HEIGHT, NOTE_WIDTH, NOTE_HEIGHT, MAX_POD_NAME_LENGTH } from '@/lib/constants'
+import {
+  POD_WIDTH,
+  POD_HEIGHT,
+  NOTE_WIDTH,
+  NOTE_HEIGHT,
+  MAX_POD_NAME_LENGTH,
+} from "@/lib/constants";
 import type {
   CopiedPod,
-  CopiedOutputStyleNote,
-  CopiedSkillNote,
   CopiedRepositoryNote,
-  CopiedSubAgentNote,
   CopiedCommandNote,
-  CopiedMcpServerNote,
   CopiedConnection,
   PastePodItem,
-  PasteOutputStyleNoteItem,
-  PasteSkillNoteItem,
   PasteRepositoryNoteItem,
-  PasteSubAgentNoteItem,
   PasteCommandNoteItem,
-  PasteMcpServerNoteItem,
   PasteConnectionItem,
-} from '@/types'
+} from "@/types";
 
-type BoundingBox = { minX: number; maxX: number; minY: number; maxY: number }
+type BoundingBox = { minX: number; maxX: number; minY: number; maxY: number };
 
 function createInitialBounds(): BoundingBox {
-  return { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
+  return { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
 }
 
 function updateBoundingBox(
@@ -29,271 +27,269 @@ function updateBoundingBox(
   x: number,
   y: number,
   width: number,
-  height: number
+  height: number,
 ): void {
-  bounds.minX = Math.min(bounds.minX, x)
-  bounds.maxX = Math.max(bounds.maxX, x + width)
-  bounds.minY = Math.min(bounds.minY, y)
-  bounds.maxY = Math.max(bounds.maxY, y + height)
+  bounds.minX = Math.min(bounds.minX, x);
+  bounds.maxX = Math.max(bounds.maxX, x + width);
+  bounds.minY = Math.min(bounds.minY, y);
+  bounds.maxY = Math.max(bounds.maxY, y + height);
 }
 
-type HasPosition = { x: number; y: number }
+type HasPosition = { x: number; y: number };
 
-type UnboundNoteEntry = { noteList: HasPosition[]; getBoundKey: (n: HasPosition) => string | null }
+type UnboundNoteEntry = {
+  noteList: HasPosition[];
+  getBoundKey: (n: HasPosition) => string | null;
+};
 
-function toUnboundNoteEntry<T extends HasPosition>(noteList: T[], getBoundKey: (n: T) => string | null): UnboundNoteEntry {
+function toUnboundNoteEntry<T extends HasPosition>(
+  noteList: T[],
+  getBoundKey: (n: T) => string | null,
+): UnboundNoteEntry {
   return {
     noteList,
     getBoundKey: getBoundKey as (n: HasPosition) => string | null,
-  }
+  };
 }
 
-function updateBoundsForUnboundNotes(bounds: BoundingBox, noteStoreConfigs: UnboundNoteEntry[]): void {
+function updateBoundsForUnboundNotes(
+  bounds: BoundingBox,
+  noteStoreConfigs: UnboundNoteEntry[],
+): void {
   const unboundNotes = noteStoreConfigs.flatMap(({ noteList, getBoundKey }) =>
-    noteList.filter(note => getBoundKey(note) === null)
-  )
+    noteList.filter((note) => getBoundKey(note) === null),
+  );
   for (const note of unboundNotes) {
-    updateBoundingBox(bounds, note.x, note.y, NOTE_WIDTH, NOTE_HEIGHT)
+    updateBoundingBox(bounds, note.x, note.y, NOTE_WIDTH, NOTE_HEIGHT);
   }
 }
 
-function calculateBoundingBox<
-  TO extends HasPosition,
-  TS extends HasPosition,
-  TR extends HasPosition,
-  TSA extends HasPosition,
-  TC extends HasPosition,
-  TM extends HasPosition
->(
+function calculateBoundingBox<TR extends HasPosition, TC extends HasPosition>(
   pods: CopiedPod[],
   notes: {
-    outputStyleNotes: TO[]
-    skillNotes: TS[]
-    repositoryNotes: TR[]
-    subAgentNotes: TSA[]
-    commandNotes: TC[]
-    mcpServerNotes: TM[]
+    repositoryNotes: TR[];
+    commandNotes: TC[];
   },
   getBoundKeys: {
-    outputStyleNote: (n: TO) => string | null
-    skillNote: (n: TS) => string | null
-    repositoryNote: (n: TR) => string | null
-    subAgentNote: (n: TSA) => string | null
-    commandNote: (n: TC) => string | null
-    mcpServerNote: (n: TM) => string | null
-  }
+    repositoryNote: (n: TR) => string | null;
+    commandNote: (n: TC) => string | null;
+  },
 ): BoundingBox {
-  const bounds = createInitialBounds()
+  const bounds = createInitialBounds();
 
   for (const pod of pods) {
-    updateBoundingBox(bounds, pod.x, pod.y, POD_WIDTH, POD_HEIGHT)
+    updateBoundingBox(bounds, pod.x, pod.y, POD_WIDTH, POD_HEIGHT);
   }
 
   updateBoundsForUnboundNotes(bounds, [
-    toUnboundNoteEntry(notes.outputStyleNotes, getBoundKeys.outputStyleNote),
-    toUnboundNoteEntry(notes.skillNotes, getBoundKeys.skillNote),
     toUnboundNoteEntry(notes.repositoryNotes, getBoundKeys.repositoryNote),
-    toUnboundNoteEntry(notes.subAgentNotes, getBoundKeys.subAgentNote),
     toUnboundNoteEntry(notes.commandNotes, getBoundKeys.commandNote),
-    toUnboundNoteEntry(notes.mcpServerNotes, getBoundKeys.mcpServerNote),
-  ])
+  ]);
 
-  return bounds
+  return bounds;
 }
 
 function calculateOffsets(
   boundingBox: BoundingBox,
-  targetPosition: { x: number; y: number }
+  targetPosition: { x: number; y: number },
 ): { offsetX: number; offsetY: number } {
-  const centerX = (boundingBox.minX + boundingBox.maxX) / 2
-  const centerY = (boundingBox.minY + boundingBox.maxY) / 2
+  const centerX = (boundingBox.minX + boundingBox.maxX) / 2;
+  const centerY = (boundingBox.minY + boundingBox.maxY) / 2;
 
   return {
     offsetX: targetPosition.x - centerX,
-    offsetY: targetPosition.y - centerY
-  }
+    offsetY: targetPosition.y - centerY,
+  };
 }
 
-const PASTE_NAME_MAX_COUNTER = 9999
-const SUFFIX_MAX_LENGTH = 7
+const PASTE_NAME_MAX_COUNTER = 9999;
+const SUFFIX_MAX_LENGTH = 7;
 
-export function generatePasteName(originalName: string, existingNames: Set<string>): string {
-  const suffixPattern = / \((\d+)\)$/
-  const match = originalName.match(suffixPattern)
-  const baseName = match ? originalName.slice(0, -match[0].length) : originalName
+export function generatePasteName(
+  originalName: string,
+  existingNames: Set<string>,
+): string {
+  const suffixPattern = / \((\d+)\)$/;
+  const match = originalName.match(suffixPattern);
+  const baseName = match
+    ? originalName.slice(0, -match[0].length)
+    : originalName;
 
-  const maxBaseLength = MAX_POD_NAME_LENGTH - SUFFIX_MAX_LENGTH
-  const safeBaseName = baseName.length > maxBaseLength ? baseName.slice(0, maxBaseLength) : baseName
+  const maxBaseLength = MAX_POD_NAME_LENGTH - SUFFIX_MAX_LENGTH;
+  const safeBaseName =
+    baseName.length > maxBaseLength
+      ? baseName.slice(0, maxBaseLength)
+      : baseName;
 
-  let counter = 1
-  let candidate = `${safeBaseName} (${counter})`
+  let counter = 1;
+  let candidate = `${safeBaseName} (${counter})`;
   while (existingNames.has(candidate) && counter < PASTE_NAME_MAX_COUNTER) {
-    counter++
-    candidate = `${safeBaseName} (${counter})`
+    counter++;
+    candidate = `${safeBaseName} (${counter})`;
   }
-  return candidate
+  return candidate;
 }
 
 export function transformPods(
   pods: CopiedPod[],
   offset: { offsetX: number; offsetY: number },
-  existingNames: Set<string>
+  existingNames: Set<string>,
 ): PastePodItem[] {
-  const nameSet = new Set(existingNames)
-  return pods.map(pod => {
-    const newName = generatePasteName(pod.name, nameSet)
-    nameSet.add(newName)
+  const nameSet = new Set(existingNames);
+  return pods.map((pod) => {
+    const newName = generatePasteName(pod.name, nameSet);
+    nameSet.add(newName);
     return {
       originalId: pod.id,
       name: newName,
       x: pod.x + offset.offsetX,
       y: pod.y + offset.offsetY,
       rotation: pod.rotation,
-      outputStyleId: pod.outputStyleId,
-      skillIds: pod.skillIds,
-      subAgentIds: pod.subAgentIds,
-      model: pod.model,
+      provider: pod.provider,
+      providerConfig: pod.providerConfig,
+      mcpServerNames: pod.mcpServerNames,
+      pluginIds: pod.pluginIds,
       repositoryId: pod.repositoryId,
       commandId: pod.commandId,
-    }
-  })
+    };
+  });
 }
 
 function transformNotes<
-  TSource extends { x: number; y: number; name: string; originalPosition: { x: number; y: number } | null },
-  TResult
+  TSource extends {
+    x: number;
+    y: number;
+    name: string;
+    originalPosition: { x: number; y: number } | null;
+  },
+  TResult,
 >(
   notes: TSource[],
   offset: { offsetX: number; offsetY: number },
   getBoundKey: (note: TSource) => string | null,
-  mapFn: (note: TSource, position: { x: number; y: number }) => TResult
+  mapFn: (note: TSource, position: { x: number; y: number }) => TResult,
 ): TResult[] {
-  return notes.map(note => {
-    const isBound = getBoundKey(note) !== null
+  return notes.map((note) => {
+    const isBound = getBoundKey(note) !== null;
     const position = {
       x: isBound ? 0 : note.x + offset.offsetX,
       y: isBound ? 0 : note.y + offset.offsetY,
-    }
-    return mapFn(note, position)
-  })
+    };
+    return mapFn(note, position);
+  });
 }
 
-function transformConnections(connections: CopiedConnection[]): PasteConnectionItem[] {
-  return connections.map(connection => ({
+function transformConnections(
+  connections: CopiedConnection[],
+): PasteConnectionItem[] {
+  return connections.map((connection) => ({
     originalSourcePodId: connection.sourcePodId,
     sourceAnchor: connection.sourceAnchor,
     originalTargetPodId: connection.targetPodId,
     targetAnchor: connection.targetAnchor,
     triggerMode: connection.triggerMode,
-  }))
+  }));
 }
 
 type ClipboardData = {
-  pods: CopiedPod[]
-  outputStyleNotes: CopiedOutputStyleNote[]
-  skillNotes: CopiedSkillNote[]
-  repositoryNotes: CopiedRepositoryNote[]
-  subAgentNotes: CopiedSubAgentNote[]
-  commandNotes: CopiedCommandNote[]
-  mcpServerNotes: CopiedMcpServerNote[]
-  connections: CopiedConnection[]
-}
+  pods: CopiedPod[];
+  repositoryNotes: CopiedRepositoryNote[];
+  commandNotes: CopiedCommandNote[];
+  connections: CopiedConnection[];
+};
 
-type CopiedNote = CopiedOutputStyleNote | CopiedSkillNote | CopiedRepositoryNote | CopiedSubAgentNote | CopiedCommandNote | CopiedMcpServerNote
+type CopiedNote = CopiedRepositoryNote | CopiedCommandNote;
 
 type NoteTransformConfig<TSource extends CopiedNote, TResult> = {
-  notes: TSource[]
-  getBoundKey: (note: TSource) => string | null
-  mapFn: (note: TSource, position: { x: number; y: number }) => TResult
-}
+  notes: TSource[];
+  getBoundKey: (note: TSource) => string | null;
+  mapFn: (note: TSource, position: { x: number; y: number }) => TResult;
+};
 
 function isEmptyClipboard(clipboardData: ClipboardData): boolean {
-  const { pods, outputStyleNotes, skillNotes, repositoryNotes, subAgentNotes, commandNotes, mcpServerNotes } = clipboardData
+  const { pods, repositoryNotes, commandNotes } = clipboardData;
   return (
     pods.length === 0 &&
-    outputStyleNotes.length === 0 &&
-    skillNotes.length === 0 &&
     repositoryNotes.length === 0 &&
-    subAgentNotes.length === 0 &&
-    commandNotes.length === 0 &&
-    mcpServerNotes.length === 0
-  )
+    commandNotes.length === 0
+  );
 }
 
 export function calculatePastePositions(
   targetPosition: { x: number; y: number },
   clipboardData: ClipboardData,
-  existingNames: Set<string>
+  existingNames: Set<string>,
 ): {
-  pods: PastePodItem[]
-  outputStyleNotes: PasteOutputStyleNoteItem[]
-  skillNotes: PasteSkillNoteItem[]
-  repositoryNotes: PasteRepositoryNoteItem[]
-  subAgentNotes: PasteSubAgentNoteItem[]
-  commandNotes: PasteCommandNoteItem[]
-  mcpServerNotes: PasteMcpServerNoteItem[]
-  connections: PasteConnectionItem[]
+  pods: PastePodItem[];
+  repositoryNotes: PasteRepositoryNoteItem[];
+  commandNotes: PasteCommandNoteItem[];
+  connections: PasteConnectionItem[];
 } {
-  const { pods, outputStyleNotes, skillNotes, repositoryNotes, subAgentNotes, commandNotes, mcpServerNotes, connections } = clipboardData
+  const { pods, repositoryNotes, commandNotes, connections } = clipboardData;
 
   if (isEmptyClipboard(clipboardData)) {
-    return { pods: [], outputStyleNotes: [], skillNotes: [], repositoryNotes: [], subAgentNotes: [], commandNotes: [], mcpServerNotes: [], connections: [] }
+    return {
+      pods: [],
+      repositoryNotes: [],
+      commandNotes: [],
+      connections: [],
+    };
   }
 
-  const boundingBox = calculateBoundingBox(pods, {
-    outputStyleNotes,
-    skillNotes,
-    repositoryNotes,
-    subAgentNotes,
-    commandNotes,
-    mcpServerNotes,
-  }, {
-    outputStyleNote: note => note.boundToPodId,
-    skillNote: note => note.boundToPodId,
-    repositoryNote: note => note.boundToOriginalPodId,
-    subAgentNote: note => note.boundToPodId,
-    commandNote: note => note.boundToOriginalPodId,
-    mcpServerNote: note => note.boundToPodId,
-  })
+  const boundingBox = calculateBoundingBox(
+    pods,
+    {
+      repositoryNotes,
+      commandNotes,
+    },
+    {
+      repositoryNote: (note) => note.boundToOriginalPodId,
+      commandNote: (note) => note.boundToOriginalPodId,
+    },
+  );
 
-  const offset = calculateOffsets(boundingBox, targetPosition)
+  const offset = calculateOffsets(boundingBox, targetPosition);
 
-  function applyTransform<TSource extends CopiedNote, TResult>(config: NoteTransformConfig<TSource, TResult>): TResult[] {
-    return transformNotes(config.notes, offset, config.getBoundKey, config.mapFn)
+  function applyTransform<TSource extends CopiedNote, TResult>(
+    config: NoteTransformConfig<TSource, TResult>,
+  ): TResult[] {
+    return transformNotes(
+      config.notes,
+      offset,
+      config.getBoundKey,
+      config.mapFn,
+    );
   }
 
   return {
     pods: transformPods(pods, offset, existingNames),
-    outputStyleNotes: applyTransform<CopiedOutputStyleNote, PasteOutputStyleNoteItem>({
-      notes: outputStyleNotes,
-      getBoundKey: note => note.boundToPodId,
-      mapFn: (note, position) => ({ outputStyleId: note.outputStyleId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
-    }),
-    skillNotes: applyTransform<CopiedSkillNote, PasteSkillNoteItem>({
-      notes: skillNotes,
-      getBoundKey: note => note.boundToPodId,
-      mapFn: (note, position) => ({ skillId: note.skillId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
-    }),
-    repositoryNotes: applyTransform<CopiedRepositoryNote, PasteRepositoryNoteItem>({
+    repositoryNotes: applyTransform<
+      CopiedRepositoryNote,
+      PasteRepositoryNoteItem
+    >({
       notes: repositoryNotes,
-      getBoundKey: note => note.boundToOriginalPodId,
-      mapFn: (note, position) => ({ repositoryId: note.repositoryId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToOriginalPodId, originalPosition: note.originalPosition }),
-    }),
-    subAgentNotes: applyTransform<CopiedSubAgentNote, PasteSubAgentNoteItem>({
-      notes: subAgentNotes,
-      getBoundKey: note => note.boundToPodId,
-      mapFn: (note, position) => ({ subAgentId: note.subAgentId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
+      getBoundKey: (note) => note.boundToOriginalPodId,
+      mapFn: (note, position) => ({
+        repositoryId: note.repositoryId,
+        name: note.name,
+        x: position.x,
+        y: position.y,
+        boundToOriginalPodId: note.boundToOriginalPodId,
+        originalPosition: note.originalPosition,
+      }),
     }),
     commandNotes: applyTransform<CopiedCommandNote, PasteCommandNoteItem>({
       notes: commandNotes,
-      getBoundKey: note => note.boundToOriginalPodId,
-      mapFn: (note, position) => ({ commandId: note.commandId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToOriginalPodId, originalPosition: note.originalPosition }),
-    }),
-    mcpServerNotes: applyTransform<CopiedMcpServerNote, PasteMcpServerNoteItem>({
-      notes: mcpServerNotes,
-      getBoundKey: note => note.boundToPodId,
-      mapFn: (note, position) => ({ mcpServerId: note.mcpServerId, name: note.name, x: position.x, y: position.y, boundToOriginalPodId: note.boundToPodId, originalPosition: note.originalPosition }),
+      getBoundKey: (note) => note.boundToOriginalPodId,
+      mapFn: (note, position) => ({
+        commandId: note.commandId,
+        name: note.name,
+        x: position.x,
+        y: position.y,
+        boundToOriginalPodId: note.boundToOriginalPodId,
+        originalPosition: note.originalPosition,
+      }),
     }),
     connections: transformConnections(connections),
-  }
+  };
 }

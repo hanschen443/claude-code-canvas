@@ -32,10 +32,6 @@ class WebhookProvider implements IntegrationProvider {
 
   readonly createAppSchema = z.object({});
 
-  readonly bindSchema = z.object({
-    resourceId: z.literal("*"),
-  });
-
   validateCreate(config: IntegrationAppConfig): Result<void> {
     const name = config.name as string | undefined;
     if (name !== undefined) {

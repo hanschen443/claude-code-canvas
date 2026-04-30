@@ -26,6 +26,7 @@ function findRunOrEmitNotFound(
       connectionId,
       event,
       createI18nError("errors.runNotFound"),
+      canvasId,
       requestId,
       undefined,
       "NOT_FOUND",

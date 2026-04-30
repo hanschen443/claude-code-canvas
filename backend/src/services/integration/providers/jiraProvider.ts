@@ -163,13 +163,6 @@ class JiraProvider implements IntegrationProvider {
     webhookSecret: z.string().min(16, "Webhook Secret 至少需要 16 個字元"),
   });
 
-  readonly bindSchema = z.object({
-    resourceId: z.string(),
-    extra: z.object({
-      eventFilter: z.enum(["all", "status_changed"]),
-    }),
-  });
-
   validateCreate(config: IntegrationAppConfig): Result<void> {
     const name = config.name as string | undefined;
     if (name !== undefined) {

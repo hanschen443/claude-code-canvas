@@ -1,4 +1,4 @@
-import { WebSocketRequestEvents, WebSocketResponseEvents } from '../../schemas';
+import { WebSocketRequestEvents, WebSocketResponseEvents } from "../../schemas";
 import {
   repositoryListSchema,
   repositoryCreateSchema,
@@ -17,7 +17,7 @@ import {
   repositoryCheckoutBranchSchema,
   repositoryDeleteBranchSchema,
   repositoryPullLatestSchema,
-} from '../../schemas';
+} from "../../schemas";
 import {
   handleRepositoryList,
   handleRepositoryCreate,
@@ -25,23 +25,26 @@ import {
   handlePodBindRepository,
   handlePodUnbindRepository,
   handleRepositoryDelete,
-} from '../repositoryHandlers.js';
+} from "../repositoryHandlers.js";
 import {
   handleRepositoryGitClone,
   handleRepositoryCheckGit,
-} from '../repositoryCloneHandlers.js';
-import { handleRepositoryWorktreeCreate } from '../repositoryWorktreeHandlers.js';
+} from "../repositoryCloneHandlers.js";
+import { handleRepositoryWorktreeCreate } from "../repositoryWorktreeHandlers.js";
 import {
   handleRepositoryGetLocalBranches,
   handleRepositoryCheckDirty,
   handleRepositoryCheckoutBranch,
   handleRepositoryDeleteBranch,
-} from '../repositoryBranchHandlers.js';
-import { handleRepositoryPullLatest } from '../repositoryPullHandlers.js';
-import { createHandlerGroup, createNoteHandlerGroupEntries } from './createHandlerGroup.js';
+} from "../repositoryBranchHandlers.js";
+import { handleRepositoryPullLatest } from "../repositoryPullHandlers.js";
+import {
+  createHandlerGroup,
+  createNoteHandlerGroupEntries,
+} from "./createHandlerGroup.js";
 
 export const repositoryHandlerGroup = createHandlerGroup({
-  name: 'repository',
+  name: "repository",
   handlers: [
     {
       event: WebSocketRequestEvents.REPOSITORY_LIST,
@@ -57,7 +60,12 @@ export const repositoryHandlerGroup = createHandlerGroup({
     },
     ...createNoteHandlerGroupEntries(
       repositoryNoteHandlers,
-      { create: repositoryNoteCreateSchema, list: repositoryNoteListSchema, update: repositoryNoteUpdateSchema, delete: repositoryNoteDeleteSchema },
+      {
+        create: repositoryNoteCreateSchema,
+        list: repositoryNoteListSchema,
+        update: repositoryNoteUpdateSchema,
+        delete: repositoryNoteDeleteSchema,
+      },
       {
         create: WebSocketRequestEvents.REPOSITORY_NOTE_CREATE,
         list: WebSocketRequestEvents.REPOSITORY_NOTE_LIST,
@@ -67,7 +75,7 @@ export const repositoryHandlerGroup = createHandlerGroup({
         listResult: WebSocketResponseEvents.REPOSITORY_NOTE_LIST_RESULT,
         updated: WebSocketResponseEvents.REPOSITORY_NOTE_UPDATED,
         deleted: WebSocketResponseEvents.REPOSITORY_NOTE_DELETED,
-      }
+      },
     ),
     {
       event: WebSocketRequestEvents.POD_BIND_REPOSITORY,

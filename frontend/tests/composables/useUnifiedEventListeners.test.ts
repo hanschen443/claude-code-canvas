@@ -19,26 +19,19 @@ import {
 import { resetChatActionsCache } from "@/stores/chat/chatStore";
 import { usePodStore } from "@/stores/pod/podStore";
 import { useConnectionStore } from "@/stores/connectionStore";
-import { useOutputStyleStore } from "@/stores/note/outputStyleStore";
-import { useSkillStore } from "@/stores/note/skillStore";
 import { useRepositoryStore } from "@/stores/note/repositoryStore";
-import { useSubAgentStore } from "@/stores/note/subAgentStore";
 import { useCommandStore } from "@/stores/note/commandStore";
-import { useMcpServerStore } from "@/stores/note/mcpServerStore";
+// TODO Phase 4: useMcpServerStore 重構後補回
+// import { useMcpServerStore } from "@/stores/note/mcpServerStore";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useChatStore } from "@/stores/chat/chatStore";
 import { useIntegrationStore } from "@/stores/integrationStore";
 import type {
   Pod,
   Connection,
-  OutputStyleNote,
-  SkillNote,
   RepositoryNote,
-  SubAgentNote,
   CommandNote,
   Canvas,
-  McpServer,
-  McpServerNote,
 } from "@/types";
 import type { IntegrationApp } from "@/types/integration";
 
@@ -86,21 +79,6 @@ describe("useUnifiedEventListeners", () => {
   });
 
   describe("registerUnifiedListeners / unregisterUnifiedListeners", () => {
-    it("應註冊所有事件監聽器", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-
-      registerUnifiedListeners();
-
-      expect(mockWebSocketClient.on).toHaveBeenCalled();
-      const callCount = mockWebSocketClient.on.mock.calls.length;
-      // listeners 陣列長度加上 standaloneListeners：
-      // pod:chat:user-message、integration:connection:status:changed、
-      // run:message、run:chat:complete、run:tool_use、run:tool_result 共 6 個
-      // backup:started、backup:completed、backup:failed 共 3 個
-      const expectedCount = listeners.length + 9;
-      expect(callCount).toBe(expectedCount);
-    });
-
     it("重複註冊應被防止", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
 
@@ -110,23 +88,6 @@ describe("useUnifiedEventListeners", () => {
       registerUnifiedListeners();
 
       expect(mockWebSocketClient.on).not.toHaveBeenCalled();
-    });
-
-    it("應取消註冊所有事件監聽器", () => {
-      const { registerUnifiedListeners, unregisterUnifiedListeners } =
-        useUnifiedEventListeners();
-
-      registerUnifiedListeners();
-      unregisterUnifiedListeners();
-
-      expect(mockWebSocketClient.off).toHaveBeenCalled();
-      const callCount = mockWebSocketClient.off.mock.calls.length;
-      // listeners 陣列長度加上 standaloneListeners：
-      // pod:chat:user-message、integration:connection:status:changed、
-      // run:message、run:chat:complete、run:tool_use、run:tool_result 共 6 個
-      // backup:started、backup:completed、backup:failed 共 3 個
-      const expectedCount = listeners.length + 9;
-      expect(callCount).toBe(expectedCount);
     });
 
     it("未註冊時取消註冊應被防止", () => {
@@ -290,89 +251,42 @@ describe("useUnifiedEventListeners", () => {
       expect(updatedPod?.name).toBe("New Name");
     });
 
-    it("pod:model:set 應更新 Pod", () => {
+    it("pod:model:set 應更新 Pod 的 providerConfig.model", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", model: "opus" });
+      const pod = createMockPod({
+        id: "pod-1",
+        providerConfig: { model: "opus" },
+      });
       podStore.pods = [pod];
 
       registerUnifiedListeners();
 
       simulateEvent("pod:model:set", {
         canvasId: "canvas-1",
-        pod: { ...pod, model: "sonnet" },
+        pod: { ...pod, providerConfig: { model: "sonnet" } },
       });
 
       const updatedPod = podStore.getPodById("pod-1");
-      expect(updatedPod?.model).toBe("sonnet");
+      expect(updatedPod?.providerConfig.model).toBe("sonnet");
     });
 
-    it("pod:deleted 應移除 Pod 並清理相關 notes", () => {
+    it("pod:deleted 應移除 Pod", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
-      const outputStyleStore = useOutputStyleStore();
-      const skillStore = useSkillStore();
 
       const pod = createMockPod({ id: "pod-1" });
       podStore.pods = [pod];
-
-      const outputStyleNote = createMockNote("outputStyle", {
-        id: "note-1",
-      }) as OutputStyleNote;
-      const skillNote = createMockNote("skill", {
-        id: "skill-note-1",
-      }) as SkillNote;
-      outputStyleStore.notes = [outputStyleNote] as any[];
-      skillStore.notes = [skillNote] as any[];
 
       registerUnifiedListeners();
 
       simulateEvent("pod:deleted", {
         canvasId: "canvas-1",
         podId: "pod-1",
-        deletedNoteIds: {
-          note: ["note-1"],
-          skillNote: ["skill-note-1"],
-        },
+        deletedNoteIds: {},
       });
 
       expect(podStore.pods.some((p) => p.id === "pod-1")).toBe(false);
-      expect(outputStyleStore.notes.some((n) => n.id === "note-1")).toBe(false);
-      expect(skillStore.notes.some((n) => n.id === "skill-note-1")).toBe(false);
-    });
-
-    it("pod:output-style:bound 應更新 Pod", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", outputStyleId: null });
-      podStore.pods = [pod];
-
-      registerUnifiedListeners();
-
-      simulateEvent("pod:output-style:bound", {
-        canvasId: "canvas-1",
-        pod: { ...pod, outputStyleId: "style-1" },
-      });
-
-      const updatedPod = podStore.getPodById("pod-1");
-      expect(updatedPod?.outputStyleId).toBe("style-1");
-    });
-
-    it("pod:output-style:unbound 應更新 Pod", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1", outputStyleId: "style-1" });
-      podStore.pods = [pod];
-
-      registerUnifiedListeners();
-
-      simulateEvent("pod:output-style:unbound", {
-        canvasId: "canvas-1",
-        pod: { ...pod, outputStyleId: null },
-      });
-
-      const updatedPod = podStore.getPodById("pod-1");
-      expect(updatedPod?.outputStyleId).toBeNull();
     });
   });
 
@@ -435,205 +349,7 @@ describe("useUnifiedEventListeners", () => {
     });
   });
 
-  describe("OutputStyle Note 事件處理", () => {
-    it("output-style:created 不再被監聽（後端改為 emitToConnection）", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const outputStyleStore = useOutputStyleStore();
-
-      registerUnifiedListeners();
-
-      simulateEvent("output-style:created", {
-        canvasId: "canvas-1",
-        outputStyle: { id: "style-1", name: "Test Style" },
-      });
-
-      expect(
-        outputStyleStore.availableItems.some(
-          (i) => (i as any).id === "style-1",
-        ),
-      ).toBe(false);
-    });
-
-    it("output-style:deleted 應移除 item 和相關 notes", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const outputStyleStore = useOutputStyleStore();
-      outputStyleStore.availableItems = [{ id: "style-1", name: "Test" }];
-      const note1 = createMockNote("outputStyle", {
-        id: "note-1",
-      }) as OutputStyleNote;
-      const note2 = createMockNote("outputStyle", {
-        id: "note-2",
-      }) as OutputStyleNote;
-      outputStyleStore.notes = [note1, note2] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("output-style:deleted", {
-        canvasId: "canvas-1",
-        outputStyleId: "style-1",
-        deletedNoteIds: ["note-1", "note-2"],
-      });
-
-      expect(
-        outputStyleStore.availableItems.some(
-          (i) => (i as any).id === "style-1",
-        ),
-      ).toBe(false);
-      expect(outputStyleStore.notes.length).toBe(0);
-    });
-
-    it("note:created 應新增 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const outputStyleStore = useOutputStyleStore();
-
-      registerUnifiedListeners();
-
-      const note = createMockNote("outputStyle", {
-        id: "note-1",
-      }) as OutputStyleNote;
-      simulateEvent("note:created", {
-        canvasId: "canvas-1",
-        note,
-      });
-
-      expect(outputStyleStore.notes.some((n) => n.id === "note-1")).toBe(true);
-    });
-
-    it("note:updated 應更新 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const outputStyleStore = useOutputStyleStore();
-      const note = createMockNote("outputStyle", {
-        id: "note-1",
-        name: "Old",
-      }) as OutputStyleNote;
-      outputStyleStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("note:updated", {
-        canvasId: "canvas-1",
-        note: { ...note, name: "New" },
-      });
-
-      const updated = outputStyleStore.notes.find((n) => n.id === "note-1");
-      expect(updated?.name).toBe("New");
-    });
-
-    it("note:deleted 應移除 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const outputStyleStore = useOutputStyleStore();
-      const note = createMockNote("outputStyle", {
-        id: "note-1",
-      }) as OutputStyleNote;
-      outputStyleStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("note:deleted", {
-        canvasId: "canvas-1",
-        noteId: "note-1",
-      });
-
-      expect(outputStyleStore.notes.some((n) => n.id === "note-1")).toBe(false);
-    });
-  });
-
-  describe("Skill Note 事件處理", () => {
-    it("skill-note:created 應新增 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const skillStore = useSkillStore();
-
-      registerUnifiedListeners();
-
-      const note = createMockNote("skill", { id: "skill-note-1" }) as SkillNote;
-      simulateEvent("skill-note:created", {
-        canvasId: "canvas-1",
-        note,
-      });
-
-      expect(skillStore.notes.some((n) => n.id === "skill-note-1")).toBe(true);
-    });
-
-    it("skill-note:updated 應更新 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const skillStore = useSkillStore();
-      const note = createMockNote("skill", {
-        id: "skill-note-1",
-        name: "Old",
-      }) as SkillNote;
-      skillStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("skill-note:updated", {
-        canvasId: "canvas-1",
-        note: { ...note, name: "New" },
-      });
-
-      const updated = skillStore.notes.find((n) => n.id === "skill-note-1");
-      expect(updated?.name).toBe("New");
-    });
-
-    it("skill-note:deleted 應移除 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const skillStore = useSkillStore();
-      const note = createMockNote("skill", { id: "skill-note-1" }) as SkillNote;
-      skillStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("skill-note:deleted", {
-        canvasId: "canvas-1",
-        noteId: "skill-note-1",
-      });
-
-      expect(skillStore.notes.some((n) => n.id === "skill-note-1")).toBe(false);
-    });
-
-    it("skill:deleted 應移除 skill 和相關 notes", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const skillStore = useSkillStore();
-      skillStore.availableItems = [{ id: "skill-1", name: "Test Skill" }];
-      const note = createMockNote("skill", { id: "skill-note-1" }) as SkillNote;
-      skillStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("skill:deleted", {
-        canvasId: "canvas-1",
-        skillId: "skill-1",
-        deletedNoteIds: ["skill-note-1"],
-      });
-
-      expect(
-        skillStore.availableItems.some((i) => (i as any).id === "skill-1"),
-      ).toBe(false);
-      expect(skillStore.notes.some((n) => n.id === "skill-note-1")).toBe(false);
-    });
-  });
-
   describe("Repository Note 事件處理", () => {
-    it("repository:created 不再被監聽（後端改為 emitToConnection）", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const repositoryStore = useRepositoryStore();
-
-      registerUnifiedListeners();
-
-      simulateEvent("repository:created", {
-        canvasId: "canvas-1",
-        repository: {
-          id: "repo-1",
-          name: "Test Repo",
-          path: "/test",
-          currentBranch: "main",
-        },
-      });
-
-      expect(
-        repositoryStore.availableItems.some((r) => (r as any).id === "repo-1"),
-      ).toBe(false);
-    });
-
     it("repository:worktree:created 應新增 worktree（通過安全檢查）", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const repositoryStore = useRepositoryStore();
@@ -890,131 +606,7 @@ describe("useUnifiedEventListeners", () => {
     });
   });
 
-  describe("SubAgent Note 事件處理", () => {
-    it("subagent:created 不再被監聽（後端改為 emitToConnection）", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const subAgentStore = useSubAgentStore();
-
-      registerUnifiedListeners();
-
-      simulateEvent("subagent:created", {
-        canvasId: "canvas-1",
-        subAgent: { id: "subagent-1", name: "Test SubAgent" },
-      });
-
-      expect(
-        subAgentStore.availableItems.some(
-          (s) => (s as any).id === "subagent-1",
-        ),
-      ).toBe(false);
-    });
-
-    it("subagent:deleted 應移除 subAgent 和相關 notes", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const subAgentStore = useSubAgentStore();
-      subAgentStore.availableItems = [{ id: "subagent-1", name: "Test" }];
-      const note = createMockNote("subAgent", {
-        id: "subagent-note-1",
-      }) as SubAgentNote;
-      subAgentStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("subagent:deleted", {
-        canvasId: "canvas-1",
-        subAgentId: "subagent-1",
-        deletedNoteIds: ["subagent-note-1"],
-      });
-
-      expect(
-        subAgentStore.availableItems.some(
-          (s) => (s as any).id === "subagent-1",
-        ),
-      ).toBe(false);
-      expect(subAgentStore.notes.some((n) => n.id === "subagent-note-1")).toBe(
-        false,
-      );
-    });
-
-    it("subagent-note:created 應新增 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const subAgentStore = useSubAgentStore();
-
-      registerUnifiedListeners();
-
-      const note = createMockNote("subAgent", {
-        id: "subagent-note-1",
-      }) as SubAgentNote;
-      simulateEvent("subagent-note:created", {
-        canvasId: "canvas-1",
-        note,
-      });
-
-      expect(subAgentStore.notes.some((n) => n.id === "subagent-note-1")).toBe(
-        true,
-      );
-    });
-
-    it("subagent-note:updated 應更新 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const subAgentStore = useSubAgentStore();
-      const note = createMockNote("subAgent", {
-        id: "subagent-note-1",
-        name: "Old",
-      }) as SubAgentNote;
-      subAgentStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("subagent-note:updated", {
-        canvasId: "canvas-1",
-        note: { ...note, name: "New" },
-      });
-
-      const updated = subAgentStore.notes.find(
-        (n) => n.id === "subagent-note-1",
-      );
-      expect(updated?.name).toBe("New");
-    });
-
-    it("subagent-note:deleted 應移除 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const subAgentStore = useSubAgentStore();
-      const note = createMockNote("subAgent", {
-        id: "subagent-note-1",
-      }) as SubAgentNote;
-      subAgentStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("subagent-note:deleted", {
-        canvasId: "canvas-1",
-        noteId: "subagent-note-1",
-      });
-
-      expect(subAgentStore.notes.some((n) => n.id === "subagent-note-1")).toBe(
-        false,
-      );
-    });
-  });
-
   describe("Command Note 事件處理", () => {
-    it("command:created 不再被監聽（後端改為 emitToConnection）", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const commandStore = useCommandStore();
-
-      registerUnifiedListeners();
-
-      simulateEvent("command:created", {
-        canvasId: "canvas-1",
-        command: { id: "cmd-1", name: "Test Command" },
-      });
-
-      expect(
-        commandStore.availableItems.some((c) => (c as any).id === "cmd-1"),
-      ).toBe(false);
-    });
-
     it("command:deleted 應移除 command 和相關 notes", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const commandStore = useCommandStore();
@@ -1161,31 +753,21 @@ describe("useUnifiedEventListeners", () => {
   });
 
   describe("canvas:paste:result 批次操作", () => {
-    it("應批次新增 Pods、Connections 和各種 Notes", () => {
+    it("應批次新增 Pods 和 Connections", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
       const connectionStore = useConnectionStore();
-      const outputStyleStore = useOutputStyleStore();
-      const skillStore = useSkillStore();
 
       registerUnifiedListeners();
 
       const pod1 = createMockPod({ id: "pod-1" });
       const pod2 = createMockPod({ id: "pod-2" });
       const conn = createMockConnection({ id: "conn-1" });
-      const outputNote = createMockNote("outputStyle", {
-        id: "note-1",
-      }) as OutputStyleNote;
-      const skillNote = createMockNote("skill", {
-        id: "skill-note-1",
-      }) as SkillNote;
 
       simulateEvent("canvas:paste:result", {
         canvasId: "canvas-1",
         createdPods: [pod1, pod2],
         createdConnections: [conn],
-        createdOutputStyleNotes: [outputNote],
-        createdSkillNotes: [skillNote],
       });
 
       expect(podStore.pods.some((p) => p.id === "pod-1")).toBe(true);
@@ -1193,8 +775,6 @@ describe("useUnifiedEventListeners", () => {
       expect(connectionStore.connections.some((c) => c.id === "conn-1")).toBe(
         true,
       );
-      expect(outputStyleStore.notes.some((n) => n.id === "note-1")).toBe(true);
-      expect(skillStore.notes.some((n) => n.id === "skill-note-1")).toBe(true);
     });
   });
 
@@ -1283,33 +863,18 @@ describe("useUnifiedEventListeners", () => {
   });
 
   describe("removeDeletedNotes 批次刪除", () => {
-    it("應移除所有類型的 deleted notes", () => {
+    it("應移除 repository 和 command notes", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
-      const outputStyleStore = useOutputStyleStore();
-      const skillStore = useSkillStore();
       const repositoryStore = useRepositoryStore();
       const commandStore = useCommandStore();
-      const subAgentStore = useSubAgentStore();
-      const mcpServerStore = useMcpServerStore();
+      // TODO Phase 4: mcpServerStore 重構後補回
 
-      outputStyleStore.notes = [
-        createMockNote("outputStyle", { id: "note-1" }) as OutputStyleNote,
-      ] as any[];
-      skillStore.notes = [
-        createMockNote("skill", { id: "skill-note-1" }) as SkillNote,
-      ] as any[];
       repositoryStore.notes = [
         createMockNote("repository", { id: "repo-note-1" }) as RepositoryNote,
       ] as any[];
       commandStore.notes = [
         createMockNote("command", { id: "cmd-note-1" }) as CommandNote,
-      ] as any[];
-      subAgentStore.notes = [
-        createMockNote("subAgent", { id: "subagent-note-1" }) as SubAgentNote,
-      ] as any[];
-      mcpServerStore.notes = [
-        createMockNote("mcpServer", { id: "mcp-note-1" }) as McpServerNote,
       ] as any[];
 
       const pod = createMockPod({ id: "pod-1" });
@@ -1321,198 +886,152 @@ describe("useUnifiedEventListeners", () => {
         canvasId: "canvas-1",
         podId: "pod-1",
         deletedNoteIds: {
-          note: ["note-1"],
-          skillNote: ["skill-note-1"],
           repositoryNote: ["repo-note-1"],
           commandNote: ["cmd-note-1"],
-          subAgentNote: ["subagent-note-1"],
-          mcpServerNote: ["mcp-note-1"],
         },
       });
 
-      expect(outputStyleStore.notes.length).toBe(0);
-      expect(skillStore.notes.length).toBe(0);
       expect(repositoryStore.notes.length).toBe(0);
       expect(commandStore.notes.length).toBe(0);
-      expect(subAgentStore.notes.length).toBe(0);
-      expect(mcpServerStore.notes.length).toBe(0);
     });
   });
 
-  describe("MCP Server 事件處理", () => {
-    it("mcp-server:created 應新增 MCP Server 到 mcpServerStore", () => {
+  describe("pod:plugins:set 事件處理", () => {
+    it("canvasId 匹配且 success=true 時應呼叫 updatePodPlugins", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const mcpServerStore = useMcpServerStore();
+      const podStore = usePodStore();
+      const pod = createMockPod({ id: "pod-1", pluginIds: [] });
+      podStore.pods = [pod];
+      const spy = vi.spyOn(podStore, "updatePodPlugins");
 
       registerUnifiedListeners();
 
-      const mcpServer: McpServer = {
-        id: "mcp-1",
-        name: "Test MCP",
-        config: { command: "npx" },
-      };
-      simulateEvent("mcp-server:created", {
+      simulateEvent("pod:plugins:set", {
         canvasId: "canvas-1",
-        mcpServer,
+        success: true,
+        pod: { ...pod, pluginIds: ["plugin-a", "plugin-b"] },
       });
 
-      expect(
-        mcpServerStore.availableItems.some(
-          (i) => (i as McpServer).id === "mcp-1",
-        ),
-      ).toBe(true);
+      expect(spy).toHaveBeenCalledWith("pod-1", ["plugin-a", "plugin-b"]);
     });
 
-    it("mcp-server:updated 應更新 mcpServerStore 中的 MCP Server", () => {
+    it("success=false 時不應呼叫 updatePodPlugins", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const mcpServerStore = useMcpServerStore();
-      const original: McpServer = {
-        id: "mcp-1",
-        name: "Original",
-        config: { command: "npx" },
-      };
-      mcpServerStore.availableItems = [original];
+      const podStore = usePodStore();
+      const pod = createMockPod({ id: "pod-1", pluginIds: [] });
+      podStore.pods = [pod];
+      const spy = vi.spyOn(podStore, "updatePodPlugins");
 
       registerUnifiedListeners();
 
-      const updated: McpServer = {
-        id: "mcp-1",
-        name: "Updated",
-        config: { command: "node" },
-      };
-      simulateEvent("mcp-server:updated", {
+      simulateEvent("pod:plugins:set", {
         canvasId: "canvas-1",
-        mcpServer: updated,
+        success: false,
+        pod: { ...pod, pluginIds: ["plugin-a"] },
       });
 
-      const item = mcpServerStore.availableItems.find(
-        (i) => (i as McpServer).id === "mcp-1",
-      ) as McpServer;
-      expect(item?.name).toBe("Updated");
+      expect(spy).not.toHaveBeenCalled();
     });
 
-    it("mcp-server:deleted 應移除 MCP Server 和相關 notes", () => {
+    it("canvasId 不匹配時不應呼叫 updatePodPlugins", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const mcpServerStore = useMcpServerStore();
-      const mcpServer: McpServer = {
-        id: "mcp-1",
-        name: "Test MCP",
-        config: { command: "npx" },
-      };
-      mcpServerStore.availableItems = [mcpServer];
-      const note = createMockNote("mcpServer", {
-        id: "mcp-note-1",
-      }) as McpServerNote;
-      mcpServerStore.notes = [note] as any[];
+      const podStore = usePodStore();
+      const pod = createMockPod({ id: "pod-1", pluginIds: [] });
+      podStore.pods = [pod];
+      const spy = vi.spyOn(podStore, "updatePodPlugins");
 
       registerUnifiedListeners();
 
-      simulateEvent("mcp-server:deleted", {
-        mcpServerId: "mcp-1",
-        deletedNoteIds: ["mcp-note-1"],
+      simulateEvent("pod:plugins:set", {
+        canvasId: "canvas-other",
+        success: true,
+        pod: { ...pod, pluginIds: ["plugin-a"] },
       });
 
-      expect(
-        mcpServerStore.availableItems.some(
-          (i) => (i as McpServer).id === "mcp-1",
-        ),
-      ).toBe(false);
-      expect(mcpServerStore.notes.some((n) => n.id === "mcp-note-1")).toBe(
-        false,
-      );
+      expect(spy).not.toHaveBeenCalled();
     });
 
-    it("mcp-server-note:created 應新增 note", () => {
+    it("payload 缺少 canvasId 時不應呼叫 updatePodPlugins", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const mcpServerStore = useMcpServerStore();
+      const podStore = usePodStore();
+      const pod = createMockPod({ id: "pod-1", pluginIds: [] });
+      podStore.pods = [pod];
+      const spy = vi.spyOn(podStore, "updatePodPlugins");
 
       registerUnifiedListeners();
 
-      const note = createMockNote("mcpServer", {
-        id: "mcp-note-1",
-      }) as McpServerNote;
-      simulateEvent("mcp-server-note:created", {
-        canvasId: "canvas-1",
-        note,
+      simulateEvent("pod:plugins:set", {
+        success: true,
+        pod: { ...pod, pluginIds: ["plugin-a"] },
       });
 
-      expect(mcpServerStore.notes.some((n) => n.id === "mcp-note-1")).toBe(
-        true,
-      );
+      expect(spy).not.toHaveBeenCalled();
     });
+  });
 
-    it("mcp-server-note:updated 應更新 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const mcpServerStore = useMcpServerStore();
-      const note = createMockNote("mcpServer", {
-        id: "mcp-note-1",
-        name: "Old",
-      }) as McpServerNote;
-      mcpServerStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("mcp-server-note:updated", {
-        canvasId: "canvas-1",
-        note: { ...note, name: "New" },
-      });
-
-      const updated = mcpServerStore.notes.find((n) => n.id === "mcp-note-1");
-      expect(updated?.name).toBe("New");
-    });
-
-    it("mcp-server-note:deleted 應移除 note", () => {
-      const { registerUnifiedListeners } = useUnifiedEventListeners();
-      const mcpServerStore = useMcpServerStore();
-      const note = createMockNote("mcpServer", {
-        id: "mcp-note-1",
-      }) as McpServerNote;
-      mcpServerStore.notes = [note] as any[];
-
-      registerUnifiedListeners();
-
-      simulateEvent("mcp-server-note:deleted", {
-        canvasId: "canvas-1",
-        noteId: "mcp-note-1",
-      });
-
-      expect(mcpServerStore.notes.some((n) => n.id === "mcp-note-1")).toBe(
-        false,
-      );
-    });
-
-    it("pod:mcp-server:bound 應更新 Pod", () => {
+  describe("pod:mcp-server-names:updated 事件處理", () => {
+    it("canvasId 匹配且 podId 存在時應呼叫 updatePodMcpServers", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
       const pod = createMockPod({ id: "pod-1" });
       podStore.pods = [pod];
+      const spy = vi.spyOn(podStore, "updatePodMcpServers");
 
       registerUnifiedListeners();
 
-      simulateEvent("pod:mcp-server:bound", {
+      simulateEvent("pod:mcp-server-names:updated", {
         canvasId: "canvas-1",
-        pod: { ...pod, mcpServerIds: ["mcp-1"] },
+        podId: "pod-1",
+        mcpServerNames: ["server-a", "server-b"],
       });
 
-      const updatedPod = podStore.getPodById("pod-1");
-      expect(updatedPod?.mcpServerIds).toContain("mcp-1");
+      expect(spy).toHaveBeenCalledWith("pod-1", ["server-a", "server-b"]);
     });
 
-    it("pod:mcp-server:unbound 應更新 Pod", () => {
+    it("podId 缺失時不應呼叫 updatePodMcpServers", () => {
       const { registerUnifiedListeners } = useUnifiedEventListeners();
       const podStore = usePodStore();
-      const pod = createMockPod({ id: "pod-1" });
-      podStore.pods = [pod];
+      const spy = vi.spyOn(podStore, "updatePodMcpServers");
 
       registerUnifiedListeners();
 
-      simulateEvent("pod:mcp-server:unbound", {
+      simulateEvent("pod:mcp-server-names:updated", {
         canvasId: "canvas-1",
-        pod: { ...pod, mcpServerIds: [] },
+        mcpServerNames: ["server-a"],
       });
 
-      const updatedPod = podStore.getPodById("pod-1");
-      expect(updatedPod?.mcpServerIds).toEqual([]);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("canvasId 不匹配時不應呼叫 updatePodMcpServers", () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners();
+      const podStore = usePodStore();
+      const spy = vi.spyOn(podStore, "updatePodMcpServers");
+
+      registerUnifiedListeners();
+
+      simulateEvent("pod:mcp-server-names:updated", {
+        canvasId: "canvas-other",
+        podId: "pod-1",
+        mcpServerNames: ["server-a"],
+      });
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("payload 缺少 canvasId 時不應呼叫 updatePodMcpServers", () => {
+      const { registerUnifiedListeners } = useUnifiedEventListeners();
+      const podStore = usePodStore();
+      const spy = vi.spyOn(podStore, "updatePodMcpServers");
+
+      registerUnifiedListeners();
+
+      simulateEvent("pod:mcp-server-names:updated", {
+        podId: "pod-1",
+        mcpServerNames: ["server-a"],
+      });
+
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 

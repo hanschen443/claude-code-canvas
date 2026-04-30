@@ -1,8 +1,8 @@
-import { v4 as uuidv4 } from 'uuid';
-import type { PersistedMessage, PersistedSubMessage } from '../types';
-import { Result, ok } from '../types';
-import { getStmts } from '../database/stmtsHelper.js';
-import { safeJsonParse } from '../utils/safeJsonParse.js';
+import { v4 as uuidv4 } from "uuid";
+import type { PersistedMessage, PersistedSubMessage } from "../types";
+import { Result, ok } from "../types";
+import { getStmts } from "../database/stmtsHelper.js";
+import { safeJsonParse } from "../utils/safeJsonParse.js";
 
 interface MessageRow {
   id: string;
@@ -17,10 +17,16 @@ interface MessageRow {
 function rowToMessage(row: MessageRow): PersistedMessage {
   return {
     id: row.id,
-    role: row.role as 'user' | 'assistant',
+    role: row.role as "user" | "assistant",
     content: row.content,
     timestamp: row.timestamp,
-    ...(row.sub_messages_json ? { subMessages: safeJsonParse<PersistedSubMessage[]>(row.sub_messages_json) ?? undefined } : {}),
+    ...(row.sub_messages_json
+      ? {
+          subMessages:
+            safeJsonParse<PersistedSubMessage[]>(row.sub_messages_json) ??
+            undefined,
+        }
+      : {}),
   };
 }
 
@@ -29,15 +35,24 @@ class MessageStore {
     return getStmts();
   }
 
+  /**
+   * 新增一則訊息到 DB。
+   *
+   * @param options.id - 可選的外部 id。當 caller 需要讓「外部資源（如附件目錄）的路徑」
+   *   與 message id 對齊時可傳入，例如拖檔觸發對話時由 handler 統一產生 chatMessageId，
+   *   同時傳給 attachmentWriter 與此方法，確保 DB 中 message id 與 attachments dir id 一致。
+   *   若未傳入，則維持原本內部 uuidv4() 行為。
+   */
   async addMessage(
     canvasId: string,
     podId: string,
-    role: 'user' | 'assistant',
+    role: "user" | "assistant",
     content: string,
-    subMessages?: PersistedSubMessage[]
+    subMessages?: PersistedSubMessage[],
+    options?: { id?: string },
   ): Promise<Result<PersistedMessage>> {
     const message: PersistedMessage = {
-      id: uuidv4(),
+      id: options?.id ?? uuidv4(),
       role,
       content,
       timestamp: new Date().toISOString(),
@@ -58,14 +73,20 @@ class MessageStore {
   }
 
   getMessages(podId: string): PersistedMessage[] {
-    return (this.stmts.message.selectByPodId.all(podId) as MessageRow[]).map(rowToMessage);
+    return (this.stmts.message.selectByPodId.all(podId) as MessageRow[]).map(
+      rowToMessage,
+    );
   }
 
   clearMessages(podId: string): void {
     this.stmts.message.deleteByPodId.run(podId);
   }
 
-  upsertMessage(canvasId: string, podId: string, message: PersistedMessage): void {
+  upsertMessage(
+    canvasId: string,
+    podId: string,
+    message: PersistedMessage,
+  ): void {
     this.stmts.message.upsert.run({
       $id: message.id,
       $podId: podId,
@@ -73,10 +94,11 @@ class MessageStore {
       $role: message.role,
       $content: message.content,
       $timestamp: message.timestamp,
-      $subMessagesJson: message.subMessages ? JSON.stringify(message.subMessages) : null,
+      $subMessagesJson: message.subMessages
+        ? JSON.stringify(message.subMessages)
+        : null,
     });
   }
-
 }
 
 export const messageStore = new MessageStore();

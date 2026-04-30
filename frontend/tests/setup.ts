@@ -71,11 +71,10 @@ config.global.plugins = [testI18n];
 
 // 修補 @/i18n module 的 global t 函式，使其也能正確處理測試環境中的字串。
 // 這樣非 Vue 元件（provider 等）直接呼叫的 t() 也會使用安全版本的 locale。
-import("../src/i18n").then((i18nModule) => {
-  const originalI18n = i18nModule.i18n;
-  // 替換 zh-TW messages 為修補後的版本
-  originalI18n.global.setLocaleMessage("zh-TW", zhTWTest);
-});
+// 使用 top-level await 確保 patch 在所有測試開始前完成，避免非同步 race condition。
+const { i18n: originalI18n } = await import("../src/i18n");
+// 替換 zh-TW messages 為修補後的版本
+originalI18n.global.setLocaleMessage("zh-TW", zhTWTest);
 
 // 每個測試前重置
 beforeEach(() => {

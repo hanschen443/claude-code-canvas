@@ -46,51 +46,25 @@ function processImageBlock(
   };
 }
 
-function applyCommandPrefix(
-  text: string,
-  prefix: string,
-  prefixApplied: boolean,
-): { text: string; prefixApplied: boolean } {
-  if (!prefix || prefixApplied) {
-    return { text, prefixApplied };
-  }
-  return { text: `${prefix}${text}`, prefixApplied: true };
-}
-
 function convertBlockToContent(
   block: ContentBlock,
-  prefix: string,
-  prefixApplied: boolean,
-): { content: ClaudeMessageContent | null; prefixApplied: boolean } {
+): ClaudeMessageContent | null {
   if (block.type === "text") {
-    const { text, prefixApplied: applied } = applyCommandPrefix(
-      block.text,
-      prefix,
-      prefixApplied,
-    );
-    return { content: processTextBlock(text), prefixApplied: applied };
+    return processTextBlock(block.text);
   }
   if (block.type === "image") {
-    return { content: processImageBlock(block), prefixApplied };
+    return processImageBlock(block);
   }
-  return { content: null, prefixApplied };
+  return null;
 }
 
 export function buildClaudeContentBlocks(
   message: ContentBlock[],
-  commandId: string | null,
 ): ClaudeMessageContent[] {
-  const prefix = commandId ? `/${commandId} ` : "";
-  let prefixApplied = false;
   const contentArray: ClaudeMessageContent[] = [];
 
   for (const block of message) {
-    const { content, prefixApplied: applied } = convertBlockToContent(
-      block,
-      prefix,
-      prefixApplied,
-    );
-    prefixApplied = applied;
+    const content = convertBlockToContent(block);
     if (content) {
       contentArray.push(content);
     }

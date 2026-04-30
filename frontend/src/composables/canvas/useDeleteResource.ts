@@ -1,120 +1,110 @@
-import { ref, computed } from 'vue'
-import type { Ref, ComputedRef } from 'vue'
-import type { Group } from '@/types'
+import { ref, computed } from "vue";
+import type { Ref, ComputedRef } from "vue";
+import type { Group } from "@/types";
+import { useToast } from "@/composables/useToast";
+import { t } from "@/i18n";
 
-type ItemType = 'outputStyle' | 'skill' | 'repository' | 'subAgent' | 'command' | 'mcpServer'
-type GroupType = 'outputStyleGroup' | 'subAgentGroup' | 'commandGroup'
-type ExtendedItemType = ItemType | GroupType
+type ItemType = "repository" | "command";
+// 目前只有一種 group
+const COMMAND_GROUP_TYPE = "commandGroup" as const;
+type GroupType = typeof COMMAND_GROUP_TYPE;
+type ExtendedItemType = ItemType | GroupType;
 
 interface DeleteTarget {
-  type: ExtendedItemType
-  id: string
-  name: string
+  type: ExtendedItemType;
+  id: string;
+  name: string;
 }
 
 interface DeletableStore {
-  isItemInUse: (id: string) => boolean
+  isItemInUse: (id: string) => boolean;
 }
 
 interface DeleteResourceStores {
-  outputStyleStore: DeletableStore & {
-    deleteOutputStyle: (id: string) => Promise<void>
-    deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
-  }
-  skillStore: DeletableStore & {
-    deleteSkill: (id: string) => Promise<void>
-  }
-  subAgentStore: DeletableStore & {
-    deleteSubAgent: (id: string) => Promise<void>
-    deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
-  }
   repositoryStore: DeletableStore & {
-    deleteRepository: (id: string) => Promise<void>
-  }
+    deleteRepository: (id: string) => Promise<void>;
+  };
   commandStore: DeletableStore & {
-    deleteCommand: (id: string) => Promise<void>
-    deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
-  }
-  mcpServerStore: DeletableStore & {
-    deleteMcpServer: (id: string) => Promise<void>
-  }
+    deleteCommand: (id: string) => Promise<void>;
+    deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>;
+  };
 }
 
 export function useDeleteResource(stores: DeleteResourceStores): {
-  showDeleteModal: Ref<boolean>
-  deleteTarget: Ref<DeleteTarget | null>
-  isDeleteTargetInUse: ComputedRef<boolean>
-  handleOpenDeleteModal: (type: ExtendedItemType, id: string, name: string) => void
-  handleOpenDeleteGroupModal: (groupType: GroupType, groupId: string, name: string) => void
-  handleConfirmDelete: () => Promise<void>
-  closeDeleteModal: () => void
+  showDeleteModal: Ref<boolean>;
+  deleteTarget: Ref<DeleteTarget | null>;
+  isDeleteTargetInUse: ComputedRef<boolean>;
+  handleOpenDeleteModal: (
+    type: ExtendedItemType,
+    id: string,
+    name: string,
+  ) => void;
+  handleOpenDeleteGroupModal: (groupId: string, name: string) => void;
+  handleConfirmDelete: () => Promise<void>;
+  closeDeleteModal: () => void;
 } {
-  const { outputStyleStore, skillStore, subAgentStore, repositoryStore, commandStore, mcpServerStore } = stores
+  const { repositoryStore, commandStore } = stores;
 
-  const showDeleteModal = ref(false)
-  const deleteTarget = ref<DeleteTarget | null>(null)
+  const showDeleteModal = ref(false);
+  const deleteTarget = ref<DeleteTarget | null>(null);
 
   const isDeleteTargetInUse = computed((): boolean => {
-    if (!deleteTarget.value) return false
+    if (!deleteTarget.value) return false;
 
-    const { type, id } = deleteTarget.value
+    const { type, id } = deleteTarget.value;
 
     const inUseChecks: Record<ExtendedItemType, () => boolean> = {
-      outputStyle: (): boolean => outputStyleStore.isItemInUse(id),
-      skill: (): boolean => skillStore.isItemInUse(id),
-      subAgent: (): boolean => subAgentStore.isItemInUse(id),
       repository: (): boolean => repositoryStore.isItemInUse(id),
       command: (): boolean => commandStore.isItemInUse(id),
-      mcpServer: (): boolean => mcpServerStore.isItemInUse(id),
-      outputStyleGroup: (): boolean => false,
-      subAgentGroup: (): boolean => false,
       commandGroup: (): boolean => false,
-    }
+    };
 
-    return inUseChecks[type]()
-  })
+    return inUseChecks[type]();
+  });
 
-  function handleOpenDeleteModal(type: ExtendedItemType, id: string, name: string): void {
-    deleteTarget.value = { type, id, name }
-    showDeleteModal.value = true
+  function handleOpenDeleteModal(
+    type: ExtendedItemType,
+    id: string,
+    name: string,
+  ): void {
+    deleteTarget.value = { type, id, name };
+    showDeleteModal.value = true;
   }
 
-  function handleOpenDeleteGroupModal(groupType: GroupType, groupId: string, name: string): void {
-    deleteTarget.value = { type: groupType, id: groupId, name }
-    showDeleteModal.value = true
+  function handleOpenDeleteGroupModal(groupId: string, name: string): void {
+    deleteTarget.value = { type: COMMAND_GROUP_TYPE, id: groupId, name };
+    showDeleteModal.value = true;
   }
 
   async function handleConfirmDelete(): Promise<void> {
-    if (!deleteTarget.value) return
+    if (!deleteTarget.value) return;
 
-    const { type, id } = deleteTarget.value
+    const { type, id } = deleteTarget.value;
 
-    const deleteActions: Record<ExtendedItemType, () => Promise<void | { success: boolean; group?: Group; error?: string }>> = {
-      outputStyle: (): Promise<void> => outputStyleStore.deleteOutputStyle(id),
-      skill: (): Promise<void> => skillStore.deleteSkill(id),
-      subAgent: (): Promise<void> => subAgentStore.deleteSubAgent(id),
+    const deleteActions: Record<
+      ExtendedItemType,
+      () => Promise<void | { success: boolean; group?: Group; error?: string }>
+    > = {
       repository: (): Promise<void> => repositoryStore.deleteRepository(id),
       command: (): Promise<void> => commandStore.deleteCommand(id),
-      mcpServer: (): Promise<void> => mcpServerStore.deleteMcpServer(id),
-      outputStyleGroup: () => outputStyleStore.deleteGroup(id),
-      subAgentGroup: () => subAgentStore.deleteGroup(id),
       commandGroup: () => commandStore.deleteGroup(id),
+    };
+
+    const result = await deleteActions[type]();
+
+    if (result && typeof result === "object" && !result.success) {
+      const { showErrorToast } = useToast();
+      showErrorToast("Pod", t("composableDeleteResource.deleteFailed"));
+      return;
     }
 
-    const result = await deleteActions[type]()
-
-    if (result && typeof result === 'object' && !result.success) {
-      console.error('刪除失敗:', result.error)
-      return
-    }
-
-    showDeleteModal.value = false
-    deleteTarget.value = null
+    showDeleteModal.value = false;
+    deleteTarget.value = null;
   }
 
   function closeDeleteModal(): void {
-    showDeleteModal.value = false
-    deleteTarget.value = null
+    showDeleteModal.value = false;
+    deleteTarget.value = null;
   }
 
   return {
@@ -124,6 +114,6 @@ export function useDeleteResource(stores: DeleteResourceStores): {
     handleOpenDeleteModal,
     handleOpenDeleteGroupModal,
     handleConfirmDelete,
-    closeDeleteModal
-  }
+    closeDeleteModal,
+  };
 }

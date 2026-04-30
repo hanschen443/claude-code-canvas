@@ -55,43 +55,25 @@ describe("useCanvasPan", () => {
   });
 
   describe("startPan", () => {
-    it("非右鍵（button !== 2）不應啟動拖曳", () => {
+    it.each([
+      { desc: "左鍵（button = 0）", button: 0 },
+      { desc: "中鍵（button = 1）", button: 1 },
+    ])("非右鍵不應啟動拖曳：$desc", ({ button }) => {
       const { startPan, isPanning } = useCanvasPan();
 
-      // 左鍵（button = 0）
-      const leftClickEvent = new MouseEvent("mousedown", {
-        button: 0,
+      const event = new MouseEvent("mousedown", {
+        button,
         clientX: 100,
         clientY: 200,
       });
-      Object.defineProperty(leftClickEvent, "target", {
+      Object.defineProperty(event, "target", {
         value: document.createElement("div"),
         configurable: true,
       });
-      const targetElement = leftClickEvent.target as HTMLElement;
+      const targetElement = event.target as HTMLElement;
       targetElement.id = "canvas";
 
-      startPan(leftClickEvent);
-
-      expect(isPanning.value).toBe(false);
-    });
-
-    it("中鍵（button = 1）不應啟動拖曳", () => {
-      const { startPan, isPanning } = useCanvasPan();
-
-      const middleClickEvent = new MouseEvent("mousedown", {
-        button: 1,
-        clientX: 100,
-        clientY: 200,
-      });
-      Object.defineProperty(middleClickEvent, "target", {
-        value: document.createElement("div"),
-        configurable: true,
-      });
-      const targetElement = middleClickEvent.target as HTMLElement;
-      targetElement.id = "canvas";
-
-      startPan(middleClickEvent);
+      startPan(event);
 
       expect(isPanning.value).toBe(false);
     });
@@ -116,45 +98,28 @@ describe("useCanvasPan", () => {
       expect(isPanning.value).toBe(true);
     });
 
-    it("target class 為 canvas-grid 時應啟動拖曳", () => {
-      const { startPan, isPanning } = useCanvasPan();
+    it.each(["canvas-grid", "canvas-content"])(
+      "target class 為 %s 時應啟動拖曳",
+      (className) => {
+        const { startPan, isPanning } = useCanvasPan();
 
-      const event = new MouseEvent("mousedown", {
-        button: 2,
-        clientX: 100,
-        clientY: 200,
-      });
-      Object.defineProperty(event, "target", {
-        value: document.createElement("div"),
-        configurable: true,
-      });
-      const targetElement = event.target as HTMLElement;
-      targetElement.classList.add("canvas-grid");
+        const event = new MouseEvent("mousedown", {
+          button: 2,
+          clientX: 100,
+          clientY: 200,
+        });
+        Object.defineProperty(event, "target", {
+          value: document.createElement("div"),
+          configurable: true,
+        });
+        const targetElement = event.target as HTMLElement;
+        targetElement.classList.add(className);
 
-      startPan(event);
+        startPan(event);
 
-      expect(isPanning.value).toBe(true);
-    });
-
-    it("target class 為 canvas-content 時應啟動拖曳", () => {
-      const { startPan, isPanning } = useCanvasPan();
-
-      const event = new MouseEvent("mousedown", {
-        button: 2,
-        clientX: 100,
-        clientY: 200,
-      });
-      Object.defineProperty(event, "target", {
-        value: document.createElement("div"),
-        configurable: true,
-      });
-      const targetElement = event.target as HTMLElement;
-      targetElement.classList.add("canvas-content");
-
-      startPan(event);
-
-      expect(isPanning.value).toBe(true);
-    });
+        expect(isPanning.value).toBe(true);
+      },
+    );
 
     it("target 非 canvas 相關元素時不應啟動拖曳", () => {
       const { startPan, isPanning } = useCanvasPan();
@@ -389,7 +354,11 @@ describe("useCanvasPan", () => {
       expect(hasPanned.value).toBe(true);
     });
 
-    it("X 和 Y 各自未超過 3px（對角線）hasPanned 應保持 false", () => {
+    it.each([
+      { desc: "X 和 Y 各自未超過 3px（對角線）", toX: 102, toY: 202 },
+      { desc: "移動距離未超過 3px（單軸 2px）", toX: 102, toY: 200 },
+      { desc: "移動距離剛好 3px（單軸邊界）", toX: 103, toY: 200 },
+    ])("hasPanned 應保持 false：$desc", ({ toX, toY }) => {
       const { startPan, hasPanned } = useCanvasPan();
 
       const startEvent = new MouseEvent("mousedown", {
@@ -406,64 +375,9 @@ describe("useCanvasPan", () => {
 
       startPan(startEvent);
 
-      // X 移動 2px、Y 移動 2px，兩軸都未超過 3px 閾值，hasPanned 應為 false
       const moveEvent = new MouseEvent("mousemove", {
-        clientX: 102,
-        clientY: 202,
-      });
-      document.dispatchEvent(moveEvent);
-
-      expect(hasPanned.value).toBe(false);
-    });
-
-    it("拖曳距離未超過 3px 時 hasPanned 應保持 false", () => {
-      const { startPan, hasPanned } = useCanvasPan();
-
-      const startEvent = new MouseEvent("mousedown", {
-        button: 2,
-        clientX: 100,
-        clientY: 200,
-      });
-      Object.defineProperty(startEvent, "target", {
-        value: document.createElement("div"),
-        configurable: true,
-      });
-      const targetElement = startEvent.target as HTMLElement;
-      targetElement.id = "canvas";
-
-      startPan(startEvent);
-
-      // 移動 2px（未超過閾值）
-      const moveEvent = new MouseEvent("mousemove", {
-        clientX: 102,
-        clientY: 200,
-      });
-      document.dispatchEvent(moveEvent);
-
-      expect(hasPanned.value).toBe(false);
-    });
-
-    it("拖曳距離剛好 3px 時 hasPanned 應保持 false", () => {
-      const { startPan, hasPanned } = useCanvasPan();
-
-      const startEvent = new MouseEvent("mousedown", {
-        button: 2,
-        clientX: 100,
-        clientY: 200,
-      });
-      Object.defineProperty(startEvent, "target", {
-        value: document.createElement("div"),
-        configurable: true,
-      });
-      const targetElement = startEvent.target as HTMLElement;
-      targetElement.id = "canvas";
-
-      startPan(startEvent);
-
-      // 移動剛好 3px
-      const moveEvent = new MouseEvent("mousemove", {
-        clientX: 103,
-        clientY: 200,
+        clientX: toX,
+        clientY: toY,
       });
       document.dispatchEvent(moveEvent);
 

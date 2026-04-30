@@ -1,30 +1,15 @@
 import { computed } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import { useNoteEventHandlers } from "@/composables/canvas/useNoteEventHandlers";
+import { useNoteDoubleClick } from "@/composables/canvas/useNoteDoubleClick";
 import { screenToCanvasPosition } from "@/lib/canvasCoordinateUtils";
 import type { usePodStore } from "@/stores/pod";
 import type { useViewportStore } from "@/stores/pod";
-import type {
-  useOutputStyleStore,
-  useSkillStore,
-  useSubAgentStore,
-  useRepositoryStore,
-  useCommandStore,
-  useMcpServerStore,
-} from "@/stores/note";
+import type { useRepositoryStore, useCommandStore } from "@/stores/note";
 import TrashZone from "@/components/canvas/TrashZone.vue";
-import type { McpServerConfig } from "@/types";
-import { useToast } from "@/composables/useToast";
 
-type EditableNoteType = "outputStyle" | "subAgent" | "command";
-
-interface McpServerModalState {
-  visible: boolean;
-  mode: "create" | "edit";
-  mcpServerId: string;
-  initialName: string;
-  initialConfig: McpServerConfig | undefined;
-}
+// EditableNoteType 供 UseCanvasNoteHandlersOptions.handleOpenEditModal 型別引用
+type EditableNoteType = "command";
 
 interface NoteStoreBase {
   isDraggingNote: boolean;
@@ -44,39 +29,24 @@ interface NoteStoreBase {
 interface UseCanvasNoteHandlersOptions {
   podStore: ReturnType<typeof usePodStore>;
   viewportStore: ReturnType<typeof useViewportStore>;
-  outputStyleStore: ReturnType<typeof useOutputStyleStore>;
-  skillStore: ReturnType<typeof useSkillStore>;
-  subAgentStore: ReturnType<typeof useSubAgentStore>;
   repositoryStore: ReturnType<typeof useRepositoryStore>;
   commandStore: ReturnType<typeof useCommandStore>;
-  mcpServerStore: ReturnType<typeof useMcpServerStore>;
   trashZoneRef: Ref<InstanceType<typeof TrashZone> | null>;
   handleOpenEditModal: (
     type: EditableNoteType,
     id: string,
   ) => Promise<void> | void;
-  mcpServerModal: Ref<McpServerModalState>;
 }
 
-type NoteType =
-  | "outputStyle"
-  | "skill"
-  | "subAgent"
-  | "repository"
-  | "command"
-  | "mcpServer";
+type NoteType = "repository" | "command";
 
 export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
   noteHandlerMap: Record<NoteType, ReturnType<typeof useNoteEventHandlers>>;
   showTrashZone: ComputedRef<boolean>;
   isTrashHighlighted: ComputedRef<boolean>;
   isCanvasEmpty: ComputedRef<boolean>;
-  handleCreateOutputStyleNote: (itemId: string) => void;
-  handleCreateSkillNote: (itemId: string) => void;
-  handleCreateSubAgentNote: (itemId: string) => void;
   handleCreateRepositoryNote: (itemId: string) => void;
   handleCreateCommandNote: (itemId: string) => void;
-  handleCreateMcpServerNote: (itemId: string) => void;
   getRepositoryBranchName: (repositoryId: string) => string | undefined;
   handleNoteDoubleClick: (data: {
     noteId: string;
@@ -86,26 +56,15 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
   const {
     podStore,
     viewportStore,
-    outputStyleStore,
-    skillStore,
-    subAgentStore,
     repositoryStore,
     commandStore,
-    mcpServerStore,
     trashZoneRef,
     handleOpenEditModal,
-    mcpServerModal,
   } = options;
 
-  const { showErrorToast } = useToast();
-
   const noteConfigs = [
-    { store: outputStyleStore as NoteStoreBase, type: "outputStyle" as const },
-    { store: skillStore as NoteStoreBase, type: "skill" as const },
-    { store: subAgentStore as NoteStoreBase, type: "subAgent" as const },
     { store: repositoryStore as NoteStoreBase, type: "repository" as const },
     { store: commandStore as NoteStoreBase, type: "command" as const },
-    { store: mcpServerStore as NoteStoreBase, type: "mcpServer" as const },
   ] as const;
 
   const allNoteStores = noteConfigs.map((config) => config.store);
@@ -145,105 +104,33 @@ export function useCanvasNoteHandlers(options: UseCanvasNoteHandlersOptions): {
     };
   };
 
-  const handleCreateOutputStyleNote = createNoteHandler(
-    outputStyleStore as NoteStoreBase,
-  );
-  const handleCreateSkillNote = createNoteHandler(skillStore as NoteStoreBase);
-  const handleCreateSubAgentNote = createNoteHandler(
-    subAgentStore as NoteStoreBase,
-  );
   const handleCreateRepositoryNote = createNoteHandler(
     repositoryStore as NoteStoreBase,
   );
   const handleCreateCommandNote = createNoteHandler(
     commandStore as NoteStoreBase,
   );
-  const handleCreateMcpServerNote = createNoteHandler(
-    mcpServerStore as NoteStoreBase,
-  );
 
   const getRepositoryBranchName = (
     repositoryId: string,
   ): string | undefined => {
-    const repository = repositoryStore.typedAvailableItems.find(
-      (r) => r.id === repositoryId,
-    );
+    // 改用 itemById Map（O(1) 查找），取代 Array.find 線性掃描
+    const repository = repositoryStore.itemById.get(repositoryId);
     return repository?.currentBranch ?? repository?.branchName;
   };
 
-  const editableNoteResourceIdGetters: Record<
-    EditableNoteType,
-    (noteId: string) => string | undefined
-  > = {
-    outputStyle: (noteId) =>
-      outputStyleStore.typedNotes.find((note) => note.id === noteId)
-        ?.outputStyleId,
-    subAgent: (noteId) =>
-      subAgentStore.typedNotes.find((note) => note.id === noteId)?.subAgentId,
-    command: (noteId) =>
-      commandStore.typedNotes.find((note) => note.id === noteId)?.commandId,
-  };
-
-  const handleMcpServerDoubleClick = async (noteId: string): Promise<void> => {
-    const note = mcpServerStore.typedNotes.find((n) => n.id === noteId);
-    if (!note) return;
-
-    const mcpServerId = note.mcpServerId;
-    const mcpServerData = await mcpServerStore.readMcpServer(mcpServerId);
-
-    if (!mcpServerData) {
-      showErrorToast("McpServer", "讀取 MCP Server 失敗");
-      return;
-    }
-
-    mcpServerModal.value = {
-      visible: true,
-      mode: "edit",
-      mcpServerId,
-      initialName: mcpServerData.name,
-      initialConfig: mcpServerData.config,
-    };
-  };
-
-  const handleNoteDoubleClick = async (data: {
-    noteId: string;
-    noteType: NoteType;
-  }): Promise<void> => {
-    const { noteId, noteType } = data;
-
-    if (noteType === "mcpServer") {
-      await handleMcpServerDoubleClick(noteId);
-      return;
-    }
-
-    const getResourceId =
-      editableNoteResourceIdGetters[noteType as EditableNoteType];
-    if (!getResourceId) return;
-
-    const resourceId = getResourceId(noteId);
-
-    if (resourceId) {
-      await handleOpenEditModal(noteType as EditableNoteType, resourceId);
-    } else {
-      if (import.meta.env.DEV) {
-        console.error(
-          `無法找到 Note (id: ${noteId}, type: ${noteType}) 的資源 ID`,
-        );
-      }
-    }
-  };
+  const { handleNoteDoubleClick } = useNoteDoubleClick(
+    { commandStore },
+    handleOpenEditModal,
+  );
 
   return {
     noteHandlerMap,
     showTrashZone,
     isTrashHighlighted,
     isCanvasEmpty,
-    handleCreateOutputStyleNote,
-    handleCreateSkillNote,
-    handleCreateSubAgentNote,
     handleCreateRepositoryNote,
     handleCreateCommandNote,
-    handleCreateMcpServerNote,
     getRepositoryBranchName,
     handleNoteDoubleClick,
   };

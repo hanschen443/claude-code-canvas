@@ -18,15 +18,12 @@ export type LogCategory =
   | "Startup"
   | "Pod"
   | "Chat"
-  | "Skill"
   | "Command"
   | "Repository"
-  | "SubAgent"
   | "Workflow"
   | "Connection"
   | "Paste"
   | "Note"
-  | "OutputStyle"
   | "Git"
   | "Schedule"
   | "Canvas"
@@ -42,7 +39,9 @@ export type LogCategory =
   | "Run"
   | "Backup"
   | "Encryption"
-  | "Shutdown";
+  | "Cleanup"
+  | "Shutdown"
+  | "Upload";
 
 /**
  * Category 顏色映射表
@@ -53,18 +52,15 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   WebSocket: ANSI_COLORS.GRAY,
   Pod: ANSI_COLORS.BLUE,
   Workflow: ANSI_COLORS.BLUE,
-  SubAgent: ANSI_COLORS.BLUE,
   Repository: ANSI_COLORS.MAGENTA,
   Workspace: ANSI_COLORS.MAGENTA,
   Canvas: ANSI_COLORS.MAGENTA,
-  Skill: ANSI_COLORS.GREEN,
   Command: ANSI_COLORS.GREEN,
   Chat: ANSI_COLORS.GREEN,
   McpServer: ANSI_COLORS.GREEN,
   Git: ANSI_COLORS.YELLOW,
   Note: ANSI_COLORS.YELLOW,
   Paste: ANSI_COLORS.YELLOW,
-  OutputStyle: ANSI_COLORS.YELLOW,
   Schedule: ANSI_COLORS.YELLOW,
   Slack: ANSI_COLORS.BLUE,
   Telegram: ANSI_COLORS.BLUE,
@@ -75,7 +71,9 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Run: ANSI_COLORS.GREEN,
   Backup: ANSI_COLORS.YELLOW,
   Encryption: ANSI_COLORS.MAGENTA,
+  Cleanup: ANSI_COLORS.GRAY,
   Shutdown: ANSI_COLORS.GRAY,
+  Upload: ANSI_COLORS.GREEN,
 };
 
 /**

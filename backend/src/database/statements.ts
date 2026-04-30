@@ -1,6 +1,10 @@
 import { Database } from "bun:sqlite";
 
-let cachedStatements: ReturnType<typeof buildStatements> | null = null;
+// WeakMap 以 DB 實例為 key，避免多 DB 實例命中舊 cache
+const statementsCache = new WeakMap<
+  Database,
+  ReturnType<typeof buildStatements>
+>();
 
 function buildStatements(db: Database): {
   canvas: {
@@ -23,17 +27,19 @@ function buildStatements(db: Database): {
     countByCanvasIdAndName: ReturnType<Database["prepare"]>;
     update: ReturnType<Database["prepare"]>;
     updateStatus: ReturnType<Database["prepare"]>;
-    updateClaudeSessionId: ReturnType<Database["prepare"]>;
-    updateOutputStyleId: ReturnType<Database["prepare"]>;
+    updateSessionId: ReturnType<Database["prepare"]>;
     updateRepositoryId: ReturnType<Database["prepare"]>;
     updateCommandId: ReturnType<Database["prepare"]>;
     updateMultiInstance: ReturnType<Database["prepare"]>;
     updateScheduleJson: ReturnType<Database["prepare"]>;
     selectWithSchedule: ReturnType<Database["prepare"]>;
-    selectByOutputStyleId: ReturnType<Database["prepare"]>;
     selectByRepositoryId: ReturnType<Database["prepare"]>;
     selectByCommandId: ReturnType<Database["prepare"]>;
+    selectByCommandIdAndCanvas: ReturnType<Database["prepare"]>;
+    selectByRepositoryIdAndCanvas: ReturnType<Database["prepare"]>;
     selectScheduleInfo: ReturnType<Database["prepare"]>;
+    selectScheduleJsonByCanvasAndId: ReturnType<Database["prepare"]>;
+    resetAllBusy: ReturnType<Database["prepare"]>;
     deleteById: ReturnType<Database["prepare"]>;
     deleteByCanvasId: ReturnType<Database["prepare"]>;
   };
@@ -47,26 +53,10 @@ function buildStatements(db: Database): {
     deleteByPodId: ReturnType<Database["prepare"]>;
     deleteByAppId: ReturnType<Database["prepare"]>;
   };
-  podSkillIds: {
+  podMcpServerNames: {
     insert: ReturnType<Database["prepare"]>;
     selectByPodId: ReturnType<Database["prepare"]>;
     deleteByPodId: ReturnType<Database["prepare"]>;
-    deleteOne: ReturnType<Database["prepare"]>;
-    selectBySkillId: ReturnType<Database["prepare"]>;
-  };
-  podSubAgentIds: {
-    insert: ReturnType<Database["prepare"]>;
-    selectByPodId: ReturnType<Database["prepare"]>;
-    deleteByPodId: ReturnType<Database["prepare"]>;
-    deleteOne: ReturnType<Database["prepare"]>;
-    selectBySubAgentId: ReturnType<Database["prepare"]>;
-  };
-  podMcpServerIds: {
-    insert: ReturnType<Database["prepare"]>;
-    selectByPodId: ReturnType<Database["prepare"]>;
-    deleteByPodId: ReturnType<Database["prepare"]>;
-    deleteOne: ReturnType<Database["prepare"]>;
-    selectByMcpServerId: ReturnType<Database["prepare"]>;
   };
   podPluginIds: {
     insert: ReturnType<Database["prepare"]>;
@@ -80,7 +70,9 @@ function buildStatements(db: Database): {
     selectByCanvasId: ReturnType<Database["prepare"]>;
     selectById: ReturnType<Database["prepare"]>;
     update: ReturnType<Database["prepare"]>;
+    updateReturning: ReturnType<Database["prepare"]>;
     updateConnectionStatus: ReturnType<Database["prepare"]>;
+    updateConnectionStatusReturning: ReturnType<Database["prepare"]>;
     updateDecideStatus: ReturnType<Database["prepare"]>;
     clearDecideStatusByPodId: ReturnType<Database["prepare"]>;
     deleteById: ReturnType<Database["prepare"]>;
@@ -125,13 +117,6 @@ function buildStatements(db: Database): {
     deleteByPodIdAndRepoId: ReturnType<Database["prepare"]>;
     deleteByPodId: ReturnType<Database["prepare"]>;
   };
-  mcpServer: {
-    insert: ReturnType<Database["prepare"]>;
-    selectAll: ReturnType<Database["prepare"]>;
-    selectById: ReturnType<Database["prepare"]>;
-    update: ReturnType<Database["prepare"]>;
-    deleteById: ReturnType<Database["prepare"]>;
-  };
   globalSettings: {
     selectByKey: ReturnType<Database["prepare"]>;
     upsert: ReturnType<Database["prepare"]>;
@@ -152,6 +137,7 @@ function buildStatements(db: Database): {
     insert: ReturnType<Database["prepare"]>;
     selectByCanvasId: ReturnType<Database["prepare"]>;
     selectById: ReturnType<Database["prepare"]>;
+    selectRunning: ReturnType<Database["prepare"]>;
     updateStatus: ReturnType<Database["prepare"]>;
     deleteById: ReturnType<Database["prepare"]>;
     countByCanvasId: ReturnType<Database["prepare"]>;
@@ -162,7 +148,7 @@ function buildStatements(db: Database): {
     selectByRunId: ReturnType<Database["prepare"]>;
     selectByRunIdAndPodId: ReturnType<Database["prepare"]>;
     updateStatus: ReturnType<Database["prepare"]>;
-    updateClaudeSessionId: ReturnType<Database["prepare"]>;
+    updateSessionId: ReturnType<Database["prepare"]>;
     selectRunningByRunId: ReturnType<Database["prepare"]>;
     deleteByRunId: ReturnType<Database["prepare"]>;
     settleAutoPathway: ReturnType<Database["prepare"]>;
@@ -197,7 +183,15 @@ function buildStatements(db: Database): {
 
     pod: {
       insert: db.prepare(
-        "INSERT INTO pods (id, canvas_id, name, status, x, y, rotation, model, workspace_path, claude_session_id, output_style_id, repository_id, command_id, multi_instance, schedule_json) VALUES ($id, $canvasId, $name, $status, $x, $y, $rotation, $model, $workspacePath, $claudeSessionId, $outputStyleId, $repositoryId, $commandId, $multiInstance, $scheduleJson)",
+        `INSERT INTO pods (
+          id, canvas_id, name, status, x, y, rotation, workspace_path,
+          session_id, repository_id, command_id, multi_instance,
+          schedule_json, provider, provider_config_json
+        ) VALUES (
+          $id, $canvasId, $name, $status, $x, $y, $rotation, $workspacePath,
+          $sessionId, $repositoryId, $commandId, $multiInstance,
+          $scheduleJson, $provider, $providerConfigJson
+        )`,
       ),
       selectByCanvasId: db.prepare("SELECT * FROM pods WHERE canvas_id = ?"),
       selectById: db.prepare("SELECT * FROM pods WHERE id = ?"),
@@ -214,16 +208,19 @@ function buildStatements(db: Database): {
         "SELECT COUNT(*) as count FROM pods WHERE canvas_id = $canvasId AND name = $name AND id != $excludeId",
       ),
       update: db.prepare(
-        "UPDATE pods SET name = $name, status = $status, x = $x, y = $y, rotation = $rotation, model = $model, claude_session_id = $claudeSessionId, output_style_id = $outputStyleId, repository_id = $repositoryId, command_id = $commandId, multi_instance = $multiInstance, schedule_json = $scheduleJson WHERE id = $id",
+        `UPDATE pods SET
+          name = $name, status = $status, x = $x, y = $y, rotation = $rotation,
+          session_id = $sessionId, repository_id = $repositoryId,
+          command_id = $commandId, multi_instance = $multiInstance,
+          schedule_json = $scheduleJson, provider = $provider,
+          provider_config_json = $providerConfigJson
+        WHERE id = $id`,
       ),
       updateStatus: db.prepare(
         "UPDATE pods SET status = $status WHERE id = $id",
       ),
-      updateClaudeSessionId: db.prepare(
-        "UPDATE pods SET claude_session_id = $claudeSessionId WHERE id = $id",
-      ),
-      updateOutputStyleId: db.prepare(
-        "UPDATE pods SET output_style_id = $outputStyleId WHERE id = $id",
+      updateSessionId: db.prepare(
+        "UPDATE pods SET session_id = $sessionId WHERE id = $id",
       ),
       updateRepositoryId: db.prepare(
         "UPDATE pods SET repository_id = $repositoryId WHERE id = $id",
@@ -240,15 +237,24 @@ function buildStatements(db: Database): {
       selectWithSchedule: db.prepare(
         "SELECT * FROM pods WHERE schedule_json IS NOT NULL",
       ),
-      selectByOutputStyleId: db.prepare(
-        "SELECT * FROM pods WHERE output_style_id = ?",
-      ),
       selectByRepositoryId: db.prepare(
         "SELECT * FROM pods WHERE repository_id = ?",
       ),
       selectByCommandId: db.prepare("SELECT * FROM pods WHERE command_id = ?"),
+      selectByCommandIdAndCanvas: db.prepare(
+        "SELECT * FROM pods WHERE command_id = ? AND canvas_id = ?",
+      ),
+      selectByRepositoryIdAndCanvas: db.prepare(
+        "SELECT * FROM pods WHERE repository_id = ? AND canvas_id = ?",
+      ),
       selectScheduleInfo: db.prepare(
         "SELECT canvas_id, id, schedule_json FROM pods WHERE schedule_json IS NOT NULL",
+      ),
+      selectScheduleJsonByCanvasAndId: db.prepare(
+        "SELECT schedule_json FROM pods WHERE canvas_id = $canvasId AND id = $id",
+      ),
+      resetAllBusy: db.prepare(
+        "UPDATE pods SET status = 'idle' WHERE status IN ('chatting', 'summarizing')",
       ),
       deleteById: db.prepare("DELETE FROM pods WHERE id = ?"),
       deleteByCanvasId: db.prepare("DELETE FROM pods WHERE canvas_id = ?"),
@@ -256,7 +262,11 @@ function buildStatements(db: Database): {
 
     integrationBinding: {
       insert: db.prepare(
-        "INSERT INTO integration_bindings (id, pod_id, canvas_id, provider, app_id, resource_id, extra_json) VALUES ($id, $podId, $canvasId, $provider, $appId, $resourceId, $extraJson)",
+        `INSERT INTO integration_bindings (
+          id, pod_id, canvas_id, provider, app_id, resource_id, extra_json
+        ) VALUES (
+          $id, $podId, $canvasId, $provider, $appId, $resourceId, $extraJson
+        )`,
       ),
       selectByPodId: db.prepare(
         "SELECT * FROM integration_bindings WHERE pod_id = ?",
@@ -279,55 +289,15 @@ function buildStatements(db: Database): {
       ),
     },
 
-    podSkillIds: {
+    podMcpServerNames: {
       insert: db.prepare(
-        "INSERT OR IGNORE INTO pod_skill_ids (pod_id, skill_id) VALUES ($podId, $skillId)",
+        "INSERT OR IGNORE INTO pod_mcp_server_names (pod_id, mcp_server_name) VALUES ($podId, $mcpServerName)",
       ),
       selectByPodId: db.prepare(
-        "SELECT skill_id FROM pod_skill_ids WHERE pod_id = ?",
-      ),
-      deleteByPodId: db.prepare("DELETE FROM pod_skill_ids WHERE pod_id = ?"),
-      deleteOne: db.prepare(
-        "DELETE FROM pod_skill_ids WHERE pod_id = $podId AND skill_id = $skillId",
-      ),
-      selectBySkillId: db.prepare(
-        "SELECT pod_id FROM pod_skill_ids WHERE skill_id = ?",
-      ),
-    },
-
-    podSubAgentIds: {
-      insert: db.prepare(
-        "INSERT OR IGNORE INTO pod_sub_agent_ids (pod_id, sub_agent_id) VALUES ($podId, $subAgentId)",
-      ),
-      selectByPodId: db.prepare(
-        "SELECT sub_agent_id FROM pod_sub_agent_ids WHERE pod_id = ?",
+        "SELECT mcp_server_name FROM pod_mcp_server_names WHERE pod_id = ?",
       ),
       deleteByPodId: db.prepare(
-        "DELETE FROM pod_sub_agent_ids WHERE pod_id = ?",
-      ),
-      deleteOne: db.prepare(
-        "DELETE FROM pod_sub_agent_ids WHERE pod_id = $podId AND sub_agent_id = $subAgentId",
-      ),
-      selectBySubAgentId: db.prepare(
-        "SELECT pod_id FROM pod_sub_agent_ids WHERE sub_agent_id = ?",
-      ),
-    },
-
-    podMcpServerIds: {
-      insert: db.prepare(
-        "INSERT OR IGNORE INTO pod_mcp_server_ids (pod_id, mcp_server_id) VALUES ($podId, $mcpServerId)",
-      ),
-      selectByPodId: db.prepare(
-        "SELECT mcp_server_id FROM pod_mcp_server_ids WHERE pod_id = ?",
-      ),
-      deleteByPodId: db.prepare(
-        "DELETE FROM pod_mcp_server_ids WHERE pod_id = ?",
-      ),
-      deleteOne: db.prepare(
-        "DELETE FROM pod_mcp_server_ids WHERE pod_id = $podId AND mcp_server_id = $mcpServerId",
-      ),
-      selectByMcpServerId: db.prepare(
-        "SELECT pod_id FROM pod_mcp_server_ids WHERE mcp_server_id = ?",
+        "DELETE FROM pod_mcp_server_names WHERE pod_id = ?",
       ),
     },
 
@@ -349,7 +319,15 @@ function buildStatements(db: Database): {
 
     connection: {
       insert: db.prepare(
-        "INSERT INTO connections (id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor, trigger_mode, decide_status, decide_reason, connection_status, summary_model, ai_decide_model) VALUES ($id, $canvasId, $sourcePodId, $sourceAnchor, $targetPodId, $targetAnchor, $triggerMode, $decideStatus, $decideReason, $connectionStatus, $summaryModel, $aiDecideModel)",
+        `INSERT INTO connections (
+          id, canvas_id, source_pod_id, source_anchor, target_pod_id, target_anchor,
+          trigger_mode, decide_status, decide_reason, connection_status,
+          summary_model, ai_decide_model
+        ) VALUES (
+          $id, $canvasId, $sourcePodId, $sourceAnchor, $targetPodId, $targetAnchor,
+          $triggerMode, $decideStatus, $decideReason, $connectionStatus,
+          $summaryModel, $aiDecideModel
+        )`,
       ),
       selectByCanvasId: db.prepare(
         "SELECT * FROM connections WHERE canvas_id = ?",
@@ -358,16 +336,40 @@ function buildStatements(db: Database): {
         "SELECT * FROM connections WHERE canvas_id = ? AND id = ?",
       ),
       update: db.prepare(
-        "UPDATE connections SET source_pod_id = $sourcePodId, source_anchor = $sourceAnchor, target_pod_id = $targetPodId, target_anchor = $targetAnchor, trigger_mode = $triggerMode, decide_status = $decideStatus, decide_reason = $decideReason, connection_status = $connectionStatus, summary_model = $summaryModel, ai_decide_model = $aiDecideModel WHERE canvas_id = $canvasId AND id = $id",
+        `UPDATE connections SET
+          source_pod_id = $sourcePodId, source_anchor = $sourceAnchor,
+          target_pod_id = $targetPodId, target_anchor = $targetAnchor,
+          trigger_mode = $triggerMode, decide_status = $decideStatus,
+          decide_reason = $decideReason, connection_status = $connectionStatus,
+          summary_model = $summaryModel, ai_decide_model = $aiDecideModel
+        WHERE canvas_id = $canvasId AND id = $id`,
+      ),
+      // RETURNING 版本：UPDATE 後直接回傳更新後的行，免去額外 SELECT
+      updateReturning: db.prepare(
+        `UPDATE connections SET
+          source_pod_id = $sourcePodId, source_anchor = $sourceAnchor,
+          target_pod_id = $targetPodId, target_anchor = $targetAnchor,
+          trigger_mode = $triggerMode, decide_status = $decideStatus,
+          decide_reason = $decideReason, connection_status = $connectionStatus,
+          summary_model = $summaryModel, ai_decide_model = $aiDecideModel
+        WHERE canvas_id = $canvasId AND id = $id
+        RETURNING *`,
       ),
       updateConnectionStatus: db.prepare(
         "UPDATE connections SET connection_status = $connectionStatus WHERE canvas_id = $canvasId AND id = $id",
       ),
+      // RETURNING 版本：UPDATE 後直接回傳更新後的行，免去額外 SELECT
+      updateConnectionStatusReturning: db.prepare(
+        "UPDATE connections SET connection_status = $connectionStatus WHERE canvas_id = $canvasId AND id = $id RETURNING *",
+      ),
       updateDecideStatus: db.prepare(
-        "UPDATE connections SET decide_status = $decideStatus, decide_reason = $decideReason WHERE canvas_id = $canvasId AND id = $id",
+        `UPDATE connections SET
+          decide_status = $decideStatus, decide_reason = $decideReason
+        WHERE canvas_id = $canvasId AND id = $id`,
       ),
       clearDecideStatusByPodId: db.prepare(
-        "UPDATE connections SET decide_status = 'none', decide_reason = NULL WHERE canvas_id = $canvasId AND source_pod_id = $podId",
+        `UPDATE connections SET decide_status = 'none', decide_reason = NULL
+        WHERE canvas_id = $canvasId AND source_pod_id = $podId`,
       ),
       deleteById: db.prepare(
         "DELETE FROM connections WHERE canvas_id = ? AND id = ?",
@@ -388,20 +390,34 @@ function buildStatements(db: Database): {
         "DELETE FROM connections WHERE canvas_id = $canvasId AND (source_pod_id = $podId OR target_pod_id = $podId)",
       ),
       selectByTriggerMode: db.prepare(
-        "SELECT * FROM connections WHERE canvas_id = $canvasId AND source_pod_id = $sourcePodId AND trigger_mode = $triggerMode",
+        `SELECT * FROM connections
+        WHERE canvas_id = $canvasId
+          AND source_pod_id = $sourcePodId
+          AND trigger_mode = $triggerMode`,
       ),
     },
 
     note: {
       insert: db.prepare(
-        "INSERT INTO notes (id, canvas_id, type, name, x, y, bound_to_pod_id, original_position_json, foreign_key_id) VALUES ($id, $canvasId, $type, $name, $x, $y, $boundToPodId, $originalPositionJson, $foreignKeyId)",
+        `INSERT INTO notes (
+          id, canvas_id, type, name, x, y,
+          bound_to_pod_id, original_position_json, foreign_key_id
+        ) VALUES (
+          $id, $canvasId, $type, $name, $x, $y,
+          $boundToPodId, $originalPositionJson, $foreignKeyId
+        )`,
       ),
       selectByCanvasIdAndType: db.prepare(
         "SELECT * FROM notes WHERE canvas_id = $canvasId AND type = $type",
       ),
       selectById: db.prepare("SELECT * FROM notes WHERE id = ?"),
       update: db.prepare(
-        "UPDATE notes SET name = $name, x = $x, y = $y, bound_to_pod_id = $boundToPodId, original_position_json = $originalPositionJson, foreign_key_id = $foreignKeyId WHERE id = $id",
+        `UPDATE notes SET
+          name = $name, x = $x, y = $y,
+          bound_to_pod_id = $boundToPodId,
+          original_position_json = $originalPositionJson,
+          foreign_key_id = $foreignKeyId
+        WHERE id = $id`,
       ),
       deleteById: db.prepare("DELETE FROM notes WHERE id = ?"),
       deleteByCanvasId: db.prepare("DELETE FROM notes WHERE canvas_id = ?"),
@@ -424,14 +440,22 @@ function buildStatements(db: Database): {
 
     message: {
       insert: db.prepare(
-        "INSERT INTO messages (id, pod_id, canvas_id, role, content, timestamp, sub_messages_json) VALUES ($id, $podId, $canvasId, $role, $content, $timestamp, $subMessagesJson)",
+        `INSERT INTO messages (
+          id, pod_id, canvas_id, role, content, timestamp, sub_messages_json
+        ) VALUES (
+          $id, $podId, $canvasId, $role, $content, $timestamp, $subMessagesJson
+        )`,
       ),
       selectByPodId: db.prepare(
         "SELECT * FROM messages WHERE pod_id = ? ORDER BY timestamp ASC",
       ),
       selectById: db.prepare("SELECT * FROM messages WHERE id = ?"),
       upsert: db.prepare(
-        "INSERT OR REPLACE INTO messages (id, pod_id, canvas_id, role, content, timestamp, sub_messages_json) VALUES ($id, $podId, $canvasId, $role, $content, $timestamp, $subMessagesJson)",
+        `INSERT OR REPLACE INTO messages (
+          id, pod_id, canvas_id, role, content, timestamp, sub_messages_json
+        ) VALUES (
+          $id, $podId, $canvasId, $role, $content, $timestamp, $subMessagesJson
+        )`,
       ),
       deleteByPodId: db.prepare("DELETE FROM messages WHERE pod_id = ?"),
       deleteByCanvasId: db.prepare("DELETE FROM messages WHERE canvas_id = ?"),
@@ -439,28 +463,21 @@ function buildStatements(db: Database): {
 
     repositoryMetadata: {
       upsert: db.prepare(
-        "INSERT OR REPLACE INTO repository_metadata (id, name, path, parent_repo_id, branch_name, current_branch) VALUES ($id, $name, $path, $parentRepoId, $branchName, $currentBranch)",
+        `INSERT OR REPLACE INTO repository_metadata (
+          id, name, path, parent_repo_id, branch_name, current_branch
+        ) VALUES (
+          $id, $name, $path, $parentRepoId, $branchName, $currentBranch
+        )`,
       ),
       selectById: db.prepare("SELECT * FROM repository_metadata WHERE id = ?"),
       selectAll: db.prepare("SELECT * FROM repository_metadata"),
       deleteById: db.prepare("DELETE FROM repository_metadata WHERE id = ?"),
     },
 
-    mcpServer: {
-      insert: db.prepare(
-        "INSERT INTO mcp_servers (id, name, config_json) VALUES ($id, $name, $configJson)",
-      ),
-      selectAll: db.prepare("SELECT * FROM mcp_servers"),
-      selectById: db.prepare("SELECT * FROM mcp_servers WHERE id = ?"),
-      update: db.prepare(
-        "UPDATE mcp_servers SET name = $name, config_json = $configJson WHERE id = $id",
-      ),
-      deleteById: db.prepare("DELETE FROM mcp_servers WHERE id = ?"),
-    },
-
     podManifest: {
       upsert: db.prepare(
-        "INSERT OR REPLACE INTO pod_manifests (pod_id, repository_id, files_json) VALUES ($podId, $repositoryId, $filesJson)",
+        `INSERT OR REPLACE INTO pod_manifests (pod_id, repository_id, files_json)
+        VALUES ($podId, $repositoryId, $filesJson)`,
       ),
       selectByPodIdAndRepoId: db.prepare(
         "SELECT * FROM pod_manifests WHERE pod_id = $podId AND repository_id = $repoId",
@@ -484,7 +501,8 @@ function buildStatements(db: Database): {
 
     integrationApp: {
       insert: db.prepare(
-        "INSERT INTO integration_apps (id, provider, name, config_json, extra_json) VALUES ($id, $provider, $name, $configJson, $extraJson)",
+        `INSERT INTO integration_apps (id, provider, name, config_json, extra_json)
+        VALUES ($id, $provider, $name, $configJson, $extraJson)`,
       ),
       selectAll: db.prepare("SELECT * FROM integration_apps"),
       selectById: db.prepare("SELECT * FROM integration_apps WHERE id = ?"),
@@ -495,7 +513,10 @@ function buildStatements(db: Database): {
         "SELECT * FROM integration_apps WHERE provider = $provider AND name = $name LIMIT 1",
       ),
       selectByProviderAndConfigField: db.prepare(
-        "SELECT * FROM integration_apps WHERE provider = $provider AND json_extract(config_json, $jsonPath) = $value LIMIT 1",
+        `SELECT * FROM integration_apps
+        WHERE provider = $provider
+          AND json_extract(config_json, $jsonPath) = $value
+        LIMIT 1`,
       ),
       updateExtraJson: db.prepare(
         "UPDATE integration_apps SET extra_json = $extraJson WHERE id = $id",
@@ -508,12 +529,20 @@ function buildStatements(db: Database): {
 
     workflowRun: {
       insert: db.prepare(
-        "INSERT INTO workflow_runs (id, canvas_id, source_pod_id, trigger_message, status, created_at, completed_at) VALUES ($id, $canvasId, $sourcePodId, $triggerMessage, $status, $createdAt, $completedAt)",
+        `INSERT INTO workflow_runs (
+          id, canvas_id, source_pod_id, trigger_message, status, created_at, completed_at
+        ) VALUES (
+          $id, $canvasId, $sourcePodId, $triggerMessage, $status, $createdAt, $completedAt
+        )`,
       ),
       selectByCanvasId: db.prepare(
         "SELECT * FROM workflow_runs WHERE canvas_id = ? ORDER BY created_at DESC",
       ),
       selectById: db.prepare("SELECT * FROM workflow_runs WHERE id = ?"),
+      selectRunning: db.prepare(
+        `SELECT id, canvas_id, source_pod_id, trigger_message, status, created_at, completed_at
+        FROM workflow_runs WHERE status = 'running'`,
+      ),
       updateStatus: db.prepare(
         "UPDATE workflow_runs SET status = $status, completed_at = $completedAt WHERE id = $id",
       ),
@@ -528,7 +557,15 @@ function buildStatements(db: Database): {
 
     runPodInstance: {
       insert: db.prepare(
-        "INSERT INTO run_pod_instances (id, run_id, pod_id, status, claude_session_id, error_message, triggered_at, completed_at, auto_pathway_settled, direct_pathway_settled, worktree_path) VALUES ($id, $runId, $podId, $status, $claudeSessionId, $errorMessage, $triggeredAt, $completedAt, $autoPathwaySettled, $directPathwaySettled, $worktreePath)",
+        `INSERT INTO run_pod_instances (
+          id, run_id, pod_id, status, session_id, error_message,
+          triggered_at, completed_at, auto_pathway_settled,
+          direct_pathway_settled, worktree_path
+        ) VALUES (
+          $id, $runId, $podId, $status, $sessionId, $errorMessage,
+          $triggeredAt, $completedAt, $autoPathwaySettled,
+          $directPathwaySettled, $worktreePath
+        )`,
       ),
       selectByRunId: db.prepare(
         "SELECT * FROM run_pod_instances WHERE run_id = ?",
@@ -537,22 +574,28 @@ function buildStatements(db: Database): {
         "SELECT * FROM run_pod_instances WHERE run_id = $runId AND pod_id = $podId",
       ),
       updateStatus: db.prepare(
-        "UPDATE run_pod_instances SET status = $status, error_message = $errorMessage, triggered_at = CASE WHEN $status = 'running' THEN $triggeredAt ELSE triggered_at END, completed_at = $completedAt WHERE id = $id",
+        `UPDATE run_pod_instances SET
+          status = $status, error_message = $errorMessage,
+          triggered_at = CASE WHEN $status = 'running' THEN $triggeredAt ELSE triggered_at END,
+          completed_at = $completedAt
+        WHERE id = $id`,
       ),
-      updateClaudeSessionId: db.prepare(
-        "UPDATE run_pod_instances SET claude_session_id = $claudeSessionId WHERE id = $id",
+      updateSessionId: db.prepare(
+        "UPDATE run_pod_instances SET session_id = $sessionId WHERE id = $id",
       ),
       selectRunningByRunId: db.prepare(
-        "SELECT * FROM run_pod_instances WHERE run_id = ? AND status IN ('pending', 'running', 'summarizing', 'deciding', 'queued', 'waiting')",
+        `SELECT * FROM run_pod_instances
+        WHERE run_id = ?
+          AND status IN ('pending', 'running', 'summarizing', 'deciding', 'queued', 'waiting')`,
       ),
       deleteByRunId: db.prepare(
         "DELETE FROM run_pod_instances WHERE run_id = ?",
       ),
       settleAutoPathway: db.prepare(
-        "UPDATE run_pod_instances SET auto_pathway_settled = 1 WHERE id = $id",
+        "UPDATE run_pod_instances SET auto_pathway_settled = 1 WHERE id = $id", // 1 = settled（已結算）
       ),
       settleDirectPathway: db.prepare(
-        "UPDATE run_pod_instances SET direct_pathway_settled = 1 WHERE id = $id",
+        "UPDATE run_pod_instances SET direct_pathway_settled = 1 WHERE id = $id", // 1 = settled（已結算）
       ),
       selectWorktreePathsByRunId: db.prepare(
         "SELECT pod_id, worktree_path FROM run_pod_instances WHERE run_id = ? AND worktree_path IS NOT NULL",
@@ -564,13 +607,23 @@ function buildStatements(db: Database): {
 
     runMessage: {
       insert: db.prepare(
-        "INSERT INTO run_messages (id, run_id, pod_id, role, content, timestamp, sub_messages_json) VALUES ($id, $runId, $podId, $role, $content, $timestamp, $subMessagesJson)",
+        `INSERT INTO run_messages (
+          id, run_id, pod_id, role, content, timestamp, sub_messages_json
+        ) VALUES (
+          $id, $runId, $podId, $role, $content, $timestamp, $subMessagesJson
+        )`,
       ),
       selectByRunIdAndPodId: db.prepare(
-        "SELECT * FROM run_messages WHERE run_id = $runId AND pod_id = $podId ORDER BY timestamp ASC",
+        `SELECT * FROM run_messages
+        WHERE run_id = $runId AND pod_id = $podId
+        ORDER BY timestamp ASC`,
       ),
       upsert: db.prepare(
-        "INSERT OR REPLACE INTO run_messages (id, run_id, pod_id, role, content, timestamp, sub_messages_json) VALUES ($id, $runId, $podId, $role, $content, $timestamp, $subMessagesJson)",
+        `INSERT OR REPLACE INTO run_messages (
+          id, run_id, pod_id, role, content, timestamp, sub_messages_json
+        ) VALUES (
+          $id, $runId, $podId, $role, $content, $timestamp, $subMessagesJson
+        )`,
       ),
       deleteByRunId: db.prepare("DELETE FROM run_messages WHERE run_id = ?"),
     },
@@ -580,14 +633,20 @@ function buildStatements(db: Database): {
 export function getStatements(
   db: Database,
 ): ReturnType<typeof buildStatements> {
-  if (cachedStatements) {
-    return cachedStatements;
+  const cached = statementsCache.get(db);
+  if (cached) {
+    return cached;
   }
 
-  cachedStatements = buildStatements(db);
-  return cachedStatements;
+  const statements = buildStatements(db);
+  statementsCache.set(db, statements);
+  return statements;
 }
 
-export function resetStatements(): void {
-  cachedStatements = null;
+export function resetStatements(db?: Database): void {
+  if (db) {
+    statementsCache.delete(db);
+  }
+  // db 未傳入時為 no-op：WeakMap 以 DB 實例為 key，
+  // 新 DB 實例會自動建立新的 cache entry，不需手動清除全域快取。
 }
