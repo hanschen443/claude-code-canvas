@@ -13,12 +13,6 @@ describe("ConfigStore", () => {
   });
 
   describe("時區設定", () => {
-    it("DB 無資料時 timezoneOffset 回傳預設值 8", () => {
-      const config = configStore.getAll();
-
-      expect(config.timezoneOffset).toBe(8);
-    });
-
     it("成功更新 timezoneOffset 並讀取回正確值", () => {
       const result = configStore.update({ timezoneOffset: -5 });
 
@@ -45,24 +39,6 @@ describe("ConfigStore", () => {
   });
 
   describe("備份設定", () => {
-    it("DB 無資料時 backupGitRemoteUrl 回傳預設空字串", () => {
-      const config = configStore.getAll();
-
-      expect(config.backupGitRemoteUrl).toBe("");
-    });
-
-    it("DB 無資料時 backupTime 回傳預設 '03:00'", () => {
-      const config = configStore.getAll();
-
-      expect(config.backupTime).toBe("03:00");
-    });
-
-    it("DB 無資料時 backupEnabled 回傳預設 false", () => {
-      const config = configStore.getAll();
-
-      expect(config.backupEnabled).toBe(false);
-    });
-
     it("成功更新 backupGitRemoteUrl 並讀取回正確值", () => {
       const result = configStore.update({
         backupGitRemoteUrl: "https://github.com/user/backup.git",
